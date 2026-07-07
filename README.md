@@ -1,8 +1,8 @@
+# LuoguSP
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg)](https://www.tampermonkey.net/)
 [![Version](https://img.shields.io/badge/version-2.8.2-2f80ed.svg)](LuoguSP.user.js)
-
-# LuoguSP
 
 LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页面体验。
 
