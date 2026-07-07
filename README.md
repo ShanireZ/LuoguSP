@@ -1,8 +1,8 @@
 # LuoguSP
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg)](https://www.tampermonkey.net/)
-[![Version](https://img.shields.io/badge/version-2.8.2-2f80ed.svg)](LuoguSP.user.js)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
+![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.8.2-2f80ed.svg?style=flat-square)
 
 LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页面体验。
 
@@ -34,4 +34,4 @@ LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页
 
 ## 许可证
 
-本项目以 GPL-3.0-or-later 协议发布。详见 [LICENSE](LICENSE)。
+本项目采用 [GNU General Public License v3.0](LICENSE) 发布。
