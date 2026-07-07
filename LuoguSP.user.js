@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.8.1
+// @version      2.8.2
 // @description  LuoguSP：题目难度着色 / 屏蔽广告 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0-or-later
@@ -98,8 +98,18 @@
 			.luogusp-setting-entry{cursor:pointer;}
 			.luogusp-intro-card li:has(> input[type="checkbox"]){list-style:none;margin-left:-1.2em;}
 			.luogusp-intro-card li > input[type="checkbox"]{margin-right:.4em;}
+			.luogusp-intro-card .code-container{margin:1rem 0;position:relative;}
+			.luogusp-intro-card .code-container:hover>.copy-button{opacity:1;}
+			.luogusp-intro-card .code-container:hover>.copy-button:hover{background-color:#ddd;}
+			.luogusp-intro-card .copy-button{position:absolute;top:.5em;right:.5em;padding:.6em;display:flex;align-items:center;justify-content:center;transition:opacity .2s ease-in-out,color .2s ease-in-out,background-color .2s ease-in-out;opacity:0;background-color:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
+			.luogusp-intro-card .copy-button:focus{opacity:1;outline:1px solid #ddd;}
+			.luogusp-intro-card .copy-button.copied{color:#52c41a;}
+			.luogusp-intro-card .copy-icon{width:1em;height:1em;}
+			.luogusp-intro-card .code-container>pre{background:#fafafa;color:#383a42;padding:1em;margin:0;overflow:auto;border-radius:.3em;}
+			.luogusp-intro-card .code-container>pre code{font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;line-height:1.5;tab-size:2;}
 			.luogusp-intro-card pre[class*="language-"],.luogusp-intro-card code[class*="language-"]{background:#fafafa;color:#383a42;font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;direction:ltr;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;line-height:1.5;tab-size:2;hyphens:none;}
 			.luogusp-intro-card pre[class*="language-"]{padding:1em;margin:.5em 0;overflow:auto;border-radius:.3em;}
+			.luogusp-intro-card .code-container>pre[class*="language-"]{margin:0;}
 			.luogusp-intro-card pre code.hljs{display:block;overflow-x:visible;padding:0;background:transparent;}
 			.luogusp-intro-card code.hljs{color:#383a42;background:#fafafa;}
 			.luogusp-intro-card .hljs-comment,.luogusp-intro-card .hljs-quote{color:#a0a1a7;font-style:italic;}
@@ -451,6 +461,54 @@
 			}
 		});
 	}
+	const COPY_ICON_PATH = 'M192 0c-35.3 0-64 28.7-64 64l0 256c0 35.3 28.7 64 64 64l192 0c35.3 0 64-28.7 64-64l0-200.6c0-17.4-7.1-34.1-19.7-46.2L370.6 17.8C358.7 6.4 342.8 0 326.3 0L192 0zM64 128c-35.3 0-64 28.7-64 64L0 448c0 35.3 28.7 64 64 64l192 0c35.3 0 64-28.7 64-64l0-16-64 0 0 16-192 0 0-256 16 0 0-64-16 0z';
+	function copyText(text) {
+		if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+		const ta = document.createElement('textarea');
+		ta.value = text;
+		ta.setAttribute('readonly', '');
+		ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+		document.body.appendChild(ta);
+		ta.select();
+		try {
+			document.execCommand('copy');
+			return Promise.resolve();
+		} finally {
+			ta.remove();
+		}
+	}
+	function makeCopyButton(code) {
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.className = 'copy-button';
+		button.setAttribute('aria-label', '复制代码');
+		button.title = '复制代码';
+		button.innerHTML = `<svg class="svg-inline--fa fa-copy copy-icon" data-prefix="fas" data-icon="copy" role="img" viewBox="0 0 448 512" aria-hidden="true"><path fill="currentColor" d="${COPY_ICON_PATH}"></path></svg>`;
+		button.addEventListener('click', async (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			try {
+				await copyText(code.textContent || '');
+				button.classList.add('copied');
+				button.title = '已复制';
+				setTimeout(() => { button.classList.remove('copied'); button.title = '复制代码'; }, 900);
+			} catch (err) {
+				console.error('LuoguSP copy code:', err);
+			}
+		});
+		return button;
+	}
+	function enhanceCodeBlocks(root) {
+		root.querySelectorAll('pre').forEach((pre) => {
+			if (pre.closest('.code-container')) return;
+			const code = pre.querySelector('code');
+			if (!code) return;
+			const box = document.createElement('div');
+			box.className = 'code-container';
+			pre.parentNode.insertBefore(box, pre);
+			box.append(pre, makeCopyButton(code));
+		});
+	}
 	// 卡片外观参考国际站：浅克隆一张原生 .l-card + .header 拿到带 data-v 的作用域样式（裸 class 无边框/背景），
 	// 内容套 .lfe-marked-wrap.introduction 走洛谷原生 Markdown 样式；追加到 .main 末尾（国际站里简介就是最后一张卡）。
 	function renderIntroCard(col, intro) {
@@ -475,6 +533,7 @@
 		content.className = 'lfe-marked';                  // ★洛谷 markdown 样式(标题下边框/hr/列表间距等)全局作用域在 .lfe-marked，内容必须套此层
 		content.innerHTML = renderMarkdown(intro);         // renderMarkdown 已消毒防 XSS
 		highlightCodeBlocks(content);
+		enhanceCodeBlocks(content);
 		body.appendChild(content);
 		card.append(header, body);
 		col.appendChild(card);
