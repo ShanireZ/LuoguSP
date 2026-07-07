@@ -9,8 +9,13 @@ LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 或兼容的用户脚本管理器。
-2. 打开 [LuoguSP.user.js](https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js)。
-3. 在脚本管理器中确认安装。
+2. 下载 [LuoguSP.user.js](https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js)，然后在油猴管理面板中拖放脚本文件。
+3. 也可以在油猴管理面板中新建脚本，复制 `LuoguSP.user.js` 的完整代码，粘贴后保存。
+
+## 更新
+
+- 自动更新：在油猴管理面板进入 LuoguSP 脚本，通过设置页面检查并执行更新。
+- 手动更新：重新获取最新版 `LuoguSP.user.js`，按安装方式覆盖保存。
 
 ## 功能
 
