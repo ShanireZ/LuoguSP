@@ -1,11 +1,15 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.8.0
+// @version      2.8.1
 // @description  LuoguSP：题目难度着色 / 屏蔽广告 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0-or-later
 // @match        https://www.luogu.com.cn/*
+// @homepageURL   https://github.com/ShanireZ/LuoguSP
+// @supportURL    https://github.com/ShanireZ/LuoguSP/issues
+// @updateURL     https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js
+// @downloadURL   https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js
 // @grant        none
 // @require      https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
 // @require      https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js
@@ -80,13 +84,16 @@
 			#luogusp-settings{position:fixed;inset:0;z-index:100000;font-size:14px;color:#222;}
 			#luogusp-settings .luogusp-mask{position:absolute;inset:0;background:rgba(0,0,0,.35);}
 			#luogusp-settings .luogusp-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-				background:#fff;border-radius:8px;padding:20px 24px;min-width:300px;box-shadow:0 8px 30px rgba(0,0,0,.2);}
+				background:#fff;border-radius:8px;padding:24px 30px;min-width:300px;box-shadow:0 8px 30px rgba(0,0,0,.2);}
+			#luogusp-settings .luogusp-content{width:max-content;max-width:min(420px,calc(100vw - 88px));margin:0 auto;}
 			#luogusp-settings h3{margin:0 0 12px;font-size:16px;}
 			#luogusp-settings .luogusp-item{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;}
 			#luogusp-settings .luogusp-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
 			#luogusp-settings button{padding:5px 14px;border:1px solid #ccc;border-radius:5px;background:#f7f7f7;cursor:pointer;}
-			#luogusp-settings button:hover{background:#efefef;}
+			#luogusp-settings button:not(.luogusp-primary):hover{background:#efefef;}
 			#luogusp-settings .luogusp-primary{background:#0e88d3;border-color:#0e88d3;color:#fff;}
+			#luogusp-settings .luogusp-primary:hover{background:#0879bd;border-color:#0879bd;color:#fff;}
+			#luogusp-settings .luogusp-primary:active{background:#066ca9;border-color:#066ca9;color:#fff;}
 			#luogusp-settings .luogusp-hint{margin:10px 0 0;color:#888;font-size:12px;}
 			.luogusp-setting-entry{cursor:pointer;}
 			.luogusp-intro-card li:has(> input[type="checkbox"]){list-style:none;margin-left:-1.2em;}
@@ -116,21 +123,23 @@
 		overlay.innerHTML = `
 			<div class="luogusp-mask"></div>
 			<div class="luogusp-panel" role="dialog" aria-modal="true">
-				<h3>LuoguSP 功能设置</h3>
-				<div class="luogusp-list">
-					${[...FEATURE_LABELS].map(([key, label]) => `
-						<label class="luogusp-item">
-							<input type="checkbox" data-key="${key}" ${storage.get(key) ? 'checked' : ''}>
-							<span>${label}</span>
-						</label>`).join('')}
+				<div class="luogusp-content">
+					<h3>LuoguSP 功能设置</h3>
+					<div class="luogusp-list">
+						${[...FEATURE_LABELS].map(([key, label]) => `
+							<label class="luogusp-item">
+								<input type="checkbox" data-key="${key}" ${storage.get(key) ? 'checked' : ''}>
+								<span>${label}</span>
+							</label>`).join('')}
+					</div>
+					<div class="luogusp-actions">
+						<button data-act="all">全选</button>
+						<button data-act="none">全不选</button>
+						<button data-act="save" class="luogusp-primary">保存</button>
+						<button data-act="close">关闭</button>
+					</div>
+					<p class="luogusp-hint">保存后需刷新页面生效。</p>
 				</div>
-				<div class="luogusp-actions">
-					<button data-act="all">全选</button>
-					<button data-act="none">全不选</button>
-					<button data-act="save" class="luogusp-primary">保存</button>
-					<button data-act="close">关闭</button>
-				</div>
-				<p class="luogusp-hint">保存后需刷新页面生效。</p>
 			</div>`;
 		document.body.appendChild(overlay);
 
@@ -473,6 +482,8 @@
 	async function showHiddenIntro() {
 		const m = location.pathname.match(/^\/(?:user|space)\/(\d+)/);
 		if (!m) return;
+		const route = currentUserRoute();
+		if (!route.isHome) return;
 		const uid = m[1];
 		document.querySelectorAll('.luogusp-intro-card').forEach((e) => e.remove()); // 清换页残留
 		if (document.querySelector(SELECTORS.nativeIntro)) return;                   // 原生已显示，不重复补
@@ -493,24 +504,63 @@
 		setTimeout(() => obs.disconnect(), 8000);
 	}
 	// SPA 换页时 URL 变但脚本不重跑：监听用户主页 uid 变化补显。
+	function currentUserRoute() {
+		const m = location.pathname.match(/^\/(?:user|space)\/(\d+)/);
+		const hash = location.hash || '';
+		return {
+			uid: m ? m[1] : '',
+			key: m ? `${location.pathname}${location.search}${hash}` : '',
+			isHome: !!m && (!hash || hash === '#' || hash === '#home' || hash === '#main'),
+		};
+	}
+	function watchUrlChange(onChange) {
+		if (!history.pushState._luoguspWrapped) {
+			for (const method of ['pushState', 'replaceState']) {
+				const raw = history[method];
+				const wrapped = function (...args) {
+					const ret = raw.apply(this, args);
+					window.dispatchEvent(new Event('luogusp:urlchange'));
+					return ret;
+				};
+				wrapped._luoguspWrapped = true;
+				history[method] = wrapped;
+			}
+		}
+		window.addEventListener('popstate', onChange);
+		window.addEventListener('hashchange', onChange);
+		window.addEventListener('luogusp:urlchange', onChange);
+	}
 	function watchHiddenIntro() {
-		let lastUid = '';
+		let requestedRouteKey = '';
 		const check = () => {
-			const m = location.pathname.match(/^\/(?:user|space)\/(\d+)/);
-			const uid = m ? m[1] : '';
+			const route = currentUserRoute();
+			const uid = route.uid;
 			// 原生简介出现（管理员等原生可见）→ 移除我的卡，避免重复渲染
 			if (document.querySelector('.introduction:not(.luogusp-intro-card *)')) {
 				document.querySelectorAll('.luogusp-intro-card').forEach((e) => e.remove());
-				lastUid = uid;
+				requestedRouteKey = route.key;
 				return;
 			}
-			if (!uid) { lastUid = ''; return; }
-			if (uid !== lastUid) { lastUid = uid; showHiddenIntro(); }
+			if (!uid || !route.isHome) {
+				document.querySelectorAll('.luogusp-intro-card').forEach((e) => e.remove());
+				requestedRouteKey = '';
+				return;
+			}
+			if (document.querySelector('.luogusp-intro-card')) {
+				requestedRouteKey = route.key;
+				return;
+			}
+			if (route.key !== requestedRouteKey) {
+				requestedRouteKey = route.key;
+				showHiddenIntro();
+			}
 		};
 		check();
 		let scheduled = false;
-		new MutationObserver(() => { if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; check(); }); } })
+		const queueCheck = () => { if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; check(); }); } };
+		new MutationObserver(queueCheck)
 			.observe(document.body, { childList: true, subtree: true });
+		watchUrlChange(queueCheck);
 	}
 
 	// ============================================================
