@@ -860,7 +860,7 @@
       return p;
     }
   }
-  const limiter = new FetchRateLimiter(120, 4); // 120ms 发起间隔、最多 4 并发（原为 300ms 串行）
+  const limiter = new FetchRateLimiter(200, 3); // 200ms 发起间隔、最多 3 并发（原为 300ms 串行）
 
   const colorCache = new Map(); // pid -> css 颜色
   const DIFF_RE = /"difficulty":\s*(\d+)/; // HTML 回退用
