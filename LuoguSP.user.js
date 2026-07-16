@@ -2,7 +2,7 @@
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
 // @version      2.8.3
-// @description  LuoguSP：题目难度着色 / 屏蔽广告 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介
+// @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
 // @match        https://www.luogu.com.cn/*
@@ -49,7 +49,6 @@
     // 洛谷有两套导航：首页竖排 nav.lfe-body（条目用 .text）/ 内容页左侧栏 nav.sidebar（条目用 .title）
     navContainers: ["nav.lfe-body", "nav.sidebar"], // 设置入口挂载点（按序取第一个存在的）
     navText: ".text, .title", // 导航条目里的文字 span
-    ad: "div[data-v-0a593618][data-v-1143714b]", // 首页广告块
     chatTrigger: '[slot="trigger"]', // 私信用户名触发点（旧 data-v 选择器已失效，用语义属性）
     userIntroColumn: ".sidebar-container .main", // 用户主页右侧内容列（补显简介的挂载点）
     nativeIntro: ".introduction", // 洛谷原生简介元素（存在=已显示，脚本不重复补）
@@ -59,7 +58,6 @@
   // 功能开关：key → 显示名。新增功能只需在此登记 + 在底部 FEATURES 注册启动器。
   const FEATURE_LABELS = new Map([
     [`${STORAGE_PREFIX}addProblemsColor`, "显示题目颜色"],
-    [`${STORAGE_PREFIX}removeAd`, "屏蔽广告"],
     [`${STORAGE_PREFIX}addMessageLink`, "私信界面 Ctrl+Click 打开用户主页"],
     [`${STORAGE_PREFIX}showIntro`, "显示隐藏的个人简介"],
   ]);
@@ -288,27 +286,6 @@
       }
     }).observe(document.body, { childList: true, subtree: true });
     addSettingButton();
-  }
-
-  // ============================================================
-  // 屏蔽广告
-  // ============================================================
-  function removeAd() {
-    const kill = () => {
-      const ad = document.querySelector(SELECTORS.ad);
-      if (ad) {
-        ad.remove();
-        return true;
-      }
-      return false;
-    };
-    if (kill()) return;
-    // 广告可能懒加载：短暂观察，移除后或 15s 后即断开，避免常驻 observer。
-    const obs = new MutationObserver(() => {
-      if (kill()) obs.disconnect();
-    });
-    obs.observe(document, { childList: true, subtree: true });
-    setTimeout(() => obs.disconnect(), 15000);
   }
 
   // ============================================================
@@ -1037,7 +1014,6 @@
       key: `${STORAGE_PREFIX}addProblemsColor`,
       run: () => setTimeout(addProblemsColor, 500),
     },
-    { key: `${STORAGE_PREFIX}removeAd`, run: removeAd },
     {
       key: `${STORAGE_PREFIX}addMessageLink`,
       run: () => {
