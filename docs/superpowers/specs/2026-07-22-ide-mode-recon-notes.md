@@ -86,3 +86,12 @@ MLE/OLE/UKE 未实测;运行时复制策略天然覆盖。
 - 原生样例运行会**改写输入框内容**:批测开始前快照 `textarea.ide-textarea`(输入面板)值,结束后还原(输出框内容属运行结果,不需还原)。
 - 每组样例结果实测 1~3.5s;串行 + 组间 ≥500ms 间隔;`/api/ide_submit` 的 XHR 包装仅用于检测提交失败(非 200/429)与关联运行开始,不用于取结果。
 - IDE 模式内左上仍有「复制 Markdown/中文/退出 IDE 模式」链接;「进入/退出 IDE 模式」文字可作模式判定辅助,主判定 = `location.hash === '#ide'` 且 `.ide-toolbar` 存在。
+
+## 8. 验证期增补实测(2026-07-22 下午)
+
+- **旧 `?_contentOnly=1` 在 columba 题目页已死**(返回整页 HTML)。新版内容接口 = 同 URL 带请求头 `x-lentille-request: content-only`,返回与 `lentille-context` 同构 JSON。
+- **SPA 换题后 `#lentille-context` 滞留旧题**(P1067→P1056 实测),样例兜底必须走上述头部接口;兜底端到端已验证(滞留页正确取到新题样例并跑 AC)。
+- **`/api/ide_submit` 不覆盖服务端草稿 lastCode**(P1001 多次垃圾代码自测后 lastCodeAt/lastCode 原封未动);编辑器内容页内快照即可安全还原。
+- **后台标签页 rAF 挂起**会推迟按钮/面板挂载(挂载走 rAF 节流,同现有 watchSettingButton 模式);页面可见时立即恢复,真实使用无影响,自动化测试需注意。批测引擎本身用 setTimeout 轮询,后台可正常运行。
+- 题目列表页的题目链接是新标签打开,合成 click 不触发 SPA;题面内「推荐题目」链接是真 SPA。
+- 合成 `history.pushState`+`PopStateEvent` 能驱动视图但会损坏路由内部状态(后续原生跳转 URL 变 `…undefined`),**测试时勿用**。

@@ -1098,13 +1098,15 @@
     if (!pid) return null;
     const p = lentilleProblem();
     if (p && p.pid === pid && Array.isArray(p.samples)) return p.samples;
-    // SPA 换题后 lentille-context 可能滞留旧题 → 同源接口兜底
+    // SPA 换题后 lentille-context 滞留旧题（真机实测）→ 新版内容接口兜底。
+    // 注意：旧 `?_contentOnly=1` 在 columba 页面已死（返回整页 HTML），
+    // 正确姿势是带 x-lentille-request 头（真机实测 2026-07-22）。
     try {
-      const text = await limiter.fetchText(`/problem/${pid}?_contentOnly=1`);
-      const json = JSON.parse(text);
-      const prob =
-        (json.currentData && json.currentData.problem) ||
-        (json.data && json.data.problem);
+      const res = await fetch(`/problem/${pid}`, {
+        headers: { "x-lentille-request": "content-only" },
+      });
+      const json = await res.json();
+      const prob = json && json.data && json.data.problem;
       if (prob && Array.isArray(prob.samples)) return prob.samples;
     } catch (e) {
       console.error("LuoguSP ide samples:", e);
