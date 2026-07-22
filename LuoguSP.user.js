@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.9.1
+// @version      2.9.2
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -1225,7 +1225,8 @@
     if (hadPill && (await waitIdePill(false, 5000)) === null)
       return { verdict: "UKE", note: "旧结果未清空，疑似运行未开始" };
     const pill = await waitIdePill(true, 30000);
-    if (!pill || pill === true) return { verdict: "UKE", note: "30s 未返回结果" };
+    if (!pill || pill === true)
+      return { verdict: "UKE", note: "30s 未返回结果" };
     const parts = outputParts();
     return {
       verdict: (pill.textContent || "").trim() || "UKE",
@@ -1356,7 +1357,8 @@
         if (badSet && badSet.has(k)) span.className = "luogusp-ide-diffline";
         span.textContent = l;
         pre.appendChild(span);
-        if (k < lines.length - 1) pre.appendChild(document.createTextNode("\n"));
+        if (k < lines.length - 1)
+          pre.appendChild(document.createTextNode("\n"));
       });
     }
     const box = document.createElement("div");
@@ -1516,7 +1518,7 @@
     if (!selfTest) return;
     // 克隆原生「自测」按钮继承洛谷样式（含 data-v 作用域），只换文字
     const btn = selfTest.cloneNode(true);
-    btn.textContent = "一键测试样例";
+    btn.textContent = "一键测试";
     btn.classList.add("luogusp-ide-batch-btn");
     btn.disabled = false;
     btn.addEventListener("click", (e) => {
