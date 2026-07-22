@@ -1901,6 +1901,7 @@
 			.luogusp-rst-article .loadmore a{color:#3498db;}
 			.luogusp-rst-article .lfe-marked{overflow-wrap:break-word;}
 			.luogusp-rst-article .lfe-marked a{color:#3498db;}
+			.luogusp-rst-article .lfe-marked h1,.luogusp-rst-article .lfe-marked h2,.luogusp-rst-article .lfe-marked h3{scroll-margin-top:4rem;}
 			.luogusp-rst-article .lfe-marked h1{margin:1.5rem 0 1rem;font-size:2em;padding-bottom:.1em;border-bottom:solid 1px #d8d8d8;}
 			.luogusp-rst-article .lfe-marked h2{margin:1.2rem 0 1rem;font-size:1.5em;padding-bottom:.1em;border-bottom:solid 1px #d8d8d8;}
 			.luogusp-rst-article .lfe-marked h3{margin:1.2rem 0 1rem;font-size:1.2em;}
@@ -2670,43 +2671,78 @@
       rstBuildArticlePage(info, data, viewer, author);
     else rstBuildPastePage(info, data, viewer, author);
   }
-  // columba 原生 TOC（指示条 + 文字），挂在 .toc-wrapper 内 sticky 跟随
-  function rstBuildToc() {
+  // columba 原生 TOC：首项 title-0=文章标题，正文 hN → title-N（h1~h3）；条目=li>span，
+  // 点击平滑滚动、滚动位置联动 active（指示条变深）。
+  function rstBuildToc(articleTitle) {
     const old = document.querySelector(".toc-wrapper .toc");
     if (old) old.remove();
     const wrapper = document.querySelector(".toc-wrapper");
     const md = document.querySelector(".luogusp-rst-md");
     if (!wrapper || !md) return;
     const heads = [...md.querySelectorAll("h1, h2, h3")];
-    if (heads.length < 2) return;
+    if (!heads.length) return;
     const toc = document.createElement("div");
-    toc.className = "toc";
+    toc.className = "toc with-top";
     const ul = document.createElement("ul");
-    heads.forEach((h, i) => {
-      h.id = `luogusp-toc-${i}`;
+    const items = [];
+    const addItem = (cls, text, target) => {
       const li = document.createElement("li");
-      li.className = `title-${Number(h.tagName[1]) - 1}`;
-      const a = document.createElement("a");
-      a.textContent = h.textContent;
-      a.href = `#luogusp-toc-${i}`;
-      li.appendChild(a);
+      li.className = cls;
+      li.title = text;
+      const sp = document.createElement("span");
+      sp.textContent = text;
+      li.appendChild(sp);
+      li.addEventListener("click", () => {
+        if (target)
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        else window.scrollTo({ top: 0, behavior: "smooth" });
+      });
       ul.appendChild(li);
+      items.push({ li, target });
+    };
+    addItem("title-0", articleTitle || "", null);
+    heads.forEach((h, i) => {
+      if (!h.id) h.id = `luogusp-toc-${i}`;
+      addItem(`title-${Number(h.tagName[1])}`, h.textContent, h);
     });
     toc.appendChild(ul);
     wrapper.appendChild(toc);
+    const spy = () => {
+      let active = items[0];
+      for (const it of items)
+        if (it.target && it.target.getBoundingClientRect().top <= 64)
+          active = it;
+      items.forEach((it) => it.li.classList.toggle("active", it === active));
+    };
+    window.addEventListener("scroll", spy, { passive: true });
+    spy();
   }
-  // 评论列表：复刻 columba 原生 reply-item 结构（灰底 meta 行 + 内容区，相对时间）
-  function rstRenderComments(comments) {
+  // 评论列表：复刻 columba 原生 reply-item（灰底 meta 行=头像+用户名组件+「回复于」相对时间；
+  // 内容为纯文本 pre-line——原生评论不渲染 markdown）。20 条一页「加载更多」，支持排序。
+  let rstCommentsData = null;
+  let rstCommentSort = "default";
+  let rstCommentShown = 0;
+  function rstRenderCommentPage(reset) {
     const wrap = document.querySelector(".luogusp-rst-clist");
     if (!wrap) return;
+    const comments = rstCommentsData || [];
     const count = document.querySelector(".luogusp-rst-ccount");
-    if (count) count.textContent = `${(comments && comments.length) || 0} 条评论`;
-    wrap.innerHTML = "";
-    if (!comments || !comments.length) {
+    if (count) count.textContent = `${comments.length} 条评论`;
+    const moreEl = document.querySelector(".luogusp-rst-more");
+    if (reset) {
+      wrap.innerHTML = "";
+      rstCommentShown = 0;
+    }
+    if (!comments.length) {
       wrap.innerHTML = '<p class="luogusp-rst-note">暂无评论存档</p>';
+      if (moreEl) moreEl.style.display = "none";
       return;
     }
-    for (const c of comments) {
+    const list =
+      rstCommentSort === "newest"
+        ? [...comments].sort((a, b) => Number(b.time) - Number(a.time))
+        : comments;
+    for (const c of list.slice(rstCommentShown, rstCommentShown + 20)) {
       const a = c.author || {};
       const row = document.createElement("div");
       row.className = "row";
@@ -2720,36 +2756,42 @@
       img.className = "avatar";
       img.src = rstAvatar(a.id || 0);
       img.alt = "";
-      const name = document.createElement(a.id ? "a" : "span");
-      name.className = "username";
-      name.textContent = a.name || "?";
-      name.style.color = rstUserColor(a.color);
-      if (a.id) name.href = `/user/${a.id}`;
-      const time = document.createElement("span");
+      const uname = rstUsernameEl(a, a.id, { cls: "username" });
+      const time = document.createElement("div");
       time.className = "time";
+      time.append("回复于 ");
       const t = document.createElement("time");
       t.textContent = rstRelTime(Number(c.time));
       t.title = rstFmtTime(Number(c.time));
       time.appendChild(t);
-      left.append(img, name, time);
+      left.append(img, uname, time);
       meta.appendChild(left);
       const body = document.createElement("div");
       body.className = "content";
-      body.innerHTML = renderMarkdown(String(c.content || "")); // renderMarkdown 已消毒
+      body.textContent = String(c.content || "");
       card.append(meta, body);
       row.appendChild(card);
       wrap.appendChild(row);
     }
+    rstCommentShown = Math.min(rstCommentShown + 20, list.length);
+    if (moreEl)
+      moreEl.style.display = rstCommentShown < list.length ? "" : "none";
   }
   async function rstLoadComments(info) {
     const wrap = document.querySelector(".luogusp-rst-clist");
     if (!wrap) return;
     try {
       const q = await saverGet(`/article/comments/${info.id}`);
-      rstRenderComments(q && q.data ? q.data.comments : null);
+      rstCommentsData = (q && q.data && q.data.comments) || [];
+      rstRenderCommentPage(true);
     } catch (e) {
       console.error("LuoguSP restricted comments:", e);
       wrap.innerHTML = '<p class="luogusp-rst-note">评论加载失败</p>';
+    }
+    const more = document.querySelector(".luogusp-rst-more a");
+    if (more && !more.__luoguspBound) {
+      more.__luoguspBound = true;
+      more.addEventListener("click", () => rstRenderCommentPage(false));
     }
     const btn = document.querySelector(".luogusp-rst-crefresh");
     if (btn && !btn.__luoguspBound) {
@@ -2760,7 +2802,8 @@
           await saverPost(`/article/comments/${info.id}/refresh`);
           await sleep(4000);
           const q = await saverGet(`/article/comments/${info.id}`);
-          rstRenderComments(q && q.data ? q.data.comments : null);
+          rstCommentsData = (q && q.data && q.data.comments) || [];
+          rstRenderCommentPage(true);
           btn.textContent = "更新评论";
         } catch (e) {
           console.error("LuoguSP restricted comment refresh:", e);
@@ -2781,7 +2824,9 @@
   // 就地刷新正文（保滚动位置，不整页重建）
   function rstApplyFresh(info, data) {
     rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
-    if (info.type === "article") rstBuildToc(); // 内部会先移除旧 TOC
+    if (info.type === "article") rstBuildToc(data.title); // 内部会先移除旧 TOC
+    const src = document.querySelector(".luogusp-rst-src");
+    if (src) src.textContent = String(data.content || "");
     rstSetStatus(`已更新（存档时间 ${rstFmtTime(data.updatedAt)}）`, true);
   }
   async function rstPollFresh(info, oldHash, times, gapMs) {
@@ -2837,7 +2882,7 @@
     injectRstStyle();
     if (q && q.code === 200 && q.data) {
       // 已收录：直接显示存档，不自动申请更新（owner 拍板：更新只走「申请更新」按钮）
-      rstBuildPage(info, q.data);
+      await rstBuildPage(info, q.data);
       if (info.type === "article") rstLoadComments(info);
       return;
     }
@@ -2858,7 +2903,7 @@
         continue;
       }
       if (poll && poll.code === 200 && poll.data) {
-        rstBuildPage(info, poll.data);
+        await rstBuildPage(info, poll.data);
         if (info.type === "article") rstLoadComments(info);
         rstSetStatus("已完成首次收录", true);
         return;
