@@ -1962,7 +1962,7 @@
 			.luogusp-rst-paste .user-nav .login{color:#333;text-decoration:none;}
 			.luogusp-rst-paste .user-nav .login span{font-size:.8em;margin-left:.5em;}
 			.luogusp-rst-paste .user-nav .avatar{width:35px;height:35px;border-radius:50%;margin-left:.4em;vertical-align:middle;}
-			.luogusp-rst-paste .bread-crumb{padding-top:1.5em;font-size:.8em;color:#aaa;}
+			.luogusp-rst-paste nav.bread-crumb{padding-top:1.5em;font-size:.8em;color:#aaa;}
 			.luogusp-rst-paste .bread-crumb .link,.luogusp-rst-paste .bread-crumb .text{color:rgba(255,255,255,.75);}
 			.luogusp-rst-paste .bread-crumb .link:hover{color:#fff;}
 			.luogusp-rst-paste .header .lfe-h1{font-size:1.75em;font-weight:700;line-height:1.2;color:inherit;margin:.5em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -2708,7 +2708,8 @@
     toc.appendChild(ul);
     wrapper.appendChild(toc);
     const spy = () => {
-      let active = items[0];
+      // 原生页顶无 active；滚过某标题后点亮对应项
+      let active = null;
       for (const it of items)
         if (it.target && it.target.getBoundingClientRect().top <= 64)
           active = it;
