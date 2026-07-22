@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.9.0
+// @version      2.9.1
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
 // @match        https://www.luogu.com.cn/*
 // @homepageURL   https://github.com/ShanireZ/LuoguSP
 // @supportURL    https://github.com/ShanireZ/LuoguSP/issues
-// @updateURL     https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js
-// @downloadURL   https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js
+// @updateURL     https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js
+// @downloadURL   https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js
 // @grant        none
 // @require      https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
 // @require      https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js
