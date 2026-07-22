@@ -1873,7 +1873,7 @@
 			body.luogusp-rst-paste{margin:0;background:#efefef;font-size:16px;line-height:1.5;color:rgba(0,0,0,.75);font-family:-apple-system,BlinkMacSystemFont,"San Francisco","Helvetica Neue","Noto Sans","Noto Sans CJK SC","Source Han Sans","PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;}
 			.luogusp-rst-paste a{color:#3498db;text-decoration:none;}
 			.luogusp-rst-paste .lgnav{position:fixed;left:0;top:0;bottom:0;width:59px;background:#082b50;color:#ddd;z-index:10;display:flex;flex-direction:column;}
-			.luogusp-rst-paste .lgnav .logo-wrap{display:flex;align-items:center;justify-content:center;height:64px;background:#f12a2a;}
+			.luogusp-rst-paste .lgnav .logo-wrap{display:flex;align-items:center;justify-content:center;height:64px;box-sizing:border-box;padding:0;background:#f12a2a;}
 			.luogusp-rst-paste .lgnav .logo-wrap img{width:22px;height:32px;}
 			.luogusp-rst-paste .lgnav .popup-button{height:26px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;box-sizing:border-box;}
 			.luogusp-rst-paste .lgnav .popup-button svg{width:13px;height:13px;fill:#ddd;}
