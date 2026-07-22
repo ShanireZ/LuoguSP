@@ -1935,6 +1935,68 @@
     document.body.appendChild(toc);
   }
 
+  function rstRenderComments(comments) {
+    const wrap = document.querySelector(".luogusp-rst-clist");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    if (!comments || !comments.length) {
+      wrap.innerHTML = '<p class="luogusp-rst-note">暂无评论存档</p>';
+      return;
+    }
+    for (const c of comments) {
+      const a = c.author || {};
+      const row = document.createElement("div");
+      row.className = "luogusp-rst-comment-row";
+      const img = document.createElement("img");
+      img.src = rstAvatar(a.id || 0);
+      img.alt = "";
+      const main = document.createElement("div");
+      const head = document.createElement("div");
+      head.className = "chead";
+      const name = document.createElement("span");
+      name.textContent = a.name || "?";
+      name.style.color = rstUserColor(a.color);
+      name.style.fontWeight = "600";
+      const time = document.createElement("span");
+      time.textContent = rstFmtTime(Number(c.time));
+      head.append(name, time);
+      const body = document.createElement("div");
+      body.className = "cbody luogusp-intro-card";
+      body.innerHTML = renderMarkdown(String(c.content || "")); // renderMarkdown 已消毒
+      main.append(head, body);
+      row.append(img, main);
+      wrap.appendChild(row);
+    }
+  }
+  async function rstLoadComments(info) {
+    const wrap = document.querySelector(".luogusp-rst-clist");
+    if (!wrap) return;
+    try {
+      const q = await saverGet(`/article/comments/${info.id}`);
+      rstRenderComments(q && q.data ? q.data.comments : null);
+    } catch (e) {
+      console.error("LuoguSP restricted comments:", e);
+      wrap.innerHTML = '<p class="luogusp-rst-note">评论加载失败</p>';
+    }
+    const btn = document.querySelector(".luogusp-rst-crefresh");
+    if (btn && !btn.__luoguspBound) {
+      btn.__luoguspBound = true;
+      btn.addEventListener("click", async () => {
+        btn.textContent = "更新中…";
+        try {
+          await saverPost(`/article/comments/${info.id}/refresh`);
+          await sleep(4000);
+          const q = await saverGet(`/article/comments/${info.id}`);
+          rstRenderComments(q && q.data ? q.data.comments : null);
+          btn.textContent = "更新评论";
+        } catch (e) {
+          console.error("LuoguSP restricted comment refresh:", e);
+          btn.textContent = "更新失败，点击重试";
+        }
+      });
+    }
+  }
+
   function rstQuery(info) {
     return saverGet(`/${info.type}/query/${info.id}`);
   }
