@@ -1132,8 +1132,215 @@
     return content.textContent || "";
   }
 
-  function startIdeBatch() {
-    console.log("LuoguSP ide batch: TODO(Task 3)");
+  let ideSubmitWaiter = null;
+  function installIdeSubmitObserver() {
+    if (XMLHttpRequest.prototype.open.__luoguspIde) return;
+    const rawOpen = XMLHttpRequest.prototype.open;
+    const rawSend = XMLHttpRequest.prototype.send;
+    const open = function (method, url) {
+      this.__luoguspIdeSubmit =
+        typeof url === "string" && url.indexOf("/api/ide_submit") !== -1;
+      return rawOpen.apply(this, arguments);
+    };
+    const send = function () {
+      if (this.__luoguspIdeSubmit)
+        this.addEventListener("loadend", () => {
+          if (ideSubmitWaiter) {
+            const w = ideSubmitWaiter;
+            ideSubmitWaiter = null;
+            w(this.status);
+          }
+        });
+      return rawSend.apply(this, arguments);
+    };
+    open.__luoguspIde = true;
+    XMLHttpRequest.prototype.open = open;
+    XMLHttpRequest.prototype.send = send;
+  }
+  function waitIdeSubmit(ms) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (ideSubmitWaiter === fn) ideSubmitWaiter = null;
+        resolve(null);
+      }, ms);
+      const fn = (status) => {
+        clearTimeout(timer);
+        resolve(status);
+      };
+      ideSubmitWaiter = fn;
+    });
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function outputParts() {
+    const tb = ideToolbarByTitle("输出");
+    if (!tb) return null;
+    const actions = tb.querySelector(SELECTORS.ideToolbarActions);
+    const spans = actions ? [...actions.querySelectorAll("span")] : [];
+    return {
+      pill: spans.find((s) => !s.classList.contains("run-result")) || null,
+      rr: actions ? actions.querySelector(SELECTORS.ideRunResult) : null,
+      textarea: tb.parentElement
+        ? tb.parentElement.querySelector(SELECTORS.ideTextarea)
+        : null,
+    };
+  }
+  // 完成锚点：胶囊 存在→消失→重现（实测清空 300~560ms、结果 1~3.5s；详见侦察实录）
+  // 注意：此处不看 stopReq——设计口径是「当前组跑完即停」，停止只在组间生效
+  async function waitIdePill(present, timeoutMs) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) {
+      const parts = outputParts();
+      if (!parts) return null; // IDE 已卸载
+      if (!!parts.pill === present) return parts.pill || true;
+      await sleep(150);
+    }
+    return null;
+  }
+
+  async function runOneSample(runBtn) {
+    const before = outputParts();
+    if (!before) return { verdict: "UKE", note: "IDE 面板不存在" };
+    const hadPill = !!before.pill;
+    let submitP = waitIdeSubmit(10000);
+    IDE_BATCH.driving = true;
+    runBtn.click();
+    IDE_BATCH.driving = false;
+    let status = await submitP;
+    if (status === 429) {
+      await sleep(3000); // 限流：等 3s 原地重试一次
+      submitP = waitIdeSubmit(10000);
+      IDE_BATCH.driving = true;
+      runBtn.click();
+      IDE_BATCH.driving = false;
+      status = await submitP;
+    }
+    if (status == null || status < 200 || status >= 300)
+      return {
+        verdict: "UKE",
+        note: status == null ? "未观测到提交请求" : `提交失败 HTTP ${status}`,
+      };
+    if (hadPill && (await waitIdePill(false, 5000)) === null)
+      return { verdict: "UKE", note: "旧结果未清空，疑似运行未开始" };
+    const pill = await waitIdePill(true, 30000);
+    if (!pill || pill === true) return { verdict: "UKE", note: "30s 未返回结果" };
+    const parts = outputParts();
+    return {
+      verdict: (pill.textContent || "").trim() || "UKE",
+      pillStyle: pill.getAttribute("style") || "",
+      detail: parts.rr ? parts.rr.textContent.trim() : "",
+      output: parts.textarea ? parts.textarea.value : "",
+    };
+  }
+
+  function ideBatchHint(msg) {
+    const btn = document.querySelector(".luogusp-ide-batch-btn");
+    if (!btn) return;
+    const old = btn.textContent;
+    btn.textContent = msg;
+    btn.disabled = true;
+    setTimeout(() => {
+      btn.textContent = old;
+      btn.disabled = IDE_BATCH.running;
+    }, 1500);
+  }
+  async function startIdeBatch() {
+    if (IDE_BATCH.running) return;
+    mountIdeTabs();
+    const samples = await getIdeSamples();
+    if (!samples || !samples.length) return ideBatchHint("本题无样例");
+    if (!readIdeCode().trim()) return ideBatchHint("代码为空");
+    const runBtns = sampleRunButtons();
+    if (!runBtns.length) return ideBatchHint("找不到样例运行按钮");
+    const n = Math.min(samples.length, runBtns.length);
+    if (runBtns.length !== samples.length)
+      console.error(
+        "LuoguSP ide batch: 样例数与运行按钮数不一致",
+        samples.length,
+        runBtns.length,
+      );
+    IDE_BATCH.running = true;
+    IDE_BATCH.stopReq = false;
+    IDE_BATCH.stale = false;
+    IDE_BATCH.results = new Array(n).fill(null);
+    const inputTa = (() => {
+      const tb = ideToolbarByTitle("输入");
+      return tb && tb.parentElement
+        ? tb.parentElement.querySelector(SELECTORS.ideTextarea)
+        : null;
+    })();
+    IDE_BATCH.inputSnapshot = inputTa ? inputTa.value : null;
+    const batchBtn = document.querySelector(".luogusp-ide-batch-btn");
+    const selfTest = (() => {
+      const tb = ideToolbarByTitle("代码");
+      const actions = tb && tb.querySelector(SELECTORS.ideToolbarActions);
+      return actions
+        ? [...actions.querySelectorAll("button")].find(
+            (b) => (b.textContent || "").trim() === "自测",
+          )
+        : null;
+    })();
+    if (batchBtn) batchBtn.disabled = true;
+    if (selfTest) selfTest.disabled = true; // 批测中禁原生自测防互相干扰
+    if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "";
+    switchIdeTab("samples");
+    renderIdeRows(samples);
+    if (IDE_BATCH.summaryEl) IDE_BATCH.summaryEl.textContent = "测试中…";
+    let ceLog = null;
+    for (let i = 0; i < n; i++) {
+      if (IDE_BATCH.stopReq) break;
+      const p = ideRowParts(i);
+      if (p) {
+        p.pill.setAttribute("style", IDE_PILL_RUN);
+        p.pill.textContent = "运行中";
+      }
+      expandIdeRow(i);
+      let r;
+      try {
+        r = await runOneSample(runBtns[i]);
+      } catch (e) {
+        console.error("LuoguSP ide batch:", e);
+        r = { verdict: "UKE", note: String(e) };
+      }
+      IDE_BATCH.results[i] = r;
+      applyIdeResult(i, r, samples[i]);
+      if (r.verdict === "CE") {
+        ceLog = r.output || "";
+        for (let j = i + 1; j < n; j++) {
+          IDE_BATCH.results[j] = {
+            verdict: "CE",
+            output: ceLog,
+            note: "编译错误",
+          };
+          applyIdeResult(j, IDE_BATCH.results[j], samples[j]);
+        }
+        break;
+      }
+      if (i < n - 1 && !IDE_BATCH.stopReq) await sleep(500); // 组间限速
+    }
+    if (inputTa && IDE_BATCH.inputSnapshot != null) {
+      inputTa.value = IDE_BATCH.inputSnapshot; // 还原用户自定义输入
+      inputTa.dispatchEvent(new Event("input", { bubbles: true })); // 同步 Vue 绑定
+    }
+    IDE_BATCH.running = false;
+    if (batchBtn) batchBtn.disabled = false;
+    if (selfTest) selfTest.disabled = false;
+    if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "none";
+    finishIdeSummary();
+  }
+
+  function applyIdeResult(i, r, sample) {
+    const p = ideRowParts(i);
+    if (!p) return;
+    p.pill.textContent = r.verdict;
+    if (r.pillStyle) p.pill.setAttribute("style", r.pillStyle);
+    p.meta.textContent = r.detail || r.note || "";
+  }
+  function finishIdeSummary() {
+    if (!IDE_BATCH.summaryEl || !IDE_BATCH.results) return;
+    const done = IDE_BATCH.results.filter(Boolean);
+    const ac = done.filter((r) => r.verdict === "AC").length;
+    IDE_BATCH.summaryEl.textContent = `${ac}/${IDE_BATCH.results.length} 通过`;
   }
 
   function mountIdeButton() {
@@ -1310,6 +1517,7 @@
 
   // SPA：进出 IDE 模式/换题时补挂与清理（rAF 节流，同既有 watchSettingButton 模式）
   function watchIdeBatch() {
+    installIdeSubmitObserver();
     let scheduled = false;
     const tick = () => {
       scheduled = false;
