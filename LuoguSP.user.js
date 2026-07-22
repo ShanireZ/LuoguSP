@@ -1767,9 +1767,12 @@
 		`;
     (document.head || document.documentElement).appendChild(style);
   }
-  // 扩展按钮样式（写进壳文档；蓝色=与原生灰色互动钮区分，owner 拍板）
+  // 扩展按钮样式（写进壳文档；蓝色=与原生灰色互动钮区分，owner 拍板）。
+  // ★button-2line 的官方规则是 data-v 作用域的，注入节点吃不到 → 布局自带（镜像官方值）。
   const RST_EXTRA_CSS =
-    ".luogusp-rst-abtn{cursor:pointer;}" +
+    ".luogusp-rst-abtn{display:flex;flex-direction:column;align-items:center;margin:0 1em;cursor:pointer;}" +
+    ".luogusp-rst-abtn .icon{font-size:1.25em;margin-bottom:.3em;}" +
+    ".luogusp-rst-abtn .text{text-align:center;font-size:.75em;}" +
     ".luogusp-rst-abtn>*{color:#3498db !important;}" +
     ".luogusp-rst-pbtnrow{margin:0 0 1.3em;}" +
     ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-right:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
