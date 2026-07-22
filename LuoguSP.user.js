@@ -1704,11 +1704,23 @@
   }
 
   // ============================================================
-  // 受限文章/剪贴板就地显示
+  // 受限文章/剪贴板就地显示（原生壳注入）
   // 国内站访问非本人/未审核的 /article、/paste 会落在「安全访问中心」拦截页
-  // （独立静态页、零全站样式）。本功能就地接管整页，数据来自洛谷保存站
-  // （api.luogu.me，CORS 开放、匿名），markdown 走脚本自有渲染链路。
-  // 事实来源：docs/superpowers/specs/2026-07-22-saver-api-recon-notes.md
+  // （独立静态页、零全站样式、无 CSP）。本功能在拦截页上重建官方页面：
+  //   1) 壳骨架收割：从 .cn 同源页拿官方壳（columba 源=/ranking 等，lfe 源=/image 等；
+  //      骨架自带真实 csrf、当前登录用户、用户主题、官方脚本当前版本——全部活取，绝不写死）；
+  //   2) 数据合成：把保存站存档映射为官方数据壳
+  //      （文章=lentille-context template "article.show"；剪贴板=window._feInjection "PasteShow"）；
+  //   3) document.write 重建文档并加载官方前端 JS——顶栏/侧栏/主题/登录态/markdown/评论组件
+  //      全部由洛谷原生前端渲染，本脚本零复刻（2026-07-22 owner 拍板弃手工烘焙路线）；
+  //   4) fetch 拦截（window 不随 document.write 重建，包装器天然存活）：
+  //      评论接口 GET /article/{id}/replies 喂保存站存档，
+  //      形状 {replySlice:[{id,author:userSummary,time,content}]}，sort=time-d、after=<id> 分页（20/页）；
+  //   5) 官方渲染完成后注入两枚蓝色扩展按钮（申请更新 / 国际站原文）：
+  //      文章页=互动条 button-2line 挂「不推荐」右侧；剪贴板页=源码卡下方 lfe 实心按钮。
+  // 数据源=洛谷保存站 api.luogu.me（CORS 开放、匿名；owner 拍板纯保存站+更新仅手动）；
+  // 作者数据走 .cn 同源 /api/user/search（owner 要求不吃保存站/国际站的用户数据）。
+  // ★保存站硬边界：payload 的 createdAt 是入档时间，非原文发布时间（无接口可取原始时间）。
   // ============================================================
   const SAVER_API = "https://api.luogu.me";
   async function saverGet(path) {
@@ -1739,359 +1751,41 @@
     };
   }
 
-  // 样式为洛谷原生规则的烘焙拷贝（2026-07-22 第四轮：以 www.luogu.com 参照页逐元素重测，勿凭感觉改）。
-  // 文章页=columba 现行版式（白顶栏+汉堡钉栏/抽屉双模式+白色通栏正文带+内联互动条+滚动左浮条；
-  //   规则源=fecdn columba loader.20260712-2050.css + MOD2589~b75e9625.css + 登录/匿名双态实测 computed）。
-  // 剪贴板页=旧版 lfe 默认主题（#34495e 左导航+#3498db logo 块+90° 深灰渐变头部+展开源码卡；
-  //   规则源=fecdn luogu loader.css?ver=20260422 + module.185 + 实测 computed）。作用域
-  //   body.luogusp-rst-article / body.luogusp-rst-paste。
-  // 已知取舍（悬浮层默认不可见，未复刻）：用户名/头像悬浮卡、旧版「应用」弹层、专栏笔按钮下拉。
+  // 最小自有样式：加载层/失败卡（注入拦截页文档），扩展按钮样式随壳 HTML 走（见 RST_EXTRA_CSS）
   function injectRstStyle() {
     if (document.getElementById("luogusp-rst-style")) return;
     const style = document.createElement("style");
     style.id = "luogusp-rst-style";
     style.textContent = `
-			.luogusp-rst-status{font-size:.875em;color:gray;margin-left:.75em;}
-			.luogusp-rst-status.ok{color:#52c41a;}
-			.luogusp-rst-note{color:#999;font-size:12px;text-align:center;margin:24px 0;}
 			.luogusp-rst-loader{position:fixed;inset:0;z-index:2147483000;background:#f5f5f5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#595959;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;}
 			.luogusp-rst-spinner{width:36px;height:36px;border:3px solid rgba(52,152,219,.25);border-top-color:#3498db;border-radius:50%;animation:luogusp-rst-spin .8s linear infinite;}
 			@keyframes luogusp-rst-spin{to{transform:rotate(360deg);}}
-			.luogusp-rst-fadein{animation:luogusp-rst-fade .25s ease-out;}
-			@keyframes luogusp-rst-fade{from{opacity:0;}to{opacity:1;}}
 			.luogusp-rst-plain{margin:0;background:#f5f5f5;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;color:#404040;}
 			.luogusp-rst-plain a{color:#3498db;text-decoration:none;}
 			.luogusp-rst-plaincard{max-width:640px;margin:15vh auto 0;background:#fff;border-radius:4px;box-shadow:0 1px 3px rgba(26,26,26,.1);padding:1.5em;}
-			.luogusp-rstpage .code-container{margin:1rem 0;position:relative;}
-			.luogusp-rstpage .code-container:hover>.copy-button{opacity:1;}
-			.luogusp-rstpage .copy-button{position:absolute;top:.5em;right:.5em;padding:.6em;display:flex;align-items:center;justify-content:center;transition:opacity .2s;opacity:0;background:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
-			.luogusp-rstpage .copy-button.copied{color:#52c41a;}
-			.luogusp-rstpage .copy-icon{width:1em;height:1em;}
-			.luogusp-rstpage .code-container>pre{margin:0;}
-			.luogusp-rstpage .hljs{background:transparent;color:#4d4d4c;padding:0;}
-			.luogusp-rstpage .hljs-comment,.luogusp-rstpage .hljs-quote{color:#8e908c;}
-			.luogusp-rstpage .hljs-variable,.luogusp-rstpage .hljs-template-variable,.luogusp-rstpage .hljs-tag,.luogusp-rstpage .hljs-name,.luogusp-rstpage .hljs-selector-id,.luogusp-rstpage .hljs-selector-class,.luogusp-rstpage .hljs-regexp,.luogusp-rstpage .hljs-deletion{color:#c82829;}
-			.luogusp-rstpage .hljs-number,.luogusp-rstpage .hljs-built_in,.luogusp-rstpage .hljs-builtin-name,.luogusp-rstpage .hljs-literal,.luogusp-rstpage .hljs-type,.luogusp-rstpage .hljs-params,.luogusp-rstpage .hljs-meta,.luogusp-rstpage .hljs-link{color:#f5871f;}
-			.luogusp-rstpage .hljs-attribute{color:#eab700;}
-			.luogusp-rstpage .hljs-string,.luogusp-rstpage .hljs-symbol,.luogusp-rstpage .hljs-bullet,.luogusp-rstpage .hljs-addition{color:#718c00;}
-			.luogusp-rstpage .hljs-title,.luogusp-rstpage .hljs-section{color:#4271ae;}
-			.luogusp-rstpage .hljs-keyword,.luogusp-rstpage .hljs-selector-tag{color:#8959a8;}
-			.luogusp-rstpage .hljs-emphasis{font-style:italic;}
-			.luogusp-rstpage .hljs-strong{font-weight:bold;}
-			body.luogusp-rst-article{margin:0;background:#f5f5f5;font-size:16px;line-height:1.5;color:#404040;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans","Noto Sans SC","Source Sans Pro","Source Han Sans","Segoe UI",Arial,"Microsoft YaHei","WenQuanYi Micro Hei",sans-serif;--lcolor--primary:52,152,219;}
-			.luogusp-rst-article a{color:inherit;text-decoration:none;cursor:pointer;}
-			.luogusp-rst-article .top-bar{position:fixed;top:0;left:0;right:0;box-sizing:border-box;height:3.5rem;max-height:3.5rem;z-index:100;display:flex;flex-flow:row nowrap;align-items:center;padding:.75rem;line-height:1.1;color:#262626;background:#fff;box-shadow:0 1px 3px rgba(26,26,26,.1);}
-			.luogusp-rst-article .top-bar .left{display:flex;align-items:center;flex:1;min-width:0;gap:1em;}
-			.luogusp-rst-article .top-bar .right{flex-shrink:0;}
-			.luogusp-rst-article .top-bar .side-toggle{cursor:pointer;padding:.5rem;border-radius:.5rem;}
-			.luogusp-rst-article .top-bar .side-toggle:hover,.luogusp-rst-article .top-bar .side-toggle.active{background-color:rgba(38,38,38,.1);}
-			.luogusp-rst-article .top-bar .side-toggle svg{width:16px;height:16px;fill:currentColor;vertical-align:-2px;}
-			.luogusp-rst-article .top-bar .header-logo{height:2rem;width:calc(64px - 1.5rem);vertical-align:middle;-webkit-user-select:none;user-select:none;}
-			.luogusp-rst-article .breadcrumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-			.luogusp-rst-article .breadcrumb>*{padding:.25em;margin:0 .1em;border-radius:3px;color:inherit;}
-			.luogusp-rst-article .breadcrumb a:hover{background-color:rgba(0,0,0,.05);}
-			.luogusp-rst-article .top-bar .user-nav{display:flex;align-items:center;}
-			.luogusp-rst-article .top-bar .user-nav>*{margin:0 .25em;vertical-align:middle;}
-			.luogusp-rst-article .top-bar .user-nav .link{display:inline-flex;padding:.25em;border-radius:3px;color:inherit;}
-			.luogusp-rst-article .top-bar .user-nav .link:hover{background-color:rgba(0,0,0,.05);}
-			.luogusp-rst-article .top-bar .user-nav .link svg{width:16px;height:16px;fill:currentColor;}
-			.luogusp-rst-article .top-bar .user-nav .text{margin:0 .2em;font-size:.8em;color:inherit;}
-			.luogusp-rst-article .top-bar .user-nav .avatar{margin:0 1em;}
-			.luogusp-rst-article .top-bar .user-nav .avatar img{width:35px;height:35px;border-radius:50%;vertical-align:middle;cursor:pointer;}
-			.luogusp-rst-article .nav-search{position:relative;display:flex;align-items:center;}
-			.luogusp-rst-article .nav-search .search-wrap{position:absolute;right:100%;top:0;width:0;opacity:0;overflow:hidden;margin-right:.4em;transition:all .25s ease;}
-			.luogusp-rst-article .nav-search .search-wrap.show{width:10em;opacity:1;}
-			.luogusp-rst-article .nav-search input{width:100%;box-sizing:border-box;font-size:.875em;line-height:1.5;padding:.25em .5em;border:1px solid #bfbfbf;border-radius:3px;}
-			.luogusp-rst-article nav.lside{position:fixed;top:3.5rem;left:0;bottom:0;z-index:101;box-sizing:border-box;max-width:240px;width:240px;line-height:1.2;overflow:hidden auto;transition:left .3s ease,box-shadow .5s ease;color:#262626;background:#fff;padding:1.25em .75em;}
-			.luogusp-rst-article nav.lside.drawer.hide{left:-240px;}
-			.luogusp-rst-article nav.lside.drawer.show{border-radius:0 .75em .75em 0;box-shadow:0 0 1px 0 rgba(0,0,0,.5) inset,2px 0 5px 2px rgba(0,0,0,.15);}
-			.luogusp-rst-article nav.lside.bar{width:64px;box-shadow:1px 0 3px rgba(26,26,26,.1);z-index:99;transition:all .25s ease-out;}
-			.luogusp-rst-article nav.lside.bar:hover{width:180px;}
-			.luogusp-rst-article nav.lside::-webkit-scrollbar{width:8px;height:8px;}
-			.luogusp-rst-article nav.lside::-webkit-scrollbar-thumb{border-radius:8px;background:#bbb;}
-			.luogusp-rst-article .nav-group{margin:.25em 0;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}
-			.luogusp-rst-article .nav-group::after{content:"";display:block;margin:1em 0;border-bottom:1px solid rgba(38,38,38,.18);}
-			.luogusp-rst-article .nav-group:last-child::after{display:none;}
-			.luogusp-rst-article .nav-group .group-title{display:flex;align-items:center;justify-content:space-between;font-size:.875em;font-weight:700;padding:0 .67em .5em;}
-			.luogusp-rst-article .nav-group ul{margin:0;padding:0;list-style:none;}
-			.luogusp-rst-article .nav-group li{margin:.5em 0;cursor:pointer;color:inherit;}
-			.luogusp-rst-article .nav-group li:hover{background-color:rgba(38,38,38,.1);}
-			.luogusp-rst-article .nav-group li a{display:inline-block;width:100%;box-sizing:border-box;color:inherit;padding:.25em .5em;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}
-			.luogusp-rst-article .nav-group li .icon{text-align:center;margin-right:.75em;display:inline-block;width:1.5em;vertical-align:middle;}
-			.luogusp-rst-article .nav-group li .icon svg{height:1.25em;width:auto;fill:currentColor;vertical-align:middle;}
-			.luogusp-rst-article .nav-group li .title{vertical-align:middle;}
-			.luogusp-rst-article .nav-group li .title.minor{font-size:.875em;}
-			.luogusp-rst-article nav.sidebar:not(:hover) li .title{display:none;}
-			.luogusp-rst-article nav.sidebar:not(:hover) li .icon{margin:0;}
-			.luogusp-rst-article nav.sidebar:not(:hover) .on-expand{display:none;}
-			.luogusp-rst-article .main-container{display:flex;flex-flow:column nowrap;box-sizing:content-box;padding:0;margin-top:3.5rem;min-height:calc(100vh - 3.5rem);}
-			.luogusp-rst-article .main-container.lside-nav{margin-left:64px;width:calc(100% - 64px);}
-			.luogusp-rst-article .main-container main{display:flex;flex-direction:column;flex:1;background:#f5f5f5;}
-			.luogusp-rst-article .content-band{background:#fff;}
-			@media screen and (max-width:576px){.luogusp-rst-article .main-container.lside-nav{margin-left:0;width:100%;}.luogusp-rst-article nav.lside{display:none;}.luogusp-rst-article .columba-content-wrap{min-width:unset !important;max-width:unset !important;padding-left:.5rem;padding-right:.5rem;}.luogusp-rst-article .toc-wrapper{display:none;}.luogusp-rst-article .banner-content .meta{flex-wrap:wrap;}.luogusp-rst-article .banner-content .meta>.metas{margin-top:.5em;}}
-			.luogusp-rst-article .columba-content-wrap{box-sizing:border-box;width:100%;min-width:448px;max-width:1200px;margin-left:auto;margin-right:auto;padding-left:1rem;padding-right:1rem;}
-			.luogusp-rst-article .wrapper{max-width:768px;}
-			.luogusp-rst-article .lfe-h3{margin-top:0;margin-bottom:.5em;font-weight:700;line-height:1.2;color:#262626;font-size:1.125em;}
-			.luogusp-rst-article .lfe-h4{margin-top:0;margin-bottom:.5em;font-weight:700;line-height:1.2;color:#262626;font-size:1em;}
-			.luogusp-rst-article .lfe-caption{color:gray;font-size:.875em;}
-			.luogusp-rst-article .banner-content{margin:.875em 0;}
-			.luogusp-rst-article .banner-content .title{font-size:2.125rem;margin:.67em 0;font-weight:700;line-height:1.5;color:inherit;}
-			.luogusp-rst-article .banner-content .meta{display:flex;justify-content:space-between;margin-top:.5em;}
-			.luogusp-rst-article .banner-content .meta .label{color:rgba(0,0,0,.5);font-size:.875em;}
-			.luogusp-rst-article .banner-content .meta>.author{display:flex;align-items:center;}
-			.luogusp-rst-article .banner-content .meta>.author .avatar{width:38px;height:38px;border-radius:50%;margin-right:.75em;}
-			.luogusp-rst-article .banner-content .meta>.metas{display:flex;}
-			.luogusp-rst-article .banner-content .meta>.metas>*:first-child{margin-right:1.5em;}
-			.luogusp-rstpage .luogu-username{display:inline-flex;align-items:center;min-width:0;}
-			.luogusp-rstpage .luogu-username>*{vertical-align:baseline;}
-			.luogusp-rstpage .luogu-username>*:not(:first-child){margin-left:2px;}
-			.luogusp-rstpage .luogu-username>*:not(:last-child){margin-right:2px;}
-			.luogusp-rstpage .luogu-username .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;}
-			.luogusp-rstpage .luogu-username .user-badge{font-size:.875em;}
-			.luogusp-rstpage .luogu-username .user-badge span{display:inline-block;padding:0 .5em;border:1px solid;border-radius:2px;line-height:1.5;color:#fff;}
-			.luogusp-rstpage .luogu-username .ccf-check svg{width:.875em;height:.875em;vertical-align:-.125em;}
-			.luogusp-rst-article .article-content{position:relative;box-sizing:border-box;padding:1.5em;}
-			.luogusp-rst-article .lfe-marked-wrap{display:block;overflow:hidden;box-sizing:border-box;padding:0;margin:0;}
-			.luogusp-rst-article .article-content .update-info{margin:1em 0;text-align:right;color:rgba(0,0,0,.5);}
-			.luogusp-rst-article .article-content .actions{box-sizing:border-box;display:flex;flex-flow:row nowrap;align-items:center;justify-content:center;}
-			.luogusp-rst-article .article-content .actions.left-mode{flex-direction:column;position:fixed;top:calc(50vh - 120px);left:calc(50vw - 444px);background-color:#fff;box-shadow:0 2px 4px 0 rgba(0,0,0,.15),0 0 1px 0 rgba(0,0,0,.5) inset;border-radius:.5em;width:60px;}
-			.luogusp-rst-article .main-container.lside-nav .article-content .actions.left-mode{left:calc(50vw - 412px);}
-			.luogusp-rst-article .article-content .actions.left-mode>*{margin:1em 0;}
-			.luogusp-rst-article .article-content .actions.left-mode.hidden{display:none;}
-			.luogusp-rst-article .button-2line{display:flex;flex-direction:column;margin:0 1em;cursor:pointer;}
-			.luogusp-rst-article .button-2line svg{height:20px;width:auto;fill:currentColor;display:block;margin:0 auto 6px;}
-			.luogusp-rst-article .button-2line>.text{text-align:center;font-size:.75em;}
-			.luogusp-rst-article .button-2line>*{color:#595959;transition:color ease .3s;}
-			.luogusp-rst-article .button-2line:hover>*{color:#3498db;}
-			.luogusp-rst-article .toc-wrapper{position:absolute;top:0;bottom:0;width:188px;right:-188px;}
-			.luogusp-rst-article .toc{box-sizing:border-box;position:sticky;top:3.5rem;right:0;margin:0;padding:0;max-height:calc(100vh - 3.5rem);overflow:hidden auto;scrollbar-width:none;}
-			.luogusp-rst-article .toc>ul{list-style:none;margin:0;padding:0;}
-			.luogusp-rst-article .toc>ul>li{cursor:pointer;--indicator-margin:6px;}
-			.luogusp-rst-article .toc>ul>li.title-0{--indicator-width:28px;}
-			.luogusp-rst-article .toc>ul>li.title-1{--indicator-width:22px;}
-			.luogusp-rst-article .toc>ul>li.title-2{--indicator-width:16px;}
-			.luogusp-rst-article .toc>ul>li.title-3{--indicator-width:10px;}
-			.luogusp-rst-article .toc>ul>li::before{content:"";width:var(--indicator-width);display:inline-block;height:6px;margin-right:var(--indicator-margin);border-radius:6px;box-sizing:border-box;background-color:#e8e8e8;vertical-align:middle;}
-			.luogusp-rst-article .toc>ul>li>span{display:inline-block;width:calc(100% - var(--indicator-margin) - var(--indicator-width));box-sizing:border-box;font-size:.75em;vertical-align:middle;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#404040;}
-			.luogusp-rst-article .toc>ul>li:hover::before,.luogusp-rst-article .toc>ul>li.active::before{background-color:#bfbfbf;}
-			.luogusp-rst-article .article-comment{margin-top:30px;margin-bottom:30px;}
-			.luogusp-rst-article .article-comment .section-title{margin:20px 0;font-size:18px;}
-			.luogusp-rst-article .comment-filter-line{display:flex;flex-flow:row nowrap;justify-content:space-between;align-items:center;}
-			.luogusp-rst-article .comment-filter-line>span:first-child{flex:1;}
-			.luogusp-rst-article .combo-wrapper{position:relative;display:flex;align-items:baseline;flex:0 1 128px;cursor:pointer;}
-			.luogusp-rst-article .combo-wrapper .combo-text{font-size:.875em;line-height:1.5;box-sizing:border-box;flex:1;padding:.3125em 1.5em .3125em 1em;background:#fff;border:1px solid #bfbfbf;border-radius:3px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;}
-			.luogusp-rst-article .combo-wrapper .arrow{display:block;margin-left:-1.3em;margin-right:1.3em;}
-			.luogusp-rst-article .combo-wrapper .arrow svg{width:12px;height:16px;fill:#404040;vertical-align:-2px;}
-			.luogusp-rst-article .combo-dropdown{position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:1000;background:#fff;border:1px solid #eee;border-radius:2px;box-shadow:0 0 16px 1.6px rgba(0,0,0,.15);color:#333;display:none;}
-			.luogusp-rst-article .combo-dropdown.show{display:block;}
-			.luogusp-rst-article .combo-dropdown ul{list-style:none;margin:0;padding:0;overflow:auto;}
-			.luogusp-rst-article .combo-dropdown li{padding:.4em .5em;cursor:pointer;}
-			.luogusp-rst-article .combo-dropdown li:hover{background:#eee;}
-			.luogusp-rst-article .l-card{display:block;background-color:#fff;border-radius:4px;box-shadow:0 1px 3px rgba(26,26,26,.1);box-sizing:border-box;margin-bottom:20.8px;min-width:0;padding:1.3em;}
-			.luogusp-rst-article .commentbox textarea{width:100%;box-sizing:border-box;height:70px;resize:vertical;font-size:14px;line-height:1.5;font-family:inherit;color:#000;padding:.3125em 1em;border:1px solid #bfbfbf;border-radius:3px;background:#fff;}
-			.luogusp-rst-article .commentbox p{margin:5px 0 0;text-align:right;}
-			.luogusp-rst-article .commentbox button{font-size:14px;line-height:1.5;padding:.3125em 1em;border-radius:3px;border:1px solid #3498db;vertical-align:middle;}
-			.luogusp-rst-article .commentbox button.solid{color:#fff;background:#3498db;cursor:pointer;}
-			.luogusp-rst-article .commentbox button.solid:hover{background:rgba(52,152,219,.9);}
-			.luogusp-rst-article .commentbox button.need-login{color:#3498db;background:rgba(52,152,219,0);opacity:.65;cursor:not-allowed;}
-			.luogusp-rst-article .reply-item{margin:.75em 0;padding:0;}
-			.luogusp-rst-article .reply-item>.meta{display:flex;justify-content:space-between;align-items:center;font-size:.875em;padding:.75em 1.5em;background-color:#fafafa;border-radius:4px;}
-			.luogusp-rst-article .reply-item>.meta .avatar{width:28px;height:28px;border-radius:50%;margin-right:.5em;}
-			.luogusp-rst-article .reply-item>.meta .username{margin-right:.25em;}
-			.luogusp-rst-article .reply-item>.meta .time{margin-left:.5em;color:rgba(0,0,0,.5);}
-			.luogusp-rst-article .reply-item>.meta .left{display:flex;align-items:center;}
-			.luogusp-rst-article .reply-item>.content{margin:.75em 0;padding:1px 1.5em;word-wrap:break-word;overflow:hidden;white-space:pre-line;}
-			.luogusp-rst-article .loadmore{text-align:center;}
-			.luogusp-rst-article .loadmore a{color:#3498db;}
-			.luogusp-rst-article .lfe-marked{overflow-wrap:break-word;}
-			.luogusp-rst-article .lfe-marked a{color:#3498db;}
-			.luogusp-rst-article .lfe-marked h1,.luogusp-rst-article .lfe-marked h2,.luogusp-rst-article .lfe-marked h3{scroll-margin-top:4rem;}
-			.luogusp-rst-article .lfe-marked h1{margin:1.5rem 0 1rem;font-size:2em;padding-bottom:.1em;border-bottom:solid 1px #d8d8d8;}
-			.luogusp-rst-article .lfe-marked h2{margin:1.2rem 0 1rem;font-size:1.5em;padding-bottom:.1em;border-bottom:solid 1px #d8d8d8;}
-			.luogusp-rst-article .lfe-marked h3{margin:1.2rem 0 1rem;font-size:1.2em;}
-			.luogusp-rst-article .lfe-marked h4{margin:1rem 0;font-size:1.1em;}
-			.luogusp-rst-article .lfe-marked h5{margin:1rem 0;font-size:1em;}
-			.luogusp-rst-article .lfe-marked h6{margin:1rem 0;font-size:1em;color:#666;}
-			.luogusp-rst-article .lfe-marked p{margin:1rem 0;}
-			.luogusp-rst-article .lfe-marked img{max-width:100%;}
-			.luogusp-rst-article .lfe-marked ul,.luogusp-rst-article .lfe-marked ol{padding-left:2em;}
-			.luogusp-rst-article .lfe-marked li+li{margin-top:.2em;}
-			.luogusp-rst-article .lfe-marked li.task-list-item{list-style-type:none;}
-			.luogusp-rst-article .lfe-marked li.task-list-item>input:first-child{margin:0 .35em 0 -1.5em;padding:0;vertical-align:-.125em;}
-			.luogusp-rst-article .lfe-marked hr{margin:1em 0;height:0;border:none;border-bottom:solid 1px #eee;}
-			.luogusp-rst-article .lfe-marked .katex-display{overflow:auto hidden;padding:2px 0;}
-			.luogusp-rst-article .lfe-marked blockquote{margin:0 0 1em;padding:.5em 1em;border-left:4px solid #d8d8d8;background:#fafafa;}
-			.luogusp-rst-article .lfe-marked blockquote>:first-child{margin-top:0;}
-			.luogusp-rst-article .lfe-marked blockquote>:last-child{margin-bottom:0;}
-			.luogusp-rst-article .lfe-marked :not(pre)>code{display:inline;font-size:.875em;background-color:#8080801f;border-radius:6px;padding:.1em .2em;margin:0 .2em;overflow-wrap:break-word;word-break:break-all;font-family:ui-monospace,Menlo,Consolas,monospace;}
-			.luogusp-rst-article .lfe-marked pre{background:#fafafa;border-radius:6px;padding:1em;overflow:auto;font-size:.875em;font-family:ui-monospace,Menlo,Consolas,monospace;}
-			.luogusp-rst-article .lfe-marked table{width:auto;border-collapse:collapse;margin:.5em auto;}
-			.luogusp-rst-article .lfe-marked th,.luogusp-rst-article .lfe-marked td{border:1px solid #d8d8d8;padding:.3em .7em;}
-			.luogusp-rst-article .lfe-marked details{padding:.5em 1em;margin:1em 0 1em .2em;border-left-width:5px;border-left-style:solid;overflow:hidden;border-left-color:rgb(var(--lcolor--primary));background:#fafafa;}
-			.luogusp-rst-article .lfe-marked details>summary{min-height:1em;font-weight:700;cursor:pointer;color:rgb(var(--lcolor--primary));}
-			.luogusp-rst-article .lfe-marked details[open]>summary{margin-bottom:.5em;}
-			.luogusp-rst-article footer{box-sizing:border-box;padding:.5em 1em;padding-top:2.5em;text-align:center;color:#595959;background:#f5f5f5;}
-			.luogusp-rst-article footer>*{margin:.5em 0;}
-			.luogusp-rst-article footer a{color:inherit;}
-			.luogusp-rst-article footer .copyright{font-size:.875em;}
-			body.luogusp-rst-paste{margin:0;background:#fff;font-size:16px;line-height:1.5;color:rgba(0,0,0,.75);font-family:-apple-system,BlinkMacSystemFont,"San Francisco","Helvetica Neue","Noto Sans","Noto Sans CJK SC","Noto Sans CJK","Source Han Sans","PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;}
-			.luogusp-rst-paste a{color:#3498db;text-decoration:none;cursor:pointer;}
-			.luogusp-rst-paste .lgnav{position:fixed;left:0;top:0;bottom:0;width:3.7em;background:#34495e;color:#ddd;z-index:5;display:flex;flex-direction:column;text-align:center;line-height:1.2;}
-			.luogusp-rst-paste .lgnav .logo-block{background:#3498db;}
-			.luogusp-rst-paste .lgnav .logo-wrap{display:block;box-sizing:border-box;padding:1em;width:3.7em;height:4em;text-align:center;overflow:hidden;}
-			.luogusp-rst-paste .lgnav .logo-wrap img{max-width:100%;max-height:100%;}
-			.luogusp-rst-paste .lgnav .popup-button{font-size:.8em;line-height:2em;margin-top:.2em;cursor:pointer;}
-			.luogusp-rst-paste .lgnav .popup-button svg{width:1em;height:1em;fill:currentColor;vertical-align:-.125em;}
-			.luogusp-rst-paste .lgnav>a{display:block;padding:.5em;color:inherit;}
-			.luogusp-rst-paste .lgnav>a .icon{text-align:center;margin:0 .3em;font-size:1.1em;display:inline-block;width:1.5em;vertical-align:middle;}
-			.luogusp-rst-paste .lgnav>a .icon svg{height:1em;width:auto;fill:currentColor;vertical-align:-.125em;}
-			.luogusp-rst-paste .lgnav>a .text{font-size:.8em;vertical-align:middle;}
-			.luogusp-rst-paste .main-container{display:flex;flex:1;flex-direction:column;min-height:100vh;margin-left:3.7em;}
-			@media (max-width:576px){.luogusp-rst-paste .main-container{margin-left:0;width:100%;}.luogusp-rst-paste .lgnav{display:none;}.luogusp-rst-paste .user-nav{display:none;}.luogusp-rst-paste .bread-crumb{font-size:.875em;}}
-			.luogusp-rst-paste .wrapped{padding-left:1em;padding-right:1em;}
-			.luogusp-rst-paste .wrapped>*{max-width:1200px;margin-left:auto;margin-right:auto;}
-			.luogusp-rst-paste .header-layout{position:relative;}
-			.luogusp-rst-paste .header-layout.narrow{height:8em;}
-			@media (max-width:576px){.luogusp-rst-paste .header-layout{height:auto !important;}}
-			.luogusp-rst-paste .header-layout .background{position:absolute;left:0;right:0;top:0;display:block;width:100%;height:100%;z-index:0;background:linear-gradient(90deg,#232526,#414345);}
-			.luogusp-rst-paste .header-layout .header{position:relative;z-index:1;color:#fff;}
-			.luogusp-rst-paste .user-nav{position:absolute;right:4em;top:0;padding:.5em 1em;color:#333;background-color:rgba(255,255,255,.5);border-bottom-left-radius:5px;border-bottom-right-radius:5px;}
-			.luogusp-rst-paste .user-nav nav{position:relative;}
-			.luogusp-rst-paste .user-nav .search-wrap{display:inline-block;margin-right:.4em;font-size:.9em;width:0;vertical-align:middle;overflow:hidden;transition:width .15s ease;}
-			.luogusp-rst-paste .user-nav .search-wrap.show{width:10em;}
-			.luogusp-rst-paste .user-nav .search-wrap input{width:100%;box-sizing:border-box;padding:.2em .5em;background:rgba(255,255,255,.3);border:1px solid #ccc;border-radius:5px;line-height:1.15;font-size:inherit;}
-			.luogusp-rst-paste .user-nav .icon,.luogusp-rst-paste .user-nav .icon-btn{color:#333;}
-			.luogusp-rst-paste .user-nav .icon svg,.luogusp-rst-paste .user-nav .icon-btn svg{width:16px;height:16px;fill:currentColor;vertical-align:-2px;}
-			.luogusp-rst-paste .user-nav .icon-btn{margin-left:.7em;}
-			.luogusp-rst-paste .user-nav .login{color:#333;text-decoration:none;}
-			.luogusp-rst-paste .user-nav .login span{font-size:.8em;margin-left:.5em;}
-			.luogusp-rst-paste .user-nav .avatar{width:35px;height:35px;border-radius:50%;margin-left:.4em;vertical-align:middle;}
-			.luogusp-rst-paste nav.bread-crumb{padding-top:1.5em;font-size:.8em;color:#aaa;}
-			.luogusp-rst-paste .bread-crumb .link,.luogusp-rst-paste .bread-crumb .text{color:rgba(255,255,255,.75);}
-			.luogusp-rst-paste .bread-crumb .link:hover{color:#fff;}
-			.luogusp-rst-paste .header .lfe-h1{font-size:1.75em;font-weight:700;line-height:1.2;color:inherit;margin:.5em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-			.luogusp-rst-paste .functional{padding-top:.8em;}
-			.luogusp-rst-paste .functional .stat{float:right;}
-			.luogusp-rst-paste .functional .operation{display:flex;align-items:baseline;color:#fff;}
-			.luogusp-rst-paste main{flex:1;background:#efefef;}
-			.luogusp-rst-paste .full-container{display:block;margin-top:2em;margin-bottom:2em;}
-			.luogusp-rst-paste .full-container::after{display:block;content:"";clear:both;}
-			.luogusp-rst-paste .lfe-caption{font-size:.875em;}
-			.luogusp-rst-paste .card{display:block;margin-bottom:1.3em;background-color:#fff;border-radius:4px;box-shadow:rgba(26,26,26,.1) 0 1px 3px;box-sizing:border-box;padding:1.3em;}
-			.luogusp-rst-paste .content-card-top{display:flex;justify-content:space-between;align-items:center;}
-			.luogusp-rst-paste .content-card-top .author{display:flex;}
-			@media (max-width:576px){.luogusp-rst-paste .content-card-top .author{flex-direction:column;}}
-			.luogusp-rst-paste .author-margin{margin-right:1em;}
-			.luogusp-rst-paste .pubbadge{display:inline-block;background:#e74c3c;color:#fff;border-radius:2px;padding:0 .5em;line-height:1.5;}
-			.luogusp-rst-paste .horizon{height:2px;background-color:#e8e8e8;border:none;margin:8px 0;}
-			.luogusp-rst-paste .code-card-top strong span{font-weight:700;}
-			.luogusp-rst-paste .copy-btn{font-size:.8em;float:right;padding:0 5px;color:#3498db;background:rgba(52,152,219,0);border:1px solid #3498db;border-radius:3px;cursor:pointer;}
-			.luogusp-rst-paste .code-card-top pre{margin:.5em 0;padding:.3em .5em;font-size:14px;font-family:monospace;background:#f8f8f8;border:1px solid #ddd;overflow:auto;}
-			.luogusp-rst-paste .code-card-top pre>div{white-space:pre;}
-			.luogusp-rst-paste .expand-tip{text-align:center;}
-			.luogusp-rst-paste .expand-tip>span{-webkit-user-select:none;user-select:none;cursor:pointer;color:rgba(0,0,0,.3);}
-			.luogusp-rst-paste .expand-tip>span:hover{color:inherit;}
-			.luogusp-rst-paste .expand-tip svg{width:1em;height:1em;fill:currentColor;vertical-align:-.125em;}
-			.luogusp-rst-paste .marked h1{font-size:2em;}
-			.luogusp-rst-paste .marked h2{font-size:1.5em;}
-			.luogusp-rst-paste .marked h3{font-size:1.17em;}
-			.luogusp-rst-paste .marked h5{font-size:.83em;}
-			.luogusp-rst-paste .marked h6{font-size:.67em;}
-			.luogusp-rst-paste .marked h1,.luogusp-rst-paste .marked h2,.luogusp-rst-paste .marked h3,.luogusp-rst-paste .marked h4,.luogusp-rst-paste .marked h5,.luogusp-rst-paste .marked h6{margin:.5rem 0;font-weight:700;line-height:1.2;}
-			.luogusp-rst-paste .marked h1,.luogusp-rst-paste .marked h2{padding-bottom:.2em;border-bottom:1px solid #eee;}
-			.luogusp-rst-paste .marked p{margin:1rem 0;}
-			.luogusp-rst-paste .marked img{max-width:100%;}
-			.luogusp-rst-paste .marked ol,.luogusp-rst-paste .marked ul{padding-left:1.5em;}
-			.luogusp-rst-paste .marked ul{list-style:outside disc;}
-			.luogusp-rst-paste .marked ol{list-style:outside decimal;}
-			.luogusp-rst-paste .marked hr{margin:1em 0;height:0;border:none;border-bottom:1px solid #eee;}
-			.luogusp-rst-paste .marked blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #e8e8e8;background:#fafafa;}
-			.luogusp-rst-paste .marked table{border-collapse:collapse;margin:.5em 0;}
-			.luogusp-rst-paste .marked th,.luogusp-rst-paste .marked td{border:1px solid #e8e8e8;padding:.3em .7em;}
-			.luogusp-rst-paste .marked code,.luogusp-rst-paste .marked pre{font-family:monospace;font-size:.875em;background-color:#fafafa;border:1px solid #e8e8e8;border-radius:2px;}
-			.luogusp-rst-paste .marked code{margin:0 .2em;padding:.1em .2em;white-space:nowrap;tab-size:4;}
-			.luogusp-rst-paste .marked pre{margin:0;padding:1em;overflow-y:auto;}
-			.luogusp-rst-paste .marked pre>code{font-size:unset;margin:0;padding:0;white-space:pre;border:none;}
-			.luogusp-rst-paste .marked li code.hljs,.luogusp-rst-paste .marked p code.hljs{display:inline;}
-			.luogusp-rst-paste .lgfooter{position:relative;}
-			.luogusp-rst-paste .lgfooter .background{position:absolute;inset:0;background:#333;z-index:-1;}
-			.luogusp-rst-paste .lgfooter .footer{position:relative;display:flex;align-items:center;color:rgba(255,255,255,.9);font-size:.875em;padding:1em;}
-			.luogusp-rst-paste .lgfooter .footer a{color:rgba(255,255,255,.75);}
-			.luogusp-rst-paste .lgfooter .footer a:hover{color:#fff;}
-			.luogusp-rst-paste .lgfooter .logo-img{max-height:60px;}
-			.luogusp-rst-paste .lgfooter .slogan{margin-left:.5em;font-size:1.3em;line-height:1.5;font-weight:700;}
-			.luogusp-rst-paste .lgfooter .qr-img{margin-left:5em;max-height:60px;}
-			.luogusp-rst-paste .lgfooter .info{flex:1;text-align:right;}
-			.luogusp-rst-paste .lgfooter .info p{margin:1em 0;}
-			@media (max-width:576px){.luogusp-rst-paste .lgfooter .logo-img,.luogusp-rst-paste .lgfooter .qr-img,.luogusp-rst-paste .lgfooter .slogan{display:none;}.luogusp-rst-paste .lgfooter .info{text-align:center;}}
+			.luogusp-rst-note{color:#999;font-size:12px;text-align:center;margin:24px 0;}
 		`;
     (document.head || document.documentElement).appendChild(style);
-    // 拦截页无宿主样式，KaTeX 公式需要自带 CSS（与 @require 的 katex 同版本同 CDN，无新增依赖源）
-    if (!document.getElementById("luogusp-rst-katex")) {
-      const link = document.createElement("link");
-      link.id = "luogusp-rst-katex";
-      link.rel = "stylesheet";
-      link.href =
-        "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
-      (document.head || document.documentElement).appendChild(link);
-    }
   }
-
-  // 洛谷用户名色（未知色兜底灰）
-  const RST_COLORS = {
-    Gray: "#bfbfbf",
-    Blue: "#0e90d2",
-    Green: "#52c41a",
-    Orange: "#f39c11",
-    Red: "#fe4c61",
-    Purple: "#9d3dcf",
-    Cheater: "#ad8b00",
+  // 扩展按钮样式（写进壳文档；蓝色=与原生灰色互动钮区分，owner 拍板）
+  const RST_EXTRA_CSS =
+    ".luogusp-rst-abtn{cursor:pointer;}" +
+    ".luogusp-rst-abtn>*{color:#3498db !important;}" +
+    ".luogusp-rst-pbtnrow{margin:0 0 1.3em;}" +
+    ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-right:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
+    ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}";
+  // 扩展按钮图标（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
+  const RST_BTN_ICONS = {
+    refresh: {
+      vb: "0 0 512 512",
+      d: "M105.1 202.6c7.7-21.8 20.2-42.3 37.8-59.8c62.5-62.5 163.8-62.5 226.3 0L386.3 160 352 160c-17.7 0-32 14.3-32 32s14.3 32 32 32l111.5 0c0 0 0 0 0 0l.4 0c17.7 0 32-14.3 32-32l0-112c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 35.2L414.4 97.6c-87.5-87.5-229.3-87.5-316.8 0C73.2 122 55.6 150.7 44.8 181.4c-5.9 16.7 2.9 34.9 19.5 40.8s34.9-2.9 40.8-19.5zM39 289.3c-5 1.5-9.8 4.2-13.7 8.2c-4 4-6.7 8.8-8.1 14c-.3 1.2-.6 2.5-.8 3.8c-.3 1.7-.4 3.4-.4 5.1L16 432c0 17.7 14.3 32 32 32s32-14.3 32-32l0-35.1 17.6 17.5c0 0 0 0 0 0c87.5 87.4 229.3 87.4 316.7 0c24.4-24.4 42.1-53.1 52.9-83.8c5.9-16.7-2.9-34.9-19.5-40.8s-34.9 2.9-40.8 19.5c-7.7 21.8-20.2 42.3-37.8 59.8c-62.5 62.5-163.8 62.5-226.3 0l-.1-.1L125.6 352l34.4 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L48.4 288c-1.6 0-3.2 .1-4.8 .3s-3.1 .5-4.6 1z",
+    },
+    external: {
+      vb: "0 0 512 512",
+      d: "M320 0c-17.7 0-32 14.3-32 32s14.3 32 32 32l82.7 0L201.4 265.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L448 109.3l0 82.7c0 17.7 14.3 32 32 32s32-14.3 32-32l0-160c0-17.7-14.3-32-32-32L320 0zM80 32C35.8 32 0 67.8 0 112L0 432c0 44.2 35.8 80 80 80l320 0c44.2 0 80-35.8 80-80l0-112c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 112c0 8.8-7.2 16-16 16L80 448c-8.8 0-16-7.2-16-16l0-320c0-8.8 7.2-16 16-16l112 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L80 32z",
+    },
   };
-  const rstUserColor = (c) => RST_COLORS[c] || RST_COLORS.Gray;
-  // 分类枚举：以已收录样本对照国际站实测钉死；未验证值显示「分类 #N」
-  const RST_CATEGORIES = { 1: "个人记录", 2: "题解", 3: "科技·工程" };
-  const rstCategoryText = (c) => RST_CATEGORIES[c] || `分类 #${c}`;
-  function rstFmtTime(v) {
-    const d = typeof v === "number" ? new Date(v * 1000) : new Date(v);
-    if (isNaN(d)) return "";
-    const p = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
-  // 原生文章页 update-info 的「创建时间」带秒（banner 发布时间不带，勿混用）
-  function rstFmtTimeSec(v) {
-    const d = typeof v === "number" ? new Date(v * 1000) : new Date(v);
-    if (isNaN(d)) return "";
-    const p = (n) => String(n).padStart(2, "0");
-    return `${rstFmtTime(v)}:${p(d.getSeconds())}`;
-  }
-  // 相对时间（原生评论区的「N 个月前」格式）
-  function rstRelTime(unixSec) {
-    const s = Math.floor(Date.now() / 1000 - unixSec);
-    if (!isFinite(s) || s < 0) return rstFmtTime(unixSec);
-    if (s < 60) return "刚刚";
-    const m = Math.floor(s / 60);
-    if (m < 60) return `${m} 分钟前`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h} 小时前`;
-    const d = Math.floor(h / 24);
-    if (d < 30) return `${d} 天前`;
-    const mo = Math.floor(d / 30);
-    if (mo < 12) return `${mo} 个月前`;
-    return `${Math.floor(mo / 12)} 年前`;
-  }
-  function rstSetStatus(text, ok) {
-    const el = document.querySelector(".luogusp-rst-status");
-    if (!el) return;
-    el.textContent = text;
-    el.classList.toggle("ok", !!ok);
-  }
-  // markdown → 容器（renderMarkdown 已消毒；容器须挂 luogusp-mdstyle 继承代码块/hljs/复制按钮样式。
-  // ★勿用 luogusp-intro-card：那是简介补显功能的所有权标记，其观察器会在非用户主页删除该类节点）
-  function rstRenderMd(container, md) {
-    container.innerHTML = renderMarkdown(String(md || ""));
-    highlightCodeBlocks(container);
-    enhanceCodeBlocks(container);
-  }
+
   function rstAvatar(uid) {
     return `https://cdn.luogu.com.cn/upload/usericon/${uid}.png`;
   }
@@ -2116,218 +1810,26 @@
     rstUserCache.set(uid, user);
     return user;
   }
-  // ccfLevel 认证勾配色（洛谷通例：3~5 绿、6~7 蓝、8+ 金；<3 不显示）
-  function rstCcfColor(lv) {
-    if (!(lv >= 3)) return null;
-    return lv >= 8 ? "#ffc116" : lv >= 6 ? "#3498db" : "#52c41a";
-  }
-  // 徽章边框=底色加深一档（原生取主题色深一档，此处按 88% 亮度近似，1px 边框视觉等同）
-  function rstDarken(hex) {
-    const n = parseInt(hex.slice(1), 16);
-    const f = (x) => Math.round(x * 0.88);
-    return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
-  }
-  // 原生 luogu-username 组件：名字（粗体+用户名色）+自定义徽章+获奖认证勾。
-  // 结构对照 www.luogu.com 实测：div.luogu-username > span>span>a + a>span(徽章) + a>svg(认证)。
-  function rstUsernameEl(user, uid, opts) {
-    const o = opts || {};
-    const wrap = document.createElement("div");
-    wrap.className = "luogu-username" + (o.cls ? ` ${o.cls}` : "");
-    const s1 = document.createElement("span");
-    const s2 = document.createElement("span");
-    const a = document.createElement("a");
-    a.className = "name";
-    a.textContent = (user && user.name) || `用户 ${uid || "?"}`;
-    const color = rstUserColor(user && user.color);
-    a.style.color = color;
-    a.style.fontWeight = "bold";
-    if (uid) {
-      a.href = `/user/${uid}`;
-      if (o.blank) a.target = "_blank";
-    }
-    s2.appendChild(a);
-    s1.appendChild(s2);
-    wrap.appendChild(s1);
-    if (user && user.badge) {
-      const ba = document.createElement("a");
-      ba.className = "user-badge";
-      ba.target = "_blank";
-      ba.rel = "noopener";
-      ba.href = "https://help.luogu.com.cn/manual/luogu/account/user-tag";
-      const bs = document.createElement("span");
-      bs.textContent = String(user.badge);
-      bs.style.backgroundColor = color;
-      bs.style.borderColor = rstDarken(color);
-      ba.appendChild(bs);
-      wrap.appendChild(ba);
-    }
-    const ccf = rstCcfColor(user && user.ccfLevel);
-    if (ccf) {
-      const ca = document.createElement("a");
-      ca.className = "ccf-check";
-      ca.target = "_blank";
-      ca.rel = "noopener";
-      ca.href = "https://help.luogu.com.cn/manual/luogu/account/award-certify";
-      ca.innerHTML = `<svg viewBox="${RST_BADGE_CHECK.vb}" aria-hidden="true"><path fill="${ccf}" d="${RST_BADGE_CHECK.secondary}"/><path fill="#fff" d="${RST_BADGE_CHECK.primary}"/></svg>`;
-      wrap.appendChild(ca);
-    }
-    return wrap;
+  // 官方 userSummary：.cn 接口结果优先，保存站作者快照兜底补形
+  function rstUserSummary(cnUser, snapshot, uid) {
+    if (cnUser) return cnUser;
+    const s = snapshot || {};
+    return {
+      uid: Number(uid) || 0,
+      avatar: rstAvatar(uid || 0),
+      name: s.name || `用户 ${uid || "?"}`,
+      slogan: "",
+      badge: s.badge || null,
+      isAdmin: false,
+      isBanned: false,
+      color: s.color || "Gray",
+      ccfLevel: s.ccfLevel || 0,
+      xcpcLevel: s.xcpcLevel || 0,
+      background: "",
+    };
   }
 
-  // 图标与素材：path 逐字抄自洛谷真实页面（勿改）。RST_ICONS=文章互动条；RST_COL=columba 顶栏/侧栏；RST_LFE=旧版左导航/头部。
-  const RST_ICONS = {
-    star: {
-      vb: "0 0 576 512",
-      d: "M288.1-32c9 0 17.3 5.1 21.4 13.1L383 125.3 542.9 150.7c8.9 1.4 16.3 7.7 19.1 16.3s.5 18-5.8 24.4L441.7 305.9 467 465.8c1.4 8.9-2.3 17.9-9.6 23.2s-17 6.1-25 2L288.1 417.6 143.8 491c-8 4.1-17.7 3.3-25-2s-11-14.2-9.6-23.2L134.4 305.9 20 191.4c-6.4-6.4-8.6-15.8-5.8-24.4s10.1-14.9 19.1-16.3l159.9-25.4 73.6-144.2c4.1-8 12.4-13.1 21.4-13.1zm0 76.8L230.3 158c-3.5 6.8-10 11.6-17.6 12.8l-125.5 20 89.8 89.9c5.4 5.4 7.9 13.1 6.7 20.7l-19.8 125.5 113.3-57.6c6.8-3.5 14.9-3.5 21.8 0l113.3 57.6-19.8-125.5c-1.2-7.6 1.3-15.3 6.7-20.7l89.8-89.9-125.5-20c-7.6-1.2-14.1-6-17.6-12.8L288.1 44.8z",
-    },
-    thumb: {
-      vb: "0 0 512 512",
-      d: "M171.5 38.8C192.3 4 236.5-10 274 7.6l7.2 3.8C316 32.3 330 76.5 312.4 114l0 0-14.1 30 109.7 0 7.4 .4c36.3 3.7 64.6 34.4 64.6 71.6 0 13.2-3.6 25.4-9.8 36 6.1 10.6 9.7 22.8 9.8 36 0 18.3-6.9 34.8-18 47.5 1.3 5.3 2 10.8 2 16.5 0 25.1-12.9 47-32.2 59.9-1.9 35.5-29.4 64.2-64.4 67.7l-7.4 .4-104.1 0c-18 0-35.9-3.4-52.6-9.9l-7.1-3-.7-.3-6.6-3.2-.7-.3-12.2-6.5c-12.3-6.5-23.3-14.7-32.9-24.1-4.1 26.9-27.3 47.4-55.3 47.4l-32 0c-30.9 0-56-25.1-56-56L0 200c0-30.9 25.1-56 56-56l32 0c10.8 0 20.9 3.1 29.5 8.5l50.1-106.5 .6-1.2 2.7-5 .6-.9zM56 192c-4.4 0-8 3.6-8 8l0 224c0 4.4 3.6 8 8 8l32 0c4.4 0 8-3.6 8-8l0-224c0-4.4-3.6-8-8-8l-32 0zM253.6 51c-14.8-6.9-32.3-1.6-40.7 12l-2.2 4-56.8 120.9c-3.5 7.5-5.5 15.5-6 23.7l-.1 4.2 0 112.9 .2 7.9c2.4 32.7 21.4 62.1 50.7 77.7l11.5 6.1 6.3 3.1c12.4 5.6 25.8 8.5 39.4 8.5l104.1 0 2.4-.1c12.1-1.2 21.6-11.5 21.6-23.9l-.2-2.6c-.1-.9-.2-1.7-.4-2.6-2.7-12.1 4.3-24.2 16-28 9.7-3.1 16.6-12.2 16.6-22.8 0-4.3-1.1-8.2-3.1-11.8-6.3-11.1-2.8-25.2 8-32 6.8-4.3 11.2-11.8 11.2-20.2 0-7.1-3.1-13.5-8.2-18-5.2-4.6-8.2-11.1-8.2-18s3-13.4 8.2-18c5.1-4.5 8.2-10.9 8.2-18l-.1-2.4c-1.1-11.3-10.1-20.3-21.4-21.4l-2.4-.1-147.5 0c-8.2 0-15.8-4.2-20.2-11.1-4.4-6.9-5-15.7-1.5-23.1L269 93.6c7-15 1.4-32.7-12.5-41L253.6 51z",
-    },
-    frown: {
-      vb: "0 0 512 512",
-      d: "M464 256a208 208 0 1 0 -416 0 208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0 256 256 0 1 1 -512 0zM197.5 382c-7.7 10.8-22.7 13.2-33.5 5.5s-13.2-22.7-5.5-33.5c21.7-30.2 57.3-50 97.5-50s75.7 19.8 97.5 50c7.7 10.8 5.3 25.8-5.5 33.5s-25.8 5.3-33.5-5.5c-13.1-18.2-34.4-30-58.5-30s-45.4 11.8-58.5 30zM144 208a32 32 0 1 1 64 0 32 32 0 1 1 -64 0zm192-32a32 32 0 1 1 0 64 32 32 0 1 1 0-64z",
-    },
-  };
-  const RST_COL = {
-    home: {
-      vb: "0 0 512 512",
-      d: "M240 6.1c9.1-8.2 22.9-8.2 32 0l232 208c9.9 8.8 10.7 24 1.8 33.9s-24 10.7-33.9 1.8l-8-7.2 0 205.3c0 35.3-28.7 64-64 64l-288 0c-35.3 0-64-28.7-64-64l0-205.3-8 7.2c-9.9 8.8-25 8-33.9-1.8s-8-25 1.8-33.9L240 6.1zm16 50.1L96 199.7 96 448c0 8.8 7.2 16 16 16l48 0 0-104c0-39.8 32.2-72 72-72l48 0c39.8 0 72 32.2 72 72l0 104 48 0c8.8 0 16-7.2 16-16l0-248.3-160-143.4zM208 464l96 0 0-104c0-13.3-10.7-24-24-24l-48 0c-13.3 0-24 10.7-24 24l0 104z",
-    },
-    tiku: {
-      vb: "0 0 448 512",
-      d: "M88 0C39.4 0 0 39.4 0 88L0 432c0 44.2 35.8 80 80 80l344 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-8 0 0-76.1C435.3 375 448 353 448 328l0-256c0-39.8-32.2-72-72-72L88 0zM368 400l0 64-288 0c-17.7 0-32-14.3-32-32s14.3-32 32-32l288 0zM80 352c-11.4 0-22.2 2.4-32 6.7L48 88c0-22.1 17.9-40 40-40l288 0c13.3 0 24 10.7 24 24l0 256c0 13.3-10.7 24-24 24L80 352zm48-200c0 13.3 10.7 24 24 24l176 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-176 0c-13.3 0-24 10.7-24 24zm24 72c-13.3 0-24 10.7-24 24s10.7 24 24 24l176 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-176 0z",
-    },
-    wangxiao: {
-      vb: "0 0 576 512",
-      d: "M318.8 38.1C309 34.1 298.6 32 288 32s-21 2.1-30.8 6.1L14.8 137.9C5.8 141.6 0 150.3 0 160L0 456c0 13.3 10.7 24 24 24s24-10.7 24-24l0-260.2 48 19.8 0 168.5c0 53 86 96 192 96s192-43 192-96l0-168.5 81.2-33.4c9-3.7 14.8-12.4 14.8-22.1s-5.8-18.4-14.8-22.1L318.8 38.1zM144 384l0-148.7 113.2 46.6c9.8 4 20.2 6.1 30.8 6.1s21-2.1 30.8-6.1L432 235.3 432 384c0 .1 0 .1 0 .3s-.1 .4-.3 .9c-.4 .9-1.3 2.7-3.4 5.2-4.4 5.2-12.6 11.9-26 18.6-26.8 13.4-67.1 23-114.3 23s-87.5-9.7-114.3-23c-13.4-6.7-21.6-13.4-26-18.6-2.1-2.5-3-4.3-3.4-5.2-.2-.5-.3-.8-.3-.9s0-.2 0-.3zM87.2 160L275.5 82.5c4-1.6 8.2-2.5 12.5-2.5s8.5 .8 12.5 2.5L488.8 160 300.5 237.5c-4 1.6-8.2 2.5-12.5 2.5s-8.5-.8-12.5-2.5L87.2 160z",
-    },
-    tidan: {
-      vb: "0 0 384 512",
-      d: "M152 96l80 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-80 0c-13.3 0-24 10.7-24 24s10.7 24 24 24zm0 48c-37.1 0-67.6-28-71.6-64L64 80c-8.8 0-16 7.2-16 16l0 352c0 8.8 7.2 16 16 16l256 0c8.8 0 16-7.2 16-16l0-352c0-8.8-7.2-16-16-16l-16.4 0c-4 36-34.5 64-71.6 64l-80 0zM232 0c25 0 47 12.7 59.9 32L320 32c35.3 0 64 28.7 64 64l0 352c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 96C0 60.7 28.7 32 64 32l28.1 0C105 12.7 127 0 152 0l80 0zM171.2 193.1c8.2 6.7 9.5 18.8 2.8 27l-45.3 56c-3.7 4.5-9.2 7.1-15 7.1s-11.3-2.7-14.9-7.2L73.9 244.9c-6.6-8.3-5.3-20.4 3-27s20.4-5.3 27 3l10 12.5 30.3-37.5c6.7-8.2 18.8-9.5 27-2.8zM192 256c0-13.3 10.7-24 24-24l64 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-64 0c-13.3 0-24-10.7-24-24zm-16 96c0-13.3 10.7-24 24-24l80 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-80 0c-13.3 0-24-10.7-24-24zm-64-32a32 32 0 1 1 0 64 32 32 0 1 1 0-64z",
-    },
-    bisai: {
-      vb: "0 0 512 512",
-      d: "M488 56c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 400c0 13.3 10.7 24 24 24s24-10.7 24-24l0-400zM360 128c-13.3 0-24 10.7-24 24l0 304c0 13.3 10.7 24 24 24s24-10.7 24-24l0-304c0-13.3-10.7-24-24-24zM280 248c0-13.3-10.7-24-24-24s-24 10.7-24 24l0 208c0 13.3 10.7 24 24 24s24-10.7 24-24l0-208zM152 320c-13.3 0-24 10.7-24 24l0 112c0 13.3 10.7 24 24 24s24-10.7 24-24l0-112c0-13.3-10.7-24-24-24zM48 384c-13.3 0-24 10.7-24 24l0 48c0 13.3 10.7 24 24 24s24-10.7 24-24l0-48c0-13.3-10.7-24-24-24z",
-    },
-    jilu: {
-      vb: "0 0 576 512",
-      d: "M352.4 54l0 138 138 0C473 124.6 419.9 71.4 352.4 54zm-144 210l0-173.1c-74.6 26.4-128 97.5-128 181.1 0 106 86 192 192 192 24.6 0 48-4.6 69.5-12.9L225 309.9c-10.7-12.9-16.6-29.2-16.6-45.9zm333.9-55.9c2.3 17.5-12.2 31.9-29.9 31.9l-176 0c-17.7 0-32-14.3-32-32l0-176c0-17.7 14.4-32.2 31.9-29.9 107 14.2 191.8 99 206 206zM256.4 66.7l0 197.3c0 5.6 2 11 5.5 15.3L394 438.7c11.7 14.1 9.2 35.4-6.9 44.1-34.1 18.6-73.2 29.2-114.7 29.2-132.5 0-240-107.5-240-240 0-115.5 81.5-211.9 190.2-234.8 18.1-3.8 33.8 11 33.8 29.5zM541.7 288c18.5 0 33.3 15.7 29.5 33.8-10.2 48.4-35 91.4-69.6 124.2-12.3 11.7-31.6 9.2-42.4-3.9L374.9 340.4c-17.3-20.9-2.4-52.4 24.6-52.4l142.2 0z",
-    },
-    taolun: {
-      vb: "0 0 576 512",
-      d: "M76.2 258.7c6.1-15.2 4-32.6-5.6-45.9-14.5-20.1-22.6-43.7-22.6-68.8 0-66.8 60.5-128 144-128s144 61.2 144 128-60.5 128-144 128c-15.9 0-31.1-2.3-45.3-6.5-10.3-3.1-21.4-2.5-31.4 1.5l-50.4 20.2 11.4-28.5zM0 144c0 35.8 11.6 69.1 31.7 96.8L1.9 315.2c-1.3 3.2-1.9 6.6-1.9 10 0 14.8 12 26.8 26.8 26.8 3.4 0 6.8-.7 10-1.9l96.3-38.5c18.6 5.5 38.4 8.4 58.9 8.4 106 0 192-78.8 192-176S298-32 192-32 0 46.8 0 144zM384 512c20.6 0 40.3-3 58.9-8.4l96.3 38.5c3.2 1.3 6.6 1.9 10 1.9 14.8 0 26.8-12 26.8-26.8 0-3.4-.7-6.8-1.9-10l-29.7-74.4c20-27.8 31.7-61.1 31.7-96.8 0-82.4-61.7-151.5-145-170.7-1.6 16.3-5.1 31.9-10.1 46.9 63.9 14.8 107.2 67.3 107.2 123.9 0 25.1-8.1 48.7-22.6 68.8-9.6 13.3-11.7 30.6-5.6 45.9l11.4 28.5-50.4-20.2c-10-4-21.1-4.5-31.4-1.5-14.2 4.2-29.4 6.5-45.3 6.5-72.2 0-127.1-45.7-140.7-101.2-15.6 3.2-31.7 5-48.1 5.2 16.4 81.9 94.7 144 188.8 144z",
-    },
-    zhuanlan: {
-      vb: "0 0 512 512",
-      d: "M168 80c-13.3 0-24 10.7-24 24l0 304c0 8.4-1.4 16.5-4.1 24L440 432c13.3 0 24-10.7 24-24l0-304c0-13.3-10.7-24-24-24L168 80zM72 480c-39.8 0-72-32.2-72-72L0 112C0 98.7 10.7 88 24 88s24 10.7 24 24l0 296c0 13.3 10.7 24 24 24s24-10.7 24-24l0-304c0-39.8 32.2-72 72-72l272 0c39.8 0 72 32.2 72 72l0 304c0 39.8-32.2 72-72 72L72 480zM192 152c0-13.3 10.7-24 24-24l48 0c13.3 0 24 10.7 24 24l0 48c0 13.3-10.7 24-24 24l-48 0c-13.3 0-24-10.7-24-24l0-48zm152 24l48 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-48 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zM216 256l176 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-176 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm0 80l176 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-176 0c-13.3 0-24-10.7-24-24s10.7-24 24-24z",
-    },
-    search: {
-      vb: "0 0 512 512",
-      d: "M368 208a160 160 0 1 0 -320 0 160 160 0 1 0 320 0zM337.1 371.1C301.7 399.2 256.8 416 208 416 93.1 416 0 322.9 0 208S93.1 0 208 0 416 93.1 416 208c0 48.8-16.8 93.7-44.9 129.1L505 471c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0L337.1 371.1z",
-    },
-    mail: {
-      vb: "0 0 512 512",
-      d: "M61.4 64C27.5 64 0 91.5 0 125.4 0 126.3 0 127.1 .1 128L0 128 0 384c0 35.3 28.7 64 64 64l384 0c35.3 0 64-28.7 64-64l0-256-.1 0c0-.9 .1-1.7 .1-2.6 0-33.9-27.5-61.4-61.4-61.4L61.4 64zM464 192.3L464 384c0 8.8-7.2 16-16 16L64 400c-8.8 0-16-7.2-16-16l0-191.7 154.8 117.4c31.4 23.9 74.9 23.9 106.4 0L464 192.3zM48 125.4C48 118 54 112 61.4 112l389.2 0c7.4 0 13.4 6 13.4 13.4 0 4.2-2 8.2-5.3 10.7L280.2 271.5c-14.3 10.8-34.1 10.8-48.4 0L53.3 136.1c-3.3-2.5-5.3-6.5-5.3-10.7z",
-    },
-    bell: {
-      vb: "0 0 448 512",
-      d: "M224 0c-13.3 0-24 10.7-24 24l0 9.7C118.6 45.3 56 115.4 56 200l0 14.5c0 37.7-10 74.7-29 107.3L5.1 359.2C1.8 365 0 371.5 0 378.2 0 399.1 16.9 416 37.8 416l372.4 0c20.9 0 37.8-16.9 37.8-37.8 0-6.7-1.8-13.3-5.1-19L421 321.7c-19-32.6-29-69.6-29-107.3l0-14.5c0-84.6-62.6-154.7-144-166.3l0-9.7c0-13.3-10.7-24-24-24zM392.4 368l-336.9 0 12.9-22.1C91.7 306 104 260.6 104 214.5l0-14.5c0-66.3 53.7-120 120-120s120 53.7 120 120l0 14.5c0 46.2 12.3 91.5 35.5 131.4L392.4 368zM156.1 464c9.9 28 36.6 48 67.9 48s58-20 67.9-48l-135.8 0z",
-    },
-    pen: {
-      vb: "0 0 512 512",
-      d: "M441.3 59.1L453.2 71c9.4 9.4 9.4 24.6 0 33.9l-21.1 21.1-45.7-45.7 20.8-21.1c9.4-9.5 24.6-9.5 34.1-.1zM232 236.8L352.7 114.5 398.2 160 276.7 281.6c-3.3 3.3-7.5 5.6-12 6.5l-49.5 10.4 10.4-49.7c.9-4.5 3.2-8.7 6.4-11.9zM373.1 25.5L197.8 203.1c-9.7 9.8-16.4 22.3-19.2 35.8l-18 85.7c-1.7 7.9 .8 16.2 6.5 21.9s14 8.2 21.9 6.5l85.5-17.9c13.7-2.9 26.2-9.7 36.1-19.6L487.2 138.9c28.1-28.1 28.1-73.7 0-101.8L475.3 25.2C447-3.1 401.2-2.9 373.1 25.5zM307 13.2C290.6 9.8 273.5 8 256.1 8 119.2 8 8.1 119 8.1 256s111 248 248 248c13.3 0 24-10.7 24-24s-10.7-24-24-24c-110.5 0-200-89.5-200-200s89.5-200 200-200c2.9 0 5.7 .1 8.5 .2l42.3-43zM456 249.3c.1 2.2 .1 4.4 .1 6.7 0 57.4-46.6 104-104 104-13.3 0-24 10.7-24 24s10.7 24 24 24c83.9 0 152-68.1 152-152 0-17.1-1.7-33.7-5-49.8L456 249.3z",
-    },
-    sortArrow: {
-      vb: "0 0 384 512",
-      d: "M209.5 369c-9.4 9.4-24.6 9.4-33.9 0L15.5 209c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l143 143 143-143c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9l-160 160z",
-    },
-    sidebar: {
-      vb: "0 0 512 512",
-      d: "M448 448l-192 0 0-384 192 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64zM64 64l144 0 0 384-144 0c-35.3 0-64-28.7-64-64L0 128C0 92.7 28.7 64 64 64zm8 64c-13.3 0-24 10.7-24 24s10.7 24 24 24l64 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-64 0zM48 240c0 13.3 10.7 24 24 24l64 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-64 0c-13.3 0-24 10.7-24 24zm24 64c-13.3 0-24 10.7-24 24s10.7 24 24 24l64 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-64 0z",
-    },
-  };
-  // 获奖认证勾（fa-badge-check 双色：底=按 ccfLevel 配色，勾=白）
-  const RST_BADGE_CHECK = {
-    vb: "0 0 512 512",
-    secondary:
-      "M0 256C0 292.8 20.7 324.8 51.1 340.9 41 373.8 49 411 75 437s63.3 34 96.1 23.9C187.2 491.3 219.2 512 256 512s68.8-20.7 84.9-51.1C373.8 471 411 463 437 437s34-63.3 23.9-96.1C491.3 324.8 512 292.8 512 256s-20.7-68.8-51.1-84.9C471 138.2 463 101 437 75s-63.3-34-96.1-23.9C324.8 20.7 292.8 0 256 0s-68.8 20.7-84.9 51.1C138.2 41 101 49 75 75s-34 63.3-23.9 96.1C20.7 187.2 0 219.2 0 256zm152.3 41.6c-9.2-9.5-9-24.7 .6-33.9 9.5-9.2 24.7-8.9 33.9 .6l35.8 37 106.1-145.8c7.8-10.7 22.8-13.1 33.5-5.3 10.7 7.8 13.1 22.8 5.3 33.5L244.7 352.7c-4.2 5.7-10.7 9.4-17.8 9.8-7.1 .5-14-2.2-18.9-7.3l-55.7-57.6z",
-    primary:
-      "M328.7 155.5c7.8-10.7 22.8-13.1 33.5-5.3 10.7 7.8 13.1 22.8 5.3 33.5L244.7 352.7c-4.2 5.7-10.7 9.4-17.8 9.8-7.1 .5-14-2.2-18.9-7.3l-55.7-57.6c-9.2-9.5-9-24.7 .6-33.9 9.5-9.2 24.7-8.9 33.9 .6l35.8 37 106.1-145.8z",
-  };
-  const RST_LFE = {
-    popup: {
-      vb: "0 0 512 512",
-      d: "M470.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L402.7 256 265.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160zm-352 160l160-160c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L210.7 256 73.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0z",
-    },
-    tiku: {
-      vb: "0 0 448 512",
-      d: "M96 0C43 0 0 43 0 96V416c0 53 43 96 96 96H384h32c17.7 0 32-14.3 32-32s-14.3-32-32-32V384c17.7 0 32-14.3 32-32V32c0-17.7-14.3-32-32-32H384 96zm0 384H352v64H96c-17.7 0-32-14.3-32-32s14.3-32 32-32zm32-240c0-8.8 7.2-16 16-16H336c8.8 0 16 7.2 16 16s-7.2 16-16 16H144c-8.8 0-16-7.2-16-16zm16 48H336c8.8 0 16 7.2 16 16s-7.2 16-16 16H144c-8.8 0-16-7.2-16-16s7.2-16 16-16z",
-    },
-    tidan: {
-      vb: "0 0 384 512",
-      d: "M192 0c-41.8 0-77.4 26.7-90.5 64H64C28.7 64 0 92.7 0 128V448c0 35.3 28.7 64 64 64H320c35.3 0 64-28.7 64-64V128c0-35.3-28.7-64-64-64H282.5C269.4 26.7 233.8 0 192 0zm0 64a32 32 0 1 1 0 64 32 32 0 1 1 0-64zm-4.7 132.7c6.2 6.2 6.2 16.4 0 22.6l-64 64c-6.2 6.2-16.4 6.2-22.6 0l-32-32c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0L112 249.4l52.7-52.7c6.2-6.2 16.4-6.2 22.6 0zM192 272c0-8.8 7.2-16 16-16h96c8.8 0 16 7.2 16 16s-7.2 16-16 16H208c-8.8 0-16-7.2-16-16zm-16 80H304c8.8 0 16 7.2 16 16s-7.2 16-16 16H176c-8.8 0-16-7.2-16-16s7.2-16 16-16zM72 368a24 24 0 1 1 48 0 24 24 0 1 1 -48 0z",
-    },
-    bisai: {
-      vb: "0 0 640 512",
-      d: "M576 0c17.7 0 32 14.3 32 32V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V32c0-17.7 14.3-32 32-32zM448 96c17.7 0 32 14.3 32 32V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V128c0-17.7 14.3-32 32-32zM352 224V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V224c0-17.7 14.3-32 32-32s32 14.3 32 32zM192 288c17.7 0 32 14.3 32 32V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V320c0-17.7 14.3-32 32-32zM96 416v64c0 17.7-14.3 32-32 32s-32-14.3-32-32V416c0-17.7 14.3-32 32-32s32 14.3 32 32z",
-    },
-    taolun: {
-      vb: "0 0 640 512",
-      d: "M208 352c114.9 0 208-78.8 208-176S322.9 0 208 0S0 78.8 0 176c0 38.6 14.7 74.3 39.6 103.4c-3.5 9.4-8.7 17.7-14.2 24.7c-4.8 6.2-9.7 11-13.3 14.3c-1.8 1.6-3.3 2.9-4.3 3.7c-.5 .4-.9 .7-1.1 .8l-.2 .2 0 0 0 0C1 327.2-1.4 334.4 .8 340.9S9.1 352 16 352c21.8 0 43.8-5.6 62.1-12.5c9.2-3.5 17.8-7.4 25.3-11.4C134.1 343.3 169.8 352 208 352zM448 176c0 112.3-99.1 196.9-216.5 207C255.8 457.4 336.4 512 432 512c38.2 0 73.9-8.7 104.7-23.9c7.5 4 16 7.9 25.2 11.4c18.3 6.9 40.3 12.5 62.1 12.5c6.9 0 13.1-4.5 15.2-11.1c2.1-6.6-.2-13.8-5.8-17.9l0 0 0 0-.2-.2c-.2-.2-.6-.4-1.1-.8c-1-.8-2.5-2-4.3-3.7c-3.6-3.3-8.5-8.1-13.3-14.3c-5.5-7-10.7-15.4-14.2-24.7c24.9-29 39.6-64.7 39.6-103.4c0-92.8-84.9-168.9-192.6-175.5c.4 5.1 .6 10.3 .6 15.5z",
-    },
-    zhuanlan: {
-      vb: "0 0 512 512",
-      d: "M96 96c0-35.3 28.7-64 64-64H448c35.3 0 64 28.7 64 64V416c0 35.3-28.7 64-64 64H80c-44.2 0-80-35.8-80-80V128c0-17.7 14.3-32 32-32s32 14.3 32 32V400c0 8.8 7.2 16 16 16s16-7.2 16-16V96zm64 24v80c0 13.3 10.7 24 24 24H296c13.3 0 24-10.7 24-24V120c0-13.3-10.7-24-24-24H184c-13.3 0-24 10.7-24 24zm208-8c0 8.8 7.2 16 16 16h48c8.8 0 16-7.2 16-16s-7.2-16-16-16H384c-8.8 0-16 7.2-16 16zm0 96c0 8.8 7.2 16 16 16h48c8.8 0 16-7.2 16-16s-7.2-16-16-16H384c-8.8 0-16 7.2-16 16zM160 304c0 8.8 7.2 16 16 16H432c8.8 0 16-7.2 16-16s-7.2-16-16-16H176c-8.8 0-16 7.2-16 16zm0 96c0 8.8 7.2 16 16 16H432c8.8 0 16-7.2 16-16s-7.2-16-16-16H176c-8.8 0-16 7.2-16 16z",
-    },
-    search: {
-      vb: "0 0 512 512",
-      d: "M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z",
-    },
-    mail: {
-      vb: "0 0 512 512",
-      d: "M48 64C21.5 64 0 85.5 0 112c0 15.1 7.1 29.3 19.2 38.4L236.8 313.6c11.4 8.5 27 8.5 38.4 0L492.8 150.4c12.1-9.1 19.2-23.3 19.2-38.4c0-26.5-21.5-48-48-48H48zM0 176V384c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V176L294.4 339.2c-22.8 17.1-54 17.1-76.8 0L0 176z",
-    },
-    bell: {
-      vb: "0 0 448 512",
-      d: "M224 0c-17.7 0-32 14.3-32 32V51.2C119 66 64 130.6 64 208v18.8c0 47-17.3 92.4-48.5 127.6l-7.4 8.3c-8.4 9.4-10.4 22.9-5.3 34.4S19.4 416 32 416H416c12.6 0 24-7.4 29.2-18.9s3.1-25-5.3-34.4l-7.4-8.3C401.3 319.2 384 273.9 384 226.8V208c0-77.4-55-142-128-156.8V32c0-17.7-14.3-32-32-32zm45.3 493.3c12-12 18.7-28.3 18.7-45.3H224 160c0 17 6.7 33.3 18.7 45.3s28.3 18.7 45.3 18.7s33.3-6.7 45.3-18.7z",
-    },
-    chevronDown: {
-      vb: "0 0 512 512",
-      d: "M267.3 395.3c-6.2 6.2-16.4 6.2-22.6 0l-192-192c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0L256 361.4 436.7 180.7c6.2-6.2 16.4-6.2 22.6 0s6.2 16.4 0 22.6l-192 192z",
-    },
-    chevronUp: {
-      vb: "0 0 512 512",
-      d: "M244.7 116.7c6.2-6.2 16.4-6.2 22.6 0l192 192c6.2 6.2 6.2 16.4 0 22.6s-16.4 6.2-22.6 0L256 150.6 75.3 331.3c-6.2 6.2-16.4 6.2-22.6 0s-6.2-16.4 0-22.6l192-192z",
-    },
-    logoUrl: "https://fecdn.luogu.com.cn/luogu/logo-single.png",
-    qrUrl: "https://fecdn.luogu.com.cn/luogu/wechat_qr.png",
-  };
-  // columba 顶栏彩色 logo（白顶栏用彩色版，非旧深色主题的白色蒙版）
-  const RST_COL_LOGO =
-    "https://fecdn.luogu.com.cn/columba/static.325908fec383795b.logo-single-color.svg";
-  function rstIconSvg(icon) {
-    return `<svg viewBox="${icon.vb}" aria-hidden="true"><path d="${icon.d}"/></svg>`;
-  }
-
-  // 当前登录用户（页头头像用）；拦截页无数据 → 拉首页 lentille JSON
-  let rstViewerCache;
-  async function rstViewer() {
-    if (rstViewerCache !== undefined) return rstViewerCache;
-    try {
-      const res = await fetch("/", {
-        headers: { "x-lentille-request": "content-only" },
-      });
-      const json = await res.json();
-      rstViewerCache =
-        json && json.user && json.user.uid ? { uid: json.user.uid } : null;
-    } catch (e) {
-      rstViewerCache = null;
-    }
-    return rstViewerCache;
-  }
-
-  // 加载动效覆盖层：检测命中后立即出现（盖住拦截页），渲染完成随 body 重写消失
+  // 加载动效覆盖层：检测命中后立即出现（盖住拦截页），document.write 重建文档时自然消失
   function rstShowLoader(text) {
     injectRstStyle();
     let el = document.getElementById("luogusp-rst-loader");
@@ -2348,7 +1850,7 @@
   function rstBuildFailure(info, reason) {
     document.title =
       (info.type === "article" ? "文章" : "云剪贴板") + " - 洛谷";
-    document.body.className = "luogusp-rst-plain luogusp-rst-fadein";
+    document.body.className = "luogusp-rst-plain";
     document.body.innerHTML = `
 			<div class="luogusp-rst-plaincard"><h1 style="font-size:20px;margin:0 0 10px;">未能获取内容</h1>
 			<p></p>
@@ -2359,541 +1861,309 @@
       String(reason);
   }
 
-  // 通用收尾：申请更新链接接线（作者区/头像由各页面构建时直填）
-  function rstFillCommon(info) {
-    const refresh = document.querySelector(".luogusp-rst-refresh");
-    if (refresh)
-      refresh.addEventListener("click", (e) => {
-        e.preventDefault();
-        rstManualRefresh(info);
-      });
-  }
-  // columba 侧栏（钉栏 bar / 抽屉 drawer 双模式共用一套 DOM，换类切换；条目=登录态实测清单，
-  // 登录时多一项「评测记录」。更多功能/相关链接两组带 on-expand（钉栏未 hover 时隐藏）。
-  function rstColSidebarHtml(viewer) {
-    const g1 = [
-      ["/", RST_COL.home, "主页"],
-      ["/problem/list", RST_COL.tiku, "题库"],
-      ["https://class.luogu.com.cn", RST_COL.wangxiao, "网校"],
-      ["/training/list", RST_COL.tidan, "训练题单"],
-      ["/contest/list", RST_COL.bisai, "比赛"],
-    ];
-    if (viewer)
-      g1.push([`/record/list?user=${viewer.uid}`, RST_COL.jilu, "评测记录"]);
-    const g2 = [
-      ["/discuss", RST_COL.taolun, "讨论区"],
-      ["/article", RST_COL.zhuanlan, "文章广场"],
-    ];
-    const more = [
-      ["/image", "图片上传"],
-      ["/paste", "云剪贴板"],
-      ["/theme/list", "主题商店"],
-      ["/ranking", "咕值排名"],
-      ["/ranking/elo", "等级分排名"],
-      ["https://ti.luogu.com.cn/", "洛谷有题"],
-      ["/ticket", "工单/反馈"],
-    ];
-    const links = [
-      ["https://help.luogu.com.cn", "帮助中心"],
-      ["https://help.luogu.com.cn/contact-us", "联系我们"],
-      ["https://help.luogu.com.cn/rules/community/", "社区规则"],
-      ["/judgement", "陶片放逐"],
-      ["/judgement/admins", "管理名单"],
-    ];
-    const iconLi = ([href, ic, title]) =>
-      `<li><a href="${href}"><span class="icon">${rstIconSvg(ic)}</span><span class="title">${title}</span></a></li>`;
-    const minorLi = ([href, title]) =>
-      `<li><a href="${href}"><span class="title minor">${title}</span></a></li>`;
-    const group = (inner, title, expand) =>
-      `<div class="nav-group${expand ? " on-expand" : ""}">${title ? `<span class="group-title"><span class="title">${title}</span></span>` : ""}<ul>${inner}</ul></div>`;
-    return (
-      `<nav class="lside nav-scrollbar">` +
-      group(g1.map(iconLi).join(""), "", false) +
-      group(g2.map(iconLi).join(""), "", false) +
-      group(more.map(minorLi).join(""), "更多功能", true) +
-      group(links.map(minorLi).join(""), "相关链接", true) +
-      `</nav>`
-    );
-  }
-  // 侧栏钉住偏好（原生偏好存服务端读不到；默认钉住=登录用户常态，切换后本地持久化）
-  const RST_PIN_KEY = `${STORAGE_PREFIX}rstSidebarPinned`;
-  function rstSidebarPinned() {
-    try {
-      return localStorage.getItem(RST_PIN_KEY) !== "0";
-    } catch (e) {
-      return true;
-    }
-  }
-  function rstApplySidebarMode(pinned, drawerShown) {
-    const nav = document.querySelector(".luogusp-rst-article nav.lside");
-    const mc = document.querySelector(".luogusp-rst-article .main-container");
-    const toggle = document.querySelector(".luogusp-rst-article .side-toggle");
-    if (!nav || !mc) return;
-    nav.className = pinned
-      ? "sidebar lside bar hide nav-scrollbar"
-      : `lside drawer ${drawerShown ? "show" : "hide"} nav-scrollbar`;
-    mc.classList.toggle("lside-nav", pinned);
-    if (toggle) toggle.classList.toggle("active", pinned || drawerShown);
-  }
-  // 互动按钮：计数>0 显示数字，否则显示文字（原生行为）；存档只读，点按无操作
-  function rstActionButtonsHtml(data) {
-    const num = (n, label) => (n > 0 ? String(n) : label);
-    return `
-			<div class="button-2line" title="收藏（存档只读，请前往国际站原文）">${rstIconSvg(RST_ICONS.star)}<span class="text">${num(Number(data.favorCount) || 0, "收藏")}</span></div>
-			<div class="button-2line" title="点赞（存档只读，请前往国际站原文）">${rstIconSvg(RST_ICONS.thumb)}<span class="text">${num(Number(data.upvote) || 0, "点赞")}</span></div>
-			<div class="button-2line" title="不推荐（存档只读，请前往国际站原文）">${rstIconSvg(RST_ICONS.frown)}<span class="text">不推荐</span></div>`;
-  }
-  // 文章页：1:1 复刻 columba 现行版式（白顶栏+侧栏双模式+banner+白色通栏正文带+内联/左浮互动条+TOC+评论+页脚）
-  function rstBuildArticlePage(info, data, viewer, author) {
-    document.title = `${data.title || "文章"} - 洛谷专栏`;
-    document.documentElement.scrollTop = 0;
-    document.body.className =
-      "luogusp-rstpage luogusp-rst-article luogusp-rst-fadein";
-    const userNav = viewer
-      ? `<div class="nav-search"><div class="search-wrap"><input type="text" placeholder="输入题号搜索题目"></div><a class="link luogusp-rst-searchbtn" href="javascript:void 0" title="搜索">${rstIconSvg(RST_COL.search)}</a></div>
-					<a class="link" href="/chat" title="私信">${rstIconSvg(RST_COL.mail)}</a>
-					<a class="link" href="/user/notification" title="提醒">${rstIconSvg(RST_COL.bell)}</a>
-					<span><a class="link" href="/article/mine" title="我的专栏">${rstIconSvg(RST_COL.pen)}</a></span>
-					<span class="avatar"><a href="/user/${viewer.uid}"><img src="${rstAvatar(viewer.uid)}" alt="User Avatar"></a></span>`
-      : `<a class="text" href="/auth/login">登录</a>
-					<a class="text" href="/auth/register">注册</a>
-					<span class="avatar"><img src="${rstAvatar(1)}" alt="User Avatar"></span>`;
-    const catText = data.category != null ? rstCategoryText(data.category) : "";
-    // 面包屑：分类 1（个人记录）原生不显示分类项
-    const crumbCat =
-      data.category != null && Number(data.category) !== 1
-        ? `<span>/</span><a href="/article?category=${Number(data.category)}"></a>`
-        : "";
-    document.body.innerHTML = `
-			<div class="top-bar">
-				<div class="left">
-					<div class="side-toggle">${rstIconSvg(RST_COL.sidebar)}</div>
-					<a class="logo-link" href="/"><img class="header-logo mini" src="${RST_COL_LOGO}" alt=""></a>
-					<div class="breadcrumb"><a href="/article">文章广场</a>${crumbCat}</div>
-				</div>
-				<div class="right"><div class="user-nav">${userNav}</div></div>
-			</div>
-			${rstColSidebarHtml(viewer)}
-			<div class="main-container"><main>
-			<div class="article-banner columba-content-wrap wrapper"><div class="banner-content">
-				<h1 class="title"></h1>
-				<div class="meta">
-					<div class="author"><img class="avatar luogusp-rst-avatar" alt=""><div class="user"><div class="label">作者</div><div class="luogusp-rst-uname-slot"></div></div></div>
-					<div class="metas">
-						<div><div class="label">发布时间</div><time class="luogusp-rst-ctime"></time></div>
-						<div><div class="label">分类</div><div><span class="luogusp-rst-ccat"></span></div></div>
-					</div>
-				</div>
-			</div></div>
-			<div class="content-band"><div class="article-content columba-content-wrap wrapper">
-				<div class="lfe-marked-wrap"><div class="lfe-marked luogusp-rst-md"></div></div>
-				<div class="update-info lfe-caption"><span class="luogusp-rst-uinfo"></span> &nbsp;&nbsp; <span>创建时间：<time class="luogusp-rst-ctime2"></time></span> &nbsp;&nbsp; <span>存档于 ${rstFmtTime(data.updatedAt)} · <a class="luogusp-rst-refresh" href="javascript:void 0">申请更新</a> · <a href="${info.origUrl}" rel="noopener noreferrer">国际站原文</a></span><span class="luogusp-rst-status"></span></div>
-				<div class="actions left-mode hidden">${rstActionButtonsHtml(data)}</div>
-				<div class="actions luogusp-rst-actions-inline">${rstActionButtonsHtml(data)}</div>
-				<div class="toc-wrapper"></div>
-			</div></div>
-			<div class="article-comment columba-content-wrap wrapper">
-				<h3 class="lfe-h3 section-title">评论区</h3>
-				<h4 class="lfe-h4">发表评论</h4>
-				<div class="l-card commentbox">
-					<textarea placeholder="${viewer ? "发表一条友善的评论吧！" : ""}" title="存档页仅展示评论，发表请前往国际站原文"></textarea>
-					<p>${viewer ? '<button type="button" class="solid" title="存档页仅展示评论，发表请前往国际站原文">发表</button>' : '<button type="button" class="need-login" disabled>请先登录</button>'}</p>
-				</div>
-				<div class="comment-filter-line">
-					<span class="luogusp-rst-ccount"></span>
-					<span><a class="lfe-caption luogusp-rst-crefresh" href="javascript:void 0" style="margin-right:12px;">更新评论</a></span>
-					<div class="combo-wrapper">
-						<div class="combo-text luogusp-rst-sorttext">默认排序</div>
-						<span class="arrow">${rstIconSvg(RST_COL.sortArrow)}</span>
-						<div class="combo-dropdown"><ul><li data-sort="default">默认排序</li><li data-sort="newest">最新评论</li></ul></div>
-					</div>
-				</div>
-				<div class="list luogusp-rst-clist"><p class="luogusp-rst-note">评论加载中…</p></div>
-				<p class="loadmore luogusp-rst-more" style="display:none"><a href="javascript:void 0">加载更多</a></p>
-			</div>
-			</main>
-			<footer>
-				<p><a target="_blank" href="https://help.luogu.com.cn/about-us">关于洛谷</a> · <a target="_blank" href="https://help.luogu.com.cn/">帮助中心</a> · <a target="_blank" href="https://help.luogu.com.cn/ula/luogu">用户协议</a> · <a target="_blank" href="https://help.luogu.com.cn/contact-us">联系我们</a> · <a target="_blank" href="/discuss?forum=miaomiaowu">小黑屋</a> · <a target="_blank" href="/judgement">陶片放逐</a> · <a target="_blank" href="https://help.luogu.com.cn/rules/community/">社区规则</a></p>
-				<p class="copyright">在洛谷，享受 Coding 的欢乐 · © 2013-${new Date().getFullYear()} 洛谷. All rights reserved.</p>
-			</footer>
-			</div>`;
-    document.querySelector(".banner-content .title").textContent =
-      data.title || "(无标题)";
-    document.querySelector(".luogusp-rst-ctime").textContent = rstFmtTime(
-      data.createdAt,
-    );
-    const t2 = document.querySelector(".luogusp-rst-ctime2");
-    t2.textContent = rstFmtTimeSec(data.createdAt);
-    t2.title = rstFmtTimeSec(data.createdAt);
-    document.querySelector(".luogusp-rst-ccat").textContent = catText || "—";
-    const crumbCatA = document.querySelector(
-      '.breadcrumb a[href^="/article?category="]',
-    );
-    if (crumbCatA) crumbCatA.textContent = catText;
-    const user = author || data.author || {};
-    const uid = data.authorId || user.id || user.uid || 0;
-    document.querySelector(".luogusp-rst-uinfo").textContent =
-      `作者：${user.name || uid || "?"}`;
-    document
-      .querySelector(".luogusp-rst-uname-slot")
-      .appendChild(rstUsernameEl(user, uid, { cls: "user-name" }));
-    document.querySelector(".luogusp-rst-avatar").src = rstAvatar(uid);
-    rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
-    rstBuildToc(data.title);
-    rstFillCommon(info);
-    rstWireArticle();
-  }
-  // 文章页交互：侧栏钉住/抽屉、顶栏搜索展开、滚动出现左浮互动条、评论排序下拉
-  function rstWireArticle() {
-    rstApplySidebarMode(rstSidebarPinned(), false);
-    let drawerShown = false;
-    const toggle = document.querySelector(".side-toggle");
-    if (toggle)
-      toggle.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const nav = document.querySelector("nav.lside");
-        if (!nav) return;
-        if (nav.classList.contains("bar") || nav.classList.contains("show")) {
-          // 已钉住/抽屉开着 → 收起并记住不钉
-          try {
-            localStorage.setItem(RST_PIN_KEY, "0");
-          } catch (err) {
-            /* 无痕模式等：仅本页生效 */
-          }
-          drawerShown = false;
-          rstApplySidebarMode(false, false);
-        } else {
-          // 原生行为：打开抽屉并记住钉住（下次进入即钉栏）
-          try {
-            localStorage.setItem(RST_PIN_KEY, "1");
-          } catch (err) {
-            /* 同上 */
-          }
-          drawerShown = true;
-          rstApplySidebarMode(false, true);
-        }
-      });
-    document.addEventListener("click", (e) => {
-      if (!drawerShown) return;
-      const nav = document.querySelector("nav.lside");
-      if (nav && !nav.contains(e.target)) {
-        drawerShown = false;
-        rstApplySidebarMode(false, false);
+  // 壳骨架收割：候选源逐个尝试（2026-07-22 实测：/ranking、/discuss 已迁 columba；
+  // /image、/theme/list 仍为 lfe。任一命中即用；全挂=降级失败卡）
+  async function rstHarvest(kind) {
+    const sources =
+      kind === "columba" ? ["/ranking", "/discuss"] : ["/image", "/theme/list"];
+    const marker = kind === "columba" ? "lentille-context" : "_feInjection";
+    for (const src of sources) {
+      try {
+        const res = await fetch(src);
+        const html = await res.text();
+        if (html.includes(marker)) return html;
+      } catch (e) {
+        /* 换下一个源 */
       }
-    });
-    rstWireSearch(".nav-search .search-wrap");
-    // 左浮互动条：内联互动条滚出视口后出现（原生行为，IntersectionObserver 驱动）
-    const inline = document.querySelector(".luogusp-rst-actions-inline");
-    const leftMode = document.querySelector(".actions.left-mode");
-    if (inline && leftMode && typeof IntersectionObserver === "function") {
-      new IntersectionObserver((entries) => {
-        for (const en of entries)
-          leftMode.classList.toggle("hidden", en.isIntersecting);
-      }).observe(inline);
     }
-    // 排序下拉（默认排序=存档序 / 最新评论=时间倒序）
-    const combo = document.querySelector(".combo-wrapper");
-    if (combo) {
-      const dd = combo.querySelector(".combo-dropdown");
-      combo.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const li = e.target.closest("li[data-sort]");
-        if (li) {
-          rstCommentSort = li.dataset.sort;
-          combo.querySelector(".luogusp-rst-sorttext").textContent =
-            li.textContent;
-          dd.classList.remove("show");
-          rstRenderCommentPage(true);
-          return;
-        }
-        dd.classList.toggle("show");
-      });
-      document.addEventListener("click", () => dd.classList.remove("show"));
-    }
+    return null;
   }
-  // 顶栏/头部搜索框展开（原生跳题目搜索）
-  function rstWireSearch(wrapSel) {
-    const btn = document.querySelector(".luogusp-rst-searchbtn");
-    const wrap = document.querySelector(wrapSel);
-    if (!btn || !wrap) return;
-    const inp = wrap.querySelector("input");
-    const go = () => {
-      const kw = inp.value.trim();
-      if (kw) location.href = `/problem/list?keyword=${encodeURIComponent(kw)}`;
-    };
-    btn.addEventListener("click", () => {
-      if (!wrap.classList.contains("show")) {
-        wrap.classList.add("show");
-        inp.focus();
-      } else if (inp.value.trim()) go();
-      else wrap.classList.remove("show");
-    });
-    inp.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") go();
-    });
+  // 嵌入 <script> 的 JSON 防拆壳（内容里出现 </script> 会截断壳文档）
+  function rstJsonForScript(obj) {
+    return JSON.stringify(obj).replace(/</g, "\\u003C");
   }
-  // 剪贴板页：1:1 复刻旧版 lfe 默认主题（3.7em 蓝灰左导航+蓝 logo 块+90° 渐变头部+user-nav+内容卡+源码卡+页脚）
-  function rstBuildPastePage(info, data, viewer, author) {
-    document.title = "云剪贴板 - 洛谷 | 计算机科学教育新生态";
-    document.documentElement.scrollTop = 0;
-    document.body.className =
-      "luogusp-rstpage luogusp-rst-paste luogusp-rst-fadein";
-    const navItem = (href, ic, text) =>
-      `<a href="${href}"><span class="icon">${rstIconSvg(ic)}</span><span class="text">${text}</span></a>`;
-    const searchPart = `<div><div class="search-wrap"><input type="text" placeholder="输入题号搜索题目"></div><a class="icon luogusp-rst-searchbtn" href="javascript:void 0">${rstIconSvg(RST_LFE.search)}</a></div>`;
-    const userNav = viewer
-      ? `${searchPart}
-					<a class="icon-btn" href="/chat">${rstIconSvg(RST_LFE.mail)}</a>
-					<a class="icon-btn" href="/user/notification">${rstIconSvg(RST_LFE.bell)}</a>
-					<span><span><a href="/user/${viewer.uid}"><img class="avatar" src="${rstAvatar(viewer.uid)}" alt=""></a></span></span>`
-      : `${searchPart}
-					<a class="login" href="/auth/login"><span>登录</span></a>
-					<a class="login" href="/auth/register"><span>注册</span></a>
-					<img class="avatar" src="${rstAvatar(1)}" alt="">`;
-    document.body.innerHTML = `
-			<div class="top-progress"></div>
-			<nav class="lgnav">
-				<div class="logo-block"><a class="logo-wrap" href="/" title="洛谷首页"><img src="${RST_LFE.logoUrl}" alt="洛谷"></a></div>
-				<div class="popup-button">应用 ${rstIconSvg(RST_LFE.popup)}</div>
-				${navItem("/problem/list", RST_LFE.tiku, "题库")}
-				${navItem("/training/list", RST_LFE.tidan, "题单")}
-				${navItem("/contest/list", RST_LFE.bisai, "比赛")}
-				${navItem("/discuss", RST_LFE.taolun, "讨论")}
-				${navItem("/article", RST_LFE.zhuanlan, "专栏")}
-			</nav>
-			<div class="main-container">
-			<div class="wrapper wrapped header-layout narrow"><div class="background"></div><div class="header">
-				<div class="user-nav"><nav>${userNav}</nav></div>
-				<nav class="lfe-caption bread-crumb"><span><a class="link" href="/">洛谷</a> <span class="text"> / </span></span><span><span class="text">云剪贴板</span></span></nav>
-				<h1 class="lfe-h1">云剪贴板</h1>
-				<div class="functional"><div class="stat"></div><div class="operation"></div></div>
-			</div></div>
-			<main class="wrapped">
-			<div class="full-container"><div>
-				<div class="card padding-default">
-					<div class="content-card-top">
-						<div class="author">
-							<div class="lfe-caption author-margin"><span>作者: <span class="luogusp-rst-uname-slot"></span></span> <span class="lfe-caption pubbadge">公开</span></div>
-							<div class="lfe-caption"><span>发表时间: <time class="luogusp-rst-ctime"></time></span></div>
-						</div>
-					</div>
-					<hr class="horizon">
-					<div class="marked luogusp-rst-md"></div>
-					<p class="lfe-caption" style="margin:1em 0 0;">存档于 ${rstFmtTime(data.updatedAt)} · <a class="luogusp-rst-refresh" href="javascript:void 0">申请更新</a> · <a href="${info.origUrl}" rel="noopener noreferrer">国际站原文</a><span class="luogusp-rst-status"></span></p>
-				</div>
-				<div class="card padding-default">
-					<div class="code-card-top" style="display:none"><div><strong><span>源码</span></strong> <button type="button" class="copy-btn">复制</button> <pre><div class="luogusp-rst-src"></div></pre></div></div>
-					<div class="expand-tip lfe-caption"><span class="luogusp-rst-expand">${rstIconSvg(RST_LFE.chevronDown)} 展开源码</span></div>
-				</div>
-			</div></div>
-			</main>
-			<div class="wrapper wrapped lgfooter"><div class="background"></div><div class="footer">
-				<img class="logo-img" src="${RST_LFE.logoUrl}" alt="">
-				<div class="slogan">在洛谷，<br>享受 Coding 的欢乐</div>
-				<img class="qr-img" src="${RST_LFE.qrUrl}" alt="">
-				<div class="info">
-					<p><a href="https://help.luogu.com.cn/about-us">关于洛谷</a> |
-					<a href="https://help.luogu.com.cn">帮助中心</a> |
-					<a href="https://help.luogu.com.cn/ula/luogu">用户协议</a> |
-					<a href="https://help.luogu.com.cn/contact-us">联系我们</a> <br>
-					<a href="/discuss?forum=miaomiaowu">小黑屋</a> |
-					<a href="/judgement">陶片放逐</a> |
-					<a href="https://help.luogu.com.cn/rules/community/">社区规则</a> |
-					<a target="_blank" href="https://www.lagou.com/gongsi/369082.html">招贤纳才</a> <br>
-					Developed by the <a target="_blank" href="https://github.com/luogu-dev">Luogu Dev Team</a> <br>
-					2013-${new Date().getFullYear()} , © 洛谷 <br>
-					All rights reserved.</p>
-				</div>
-			</div></div>
-			</div>`;
-    document.querySelector(".luogusp-rst-ctime").textContent = rstFmtTime(
-      data.createdAt,
-    );
-    const user = author || data.author || {};
-    const uid = data.authorId || user.id || user.uid || 0;
-    document
-      .querySelector(".luogusp-rst-uname-slot")
-      .appendChild(rstUsernameEl(user, uid, { blank: true }));
-    rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
-    document.querySelector(".luogusp-rst-src").textContent = String(
-      data.content || "",
-    );
-    rstFillCommon(info);
-    rstWirePaste();
-  }
-  // 剪贴板页交互：搜索展开、展开/收起源码、复制源码
-  function rstWirePaste() {
-    rstWireSearch(".user-nav .search-wrap");
-    const expand = document.querySelector(".luogusp-rst-expand");
-    if (expand)
-      expand.addEventListener("click", () => {
-        const top = document.querySelector(".code-card-top");
-        const open = top.style.display !== "none";
-        top.style.display = open ? "none" : "";
-        expand.innerHTML = open
-          ? `${rstIconSvg(RST_LFE.chevronDown)} 展开源码`
-          : `${rstIconSvg(RST_LFE.chevronUp)} 隐藏源码`;
-      });
-    const copy = document.querySelector(".copy-btn");
-    if (copy)
-      copy.addEventListener("click", () => {
-        const src = document.querySelector(".luogusp-rst-src");
-        if (src && navigator.clipboard)
-          navigator.clipboard.writeText(src.textContent || "").catch(() => {});
-      });
-  }
-  async function rstBuildPage(info, data) {
-    // 观众态 + 作者数据（国内站接口）并行取齐后一次成页；作者接口失败回退存档快照
-    const [viewer, cnUser] = await Promise.all([
-      rstViewer(),
-      rstCnUser(data.authorId || (data.author && data.author.id)),
-    ]);
-    const author = cnUser || data.author || null;
-    if (info.type === "article")
-      rstBuildArticlePage(info, data, viewer, author);
-    else rstBuildPastePage(info, data, viewer, author);
-  }
-  // columba 原生 TOC：首项 title-0=文章标题，正文 hN → title-N（h1~h3）；条目=li>span，
-  // 点击平滑滚动、滚动位置联动 active（指示条变深）。
-  function rstBuildToc(articleTitle) {
-    const old = document.querySelector(".toc-wrapper .toc");
-    if (old) old.remove();
-    const wrapper = document.querySelector(".toc-wrapper");
-    const md = document.querySelector(".luogusp-rst-md");
-    if (!wrapper || !md) return;
-    const heads = [...md.querySelectorAll("h1, h2, h3")];
-    if (!heads.length) return;
-    const toc = document.createElement("div");
-    toc.className = "toc with-top";
-    const ul = document.createElement("ul");
-    const items = [];
-    const addItem = (cls, text, target) => {
-      const li = document.createElement("li");
-      li.className = cls;
-      li.title = text;
-      const sp = document.createElement("span");
-      sp.textContent = text;
-      li.appendChild(sp);
-      li.addEventListener("click", () => {
-        if (target)
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
-        else window.scrollTo({ top: 0, behavior: "smooth" });
-      });
-      ul.appendChild(li);
-      items.push({ li, target });
-    };
-    addItem("title-0", articleTitle || "", null);
-    heads.forEach((h, i) => {
-      if (!h.id) h.id = `luogusp-toc-${i}`;
-      addItem(`title-${Number(h.tagName[1])}`, h.textContent, h);
-    });
-    toc.appendChild(ul);
-    wrapper.appendChild(toc);
-    const spy = () => {
-      // 原生页顶无 active；滚过某标题后点亮对应项
-      let active = null;
-      for (const it of items)
-        if (it.target && it.target.getBoundingClientRect().top <= 64)
-          active = it;
-      items.forEach((it) => it.li.classList.toggle("active", it === active));
-    };
-    window.addEventListener("scroll", spy, { passive: true });
-    spy();
-  }
-  // 评论列表：复刻 columba 原生 reply-item（灰底 meta 行=头像+用户名组件+「回复于」相对时间；
-  // 内容为纯文本 pre-line——原生评论不渲染 markdown）。20 条一页「加载更多」，支持排序。
-  let rstCommentsData = null;
-  let rstCommentSort = "default";
-  let rstCommentShown = 0;
-  function rstRenderCommentPage(reset) {
-    const wrap = document.querySelector(".luogusp-rst-clist");
-    if (!wrap) return;
-    const comments = rstCommentsData || [];
-    const count = document.querySelector(".luogusp-rst-ccount");
-    if (count) count.textContent = `${comments.length} 条评论`;
-    const moreEl = document.querySelector(".luogusp-rst-more");
-    if (reset) {
-      wrap.innerHTML = "";
-      rstCommentShown = 0;
-    }
-    if (!comments.length) {
-      wrap.innerHTML = '<p class="luogusp-rst-note">暂无评论存档</p>';
-      if (moreEl) moreEl.style.display = "none";
-      return;
-    }
-    const list =
-      rstCommentSort === "newest"
-        ? [...comments].sort((a, b) => Number(b.time) - Number(a.time))
-        : comments;
-    for (const c of list.slice(rstCommentShown, rstCommentShown + 20)) {
+
+  // 评论接口桩：官方文章组件启动后会 GET /article/{lid}/replies（?sort=&after=）。
+  // window.fetch 包装器不随 document.write 重建，天然对新文档生效；其余请求全部放行。
+  function rstStubReplies(lid, comments) {
+    const mapped = comments.map((c, i) => {
       const a = c.author || {};
-      const row = document.createElement("div");
-      row.className = "row";
-      const card = document.createElement("div");
-      card.className = "l-card reply-item";
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      const left = document.createElement("div");
-      left.className = "left";
-      const img = document.createElement("img");
-      img.className = "avatar";
-      img.src = rstAvatar(a.id || 0);
-      img.alt = "";
-      const uname = rstUsernameEl(a, a.id, { cls: "username" });
-      const time = document.createElement("div");
-      time.className = "time";
-      time.append("回复于 ");
-      const t = document.createElement("time");
-      t.textContent = rstRelTime(Number(c.time));
-      t.title = rstFmtTime(Number(c.time));
-      time.appendChild(t);
-      left.append(img, uname, time);
-      meta.appendChild(left);
-      const body = document.createElement("div");
-      body.className = "content";
-      body.textContent = String(c.content || "");
-      card.append(meta, body);
-      row.appendChild(card);
-      wrap.appendChild(row);
-    }
-    rstCommentShown = Math.min(rstCommentShown + 20, list.length);
-    if (moreEl)
-      moreEl.style.display = rstCommentShown < list.length ? "" : "none";
-  }
-  async function rstLoadComments(info) {
-    const wrap = document.querySelector(".luogusp-rst-clist");
-    if (!wrap) return;
-    try {
-      const q = await saverGet(`/article/comments/${info.id}`);
-      rstCommentsData = (q && q.data && q.data.comments) || [];
-      rstRenderCommentPage(true);
-    } catch (e) {
-      console.error("LuoguSP restricted comments:", e);
-      wrap.innerHTML = '<p class="luogusp-rst-note">评论加载失败</p>';
-    }
-    const more = document.querySelector(".luogusp-rst-more a");
-    if (more && !more.__luoguspBound) {
-      more.__luoguspBound = true;
-      more.addEventListener("click", () => rstRenderCommentPage(false));
-    }
-    const btn = document.querySelector(".luogusp-rst-crefresh");
-    if (btn && !btn.__luoguspBound) {
-      btn.__luoguspBound = true;
-      btn.addEventListener("click", async () => {
-        btn.textContent = "更新中…";
+      return {
+        id: i + 1,
+        author: rstUserSummary(null, a, a.id),
+        time: Number(c.time) || 0,
+        content: String(c.content || ""),
+      };
+    });
+    const re = new RegExp(`/article/${lid}/replies`);
+    const realFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      const url = typeof input === "string" ? input : (input && input.url) || "";
+      if (re.test(url)) {
+        let list = mapped;
         try {
-          await saverPost(`/article/comments/${info.id}/refresh`);
-          await sleep(4000);
-          const q = await saverGet(`/article/comments/${info.id}`);
-          rstCommentsData = (q && q.data && q.data.comments) || [];
-          rstRenderCommentPage(true);
-          btn.textContent = "更新评论";
+          const q = new URL(url, location.origin).searchParams;
+          if (q.get("sort") === "time-d")
+            list = [...mapped].sort((x, y) => y.time - x.time);
+          const after = Number(q.get("after"));
+          let start = 0;
+          if (after) {
+            const idx = list.findIndex((r) => r.id === after);
+            start = idx >= 0 ? idx + 1 : list.length;
+          }
+          list = list.slice(start, start + 20);
         } catch (e) {
-          console.error("LuoguSP restricted comment refresh:", e);
-          btn.textContent = "更新失败，点击重试";
+          list = mapped.slice(0, 20);
         }
-      });
+        return Promise.resolve(
+          new Response(JSON.stringify({ replySlice: list }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return realFetch(input, init);
+    };
+  }
+
+  // 文章页：合成 lentille-context（template article.show）+ 官方 columba 前端
+  async function rstBootArticle(info, data) {
+    const [scaffold, cnUser, commentsQ] = await Promise.all([
+      rstHarvest("columba"),
+      rstCnUser(data.authorId),
+      saverGet(`/article/comments/${info.id}`).catch(() => null),
+    ]);
+    if (!scaffold)
+      return rstBuildFailure(info, "无法获取洛谷页面骨架，暂不能就地渲染。");
+    const pick = (re) => {
+      const m = scaffold.match(re);
+      return m ? m[1] : null;
+    };
+    const ctxRaw = pick(
+      /<script id="lentille-context" type="application\/json">([\s\S]*?)<\/script>/,
+    );
+    const themeRaw =
+      pick(
+        /<script id="luogu-theme" type="application\/json">([\s\S]*?)<\/script>/,
+      ) || "";
+    const csrf = pick(/<meta name="csrf-token" content="([^"]+)"/) || "";
+    const globalsRaw =
+      pick(/<script>\s*(window\.__feInitLocalTime[\s\S]*?)<\/script>/) || "";
+    const scripts = [
+      ...scaffold.matchAll(
+        /<script src="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+)"[^>]*><\/script>/g,
+      ),
+    ].map((m) => m[1]);
+    const cssLinks = [
+      ...scaffold.matchAll(
+        /<link rel="stylesheet" href="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+)"/g,
+      ),
+    ].map((m) => m[1]);
+    if (!ctxRaw || !scripts.length)
+      return rstBuildFailure(info, "洛谷页面骨架解析失败（结构可能已改版）。");
+    let viewer = null;
+    try {
+      viewer = JSON.parse(ctxRaw).user || null;
+    } catch (e) {
+      /* 匿名兜底 */
     }
+    const comments =
+      (commentsQ && commentsQ.data && commentsQ.data.comments) || [];
+    const ctx = {
+      instance: "main",
+      template: "article.show",
+      status: 200,
+      locale: "zh-CN",
+      data: {
+        article: {
+          lid: data.id,
+          title: data.title || "",
+          category: data.category != null ? data.category : 1,
+          // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
+          time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
+          author: rstUserSummary(cnUser, data.author, data.authorId),
+          upvote: Number(data.upvote) || 0,
+          replyCount: comments.length,
+          favorCount: Number(data.favorCount) || 0,
+          status: 2,
+          solutionFor: null,
+          promoteStatus: 0,
+          collection: null,
+          content: String(data.content || ""),
+          contentFull: true,
+          adminNote: null,
+        },
+        favored: false,
+        voted: null,
+        canReply: !!viewer,
+        canEdit: false,
+      },
+      user: viewer,
+      time: Math.floor(Date.now() / 1000),
+    };
+    rstStubReplies(info.id, comments);
+    const title = String(data.title || "文章").replace(/</g, "&lt;");
+    const html =
+      `<!DOCTYPE html><html lang="zh-CN" class="no-js"><head><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` +
+      `<meta name="csrf-token" content="${csrf}">` +
+      `<title>${title} - 洛谷专栏</title>` +
+      `<link rel="icon" href="https://fecdn.luogu.com.cn/favicon.ico">` +
+      `<script>${globalsRaw}<\/script>` +
+      `<script id="lentille-context" type="application/json">${rstJsonForScript(ctx)}<\/script>` +
+      scripts
+        .map((s) => `<script src="${s}" charset="utf-8" defer><\/script>`)
+        .join("") +
+      cssLinks.map((c) => `<link rel="stylesheet" href="${c}" />`).join("") +
+      `<script id="luogu-theme" type="application/json">${themeRaw}<\/script>` +
+      `<style>${RST_EXTRA_CSS}</style>` +
+      `</head><body><div id="app"></div></body></html>`;
+    document.open();
+    document.write(html);
+    document.close();
+    rstMountArticleButtons(info);
+  }
+
+  // 剪贴板页：合成 window._feInjection（currentTemplate PasteShow）+ 官方 lfe 前端
+  async function rstBootPaste(info, data) {
+    const [scaffold, cnUser] = await Promise.all([
+      rstHarvest("lfe"),
+      rstCnUser(data.authorId),
+    ]);
+    if (!scaffold)
+      return rstBuildFailure(info, "无法获取洛谷页面骨架，暂不能就地渲染。");
+    const injRaw = (scaffold.match(
+      /_feInjection = JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/,
+    ) || [])[1];
+    const feCfg = (scaffold.match(/window\._feConfigVersion=(\d+)/) || [])[1];
+    const tagVer = (scaffold.match(/window\._tagVersion=(\d+)/) || [])[1];
+    const csrf =
+      (scaffold.match(/<meta name="csrf-token" content="([^"]+)"/) || [])[1] ||
+      "";
+    const loaderCss = (scaffold.match(
+      /<link rel="stylesheet" href="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+loader\.css[^"]*)"/,
+    ) || [])[1];
+    const loaderJs = (scaffold.match(
+      /<script src="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+loader\.js[^"]*)"/,
+    ) || [])[1];
+    if (!injRaw || !loaderJs || !loaderCss)
+      return rstBuildFailure(info, "洛谷页面骨架解析失败（结构可能已改版）。");
+    let scafInj = {};
+    try {
+      scafInj = JSON.parse(decodeURIComponent(injRaw)) || {};
+    } catch (e) {
+      /* 匿名/默认主题兜底 */
+    }
+    const inj = {
+      code: 200,
+      currentTemplate: "PasteShow",
+      currentData: {
+        paste: {
+          id: data.id,
+          user: rstUserSummary(cnUser, data.author, data.authorId),
+          // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
+          time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
+          public: true,
+          data: String(data.content || ""),
+        },
+        canEdit: false,
+      },
+      currentTitle: "云剪贴板",
+      currentTheme: scafInj.currentTheme || null,
+      currentUser: scafInj.currentUser || null,
+      currentTime: Math.floor(Date.now() / 1000),
+    };
+    const html =
+      `<!DOCTYPE html><html class="no-js" lang="zh"><head><meta charset="utf-8">` +
+      `<meta http-equiv="X-UA-Compatible" content="IE=edge">` +
+      `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` +
+      `<meta name="csrf-token" content="${csrf}">` +
+      `<meta name="renderer" content="webkit">` +
+      `<title>云剪贴板 - 洛谷 | 计算机科学教育新生态</title>` +
+      `<link rel="shortcut icon" type="image/x-icon" href="https://fecdn.luogu.com.cn/favicon.ico" media="screen"/>` +
+      `<link rel="stylesheet" href="${loaderCss}">` +
+      `<style>${RST_EXTRA_CSS}</style>` +
+      `<script>window._feInjection = JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(inj))}"));window._feConfigVersion=${feCfg};window._tagVersion=${tagVer};<\/script>` +
+      `<script src="${loaderJs}" charset="utf-8" defer><\/script>` +
+      `</head><body><div id="app"><noscript><h3>请<b style="color:#f00;">不要禁用</b>脚本，否则网页无法正常加载</h3></noscript></div></body></html>`;
+    document.open();
+    document.write(html);
+    document.close();
+    rstMountPasteButtons(info);
+  }
+
+  // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种
+  function rstMountArticleButtons(info) {
+    const make = (icon, extraCls, text, title, onClick) => {
+      const div = document.createElement("div");
+      div.className = `button-2line luogusp-rst-abtn ${extraCls}`;
+      div.title = title;
+      div.innerHTML = `<svg class="svg-inline--fa icon" style="font-size:1.25em" viewBox="${icon.vb}" aria-hidden="true"><path fill="currentColor" d="${icon.d}"/></svg><span class="text">${text}</span>`;
+      div.addEventListener("click", onClick);
+      return div;
+    };
+    const inject = () => {
+      document.querySelectorAll(".article-content .actions").forEach((bar) => {
+        if (bar.querySelector(".luogusp-rst-abtn")) return;
+        bar.appendChild(
+          make(
+            RST_BTN_ICONS.refresh,
+            "luogusp-rst-btn-refresh",
+            "申请更新",
+            "向保存站申请更新存档",
+            () => rstManualRefresh(info),
+          ),
+        );
+        bar.appendChild(
+          make(
+            RST_BTN_ICONS.external,
+            "",
+            "国际站原文",
+            "前往国际站查看原文（可点赞/收藏/评论）",
+            () => window.open(info.origUrl, "_blank", "noopener"),
+          ),
+        );
+      });
+    };
+    inject();
+    new MutationObserver(inject).observe(
+      document.body || document.documentElement,
+      { childList: true, subtree: true },
+    );
+  }
+  // 扩展按钮（剪贴板页）：源码卡下方一行 lfe 实心蓝钮
+  function rstMountPasteButtons(info) {
+    const inject = () => {
+      const container = document.querySelector(".full-container > div");
+      if (!container || container.querySelector(".luogusp-rst-pbtnrow")) return;
+      const cards = container.querySelectorAll(".card");
+      if (cards.length < 2) return; // 等源码卡渲染齐
+      const mk = (extraCls, text, title, onClick) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = `luogusp-rst-pbtn ${extraCls}`;
+        b.textContent = text;
+        b.title = title;
+        b.addEventListener("click", onClick);
+        return b;
+      };
+      const row = document.createElement("div");
+      row.className = "luogusp-rst-pbtnrow";
+      row.append(
+        mk("luogusp-rst-btn-refresh", "申请更新", "向保存站申请更新存档", () =>
+          rstManualRefresh(info),
+        ),
+        mk("", "国际站原文", "前往国际站查看原文", () =>
+          window.open(info.origUrl, "_blank", "noopener"),
+        ),
+      );
+      cards[cards.length - 1].after(row);
+    };
+    inject();
+    new MutationObserver(inject).observe(
+      document.body || document.documentElement,
+      { childList: true, subtree: true },
+    );
   }
 
   function rstQuery(info) {
@@ -2903,14 +2173,6 @@
     return saverPost(`/workflow/create/template/${info.type}-save-pipeline`, {
       targetId: info.id,
     });
-  }
-  // 就地刷新正文（保滚动位置，不整页重建）
-  function rstApplyFresh(info, data) {
-    rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
-    if (info.type === "article") rstBuildToc(data.title); // 内部会先移除旧 TOC
-    const src = document.querySelector(".luogusp-rst-src");
-    if (src) src.textContent = String(data.content || "");
-    rstSetStatus(`已更新（存档时间 ${rstFmtTime(data.updatedAt)}）`, true);
   }
   async function rstPollFresh(info, oldHash, times, gapMs) {
     for (let i = 0; i < times; i++) {
@@ -2926,22 +2188,50 @@
     }
     return null;
   }
+  // 申请更新：发保存工作流（文章同时刷评论存档）→ 轮询到新档 → 整页重载重走接管；无变化=提示已最新
+  let rstRefreshing = false;
   async function rstManualRefresh(info) {
-    rstSetStatus("正在申请保存站更新…");
+    if (rstRefreshing) return;
+    rstRefreshing = true;
+    const setText = (t) => {
+      document
+        .querySelectorAll(".luogusp-rst-btn-refresh .text")
+        .forEach((el) => (el.textContent = t));
+      document
+        .querySelectorAll("button.luogusp-rst-btn-refresh")
+        .forEach((el) => (el.textContent = t));
+    };
+    setText("更新中…");
     try {
-      await rstTriggerSave(info);
       const cur = await rstQuery(info);
+      await rstTriggerSave(info);
+      if (info.type === "article")
+        saverPost(`/article/comments/${info.id}/refresh`).catch(() => {});
       const fresh = await rstPollFresh(
         info,
         cur && cur.data ? cur.data.contentHash : "",
         10,
         3000,
       );
-      if (fresh) rstApplyFresh(info, fresh);
-      else rstSetStatus("存档已是最新（或更新未完成）");
+      if (fresh) return location.reload();
+      setText("已是最新");
+      setTimeout(() => setText("申请更新"), 3000);
     } catch (e) {
       console.error("LuoguSP restricted refresh:", e);
-      rstSetStatus("更新请求失败，请稍后再试");
+      setText("更新失败");
+      setTimeout(() => setText("申请更新"), 3000);
+    } finally {
+      rstRefreshing = false;
+    }
+  }
+
+  async function rstBootPage(info, data) {
+    try {
+      if (info.type === "article") await rstBootArticle(info, data);
+      else await rstBootPaste(info, data);
+    } catch (e) {
+      console.error("LuoguSP restricted boot:", e);
+      rstBuildFailure(info, `原生页面装配失败：${e}`);
     }
   }
   async function rstRun() {
@@ -2964,12 +2254,10 @@
     }
     injectRstStyle();
     if (q && q.code === 200 && q.data) {
-      // 已收录：直接显示存档，不自动申请更新（owner 拍板：更新只走「申请更新」按钮）
-      await rstBuildPage(info, q.data);
-      if (info.type === "article") rstLoadComments(info);
-      return;
+      // 已收录：直接装配存档，不自动申请更新（owner 拍板：更新只走「申请更新」按钮）
+      return rstBootPage(info, q.data);
     }
-    // 未收录：发起保存并等待入库（加载层持续转圈，完成后整页渲染）
+    // 未收录：发起保存并等待入库（加载层持续转圈，完成后装配）
     rstShowLoader("该内容尚未被保存站收录，已自动发起收录…");
     try {
       await rstTriggerSave(info);
@@ -2986,10 +2274,7 @@
         continue;
       }
       if (poll && poll.code === 200 && poll.data) {
-        await rstBuildPage(info, poll.data);
-        if (info.type === "article") rstLoadComments(info);
-        rstSetStatus("已完成首次收录", true);
-        return;
+        return rstBootPage(info, poll.data);
       }
     }
     rstBuildFailure(info, "保存站在限定时间内未能完成收录。");
@@ -2997,7 +2282,7 @@
 
   function watchRestrictedPage() {
     // 拦截页是独立静态页，无 SPA。命中即刻盖上加载动效层（不闪原生跳转确认页），
-    // 随后异步取数渲染；取数失败会撤层还原拦截页。
+    // 随后异步取数装配；取数失败会撤层还原拦截页。
     try {
       if (restrictedPageInfo()) rstShowLoader();
     } catch (e) {
