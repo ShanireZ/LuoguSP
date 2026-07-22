@@ -2092,16 +2092,20 @@
     return `https://cdn.luogu.com.cn/upload/usericon/${uid}.png`;
   }
   // 作者等用户数据一律走国内站同源接口（owner 要求：不吃保存站/国际站的用户数据；头像也全走 .cn CDN）。
-  // 接口失败（离线/风控）时由调用方回退保存站存档里的作者快照。
+  // 接口=/api/user/search?keyword={uid}（拦截页源实测可用；旧 /user/{uid}?_contentOnly=1 已死，返回 HTML），
+  // 返回 userSummary：{uid,name,avatar,slogan,badge,color,ccfLevel,xcpcLevel,…}。失败回退存档快照。
   const rstUserCache = new Map();
   async function rstCnUser(uid) {
     if (!uid) return null;
     if (rstUserCache.has(uid)) return rstUserCache.get(uid);
     let user = null;
     try {
-      const res = await fetch(`/user/${uid}?_contentOnly=1`);
+      const res = await fetch(
+        `/api/user/search?keyword=${encodeURIComponent(uid)}`,
+      );
       const json = await res.json();
-      user = (json && json.currentData && json.currentData.user) || null;
+      const list = (json && json.users) || [];
+      user = list.find((u) => u && Number(u.uid) === Number(uid)) || null;
     } catch (e) {
       /* 回退存档快照 */
     }
