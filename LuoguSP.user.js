@@ -2065,25 +2065,9 @@
     }
     injectRstStyle();
     if (q && q.code === 200 && q.data) {
+      // 已收录：直接显示存档，不自动申请更新（owner 拍板：更新只走「申请更新」按钮）
       rstBuildPage(info, q.data);
       if (info.type === "article") rstLoadComments(info);
-      // 每访问必申请更新（owner 拍板）；存档很新鲜（<10 分钟）时跳过，减轻保存站压力
-      const ageMs = Date.now() - Date.parse(q.data.updatedAt || 0);
-      if (!(ageMs >= 0 && ageMs < 10 * 60 * 1000)) {
-        try {
-          await rstTriggerSave(info);
-          rstSetStatus("已显示存档，正在后台检查更新…");
-          const fresh = await rstPollFresh(info, q.data.contentHash, 8, 3000);
-          if (fresh) rstApplyFresh(info, fresh);
-          else
-            rstSetStatus(
-              `存档更新于 ${rstFmtTime(q.data.updatedAt)}，已是最新`,
-            );
-        } catch (e) {
-          console.error("LuoguSP restricted freshen:", e);
-          rstSetStatus("后台更新请求失败（不影响当前存档显示）");
-        }
-      }
       return;
     }
     // 未收录：发起保存并等待入库
