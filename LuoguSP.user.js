@@ -406,7 +406,7 @@
   // ============================================================
   // 显示隐藏的个人简介
   // 洛谷把个人简介改为「仅国际站可见」，但境内站服务器仍把 introduction 下发到页面同源数据里
-  // （SSR 脚本 / _contentOnly 接口），只是前端不渲染。这里读同源数据自行补显，无需跨域。
+  // （SSR 脚本 / lentille 接口），只是前端不渲染。这里读同源数据自行补显，无需跨域。
   // ============================================================
   function digIntro(obj, wantUid) {
     let result = null;
@@ -435,9 +435,13 @@
         /* 非纯 JSON，跳过 */
       }
     }
-    // 2) SPA 换页等：同源 _contentOnly 接口
+    // 2) SPA 换页等：同源 lentille 接口，返回 {template:"user.show",data:{user:{…introduction}}}。
+    // 注意：旧 `?_contentOnly=1` 已死（返回 HTML 壳页，拦截页源实测 2026-07-22），
+    // 正确姿势是带 x-lentille-request 头。
     try {
-      const r = await fetch(`/user/${uid}?_contentOnly=1`);
+      const r = await fetch(`/user/${uid}`, {
+        headers: { "x-lentille-request": "content-only" },
+      });
       const intro = digIntro(await r.json(), uid);
       if (intro != null) return intro;
     } catch (e) {
