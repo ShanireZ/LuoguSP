@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.10.5
+// @version      2.10.6
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章剪贴板就地显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -251,7 +251,8 @@
 
   const navTextSpan = (a) => a.querySelector(SELECTORS.navText);
 
-  function addSettingButton() {
+  // forceInlineText：受限内容接管页用——统一「插件设置」单行（新版侧栏格式），不走首页两行折行
+  function addSettingButton(forceInlineText) {
     // 两套导航都试：首页竖排 nav.lfe-body / 内容页侧栏 nav.sidebar
     let nav = null,
       navSel = null;
@@ -289,7 +290,7 @@
     link.setAttribute("role", "button");
     const textEl = navTextSpan(link);
     if (textEl) {
-      if (navSel === "nav.lfe-body") {
+      if (navSel === "nav.lfe-body" && !forceInlineText) {
         // 首页竖排栏窄：强制「插件」「设置」两字两行，避免默认 3+1 难看折行
         textEl.textContent = "";
         textEl.append("插件", document.createElement("br"), "设置");
@@ -312,12 +313,13 @@
   }
 
   // 洛谷是 SPA：首页顶栏↔内容页侧栏随路由切换而重挂，入口须在导航变化时补上（rAF 节流，加了就早退）。
-  function watchSettingButton() {
+  // ★受限内容接管页 document.write 后旧 body 上的观察器全灭——接管流程会带 forceInlineText 重新调用本函数。
+  function watchSettingButton(forceInlineText) {
     let scheduled = false;
     const tick = () => {
       scheduled = false;
       try {
-        addSettingButton();
+        addSettingButton(forceInlineText);
       } catch (e) {
         console.error("LuoguSP setting entry:", e);
       }
@@ -328,7 +330,7 @@
         requestAnimationFrame(tick);
       }
     }).observe(document.body, { childList: true, subtree: true });
-    addSettingButton();
+    addSettingButton(forceInlineText);
   }
 
   // ============================================================
@@ -1774,8 +1776,8 @@
     ".luogusp-rst-abtn .icon{font-size:1.25em;margin-bottom:.3em;}" +
     ".luogusp-rst-abtn .text{text-align:center;font-size:.75em;}" +
     ".luogusp-rst-abtn>*{color:#3498db !important;}" +
-    ".luogusp-rst-pbtnrow{margin:0 0 1.3em;}" +
-    ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-right:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
+    ".luogusp-rst-pactions{display:flex;align-items:center;}" +
+    ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
     ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}";
   // 扩展按钮图标（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
   const RST_BTN_ICONS = {
@@ -2026,6 +2028,9 @@
     document.write(html);
     document.close();
     rstMountArticleButtons(info);
+    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（统一「插件设置」单行格式）
+    injectStyle();
+    watchSettingButton(true);
   }
 
   // 剪贴板页：合成 window._feInjection（currentTemplate PasteShow）+ 官方 lfe 前端
@@ -2094,6 +2099,9 @@
     document.write(html);
     document.close();
     rstMountPasteButtons(info);
+    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（统一「插件设置」单行格式）
+    injectStyle();
+    watchSettingButton(true);
   }
 
   // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种
@@ -2108,6 +2116,8 @@
     };
     const inject = () => {
       document.querySelectorAll(".article-content .actions").forEach((bar) => {
+        // owner 拍板：左浮条（left-mode）不放扩展按钮，只挂内联互动条
+        if (bar.classList.contains("left-mode")) return;
         if (bar.querySelector(".luogusp-rst-abtn")) return;
         bar.appendChild(
           make(
@@ -2135,13 +2145,12 @@
       { childList: true, subtree: true },
     );
   }
-  // 扩展按钮（剪贴板页）：源码卡下方一行 lfe 实心蓝钮
+  // 扩展按钮（剪贴板页）：内容卡首行（content-card-top）最右侧两枚实心蓝钮
+  // （首行是 flex space-between，作者信息在左，本容器落位最右）
   function rstMountPasteButtons(info) {
     const inject = () => {
-      const container = document.querySelector(".full-container > div");
-      if (!container || container.querySelector(".luogusp-rst-pbtnrow")) return;
-      const cards = container.querySelectorAll(".card");
-      if (cards.length < 2) return; // 等源码卡渲染齐
+      const top = document.querySelector(".card .content-card-top");
+      if (!top || top.querySelector(".luogusp-rst-pactions")) return;
       const mk = (extraCls, text, title, onClick) => {
         const b = document.createElement("button");
         b.type = "button";
@@ -2151,9 +2160,9 @@
         b.addEventListener("click", onClick);
         return b;
       };
-      const row = document.createElement("div");
-      row.className = "luogusp-rst-pbtnrow";
-      row.append(
+      const box = document.createElement("div");
+      box.className = "luogusp-rst-pactions";
+      box.append(
         mk("luogusp-rst-btn-refresh", "申请更新", "向保存站申请更新存档", () =>
           rstManualRefresh(info),
         ),
@@ -2161,7 +2170,7 @@
           window.open(info.origUrl, "_blank", "noopener"),
         ),
       );
-      cards[cards.length - 1].after(row);
+      top.appendChild(box);
     };
     inject();
     new MutationObserver(inject).observe(
