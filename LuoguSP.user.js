@@ -1329,18 +1329,178 @@
     finishIdeSummary();
   }
 
+  // 判定口径同洛谷：CRLF 归一、去行尾空格、去末尾空行。仅用于 diff 渲染与交叉校验，
+  // 最终判定以原生胶囊为准（AC/WA 由洛谷前端本地比较，侦察实录 §6）。
+  function normalizeIdeOut(s) {
+    return String(s == null ? "" : s)
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((l) => l.replace(/[ \t]+$/, ""))
+      .join("\n")
+      .replace(/\n+$/, "");
+  }
+  function idePane(title, lines, badSet, emptyNote) {
+    const pre = document.createElement("pre");
+    if (!lines.length || (lines.length === 1 && lines[0] === "")) {
+      if (emptyNote) {
+        const span = document.createElement("span");
+        span.className = "luogusp-ide-empty";
+        span.textContent = emptyNote;
+        pre.appendChild(span);
+      }
+    } else {
+      lines.forEach((l, k) => {
+        const span = document.createElement("span");
+        if (badSet && badSet.has(k)) span.className = "luogusp-ide-diffline";
+        span.textContent = l;
+        pre.appendChild(span);
+        if (k < lines.length - 1) pre.appendChild(document.createTextNode("\n"));
+      });
+    }
+    const box = document.createElement("div");
+    box.className = "code-container";
+    box.append(pre, makeCopyButton(pre));
+    const pane = document.createElement("div");
+    pane.className = "luogusp-ide-pane";
+    const h = document.createElement("h5");
+    h.textContent = title;
+    pane.append(h, box);
+    return pane;
+  }
   function applyIdeResult(i, r, sample) {
     const p = ideRowParts(i);
     if (!p) return;
     p.pill.textContent = r.verdict;
-    if (r.pillStyle) p.pill.setAttribute("style", r.pillStyle);
-    p.meta.textContent = r.detail || r.note || "";
+    p.pill.setAttribute(
+      "style",
+      r.pillStyle || "background-color:#3d3d3d;border-color:#333;color:#fff;",
+    );
+    p.detail.innerHTML = "";
+    p.detail.classList.remove("luogusp-ide-log");
+    if (r.verdict === "CE") {
+      // CE：不显示三栏，直接展示编译日志（输出框捕获；侦察实录 §5）
+      p.meta.textContent = "";
+      p.detail.classList.add("luogusp-ide-log");
+      p.detail.appendChild(
+        idePane(
+          "编译信息",
+          String(r.output || "").split("\n"),
+          null,
+          "（无编译输出）",
+        ),
+      );
+      return;
+    }
+    p.meta.textContent = r.detail || "";
+    if (r.note) {
+      const note = document.createElement("p");
+      note.className = "luogusp-ide-note";
+      note.textContent = r.note;
+      p.detail.appendChild(note);
+      if (r.output == null) {
+        p.detail.classList.add("luogusp-ide-log"); // UKE 无产物，只留说明
+        return;
+      }
+    }
+    if (r.verdict === "RE" && r.detail) {
+      const note = document.createElement("p");
+      note.className = "luogusp-ide-note";
+      note.textContent = r.detail; // RE 原因在 run-result 位置（侦察实录 §5）
+      p.detail.appendChild(note);
+      p.meta.textContent = "";
+    }
+    const expLines = normalizeIdeOut(sample[1]).split("\n");
+    const actLines = normalizeIdeOut(r.output).split("\n");
+    const bad = new Set();
+    if (r.verdict !== "AC") {
+      const m = Math.max(expLines.length, actLines.length);
+      for (let k = 0; k < m; k++)
+        if ((expLines[k] || "") !== (actLines[k] || "")) bad.add(k);
+    }
+    p.detail.append(
+      idePane("输入", normalizeIdeOut(sample[0]).split("\n"), null, "（空）"),
+      idePane("期望输出", expLines, bad, "（空）"),
+      idePane(
+        "实际输出",
+        actLines,
+        bad,
+        r.verdict === "AC" ? "（空）" : "（未产生输出）",
+      ),
+    );
   }
+
+  // 实测原生内联配色（侦察实录 §5）；MLE/OLE/UKE 未实测，行内以运行时复制为准
+  const IDE_LEGEND = [
+    ["AC", "rgb(83,196,26)", "rgb(80,161,39)", "#fff"],
+    ["WA", "rgb(231,77,60)", "rgb(208,69,53)", "#fff"],
+    ["TLE", "rgb(5,34,66)", "rgb(10,31,54)", "#fff"],
+    ["RE", "rgb(156,61,207)", "rgb(138,62,179)", "#fff"],
+    ["CE", "rgb(250,219,20)", "rgb(215,190,28)", "#614700"],
+    ["UKE", "#3d3d3d", "#333", "#fff"],
+  ];
   function finishIdeSummary() {
     if (!IDE_BATCH.summaryEl || !IDE_BATCH.results) return;
-    const done = IDE_BATCH.results.filter(Boolean);
-    const ac = done.filter((r) => r.verdict === "AC").length;
-    IDE_BATCH.summaryEl.textContent = `${ac}/${IDE_BATCH.results.length} 通过`;
+    const rs = IDE_BATCH.results;
+    const counts = {};
+    let ac = 0,
+      tested = 0;
+    rs.forEach((r) => {
+      if (!r) return;
+      tested++;
+      if (r.verdict === "AC") ac++;
+      else counts[r.verdict] = (counts[r.verdict] || 0) + 1;
+    });
+    let text = `${ac}/${rs.length} 通过`;
+    for (const k in counts) text += ` · ${counts[k]} ${k}`;
+    if (tested < rs.length) {
+      text += " · 已停止";
+      rs.forEach((r, i) => {
+        if (r) return;
+        const p = ideRowParts(i);
+        if (p) p.pill.textContent = "未测";
+      });
+    }
+    IDE_BATCH.summaryEl.textContent = text;
+    const firstBad = rs.findIndex((r) => r && r.verdict !== "AC");
+    if (firstBad !== -1) expandIdeRow(firstBad);
+    else if (IDE_BATCH.rowsEl)
+      IDE_BATCH.rowsEl
+        .querySelectorAll(".luogusp-ide-row.open")
+        .forEach((r) => r.classList.remove("open"));
+  }
+
+  function markIdeStale() {
+    if (IDE_BATCH.stale || IDE_BATCH.running || !IDE_BATCH.results) return;
+    IDE_BATCH.stale = true;
+    if (IDE_BATCH.summaryEl && document.contains(IDE_BATCH.summaryEl))
+      IDE_BATCH.summaryEl.textContent += " · 结果可能已过期，建议重新测试";
+  }
+  function hookIdeStaleAndGuard() {
+    // 代码变更 → 过期标注（CM6 是 contenteditable，input/keydown 均会冒泡）
+    const stale = (e) => {
+      if (e.target && e.target.closest && e.target.closest(SELECTORS.cmContent))
+        markIdeStale();
+    };
+    document.addEventListener("input", stale, true);
+    document.addEventListener("keydown", stale, true);
+    // 批测中拦掉用户手点原生 运行/自测（程序化点击带 driving 标记放行）
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (!IDE_BATCH.running || IDE_BATCH.driving) return;
+        const t =
+          e.target &&
+          e.target.closest &&
+          e.target.closest(
+            `${SELECTORS.ideSampleBlock} a, ${SELECTORS.ideToolbar} a.run`,
+          );
+        if (t) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true,
+    );
   }
 
   function mountIdeButton() {
@@ -1429,6 +1589,13 @@
     IDE_BATCH.ioLayout = ioLayout;
     IDE_BATCH.rowsEl = panel.querySelector(".luogusp-ide-rows");
     IDE_BATCH.summaryEl = panel.querySelector(".luogusp-ide-summary");
+    panel.querySelector(".luogusp-ide-legend").innerHTML =
+      "图例：" +
+      IDE_LEGEND.map(
+        ([t, bg, bd, fg]) =>
+          `<span class="luogusp-ide-pill" style="background-color:${bg};border-color:${bd};color:${fg};">${t}</span>`,
+      ).join("") +
+      '<span style="margin-left:4px;">行内颜色实时取自洛谷原生结果</span>';
     syncIdeTabVisibility();
   }
   function switchIdeTab(tab) {
@@ -1518,6 +1685,7 @@
   // SPA：进出 IDE 模式/换题时补挂与清理（rAF 节流，同既有 watchSettingButton 模式）
   function watchIdeBatch() {
     installIdeSubmitObserver();
+    hookIdeStaleAndGuard();
     let scheduled = false;
     const tick = () => {
       scheduled = false;
