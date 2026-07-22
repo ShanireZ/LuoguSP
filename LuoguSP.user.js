@@ -108,32 +108,32 @@
 			#luogusp-settings .luogusp-primary:active{background:#066ca9;border-color:#066ca9;color:#fff;}
 			#luogusp-settings .luogusp-hint{margin:10px 0 0;color:#888;font-size:12px;}
 			.luogusp-setting-entry{cursor:pointer;}
-			.luogusp-intro-card li:has(> input[type="checkbox"]){list-style:none;margin-left:-1.2em;}
-			.luogusp-intro-card li > input[type="checkbox"]{margin-right:.4em;}
-			.luogusp-intro-card .code-container{margin:1rem 0;position:relative;}
-			.luogusp-intro-card .code-container:hover>.copy-button{opacity:1;}
-			.luogusp-intro-card .code-container:hover>.copy-button:hover{background-color:#ddd;}
-			.luogusp-intro-card .copy-button{position:absolute;top:.5em;right:.5em;padding:.6em;display:flex;align-items:center;justify-content:center;transition:opacity .2s ease-in-out,color .2s ease-in-out,background-color .2s ease-in-out;opacity:0;background-color:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
-			.luogusp-intro-card .copy-button:focus{opacity:1;outline:1px solid #ddd;}
-			.luogusp-intro-card .copy-button.copied{color:#52c41a;}
-			.luogusp-intro-card .copy-icon{width:1em;height:1em;}
-			.luogusp-intro-card .code-container>pre{background:#fafafa;color:#383a42;padding:1em;margin:0;overflow:auto;border-radius:.3em;}
-			.luogusp-intro-card .code-container>pre code{font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;line-height:1.5;tab-size:2;}
-			.luogusp-intro-card pre[class*="language-"],.luogusp-intro-card code[class*="language-"]{background:#fafafa;color:#383a42;font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;direction:ltr;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;line-height:1.5;tab-size:2;hyphens:none;}
-			.luogusp-intro-card pre[class*="language-"]{padding:1em;margin:.5em 0;overflow:auto;border-radius:.3em;}
-			.luogusp-intro-card .code-container>pre[class*="language-"]{margin:0;}
-			.luogusp-intro-card pre code.hljs{display:block;overflow-x:visible;padding:0;background:transparent;}
-			.luogusp-intro-card code.hljs{color:#383a42;background:#fafafa;}
-			.luogusp-intro-card .hljs-comment,.luogusp-intro-card .hljs-quote{color:#a0a1a7;font-style:italic;}
-			.luogusp-intro-card .hljs-doctag,.luogusp-intro-card .hljs-formula,.luogusp-intro-card .hljs-keyword{color:#a626a4;}
-			.luogusp-intro-card .hljs-deletion,.luogusp-intro-card .hljs-name,.luogusp-intro-card .hljs-section,.luogusp-intro-card .hljs-selector-tag,.luogusp-intro-card .hljs-subst{color:#e45649;}
-			.luogusp-intro-card .hljs-literal{color:#0184bb;}
-			.luogusp-intro-card .hljs-addition,.luogusp-intro-card .hljs-attribute,.luogusp-intro-card .hljs-meta .hljs-string,.luogusp-intro-card .hljs-regexp,.luogusp-intro-card .hljs-string{color:#50a14f;}
-			.luogusp-intro-card .hljs-attr,.luogusp-intro-card .hljs-number,.luogusp-intro-card .hljs-selector-attr,.luogusp-intro-card .hljs-selector-class,.luogusp-intro-card .hljs-selector-pseudo,.luogusp-intro-card .hljs-template-variable,.luogusp-intro-card .hljs-type,.luogusp-intro-card .hljs-variable{color:#986801;}
-			.luogusp-intro-card .hljs-bullet,.luogusp-intro-card .hljs-link,.luogusp-intro-card .hljs-meta,.luogusp-intro-card .hljs-selector-id,.luogusp-intro-card .hljs-symbol,.luogusp-intro-card .hljs-title{color:#4078f2;}
-			.luogusp-intro-card .hljs-built_in,.luogusp-intro-card .hljs-class .hljs-title,.luogusp-intro-card .hljs-title.class_,.luogusp-intro-card .hljs-title.function_{color:#c18401;}
-			.luogusp-intro-card .hljs-emphasis{font-style:italic;}
-			.luogusp-intro-card .hljs-strong{font-weight:700;}
+			.luogusp-mdstyle li:has(> input[type="checkbox"]){list-style:none;margin-left:-1.2em;}
+			.luogusp-mdstyle li > input[type="checkbox"]{margin-right:.4em;}
+			.luogusp-mdstyle .code-container{margin:1rem 0;position:relative;}
+			.luogusp-mdstyle .code-container:hover>.copy-button{opacity:1;}
+			.luogusp-mdstyle .code-container:hover>.copy-button:hover{background-color:#ddd;}
+			.luogusp-mdstyle .copy-button{position:absolute;top:.5em;right:.5em;padding:.6em;display:flex;align-items:center;justify-content:center;transition:opacity .2s ease-in-out,color .2s ease-in-out,background-color .2s ease-in-out;opacity:0;background-color:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
+			.luogusp-mdstyle .copy-button:focus{opacity:1;outline:1px solid #ddd;}
+			.luogusp-mdstyle .copy-button.copied{color:#52c41a;}
+			.luogusp-mdstyle .copy-icon{width:1em;height:1em;}
+			.luogusp-mdstyle .code-container>pre{background:#fafafa;color:#383a42;padding:1em;margin:0;overflow:auto;border-radius:.3em;}
+			.luogusp-mdstyle .code-container>pre code{font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;line-height:1.5;tab-size:2;}
+			.luogusp-mdstyle pre[class*="language-"],.luogusp-mdstyle code[class*="language-"]{background:#fafafa;color:#383a42;font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;direction:ltr;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;line-height:1.5;tab-size:2;hyphens:none;}
+			.luogusp-mdstyle pre[class*="language-"]{padding:1em;margin:.5em 0;overflow:auto;border-radius:.3em;}
+			.luogusp-mdstyle .code-container>pre[class*="language-"]{margin:0;}
+			.luogusp-mdstyle pre code.hljs{display:block;overflow-x:visible;padding:0;background:transparent;}
+			.luogusp-mdstyle code.hljs{color:#383a42;background:#fafafa;}
+			.luogusp-mdstyle .hljs-comment,.luogusp-mdstyle .hljs-quote{color:#a0a1a7;font-style:italic;}
+			.luogusp-mdstyle .hljs-doctag,.luogusp-mdstyle .hljs-formula,.luogusp-mdstyle .hljs-keyword{color:#a626a4;}
+			.luogusp-mdstyle .hljs-deletion,.luogusp-mdstyle .hljs-name,.luogusp-mdstyle .hljs-section,.luogusp-mdstyle .hljs-selector-tag,.luogusp-mdstyle .hljs-subst{color:#e45649;}
+			.luogusp-mdstyle .hljs-literal{color:#0184bb;}
+			.luogusp-mdstyle .hljs-addition,.luogusp-mdstyle .hljs-attribute,.luogusp-mdstyle .hljs-meta .hljs-string,.luogusp-mdstyle .hljs-regexp,.luogusp-mdstyle .hljs-string{color:#50a14f;}
+			.luogusp-mdstyle .hljs-attr,.luogusp-mdstyle .hljs-number,.luogusp-mdstyle .hljs-selector-attr,.luogusp-mdstyle .hljs-selector-class,.luogusp-mdstyle .hljs-selector-pseudo,.luogusp-mdstyle .hljs-template-variable,.luogusp-mdstyle .hljs-type,.luogusp-mdstyle .hljs-variable{color:#986801;}
+			.luogusp-mdstyle .hljs-bullet,.luogusp-mdstyle .hljs-link,.luogusp-mdstyle .hljs-meta,.luogusp-mdstyle .hljs-selector-id,.luogusp-mdstyle .hljs-symbol,.luogusp-mdstyle .hljs-title{color:#4078f2;}
+			.luogusp-mdstyle .hljs-built_in,.luogusp-mdstyle .hljs-class .hljs-title,.luogusp-mdstyle .hljs-title.class_,.luogusp-mdstyle .hljs-title.function_{color:#c18401;}
+			.luogusp-mdstyle .hljs-emphasis{font-style:italic;}
+			.luogusp-mdstyle .hljs-strong{font-weight:700;}
 			.luogusp-ide-tabbar{display:flex;gap:20px;padding:0 12px;border-bottom:1px solid #e8e8e8;flex:none;}
 			.luogusp-ide-tab{font-size:13px;color:#606266;padding:7px 2px 5px;cursor:pointer;border-bottom:2px solid transparent;}
 			.luogusp-ide-tab.on{color:#3498db;border-bottom-color:#3498db;font-weight:500;}
@@ -712,7 +712,7 @@
     const card = nativeCard
       ? nativeCard.cloneNode(false)
       : document.createElement("div");
-    card.className = "l-card luogusp-intro-card";
+    card.className = "l-card luogusp-intro-card luogusp-mdstyle"; // mdstyle=纯样式作用域；intro-card=本功能所有权标记（勿混用）
     card.removeAttribute("id");
     card.removeAttribute("style"); // ★清掉克隆源卡的内联样式：某些卡带 --l-card--padding:0 会让内容贴框
     card.style.setProperty("--l-card--padding", "20.8px"); // 用国际站 intro 卡的内边距（洛谷 .l-card 靠此变量控制）
@@ -1813,7 +1813,8 @@
     el.textContent = text;
     el.classList.toggle("ok", !!ok);
   }
-  // markdown → 容器（renderMarkdown 已消毒；套 luogusp-intro-card 继承代码块/hljs/复制按钮样式）
+  // markdown → 容器（renderMarkdown 已消毒；容器须挂 luogusp-mdstyle 继承代码块/hljs/复制按钮样式。
+  // ★勿用 luogusp-intro-card：那是简介补显功能的所有权标记，其观察器会在非用户主页删除该类节点）
   function rstRenderMd(container, md) {
     container.innerHTML = renderMarkdown(String(md || ""));
     highlightCodeBlocks(container);
@@ -1885,7 +1886,7 @@
 				</div>
 			</div>
 			<p class="luogusp-rst-status"></p>
-			<div class="luogusp-rst-card luogusp-intro-card">
+			<div class="luogusp-rst-card luogusp-mdstyle">
 				<div class="luogusp-rst-md lfe-marked"></div>
 				<div class="luogusp-rst-caption">
 					<span>存档更新于 ${rstFmtTime(data.updatedAt)}</span>
@@ -1961,7 +1962,7 @@
       time.textContent = rstFmtTime(Number(c.time));
       head.append(name, time);
       const body = document.createElement("div");
-      body.className = "cbody luogusp-intro-card";
+      body.className = "cbody luogusp-mdstyle";
       body.innerHTML = renderMarkdown(String(c.content || "")); // renderMarkdown 已消毒
       main.append(head, body);
       row.append(img, main);
