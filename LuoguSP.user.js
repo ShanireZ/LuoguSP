@@ -2549,69 +2549,126 @@
       if (e.key === "Enter") go();
     });
   }
-  // 剪贴板页：1:1 复刻旧版 lfe（59px 左导航+深色头部+user-nav+card+页脚）
-  function rstBuildPastePage(info, data) {
+  // 剪贴板页：1:1 复刻旧版 lfe 默认主题（3.7em 蓝灰左导航+蓝 logo 块+90° 渐变头部+user-nav+内容卡+源码卡+页脚）
+  function rstBuildPastePage(info, data, viewer, author) {
     document.title = "云剪贴板 - 洛谷 | 计算机科学教育新生态";
     document.documentElement.scrollTop = 0;
     document.body.className =
       "luogusp-rstpage luogusp-rst-paste luogusp-rst-fadein";
     const navItem = (href, ic, text) =>
       `<a href="${href}"><span class="icon">${rstIconSvg(ic)}</span><span class="text">${text}</span></a>`;
+    const searchPart = `<div><div class="search-wrap"><input type="text" placeholder="输入题号搜索题目"></div><a class="icon luogusp-rst-searchbtn" href="javascript:void 0">${rstIconSvg(RST_LFE.search)}</a></div>`;
+    const userNav = viewer
+      ? `${searchPart}
+					<a class="icon-btn" href="/chat">${rstIconSvg(RST_LFE.mail)}</a>
+					<a class="icon-btn" href="/user/notification">${rstIconSvg(RST_LFE.bell)}</a>
+					<span><span><a href="/user/${viewer.uid}"><img class="avatar" src="${rstAvatar(viewer.uid)}" alt=""></a></span></span>`
+      : `${searchPart}
+					<a class="login" href="/auth/login"><span>登录</span></a>
+					<a class="login" href="/auth/register"><span>注册</span></a>
+					<img class="avatar" src="${rstAvatar(1)}" alt="">`;
     document.body.innerHTML = `
+			<div class="top-progress"></div>
 			<nav class="lgnav">
-				<a class="logo-wrap" href="/" title="洛谷首页"><img src="${RST_LFE.logoUrl}" alt="洛谷"></a>
-				<div class="popup-button">${rstIconSvg(RST_LFE.popup)}</div>
+				<div class="logo-block"><a class="logo-wrap" href="/" title="洛谷首页"><img src="${RST_LFE.logoUrl}" alt="洛谷"></a></div>
+				<div class="popup-button">应用 ${rstIconSvg(RST_LFE.popup)}</div>
 				${navItem("/problem/list", RST_LFE.tiku, "题库")}
 				${navItem("/training/list", RST_LFE.tidan, "题单")}
 				${navItem("/contest/list", RST_LFE.bisai, "比赛")}
-				${navItem("/record/list", RST_LFE.jilu, "记录")}
 				${navItem("/discuss", RST_LFE.taolun, "讨论")}
 				${navItem("/article", RST_LFE.zhuanlan, "专栏")}
 			</nav>
 			<div class="main-container">
 			<div class="wrapper wrapped header-layout narrow"><div class="background"></div><div class="header">
-				<div class="user-nav">
-					<a class="icon-btn" href="/search" title="搜索">${rstIconSvg(RST_LFE.search)}</a>
-					<a class="icon-btn" href="/chat" title="私信">${rstIconSvg(RST_LFE.mail)}</a>
-					<a class="icon-btn" href="/user/notification" title="提醒">${rstIconSvg(RST_LFE.bell)}</a>
-					<a class="icon-btn" href="javascript:void 0"><img class="avatar luogusp-rst-viewer" style="display:none" alt=""></a>
-				</div>
-				<nav class="bread-crumb"><a href="/">洛谷</a><span class="text"> / </span><span class="text">云剪贴板</span></nav>
+				<div class="user-nav"><nav>${userNav}</nav></div>
+				<nav class="lfe-caption bread-crumb"><span><a class="link" href="/">洛谷</a> <span class="text"> / </span></span><span><span class="text">云剪贴板</span></span></nav>
 				<h1 class="lfe-h1">云剪贴板</h1>
+				<div class="functional"><div class="stat"></div><div class="operation"></div></div>
 			</div></div>
-			<main class="wrapped"><div>
-			<div class="card">
-				<div class="content-card-top">
-					<div class="author">
-						<div class="author-margin"><a class="luogusp-rst-uname" rel="noopener noreferrer"></a><span class="pubbadge">公开</span></div>
-						<div><time class="luogusp-rst-ctime"></time></div>
+			<main class="wrapped">
+			<div class="full-container"><div>
+				<div class="card padding-default">
+					<div class="content-card-top">
+						<div class="author">
+							<div class="lfe-caption author-margin"><span>作者: <span class="luogusp-rst-uname-slot"></span></span> <span class="lfe-caption pubbadge">公开</span></div>
+							<div class="lfe-caption"><span>发表时间: <time class="luogusp-rst-ctime"></time></span></div>
+						</div>
 					</div>
-					<div class="actions"><span class="luogusp-rst-status"></span><button class="luogusp-rst-refresh" type="button">申请更新</button></div>
+					<hr class="horizon">
+					<div class="marked luogusp-rst-md"></div>
+					<p class="lfe-caption" style="margin:1em 0 0;">存档于 ${rstFmtTime(data.updatedAt)} · <a class="luogusp-rst-refresh" href="javascript:void 0">申请更新</a> · <a href="${info.origUrl}" rel="noopener noreferrer">国际站原文</a><span class="luogusp-rst-status"></span></p>
 				</div>
-				<hr class="horizon">
-				<div class="marked luogusp-rst-md"></div>
-				<p class="lfe-caption" style="color:#999;margin:1em 0 0;">存档更新于 ${rstFmtTime(data.updatedAt)} · 内容来自洛谷保存站 · <a href="${info.origUrl}" rel="noopener noreferrer">查看国际站原文</a></p>
-			</div>
-			</div></main>
+				<div class="card padding-default">
+					<div class="code-card-top" style="display:none"><div><strong><span>源码</span></strong> <button type="button" class="copy-btn">复制</button> <pre><div class="luogusp-rst-src"></div></pre></div></div>
+					<div class="expand-tip lfe-caption"><span class="luogusp-rst-expand">${rstIconSvg(RST_LFE.chevronDown)} 展开源码</span></div>
+				</div>
+			</div></div>
+			</main>
 			<div class="wrapper wrapped lgfooter"><div class="background"></div><div class="footer">
 				<img class="logo-img" src="${RST_LFE.logoUrl}" alt="">
-				<div class="slogan">计算机科学<br>教育新生态</div>
+				<div class="slogan">在洛谷，<br>享受 Coding 的欢乐</div>
 				<img class="qr-img" src="${RST_LFE.qrUrl}" alt="">
 				<div class="info">
-					<p><a href="https://help.luogu.com.cn/about">关于洛谷</a><a href="https://help.luogu.com.cn">帮助中心</a><a href="https://help.luogu.com.cn/rules/user-agreement">用户协议</a><a href="https://help.luogu.com.cn/contact-us">联系我们</a><br>
-					<a href="/discuss/124">小黑屋</a><a href="/judgement">陶片放逐</a><a href="https://help.luogu.com.cn/rules/community/">社区规则</a><a href="https://www.luogu.com.cn/discuss/142324">招贤纳才</a><br>
-					<a href="https://beian.miit.gov.cn/">沪ICP备18008322号</a></p>
+					<p><a href="https://help.luogu.com.cn/about-us">关于洛谷</a> |
+					<a href="https://help.luogu.com.cn">帮助中心</a> |
+					<a href="https://help.luogu.com.cn/ula/luogu">用户协议</a> |
+					<a href="https://help.luogu.com.cn/contact-us">联系我们</a> <br>
+					<a href="/discuss?forum=miaomiaowu">小黑屋</a> |
+					<a href="/judgement">陶片放逐</a> |
+					<a href="https://help.luogu.com.cn/rules/community/">社区规则</a> |
+					<a target="_blank" href="https://www.lagou.com/gongsi/369082.html">招贤纳才</a> <br>
+					Developed by the <a target="_blank" href="https://github.com/luogu-dev">Luogu Dev Team</a> <br>
+					2013-${new Date().getFullYear()} , © 洛谷 <br>
+					All rights reserved.</p>
 				</div>
 			</div></div>
 			</div>`;
     document.querySelector(".luogusp-rst-ctime").textContent = rstFmtTime(
       data.createdAt,
     );
-    rstFillCommon(info, data);
+    const user = author || data.author || {};
+    const uid = data.authorId || user.id || user.uid || 0;
+    document
+      .querySelector(".luogusp-rst-uname-slot")
+      .appendChild(rstUsernameEl(user, uid, { blank: true }));
+    rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
+    document.querySelector(".luogusp-rst-src").textContent = String(
+      data.content || "",
+    );
+    rstFillCommon(info);
+    rstWirePaste();
   }
-  function rstBuildPage(info, data) {
-    if (info.type === "article") rstBuildArticlePage(info, data);
-    else rstBuildPastePage(info, data);
+  // 剪贴板页交互：搜索展开、展开/收起源码、复制源码
+  function rstWirePaste() {
+    rstWireSearch(".user-nav .search-wrap");
+    const expand = document.querySelector(".luogusp-rst-expand");
+    if (expand)
+      expand.addEventListener("click", () => {
+        const top = document.querySelector(".code-card-top");
+        const open = top.style.display !== "none";
+        top.style.display = open ? "none" : "";
+        expand.innerHTML = open
+          ? `${rstIconSvg(RST_LFE.chevronDown)} 展开源码`
+          : `${rstIconSvg(RST_LFE.chevronUp)} 隐藏源码`;
+      });
+    const copy = document.querySelector(".copy-btn");
+    if (copy)
+      copy.addEventListener("click", () => {
+        const src = document.querySelector(".luogusp-rst-src");
+        if (src && navigator.clipboard)
+          navigator.clipboard.writeText(src.textContent || "").catch(() => {});
+      });
+  }
+  async function rstBuildPage(info, data) {
+    // 观众态 + 作者数据（国内站接口）并行取齐后一次成页；作者接口失败回退存档快照
+    const [viewer, cnUser] = await Promise.all([
+      rstViewer(),
+      rstCnUser(data.authorId || (data.author && data.author.id)),
+    ]);
+    const author = cnUser || data.author || null;
+    if (info.type === "article")
+      rstBuildArticlePage(info, data, viewer, author);
+    else rstBuildPastePage(info, data, viewer, author);
   }
   // columba 原生 TOC（指示条 + 文字），挂在 .toc-wrapper 内 sticky 跟随
   function rstBuildToc() {
