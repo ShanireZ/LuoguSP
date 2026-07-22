@@ -53,6 +53,15 @@
     userIntroColumn: ".sidebar-container .main", // 用户主页右侧内容列（补显简介的挂载点）
     nativeIntro: ".introduction", // 洛谷原生简介元素（存在=已显示，脚本不重复补）
     voidAnchor: "a[data-v-bade3303][data-v-4842157a]", // 题号着色里特殊的 javascript:void 0 链接
+    // —— IDE 模式（2026-07 columba 前端；侦察实录 docs/superpowers/specs/2026-07-22-ide-mode-recon-notes.md）——
+    ideToolbar: ".ide-toolbar", // IDE 三个分区（代码/输入/输出）各一条工具栏
+    ideToolbarText: ".title .text", // 工具栏标题文字（代码/输入/输出）
+    ideToolbarActions: ".actions", // 工具栏右侧按钮容器
+    ideRunResult: ".run-result", // 输出工具栏里的 时间+内存 / RE 原因
+    ideTextarea: "textarea.ide-textarea", // 输入/输出面板的文本域
+    ideSampleBlock: ".io-sample-block", // 题面样例块（输入 #N / 输出 #N 各一块）
+    cmContent: ".cm-content", // CodeMirror 6 内容层
+    lentilleContext: "script#lentille-context", // 新版页面数据（JSON，含 problem.samples）
   };
 
   // 功能开关：key → 显示名。新增功能只需在此登记 + 在底部 FEATURES 注册启动器。
@@ -60,6 +69,7 @@
     [`${STORAGE_PREFIX}addProblemsColor`, "显示题目颜色"],
     [`${STORAGE_PREFIX}addMessageLink`, "私信界面 Ctrl+Click 打开用户主页"],
     [`${STORAGE_PREFIX}showIntro`, "显示隐藏的个人简介"],
+    [`${STORAGE_PREFIX}ideBatchSampleTest`, "IDE 一键测试样例"],
   ]);
 
   const storage = {
@@ -1004,6 +1014,108 @@
   }
 
   // ============================================================
+  // IDE 一键测试样例
+  // 洛谷新版题目页（columba）IDE 模式（#ide）下，逐组驱动题面样例的原生「运行」，
+  // 结果从输出面板 DOM 捕获（结果经页面常驻 WS 推送，网络层拿不到——勿改走拦截）。
+  // 锚点与配色的事实来源：docs/superpowers/specs/2026-07-22-ide-mode-recon-notes.md
+  // ============================================================
+  function ideToolbarByTitle(title) {
+    for (const tb of document.querySelectorAll(SELECTORS.ideToolbar)) {
+      const t = tb.querySelector(SELECTORS.ideToolbarText);
+      if (t && t.textContent.trim() === title) return tb;
+    }
+    return null;
+  }
+
+  const IDE_BATCH = {
+    running: false, // 批测进行中（防重入）
+    stopReq: false, // 「停止」请求：当前组跑完即停
+    driving: false, // 程序化点击原生按钮的瞬间为 true（区分用户手点）
+    activeTab: "custom", // custom=原生输入输出 / samples=样例面板
+    tabBar: null,
+    panel: null,
+    ioLayout: null, // 原生 输入|输出 水平分栏（tab 切换时显隐）
+    rowsEl: null,
+    summaryEl: null,
+    stopBtn: null,
+    results: null, // 本轮各组结果（过期标注用）
+    stale: false,
+    inputSnapshot: null, // 批测前用户自定义输入快照
+  };
+
+  function ideModeActive() {
+    return (
+      location.hash === "#ide" && !!document.querySelector(SELECTORS.ideToolbar)
+    );
+  }
+
+  function startIdeBatch() {
+    console.log("LuoguSP ide batch: TODO(Task 3)");
+  }
+
+  function mountIdeButton() {
+    const tb = ideToolbarByTitle("代码");
+    if (!tb) return;
+    const actions = tb.querySelector(SELECTORS.ideToolbarActions);
+    if (!actions || actions.querySelector(".luogusp-ide-batch-btn")) return;
+    const selfTest = [...actions.querySelectorAll("button")].find(
+      (b) => (b.textContent || "").trim() === "自测",
+    );
+    if (!selfTest) return;
+    // 克隆原生「自测」按钮继承洛谷样式（含 data-v 作用域），只换文字
+    const btn = selfTest.cloneNode(true);
+    btn.textContent = "一键测试样例";
+    btn.classList.add("luogusp-ide-batch-btn");
+    btn.disabled = false;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startIdeBatch();
+    });
+    actions.insertBefore(btn, selfTest);
+  }
+
+  function ensureIdeBatchUI() {
+    if (!ideModeActive()) {
+      unmountIdeBatchUI();
+      return;
+    }
+    mountIdeButton();
+  }
+
+  function unmountIdeBatchUI() {
+    if (IDE_BATCH.running) IDE_BATCH.stopReq = true; // 退出 IDE/换题：请求停止
+    IDE_BATCH.activeTab = "custom"; // 复位，防再次进入时默认落在空面板
+    IDE_BATCH.tabBar = IDE_BATCH.panel = IDE_BATCH.ioLayout = null;
+    IDE_BATCH.rowsEl = IDE_BATCH.summaryEl = IDE_BATCH.stopBtn = null;
+  }
+
+  // SPA：进出 IDE 模式/换题时补挂与清理（rAF 节流，同既有 watchSettingButton 模式）
+  function watchIdeBatch() {
+    let scheduled = false;
+    const tick = () => {
+      scheduled = false;
+      try {
+        ensureIdeBatchUI();
+      } catch (e) {
+        console.error("LuoguSP ide batch:", e);
+      }
+    };
+    const queue = () => {
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(tick);
+      }
+    };
+    new MutationObserver(queue).observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+    watchUrlChange(queue);
+    ensureIdeBatchUI();
+  }
+
+  // ============================================================
   // 启动
   // ============================================================
   const isChatPage = location.href.startsWith("https://www.luogu.com.cn/chat");
@@ -1021,6 +1133,7 @@
       },
     },
     { key: `${STORAGE_PREFIX}showIntro`, run: watchHiddenIntro },
+    { key: `${STORAGE_PREFIX}ideBatchSampleTest`, run: watchIdeBatch },
   ];
 
   injectStyle();
