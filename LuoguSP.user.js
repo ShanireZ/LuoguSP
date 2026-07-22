@@ -1929,48 +1929,64 @@
 			.luogusp-rst-article footer>*{margin:.5em 0;}
 			.luogusp-rst-article footer a{color:inherit;}
 			.luogusp-rst-article footer .copyright{font-size:.875em;}
-			body.luogusp-rst-paste{margin:0;background:#efefef;font-size:16px;line-height:1.5;color:rgba(0,0,0,.75);font-family:-apple-system,BlinkMacSystemFont,"San Francisco","Helvetica Neue","Noto Sans","Noto Sans CJK SC","Source Han Sans","PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;}
-			.luogusp-rst-paste a{color:#3498db;text-decoration:none;}
-			.luogusp-rst-paste .lgnav{position:fixed;left:0;top:0;bottom:0;width:59px;background:#082b50;color:#ddd;z-index:10;display:flex;flex-direction:column;}
-			.luogusp-rst-paste .lgnav .logo-wrap{display:flex;align-items:center;justify-content:center;height:64px;box-sizing:border-box;padding:0;background:#f12a2a;}
-			.luogusp-rst-paste .lgnav .logo-wrap img{width:22px;height:32px;}
-			.luogusp-rst-paste .lgnav .popup-button{height:26px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;box-sizing:border-box;}
-			.luogusp-rst-paste .lgnav .popup-button svg{width:13px;height:13px;fill:#ddd;}
-			.luogusp-rst-paste .lgnav>a{display:block;text-align:center;padding:9px 0 8px;color:#ddd;}
-			.luogusp-rst-paste .lgnav>a:hover{background:rgba(255,255,255,.1);}
-			.luogusp-rst-paste .lgnav>a .icon svg{width:18px;height:18px;fill:currentColor;}
-			.luogusp-rst-paste .lgnav>a .text{display:block;font-size:12.8px;margin-top:2px;}
-			.luogusp-rst-paste .main-container{display:flex;flex:1;flex-direction:column;min-height:100vh;margin-left:59px;}
-			@media (max-width:576px){.luogusp-rst-paste .main-container{margin-left:0;width:100%;}.luogusp-rst-paste .lgnav{display:none;}}
+			body.luogusp-rst-paste{margin:0;background:#fff;font-size:16px;line-height:1.5;color:rgba(0,0,0,.75);font-family:-apple-system,BlinkMacSystemFont,"San Francisco","Helvetica Neue","Noto Sans","Noto Sans CJK SC","Noto Sans CJK","Source Han Sans","PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;}
+			.luogusp-rst-paste a{color:#3498db;text-decoration:none;cursor:pointer;}
+			.luogusp-rst-paste .lgnav{position:fixed;left:0;top:0;bottom:0;width:3.7em;background:#34495e;color:#ddd;z-index:5;display:flex;flex-direction:column;text-align:center;line-height:1.2;}
+			.luogusp-rst-paste .lgnav .logo-block{background:#3498db;}
+			.luogusp-rst-paste .lgnav .logo-wrap{display:block;box-sizing:border-box;padding:1em;width:3.7em;height:4em;text-align:center;overflow:hidden;}
+			.luogusp-rst-paste .lgnav .logo-wrap img{max-width:100%;max-height:100%;}
+			.luogusp-rst-paste .lgnav .popup-button{font-size:.8em;line-height:2em;margin-top:.2em;cursor:pointer;}
+			.luogusp-rst-paste .lgnav .popup-button svg{width:1em;height:1em;fill:currentColor;vertical-align:-.125em;}
+			.luogusp-rst-paste .lgnav>a{display:block;padding:.5em;color:inherit;}
+			.luogusp-rst-paste .lgnav>a .icon{text-align:center;margin:0 .3em;font-size:1.1em;display:inline-block;width:1.5em;vertical-align:middle;}
+			.luogusp-rst-paste .lgnav>a .icon svg{height:1em;width:auto;fill:currentColor;vertical-align:-.125em;}
+			.luogusp-rst-paste .lgnav>a .text{font-size:.8em;vertical-align:middle;}
+			.luogusp-rst-paste .main-container{display:flex;flex:1;flex-direction:column;min-height:100vh;margin-left:3.7em;}
+			@media (max-width:576px){.luogusp-rst-paste .main-container{margin-left:0;width:100%;}.luogusp-rst-paste .lgnav{display:none;}.luogusp-rst-paste .user-nav{display:none;}.luogusp-rst-paste .bread-crumb{font-size:.875em;}}
 			.luogusp-rst-paste .wrapped{padding-left:1em;padding-right:1em;}
 			.luogusp-rst-paste .wrapped>*{max-width:1200px;margin-left:auto;margin-right:auto;}
 			.luogusp-rst-paste .header-layout{position:relative;}
 			.luogusp-rst-paste .header-layout.narrow{height:8em;}
 			@media (max-width:576px){.luogusp-rst-paste .header-layout{height:auto !important;}}
-			.luogusp-rst-paste .header-layout .background{position:absolute;left:0;right:0;top:0;display:block;width:100%;height:100%;z-index:0;background:linear-gradient(174deg,#141e30,#243b55);}
+			.luogusp-rst-paste .header-layout .background{position:absolute;left:0;right:0;top:0;display:block;width:100%;height:100%;z-index:0;background:linear-gradient(90deg,#232526,#414345);}
 			.luogusp-rst-paste .header-layout .header{position:relative;z-index:1;color:#fff;}
-			.luogusp-rst-paste .user-nav{position:absolute;right:4em;top:0;padding:.5em 1em;color:#333;background-color:rgba(255,255,255,.5);border-bottom-left-radius:5px;border-bottom-right-radius:5px;display:flex;align-items:center;}
-			.luogusp-rst-paste .user-nav .icon-btn{display:inline-flex;color:#333;margin-left:11.2px;}
-			.luogusp-rst-paste .user-nav .icon-btn:first-child{margin-left:0;}
-			.luogusp-rst-paste .user-nav .icon-btn svg{width:16px;height:16px;fill:currentColor;}
-			.luogusp-rst-paste .user-nav .avatar{width:35px;height:35px;border-radius:50%;margin-left:11.2px;vertical-align:middle;}
-			.luogusp-rst-paste .bread-crumb{padding-top:1.5em;font-size:.8em;}
-			.luogusp-rst-paste .bread-crumb a,.luogusp-rst-paste .bread-crumb .text{color:rgba(255,255,255,.75);}
-			.luogusp-rst-paste .bread-crumb a:hover{color:#fff;}
-			.luogusp-rst-paste .header .lfe-h1{font-size:28px;font-weight:700;line-height:1.2;color:#fff;margin:14px 0;}
-			.luogusp-rst-paste main{flex:1;}
-			.luogusp-rst-paste main>*{margin-top:1.3em;}
+			.luogusp-rst-paste .user-nav{position:absolute;right:4em;top:0;padding:.5em 1em;color:#333;background-color:rgba(255,255,255,.5);border-bottom-left-radius:5px;border-bottom-right-radius:5px;}
+			.luogusp-rst-paste .user-nav nav{position:relative;}
+			.luogusp-rst-paste .user-nav .search-wrap{display:inline-block;margin-right:.4em;font-size:.9em;width:0;vertical-align:middle;overflow:hidden;transition:width .15s ease;}
+			.luogusp-rst-paste .user-nav .search-wrap.show{width:10em;}
+			.luogusp-rst-paste .user-nav .search-wrap input{width:100%;box-sizing:border-box;padding:.2em .5em;background:rgba(255,255,255,.3);border:1px solid #ccc;border-radius:5px;line-height:1.15;font-size:inherit;}
+			.luogusp-rst-paste .user-nav .icon,.luogusp-rst-paste .user-nav .icon-btn{color:#333;}
+			.luogusp-rst-paste .user-nav .icon svg,.luogusp-rst-paste .user-nav .icon-btn svg{width:16px;height:16px;fill:currentColor;vertical-align:-2px;}
+			.luogusp-rst-paste .user-nav .icon-btn{margin-left:.7em;}
+			.luogusp-rst-paste .user-nav .login{color:#333;text-decoration:none;}
+			.luogusp-rst-paste .user-nav .login span{font-size:.8em;margin-left:.5em;}
+			.luogusp-rst-paste .user-nav .avatar{width:35px;height:35px;border-radius:50%;margin-left:.4em;vertical-align:middle;}
+			.luogusp-rst-paste .bread-crumb{padding-top:1.5em;font-size:.8em;color:#aaa;}
+			.luogusp-rst-paste .bread-crumb .link,.luogusp-rst-paste .bread-crumb .text{color:rgba(255,255,255,.75);}
+			.luogusp-rst-paste .bread-crumb .link:hover{color:#fff;}
+			.luogusp-rst-paste .header .lfe-h1{font-size:1.75em;font-weight:700;line-height:1.2;color:inherit;margin:.5em 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+			.luogusp-rst-paste .functional{padding-top:.8em;}
+			.luogusp-rst-paste .functional .stat{float:right;}
+			.luogusp-rst-paste .functional .operation{display:flex;align-items:baseline;color:#fff;}
+			.luogusp-rst-paste main{flex:1;background:#efefef;}
+			.luogusp-rst-paste .full-container{display:block;margin-top:2em;margin-bottom:2em;}
+			.luogusp-rst-paste .full-container::after{display:block;content:"";clear:both;}
 			.luogusp-rst-paste .lfe-caption{font-size:.875em;}
-			.luogusp-rst-paste .card{display:block;margin-bottom:1.3em;background-color:#fff;border-radius:4px;box-shadow:rgba(26,26,26,.1) 0 1px 3px;box-sizing:border-box;padding:20.8px;}
+			.luogusp-rst-paste .card{display:block;margin-bottom:1.3em;background-color:#fff;border-radius:4px;box-shadow:rgba(26,26,26,.1) 0 1px 3px;box-sizing:border-box;padding:1.3em;}
 			.luogusp-rst-paste .content-card-top{display:flex;justify-content:space-between;align-items:center;}
 			.luogusp-rst-paste .content-card-top .author{display:flex;}
 			@media (max-width:576px){.luogusp-rst-paste .content-card-top .author{flex-direction:column;}}
-			.luogusp-rst-paste .author-margin{margin-right:14px;font-size:14px;}
-			.luogusp-rst-paste .content-card-top time{font-size:14px;}
-			.luogusp-rst-paste .pubbadge{background:#e74c3c;color:#fff;border-radius:2px;padding:0 8px;font-size:12.25px;margin-left:.5em;}
-			.luogusp-rst-paste .content-card-top button{font-size:14px;color:#fff;background:#3498db;border:none;padding:1.75px 7px;border-radius:3px;cursor:pointer;}
-			.luogusp-rst-paste .content-card-top button:hover{background:#2f89c5;}
+			.luogusp-rst-paste .author-margin{margin-right:1em;}
+			.luogusp-rst-paste .pubbadge{display:inline-block;background:#e74c3c;color:#fff;border-radius:2px;padding:0 .5em;line-height:1.5;}
 			.luogusp-rst-paste .horizon{height:2px;background-color:#e8e8e8;border:none;margin:8px 0;}
+			.luogusp-rst-paste .code-card-top strong span{font-weight:700;}
+			.luogusp-rst-paste .copy-btn{font-size:.8em;float:right;padding:0 5px;color:#3498db;background:rgba(52,152,219,0);border:1px solid #3498db;border-radius:3px;cursor:pointer;}
+			.luogusp-rst-paste .code-card-top pre{margin:.5em 0;padding:.3em .5em;font-size:14px;font-family:monospace;background:#f8f8f8;border:1px solid #ddd;overflow:auto;}
+			.luogusp-rst-paste .code-card-top pre>div{white-space:pre;}
+			.luogusp-rst-paste .expand-tip{text-align:center;}
+			.luogusp-rst-paste .expand-tip>span{-webkit-user-select:none;user-select:none;cursor:pointer;color:rgba(0,0,0,.3);}
+			.luogusp-rst-paste .expand-tip>span:hover{color:inherit;}
+			.luogusp-rst-paste .expand-tip svg{width:1em;height:1em;fill:currentColor;vertical-align:-.125em;}
 			.luogusp-rst-paste .marked h1{font-size:2em;}
 			.luogusp-rst-paste .marked h2{font-size:1.5em;}
 			.luogusp-rst-paste .marked h3{font-size:1.17em;}
@@ -1987,22 +2003,33 @@
 			.luogusp-rst-paste .marked blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #e8e8e8;background:#fafafa;}
 			.luogusp-rst-paste .marked table{border-collapse:collapse;margin:.5em 0;}
 			.luogusp-rst-paste .marked th,.luogusp-rst-paste .marked td{border:1px solid #e8e8e8;padding:.3em .7em;}
-			.luogusp-rst-paste .marked code,.luogusp-rst-paste .marked pre{font-family:monospace;font-size:14px;background-color:#fafafa;border:1px solid #e8e8e8;border-radius:2px;}
+			.luogusp-rst-paste .marked code,.luogusp-rst-paste .marked pre{font-family:monospace;font-size:.875em;background-color:#fafafa;border:1px solid #e8e8e8;border-radius:2px;}
 			.luogusp-rst-paste .marked code{margin:0 .2em;padding:.1em .2em;white-space:nowrap;tab-size:4;}
-			.luogusp-rst-paste .marked pre{margin:0;padding:14px;overflow-y:auto;}
+			.luogusp-rst-paste .marked pre{margin:0;padding:1em;overflow-y:auto;}
 			.luogusp-rst-paste .marked pre>code{font-size:unset;margin:0;padding:0;white-space:pre;border:none;}
 			.luogusp-rst-paste .marked li code.hljs,.luogusp-rst-paste .marked p code.hljs{display:inline;}
-			.luogusp-rst-paste .lgfooter{position:relative;margin-top:1.3em;}
-			.luogusp-rst-paste .lgfooter .background{position:absolute;inset:0;background:#333;}
-			.luogusp-rst-paste .lgfooter .footer{position:relative;display:flex;align-items:flex-start;color:rgba(255,255,255,.9);font-size:14px;padding:14px;}
-			.luogusp-rst-paste .lgfooter .logo-img{width:41px;height:60px;margin-top:47px;}
-			.luogusp-rst-paste .lgfooter .slogan{font-size:18.2px;font-weight:700;margin:47px 0 0 9.1px;}
-			.luogusp-rst-paste .lgfooter .qr-img{width:59px;height:60px;margin:47px 0 0 70px;}
-			.luogusp-rst-paste .lgfooter .info{flex:1;text-align:right;margin:14px 0;}
-			.luogusp-rst-paste .lgfooter .info a{color:rgba(255,255,255,.75);margin-left:11px;}
-			.luogusp-rst-paste .lgfooter .info a:hover{color:#fff;}
+			.luogusp-rst-paste .lgfooter{position:relative;}
+			.luogusp-rst-paste .lgfooter .background{position:absolute;inset:0;background:#333;z-index:-1;}
+			.luogusp-rst-paste .lgfooter .footer{position:relative;display:flex;align-items:center;color:rgba(255,255,255,.9);font-size:.875em;padding:1em;}
+			.luogusp-rst-paste .lgfooter .footer a{color:rgba(255,255,255,.75);}
+			.luogusp-rst-paste .lgfooter .footer a:hover{color:#fff;}
+			.luogusp-rst-paste .lgfooter .logo-img{max-height:60px;}
+			.luogusp-rst-paste .lgfooter .slogan{margin-left:.5em;font-size:1.3em;line-height:1.5;font-weight:700;}
+			.luogusp-rst-paste .lgfooter .qr-img{margin-left:5em;max-height:60px;}
+			.luogusp-rst-paste .lgfooter .info{flex:1;text-align:right;}
+			.luogusp-rst-paste .lgfooter .info p{margin:1em 0;}
+			@media (max-width:576px){.luogusp-rst-paste .lgfooter .logo-img,.luogusp-rst-paste .lgfooter .qr-img,.luogusp-rst-paste .lgfooter .slogan{display:none;}.luogusp-rst-paste .lgfooter .info{text-align:center;}}
 		`;
     (document.head || document.documentElement).appendChild(style);
+    // 拦截页无宿主样式，KaTeX 公式需要自带 CSS（与 @require 的 katex 同版本同 CDN，无新增依赖源）
+    if (!document.getElementById("luogusp-rst-katex")) {
+      const link = document.createElement("link");
+      link.id = "luogusp-rst-katex";
+      link.rel = "stylesheet";
+      link.href =
+        "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
+      (document.head || document.documentElement).appendChild(link);
+    }
   }
 
   // 洛谷用户名色（未知色兜底灰）
@@ -2024,6 +2051,13 @@
     if (isNaN(d)) return "";
     const p = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  // 原生文章页 update-info 的「创建时间」带秒（banner 发布时间不带，勿混用）
+  function rstFmtTimeSec(v) {
+    const d = typeof v === "number" ? new Date(v * 1000) : new Date(v);
+    if (isNaN(d)) return "";
+    const p = (n) => String(n).padStart(2, "0");
+    return `${rstFmtTime(v)}:${p(d.getSeconds())}`;
   }
   // 相对时间（原生评论区的「N 个月前」格式）
   function rstRelTime(unixSec) {
@@ -2056,6 +2090,80 @@
   function rstAvatar(uid) {
     return `https://cdn.luogu.com.cn/upload/usericon/${uid}.png`;
   }
+  // 作者等用户数据一律走国内站同源接口（owner 要求：不吃保存站/国际站的用户数据；头像也全走 .cn CDN）。
+  // 接口失败（离线/风控）时由调用方回退保存站存档里的作者快照。
+  const rstUserCache = new Map();
+  async function rstCnUser(uid) {
+    if (!uid) return null;
+    if (rstUserCache.has(uid)) return rstUserCache.get(uid);
+    let user = null;
+    try {
+      const res = await fetch(`/user/${uid}?_contentOnly=1`);
+      const json = await res.json();
+      user = (json && json.currentData && json.currentData.user) || null;
+    } catch (e) {
+      /* 回退存档快照 */
+    }
+    rstUserCache.set(uid, user);
+    return user;
+  }
+  // ccfLevel 认证勾配色（洛谷通例：3~5 绿、6~7 蓝、8+ 金；<3 不显示）
+  function rstCcfColor(lv) {
+    if (!(lv >= 3)) return null;
+    return lv >= 8 ? "#ffc116" : lv >= 6 ? "#3498db" : "#52c41a";
+  }
+  // 徽章边框=底色加深一档（原生取主题色深一档，此处按 88% 亮度近似，1px 边框视觉等同）
+  function rstDarken(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (x) => Math.round(x * 0.88);
+    return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
+  }
+  // 原生 luogu-username 组件：名字（粗体+用户名色）+自定义徽章+获奖认证勾。
+  // 结构对照 www.luogu.com 实测：div.luogu-username > span>span>a + a>span(徽章) + a>svg(认证)。
+  function rstUsernameEl(user, uid, opts) {
+    const o = opts || {};
+    const wrap = document.createElement("div");
+    wrap.className = "luogu-username" + (o.cls ? ` ${o.cls}` : "");
+    const s1 = document.createElement("span");
+    const s2 = document.createElement("span");
+    const a = document.createElement("a");
+    a.className = "name";
+    a.textContent = (user && user.name) || `用户 ${uid || "?"}`;
+    const color = rstUserColor(user && user.color);
+    a.style.color = color;
+    a.style.fontWeight = "bold";
+    if (uid) {
+      a.href = `/user/${uid}`;
+      if (o.blank) a.target = "_blank";
+    }
+    s2.appendChild(a);
+    s1.appendChild(s2);
+    wrap.appendChild(s1);
+    if (user && user.badge) {
+      const ba = document.createElement("a");
+      ba.className = "user-badge";
+      ba.target = "_blank";
+      ba.rel = "noopener";
+      ba.href = "https://help.luogu.com.cn/manual/luogu/account/user-tag";
+      const bs = document.createElement("span");
+      bs.textContent = String(user.badge);
+      bs.style.backgroundColor = color;
+      bs.style.borderColor = rstDarken(color);
+      ba.appendChild(bs);
+      wrap.appendChild(ba);
+    }
+    const ccf = rstCcfColor(user && user.ccfLevel);
+    if (ccf) {
+      const ca = document.createElement("a");
+      ca.className = "ccf-check";
+      ca.target = "_blank";
+      ca.rel = "noopener";
+      ca.href = "https://help.luogu.com.cn/manual/luogu/account/award-certify";
+      ca.innerHTML = `<svg viewBox="${RST_BADGE_CHECK.vb}" aria-hidden="true"><path fill="${ccf}" d="${RST_BADGE_CHECK.secondary}"/><path fill="#fff" d="${RST_BADGE_CHECK.primary}"/></svg>`;
+      wrap.appendChild(ca);
+    }
+    return wrap;
+  }
 
   // 图标与素材：path 逐字抄自洛谷真实页面（勿改）。RST_ICONS=文章互动条；RST_COL=columba 顶栏/侧栏；RST_LFE=旧版左导航/头部。
   const RST_ICONS = {
@@ -2086,21 +2194,34 @@
     bell: { vb: "0 0 448 512", d: "M224 0c-13.3 0-24 10.7-24 24l0 9.7C118.6 45.3 56 115.4 56 200l0 14.5c0 37.7-10 74.7-29 107.3L5.1 359.2C1.8 365 0 371.5 0 378.2 0 399.1 16.9 416 37.8 416l372.4 0c20.9 0 37.8-16.9 37.8-37.8 0-6.7-1.8-13.3-5.1-19L421 321.7c-19-32.6-29-69.6-29-107.3l0-14.5c0-84.6-62.6-154.7-144-166.3l0-9.7c0-13.3-10.7-24-24-24zM392.4 368l-336.9 0 12.9-22.1C91.7 306 104 260.6 104 214.5l0-14.5c0-66.3 53.7-120 120-120s120 53.7 120 120l0 14.5c0 46.2 12.3 91.5 35.5 131.4L392.4 368zM156.1 464c9.9 28 36.6 48 67.9 48s58-20 67.9-48l-135.8 0z" },
     pen: { vb: "0 0 512 512", d: "M441.3 59.1L453.2 71c9.4 9.4 9.4 24.6 0 33.9l-21.1 21.1-45.7-45.7 20.8-21.1c9.4-9.5 24.6-9.5 34.1-.1zM232 236.8L352.7 114.5 398.2 160 276.7 281.6c-3.3 3.3-7.5 5.6-12 6.5l-49.5 10.4 10.4-49.7c.9-4.5 3.2-8.7 6.4-11.9zM373.1 25.5L197.8 203.1c-9.7 9.8-16.4 22.3-19.2 35.8l-18 85.7c-1.7 7.9 .8 16.2 6.5 21.9s14 8.2 21.9 6.5l85.5-17.9c13.7-2.9 26.2-9.7 36.1-19.6L487.2 138.9c28.1-28.1 28.1-73.7 0-101.8L475.3 25.2C447-3.1 401.2-2.9 373.1 25.5zM307 13.2C290.6 9.8 273.5 8 256.1 8 119.2 8 8.1 119 8.1 256s111 248 248 248c13.3 0 24-10.7 24-24s-10.7-24-24-24c-110.5 0-200-89.5-200-200s89.5-200 200-200c2.9 0 5.7 .1 8.5 .2l42.3-43zM456 249.3c.1 2.2 .1 4.4 .1 6.7 0 57.4-46.6 104-104 104-13.3 0-24 10.7-24 24s10.7 24 24 24c83.9 0 152-68.1 152-152 0-17.1-1.7-33.7-5-49.8L456 249.3z" },
     sortArrow: { vb: "0 0 384 512", d: "M209.5 369c-9.4 9.4-24.6 9.4-33.9 0L15.5 209c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l143 143 143-143c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9l-160 160z" },
+    sidebar: { vb: "0 0 512 512", d: "M448 448l-192 0 0-384 192 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64zM64 64l144 0 0 384-144 0c-35.3 0-64-28.7-64-64L0 128C0 92.7 28.7 64 64 64zm8 64c-13.3 0-24 10.7-24 24s10.7 24 24 24l64 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-64 0zM48 240c0 13.3 10.7 24 24 24l64 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-64 0c-13.3 0-24 10.7-24 24zm24 64c-13.3 0-24 10.7-24 24s10.7 24 24 24l64 0c13.3 0 24-10.7 24-24s-10.7-24-24-24l-64 0z" },
+  };
+  // 获奖认证勾（fa-badge-check 双色：底=按 ccfLevel 配色，勾=白）
+  const RST_BADGE_CHECK = {
+    vb: "0 0 512 512",
+    secondary:
+      "M0 256C0 292.8 20.7 324.8 51.1 340.9 41 373.8 49 411 75 437s63.3 34 96.1 23.9C187.2 491.3 219.2 512 256 512s68.8-20.7 84.9-51.1C373.8 471 411 463 437 437s34-63.3 23.9-96.1C491.3 324.8 512 292.8 512 256s-20.7-68.8-51.1-84.9C471 138.2 463 101 437 75s-63.3-34-96.1-23.9C324.8 20.7 292.8 0 256 0s-68.8 20.7-84.9 51.1C138.2 41 101 49 75 75s-34 63.3-23.9 96.1C20.7 187.2 0 219.2 0 256zm152.3 41.6c-9.2-9.5-9-24.7 .6-33.9 9.5-9.2 24.7-8.9 33.9 .6l35.8 37 106.1-145.8c7.8-10.7 22.8-13.1 33.5-5.3 10.7 7.8 13.1 22.8 5.3 33.5L244.7 352.7c-4.2 5.7-10.7 9.4-17.8 9.8-7.1 .5-14-2.2-18.9-7.3l-55.7-57.6z",
+    primary:
+      "M328.7 155.5c7.8-10.7 22.8-13.1 33.5-5.3 10.7 7.8 13.1 22.8 5.3 33.5L244.7 352.7c-4.2 5.7-10.7 9.4-17.8 9.8-7.1 .5-14-2.2-18.9-7.3l-55.7-57.6c-9.2-9.5-9-24.7 .6-33.9 9.5-9.2 24.7-8.9 33.9 .6l35.8 37 106.1-145.8z",
   };
   const RST_LFE = {
     popup: { vb: "0 0 512 512", d: "M470.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L402.7 256 265.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160zm-352 160l160-160c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L210.7 256 73.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0z" },
     tiku: { vb: "0 0 448 512", d: "M96 0C43 0 0 43 0 96V416c0 53 43 96 96 96H384h32c17.7 0 32-14.3 32-32s-14.3-32-32-32V384c17.7 0 32-14.3 32-32V32c0-17.7-14.3-32-32-32H384 96zm0 384H352v64H96c-17.7 0-32-14.3-32-32s14.3-32 32-32zm32-240c0-8.8 7.2-16 16-16H336c8.8 0 16 7.2 16 16s-7.2 16-16 16H144c-8.8 0-16-7.2-16-16zm16 48H336c8.8 0 16 7.2 16 16s-7.2 16-16 16H144c-8.8 0-16-7.2-16-16s7.2-16 16-16z" },
     tidan: { vb: "0 0 384 512", d: "M192 0c-41.8 0-77.4 26.7-90.5 64H64C28.7 64 0 92.7 0 128V448c0 35.3 28.7 64 64 64H320c35.3 0 64-28.7 64-64V128c0-35.3-28.7-64-64-64H282.5C269.4 26.7 233.8 0 192 0zm0 64a32 32 0 1 1 0 64 32 32 0 1 1 0-64zm-4.7 132.7c6.2 6.2 6.2 16.4 0 22.6l-64 64c-6.2 6.2-16.4 6.2-22.6 0l-32-32c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0L112 249.4l52.7-52.7c6.2-6.2 16.4-6.2 22.6 0zM192 272c0-8.8 7.2-16 16-16h96c8.8 0 16 7.2 16 16s-7.2 16-16 16H208c-8.8 0-16-7.2-16-16zm-16 80H304c8.8 0 16 7.2 16 16s-7.2 16-16 16H176c-8.8 0-16-7.2-16-16s7.2-16 16-16zM72 368a24 24 0 1 1 48 0 24 24 0 1 1 -48 0z" },
     bisai: { vb: "0 0 640 512", d: "M576 0c17.7 0 32 14.3 32 32V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V32c0-17.7 14.3-32 32-32zM448 96c17.7 0 32 14.3 32 32V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V128c0-17.7 14.3-32 32-32zM352 224V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V224c0-17.7 14.3-32 32-32s32 14.3 32 32zM192 288c17.7 0 32 14.3 32 32V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V320c0-17.7 14.3-32 32-32zM96 416v64c0 17.7-14.3 32-32 32s-32-14.3-32-32V416c0-17.7 14.3-32 32-32s32 14.3 32 32z" },
-    jilu: { vb: "0 0 576 512", d: "M304 240V16.6c0-9 7-16.6 16-16.6C443.7 0 544 100.3 544 224c0 9-7.6 16-16.6 16H304zM32 272C32 150.7 122.1 50.3 239 34.3c9.2-1.3 17 6.1 17 15.4V288L412.5 444.5c6.7 6.7 6.2 17.7-1.5 23.1C371.8 495.6 323.8 512 272 512C139.5 512 32 404.6 32 272zm526.4 16c9.3 0 16.6 7.8 15.4 17c-7.7 55.9-34.6 105.6-73.9 142.3c-6 5.6-15.4 5.2-21.2-.7L320 288H558.4z" },
     taolun: { vb: "0 0 640 512", d: "M208 352c114.9 0 208-78.8 208-176S322.9 0 208 0S0 78.8 0 176c0 38.6 14.7 74.3 39.6 103.4c-3.5 9.4-8.7 17.7-14.2 24.7c-4.8 6.2-9.7 11-13.3 14.3c-1.8 1.6-3.3 2.9-4.3 3.7c-.5 .4-.9 .7-1.1 .8l-.2 .2 0 0 0 0C1 327.2-1.4 334.4 .8 340.9S9.1 352 16 352c21.8 0 43.8-5.6 62.1-12.5c9.2-3.5 17.8-7.4 25.3-11.4C134.1 343.3 169.8 352 208 352zM448 176c0 112.3-99.1 196.9-216.5 207C255.8 457.4 336.4 512 432 512c38.2 0 73.9-8.7 104.7-23.9c7.5 4 16 7.9 25.2 11.4c18.3 6.9 40.3 12.5 62.1 12.5c6.9 0 13.1-4.5 15.2-11.1c2.1-6.6-.2-13.8-5.8-17.9l0 0 0 0-.2-.2c-.2-.2-.6-.4-1.1-.8c-1-.8-2.5-2-4.3-3.7c-3.6-3.3-8.5-8.1-13.3-14.3c-5.5-7-10.7-15.4-14.2-24.7c24.9-29 39.6-64.7 39.6-103.4c0-92.8-84.9-168.9-192.6-175.5c.4 5.1 .6 10.3 .6 15.5z" },
     zhuanlan: { vb: "0 0 512 512", d: "M96 96c0-35.3 28.7-64 64-64H448c35.3 0 64 28.7 64 64V416c0 35.3-28.7 64-64 64H80c-44.2 0-80-35.8-80-80V128c0-17.7 14.3-32 32-32s32 14.3 32 32V400c0 8.8 7.2 16 16 16s16-7.2 16-16V96zm64 24v80c0 13.3 10.7 24 24 24H296c13.3 0 24-10.7 24-24V120c0-13.3-10.7-24-24-24H184c-13.3 0-24 10.7-24 24zm208-8c0 8.8 7.2 16 16 16h48c8.8 0 16-7.2 16-16s-7.2-16-16-16H384c-8.8 0-16 7.2-16 16zm0 96c0 8.8 7.2 16 16 16h48c8.8 0 16-7.2 16-16s-7.2-16-16-16H384c-8.8 0-16 7.2-16 16zM160 304c0 8.8 7.2 16 16 16H432c8.8 0 16-7.2 16-16s-7.2-16-16-16H176c-8.8 0-16 7.2-16 16zm0 96c0 8.8 7.2 16 16 16H432c8.8 0 16-7.2 16-16s-7.2-16-16-16H176c-8.8 0-16 7.2-16 16z" },
     search: { vb: "0 0 512 512", d: "M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z" },
     mail: { vb: "0 0 512 512", d: "M48 64C21.5 64 0 85.5 0 112c0 15.1 7.1 29.3 19.2 38.4L236.8 313.6c11.4 8.5 27 8.5 38.4 0L492.8 150.4c12.1-9.1 19.2-23.3 19.2-38.4c0-26.5-21.5-48-48-48H48zM0 176V384c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V176L294.4 339.2c-22.8 17.1-54 17.1-76.8 0L0 176z" },
     bell: { vb: "0 0 448 512", d: "M224 0c-17.7 0-32 14.3-32 32V51.2C119 66 64 130.6 64 208v18.8c0 47-17.3 92.4-48.5 127.6l-7.4 8.3c-8.4 9.4-10.4 22.9-5.3 34.4S19.4 416 32 416H416c12.6 0 24-7.4 29.2-18.9s3.1-25-5.3-34.4l-7.4-8.3C401.3 319.2 384 273.9 384 226.8V208c0-77.4-55-142-128-156.8V32c0-17.7-14.3-32-32-32zm45.3 493.3c12-12 18.7-28.3 18.7-45.3H224 160c0 17 6.7 33.3 18.7 45.3s28.3 18.7 45.3 18.7s33.3-6.7 45.3-18.7z" },
+    chevronDown: { vb: "0 0 512 512", d: "M267.3 395.3c-6.2 6.2-16.4 6.2-22.6 0l-192-192c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0L256 361.4 436.7 180.7c6.2-6.2 16.4-6.2 22.6 0s6.2 16.4 0 22.6l-192 192z" },
+    chevronUp: { vb: "0 0 512 512", d: "M244.7 116.7c6.2-6.2 16.4-6.2 22.6 0l192 192c6.2 6.2 6.2 16.4 0 22.6s-16.4 6.2-22.6 0L256 150.6 75.3 331.3c-6.2 6.2-16.4 6.2-22.6 0s-6.2-16.4 0-22.6l192-192z" },
     logoUrl: "https://fecdn.luogu.com.cn/luogu/logo-single.png",
     qrUrl: "https://fecdn.luogu.com.cn/luogu/wechat_qr.png",
   };
+  // columba 顶栏彩色 logo（白顶栏用彩色版，非旧深色主题的白色蒙版）
+  const RST_COL_LOGO =
+    "https://fecdn.luogu.com.cn/columba/static.325908fec383795b.logo-single-color.svg";
   function rstIconSvg(icon) {
     return `<svg viewBox="${icon.vb}" aria-hidden="true"><path d="${icon.d}"/></svg>`;
   }
@@ -2120,15 +2241,6 @@
       rstViewerCache = null;
     }
     return rstViewerCache;
-  }
-  function rstFillViewerAvatar() {
-    rstViewer().then((v) => {
-      if (!v) return;
-      document.querySelectorAll(".luogusp-rst-viewer").forEach((img) => {
-        img.src = rstAvatar(v.uid);
-        img.style.display = "";
-      });
-    });
   }
 
   // 加载动效覆盖层：检测命中后立即出现（盖住拦截页），渲染完成随 body 重写消失
@@ -2163,106 +2275,162 @@
       String(reason);
   }
 
-  // 通用收尾：作者名/头像/正文/申请更新按钮
-  function rstFillCommon(info, data) {
-    const author = data.author || {};
-    const uname = document.querySelector(".luogusp-rst-uname");
-    if (uname) {
-      uname.textContent = author.name || `用户 ${data.authorId || "?"}`;
-      uname.style.color = rstUserColor(author.color);
-      uname.style.fontWeight = "700";
-      const uid = data.authorId || author.id;
-      if (uid) uname.href = `/user/${uid}`;
-    }
-    const avatar = document.querySelector(".luogusp-rst-avatar");
-    if (avatar) avatar.src = rstAvatar(data.authorId || author.id || 0);
-    rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
+  // 通用收尾：申请更新链接接线（作者区/头像由各页面构建时直填）
+  function rstFillCommon(info) {
     const refresh = document.querySelector(".luogusp-rst-refresh");
     if (refresh)
       refresh.addEventListener("click", (e) => {
         e.preventDefault();
         rstManualRefresh(info);
       });
-    rstFillViewerAvatar();
   }
-  function rstColSidebarHtml() {
+  // columba 侧栏（钉栏 bar / 抽屉 drawer 双模式共用一套 DOM，换类切换；条目=登录态实测清单，
+  // 登录时多一项「评测记录」。更多功能/相关链接两组带 on-expand（钉栏未 hover 时隐藏）。
+  function rstColSidebarHtml(viewer) {
     const g1 = [
-      ["/", RST_COL.home],
-      ["/problem/list", RST_COL.tiku],
-      ["https://class.luogu.com.cn", RST_COL.wangxiao],
-      ["/training/list", RST_COL.tidan],
-      ["/contest/list", RST_COL.bisai],
-      ["/record/list", RST_COL.jilu],
+      ["/", RST_COL.home, "主页"],
+      ["/problem/list", RST_COL.tiku, "题库"],
+      ["https://class.luogu.com.cn", RST_COL.wangxiao, "网校"],
+      ["/training/list", RST_COL.tidan, "训练题单"],
+      ["/contest/list", RST_COL.bisai, "比赛"],
     ];
+    if (viewer)
+      g1.push([`/record/list?user=${viewer.uid}`, RST_COL.jilu, "评测记录"]);
     const g2 = [
-      ["/discuss", RST_COL.taolun],
-      ["/article", RST_COL.zhuanlan],
+      ["/discuss", RST_COL.taolun, "讨论区"],
+      ["/article", RST_COL.zhuanlan, "文章广场"],
     ];
-    const li = ([href, ic]) =>
-      `<li><a href="${href}">${rstIconSvg(ic)}</a></li>`;
-    return `<nav class="sidebar"><ul>${g1.map(li).join("")}</ul><ul style="margin-top:36px;">${g2.map(li).join("")}</ul></nav>`;
+    const more = [
+      ["/image", "图片上传"],
+      ["/paste", "云剪贴板"],
+      ["/theme/list", "主题商店"],
+      ["/ranking", "咕值排名"],
+      ["/ranking/elo", "等级分排名"],
+      ["https://ti.luogu.com.cn/", "洛谷有题"],
+      ["/ticket", "工单/反馈"],
+    ];
+    const links = [
+      ["https://help.luogu.com.cn", "帮助中心"],
+      ["https://help.luogu.com.cn/contact-us", "联系我们"],
+      ["https://help.luogu.com.cn/rules/community/", "社区规则"],
+      ["/judgement", "陶片放逐"],
+      ["/judgement/admins", "管理名单"],
+    ];
+    const iconLi = ([href, ic, title]) =>
+      `<li><a href="${href}"><span class="icon">${rstIconSvg(ic)}</span><span class="title">${title}</span></a></li>`;
+    const minorLi = ([href, title]) =>
+      `<li><a href="${href}"><span class="title minor">${title}</span></a></li>`;
+    const group = (inner, title, expand) =>
+      `<div class="nav-group${expand ? " on-expand" : ""}">${title ? `<span class="group-title"><span class="title">${title}</span></span>` : ""}<ul>${inner}</ul></div>`;
+    return (
+      `<nav class="lside nav-scrollbar">` +
+      group(g1.map(iconLi).join(""), "", false) +
+      group(g2.map(iconLi).join(""), "", false) +
+      group(more.map(minorLi).join(""), "更多功能", true) +
+      group(links.map(minorLi).join(""), "相关链接", true) +
+      `</nav>`
+    );
   }
-  // 文章页：1:1 复刻 columba（深蓝顶栏+64px 侧栏+banner+无卡正文+左浮互动条+评论区+页脚）
-  function rstBuildArticlePage(info, data) {
+  // 侧栏钉住偏好（原生偏好存服务端读不到；默认钉住=登录用户常态，切换后本地持久化）
+  const RST_PIN_KEY = `${STORAGE_PREFIX}rstSidebarPinned`;
+  function rstSidebarPinned() {
+    try {
+      return localStorage.getItem(RST_PIN_KEY) !== "0";
+    } catch (e) {
+      return true;
+    }
+  }
+  function rstApplySidebarMode(pinned, drawerShown) {
+    const nav = document.querySelector(".luogusp-rst-article nav.lside");
+    const mc = document.querySelector(".luogusp-rst-article .main-container");
+    const toggle = document.querySelector(".luogusp-rst-article .side-toggle");
+    if (!nav || !mc) return;
+    nav.className = pinned
+      ? "sidebar lside bar hide nav-scrollbar"
+      : `lside drawer ${drawerShown ? "show" : "hide"} nav-scrollbar`;
+    mc.classList.toggle("lside-nav", pinned);
+    if (toggle) toggle.classList.toggle("active", pinned || drawerShown);
+  }
+  // 互动按钮：计数>0 显示数字，否则显示文字（原生行为）；存档只读，点按无操作
+  function rstActionButtonsHtml(data) {
+    const num = (n, label) => (n > 0 ? String(n) : label);
+    return `
+			<div class="button-2line" title="收藏（存档只读，请前往国际站原文）">${rstIconSvg(RST_ICONS.star)}<span class="text">${num(Number(data.favorCount) || 0, "收藏")}</span></div>
+			<div class="button-2line" title="点赞（存档只读，请前往国际站原文）">${rstIconSvg(RST_ICONS.thumb)}<span class="text">${num(Number(data.upvote) || 0, "点赞")}</span></div>
+			<div class="button-2line" title="不推荐（存档只读，请前往国际站原文）">${rstIconSvg(RST_ICONS.frown)}<span class="text">不推荐</span></div>`;
+  }
+  // 文章页：1:1 复刻 columba 现行版式（白顶栏+侧栏双模式+banner+白色通栏正文带+内联/左浮互动条+TOC+评论+页脚）
+  function rstBuildArticlePage(info, data, viewer, author) {
     document.title = `${data.title || "文章"} - 洛谷专栏`;
     document.documentElement.scrollTop = 0;
     document.body.className =
       "luogusp-rstpage luogusp-rst-article luogusp-rst-fadein";
-    document.body.innerHTML = `
-			<div class="top-bar">
-				<div class="left"><a class="logo-link" href="/"><span class="logo-mask"></span></a>
-					<div class="breadcrumb"><a href="/article">文章广场</a><span>/</span><a class="luogusp-rst-ccat" href="javascript:void 0"></a></div>
-				</div>
-				<div class="right"><div class="user-nav">
-					<a class="link" href="/search" title="搜索">${rstIconSvg(RST_COL.search)}</a>
+    const userNav = viewer
+      ? `<div class="nav-search"><div class="search-wrap"><input type="text" placeholder="输入题号搜索题目"></div><a class="link luogusp-rst-searchbtn" href="javascript:void 0" title="搜索">${rstIconSvg(RST_COL.search)}</a></div>
 					<a class="link" href="/chat" title="私信">${rstIconSvg(RST_COL.mail)}</a>
 					<a class="link" href="/user/notification" title="提醒">${rstIconSvg(RST_COL.bell)}</a>
-					<a class="link" href="/article/mine" title="我的专栏">${rstIconSvg(RST_COL.pen)}</a>
-					<img class="avatar luogusp-rst-viewer" style="display:none" alt="">
-				</div></div>
+					<span><a class="link" href="/article/mine" title="我的专栏">${rstIconSvg(RST_COL.pen)}</a></span>
+					<span class="avatar"><a href="/user/${viewer.uid}"><img src="${rstAvatar(viewer.uid)}" alt="User Avatar"></a></span>`
+      : `<a class="text" href="/auth/login">登录</a>
+					<a class="text" href="/auth/register">注册</a>
+					<span class="avatar"><img src="${rstAvatar(1)}" alt="User Avatar"></span>`;
+    const catText = data.category != null ? rstCategoryText(data.category) : "";
+    // 面包屑：分类 1（个人记录）原生不显示分类项
+    const crumbCat =
+      data.category != null && Number(data.category) !== 1
+        ? `<span>/</span><a href="/article?category=${Number(data.category)}"></a>`
+        : "";
+    document.body.innerHTML = `
+			<div class="top-bar">
+				<div class="left">
+					<div class="side-toggle">${rstIconSvg(RST_COL.sidebar)}</div>
+					<a class="logo-link" href="/"><img class="header-logo mini" src="${RST_COL_LOGO}" alt=""></a>
+					<div class="breadcrumb"><a href="/article">文章广场</a>${crumbCat}</div>
+				</div>
+				<div class="right"><div class="user-nav">${userNav}</div></div>
 			</div>
-			${rstColSidebarHtml()}
+			${rstColSidebarHtml(viewer)}
 			<div class="main-container"><main>
 			<div class="article-banner columba-content-wrap wrapper"><div class="banner-content">
 				<h1 class="title"></h1>
 				<div class="meta">
-					<div class="author"><img class="avatar luogusp-rst-avatar" alt=""><div class="user"><div class="label">作者</div><div><a class="luogusp-rst-uname" rel="noopener noreferrer"></a></div></div></div>
+					<div class="author"><img class="avatar luogusp-rst-avatar" alt=""><div class="user"><div class="label">作者</div><div class="luogusp-rst-uname-slot"></div></div></div>
 					<div class="metas">
 						<div><div class="label">发布时间</div><time class="luogusp-rst-ctime"></time></div>
-						<div><div class="label">分类</div><div><span class="luogusp-rst-ccat2"></span></div></div>
+						<div><div class="label">分类</div><div><span class="luogusp-rst-ccat"></span></div></div>
 					</div>
 				</div>
 			</div></div>
-			<div class="columba-content-wrap wrapper" style="position:relative">
-				<div class="article-content">
-					<div class="lfe-marked-wrap"><div class="lfe-marked luogusp-rst-md"></div></div>
-					<div class="update-info lfe-caption"><span class="luogusp-rst-uinfo"></span><span> · 存档更新于 ${rstFmtTime(data.updatedAt)} · <a class="luogusp-rst-refresh" href="javascript:void 0">申请更新</a></span><span class="luogusp-rst-status"></span></div>
-					<div class="actions left-mode">
-						<div class="button-2line" title="收藏（仅国际站可用）">${rstIconSvg(RST_ICONS.star)}<span class="text">-</span></div>
-						<div class="button-2line" title="点赞（仅国际站可用）">${rstIconSvg(RST_ICONS.thumb)}<span class="text">-</span></div>
-						<div class="button-2line" title="不推荐（仅国际站可用）">${rstIconSvg(RST_ICONS.frown)}<span class="text">不推荐</span></div>
-					</div>
-				</div>
+			<div class="content-band"><div class="article-content columba-content-wrap wrapper">
+				<div class="lfe-marked-wrap"><div class="lfe-marked luogusp-rst-md"></div></div>
+				<div class="update-info lfe-caption"><span class="luogusp-rst-uinfo"></span> &nbsp;&nbsp; <span>创建时间：<time class="luogusp-rst-ctime2"></time></span> &nbsp;&nbsp; <span>存档于 ${rstFmtTime(data.updatedAt)} · <a class="luogusp-rst-refresh" href="javascript:void 0">申请更新</a> · <a href="${info.origUrl}" rel="noopener noreferrer">国际站原文</a></span><span class="luogusp-rst-status"></span></div>
+				<div class="actions left-mode hidden">${rstActionButtonsHtml(data)}</div>
+				<div class="actions luogusp-rst-actions-inline">${rstActionButtonsHtml(data)}</div>
 				<div class="toc-wrapper"></div>
-			</div>
+			</div></div>
 			<div class="article-comment columba-content-wrap wrapper">
 				<h3 class="lfe-h3 section-title">评论区</h3>
 				<h4 class="lfe-h4">发表评论</h4>
 				<div class="l-card commentbox">
-					<textarea disabled placeholder="评论功能仅国际站可用"></textarea>
-					<p><button type="button" disabled title="仅国际站可用">发表</button></p>
+					<textarea placeholder="${viewer ? "发表一条友善的评论吧！" : ""}" title="存档页仅展示评论，发表请前往国际站原文"></textarea>
+					<p>${viewer ? '<button type="button" class="solid" title="存档页仅展示评论，发表请前往国际站原文">发表</button>' : '<button type="button" class="need-login" disabled>请先登录</button>'}</p>
 				</div>
 				<div class="comment-filter-line">
 					<span class="luogusp-rst-ccount"></span>
-					<span><a class="lfe-caption luogusp-rst-crefresh" href="javascript:void 0" style="margin-right:12px;">更新评论</a><span class="sortbox">默认排序${rstIconSvg(RST_COL.sortArrow)}</span></span>
+					<span><a class="lfe-caption luogusp-rst-crefresh" href="javascript:void 0" style="margin-right:12px;">更新评论</a></span>
+					<div class="combo-wrapper">
+						<div class="combo-text luogusp-rst-sorttext">默认排序</div>
+						<span class="arrow">${rstIconSvg(RST_COL.sortArrow)}</span>
+						<div class="combo-dropdown"><ul><li data-sort="default">默认排序</li><li data-sort="newest">最新评论</li></ul></div>
+					</div>
 				</div>
 				<div class="list luogusp-rst-clist"><p class="luogusp-rst-note">评论加载中…</p></div>
+				<p class="loadmore luogusp-rst-more" style="display:none"><a href="javascript:void 0">加载更多</a></p>
 			</div>
-			<p class="luogusp-rst-note">内容来自洛谷保存站存档，点赞/收藏/评论互动仅国际站可用 · <a href="${info.origUrl}" rel="noopener noreferrer">查看国际站原文</a></p>
 			</main>
 			<footer>
-				<p><a href="https://help.luogu.com.cn/about">关于洛谷</a><a href="https://help.luogu.com.cn">帮助中心</a><a href="https://help.luogu.com.cn/rules/user-agreement">用户协议</a><a href="https://help.luogu.com.cn/contact-us">联系我们</a><a href="/discuss/124">小黑屋</a><a href="/judgement">陶片放逐</a><a href="https://help.luogu.com.cn/rules/community/">社区规则</a></p>
-				<p class="copyright">洛谷 · <a href="https://beian.miit.gov.cn/">沪ICP备18008322号</a></p>
+				<p><a target="_blank" href="https://help.luogu.com.cn/about-us">关于洛谷</a> · <a target="_blank" href="https://help.luogu.com.cn/">帮助中心</a> · <a target="_blank" href="https://help.luogu.com.cn/ula/luogu">用户协议</a> · <a target="_blank" href="https://help.luogu.com.cn/contact-us">联系我们</a> · <a target="_blank" href="/discuss?forum=miaomiaowu">小黑屋</a> · <a target="_blank" href="/judgement">陶片放逐</a> · <a target="_blank" href="https://help.luogu.com.cn/rules/community/">社区规则</a></p>
+				<p class="copyright">在洛谷，享受 Coding 的欢乐 · © 2013-${new Date().getFullYear()} 洛谷. All rights reserved.</p>
 			</footer>
 			</div>`;
     document.querySelector(".banner-content .title").textContent =
@@ -2270,14 +2438,116 @@
     document.querySelector(".luogusp-rst-ctime").textContent = rstFmtTime(
       data.createdAt,
     );
-    const catText =
-      data.category != null ? rstCategoryText(data.category) : "—";
-    document.querySelector(".luogusp-rst-ccat").textContent = catText;
-    document.querySelector(".luogusp-rst-ccat2").textContent = catText;
+    const t2 = document.querySelector(".luogusp-rst-ctime2");
+    t2.textContent = rstFmtTimeSec(data.createdAt);
+    t2.title = rstFmtTimeSec(data.createdAt);
+    document.querySelector(".luogusp-rst-ccat").textContent = catText || "—";
+    const crumbCatA = document.querySelector(
+      '.breadcrumb a[href^="/article?category="]',
+    );
+    if (crumbCatA) crumbCatA.textContent = catText;
+    const user = author || data.author || {};
+    const uid = data.authorId || user.id || user.uid || 0;
     document.querySelector(".luogusp-rst-uinfo").textContent =
-      `作者：${(data.author && data.author.name) || data.authorId || "?"}`;
-    rstFillCommon(info, data);
-    rstBuildToc();
+      `作者：${user.name || uid || "?"}`;
+    document
+      .querySelector(".luogusp-rst-uname-slot")
+      .appendChild(rstUsernameEl(user, uid, { cls: "user-name" }));
+    document.querySelector(".luogusp-rst-avatar").src = rstAvatar(uid);
+    rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
+    rstBuildToc(data.title);
+    rstFillCommon(info);
+    rstWireArticle();
+  }
+  // 文章页交互：侧栏钉住/抽屉、顶栏搜索展开、滚动出现左浮互动条、评论排序下拉
+  function rstWireArticle() {
+    rstApplySidebarMode(rstSidebarPinned(), false);
+    let drawerShown = false;
+    const toggle = document.querySelector(".side-toggle");
+    if (toggle)
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const nav = document.querySelector("nav.lside");
+        if (!nav) return;
+        if (nav.classList.contains("bar") || nav.classList.contains("show")) {
+          // 已钉住/抽屉开着 → 收起并记住不钉
+          try {
+            localStorage.setItem(RST_PIN_KEY, "0");
+          } catch (err) {
+            /* 无痕模式等：仅本页生效 */
+          }
+          drawerShown = false;
+          rstApplySidebarMode(false, false);
+        } else {
+          // 原生行为：打开抽屉并记住钉住（下次进入即钉栏）
+          try {
+            localStorage.setItem(RST_PIN_KEY, "1");
+          } catch (err) {
+            /* 同上 */
+          }
+          drawerShown = true;
+          rstApplySidebarMode(false, true);
+        }
+      });
+    document.addEventListener("click", (e) => {
+      if (!drawerShown) return;
+      const nav = document.querySelector("nav.lside");
+      if (nav && !nav.contains(e.target)) {
+        drawerShown = false;
+        rstApplySidebarMode(false, false);
+      }
+    });
+    rstWireSearch(".nav-search .search-wrap");
+    // 左浮互动条：内联互动条滚出视口后出现（原生行为，IntersectionObserver 驱动）
+    const inline = document.querySelector(".luogusp-rst-actions-inline");
+    const leftMode = document.querySelector(".actions.left-mode");
+    if (inline && leftMode && typeof IntersectionObserver === "function") {
+      new IntersectionObserver((entries) => {
+        for (const en of entries)
+          leftMode.classList.toggle("hidden", en.isIntersecting);
+      }).observe(inline);
+    }
+    // 排序下拉（默认排序=存档序 / 最新评论=时间倒序）
+    const combo = document.querySelector(".combo-wrapper");
+    if (combo) {
+      const dd = combo.querySelector(".combo-dropdown");
+      combo.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const li = e.target.closest("li[data-sort]");
+        if (li) {
+          rstCommentSort = li.dataset.sort;
+          combo.querySelector(".luogusp-rst-sorttext").textContent =
+            li.textContent;
+          dd.classList.remove("show");
+          rstRenderCommentPage(true);
+          return;
+        }
+        dd.classList.toggle("show");
+      });
+      document.addEventListener("click", () => dd.classList.remove("show"));
+    }
+  }
+  // 顶栏/头部搜索框展开（原生跳题目搜索）
+  function rstWireSearch(wrapSel) {
+    const btn = document.querySelector(".luogusp-rst-searchbtn");
+    const wrap = document.querySelector(wrapSel);
+    if (!btn || !wrap) return;
+    const inp = wrap.querySelector("input");
+    const go = () => {
+      const kw = inp.value.trim();
+      if (kw)
+        location.href = `/problem/list?keyword=${encodeURIComponent(kw)}`;
+    };
+    btn.addEventListener("click", () => {
+      if (!wrap.classList.contains("show")) {
+        wrap.classList.add("show");
+        inp.focus();
+      } else if (inp.value.trim()) go();
+      else wrap.classList.remove("show");
+    });
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") go();
+    });
   }
   // 剪贴板页：1:1 复刻旧版 lfe（59px 左导航+深色头部+user-nav+card+页脚）
   function rstBuildPastePage(info, data) {
