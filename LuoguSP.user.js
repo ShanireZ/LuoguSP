@@ -1935,10 +1935,118 @@
     document.body.appendChild(toc);
   }
 
+  function rstQuery(info) {
+    return saverGet(`/${info.type}/query/${info.id}`);
+  }
+  function rstTriggerSave(info) {
+    return saverPost(`/workflow/create/template/${info.type}-save-pipeline`, {
+      targetId: info.id,
+    });
+  }
+  // 就地刷新正文（保滚动位置，不整页重建）
+  function rstApplyFresh(info, data) {
+    rstRenderMd(document.querySelector(".luogusp-rst-md"), data.content);
+    const toc = document.querySelector(".luogusp-rst-toc");
+    if (toc) toc.remove();
+    if (info.type === "article") rstBuildToc();
+    rstSetStatus(`已更新（存档时间 ${rstFmtTime(data.updatedAt)}）`, true);
+  }
+  async function rstPollFresh(info, oldHash, times, gapMs) {
+    for (let i = 0; i < times; i++) {
+      await sleep(gapMs);
+      let q;
+      try {
+        q = await rstQuery(info);
+      } catch (e) {
+        continue; // 网络抖动，下轮再试
+      }
+      if (q && q.code === 200 && q.data && q.data.contentHash !== oldHash)
+        return q.data;
+    }
+    return null;
+  }
+  async function rstManualRefresh(info) {
+    rstSetStatus("正在申请保存站更新…");
+    try {
+      await rstTriggerSave(info);
+      const cur = await rstQuery(info);
+      const fresh = await rstPollFresh(
+        info,
+        cur && cur.data ? cur.data.contentHash : "",
+        10,
+        3000,
+      );
+      if (fresh) rstApplyFresh(info, fresh);
+      else rstSetStatus("存档已是最新（或更新未完成）");
+    } catch (e) {
+      console.error("LuoguSP restricted refresh:", e);
+      rstSetStatus("更新请求失败，请稍后再试");
+    }
+  }
   async function rstRun() {
     const info = restrictedPageInfo();
     if (!info) return;
-    console.log("LuoguSP restricted: TODO(Task 3)", info);
+    let q;
+    try {
+      q = await rstQuery(info);
+    } catch (e) {
+      // 保存站不可达：不动拦截页，仅置顶提示，保留原生跳转能力
+      console.error("LuoguSP restricted:", e);
+      const tip = document.createElement("p");
+      tip.style.cssText =
+        "margin:12px auto;max-width:640px;color:#e74c3c;font-size:13px;text-align:center;";
+      tip.textContent =
+        "LuoguSP：保存站(api.luogu.me)不可达，无法就地显示该内容。";
+      document.body.insertBefore(tip, document.body.firstChild);
+      return;
+    }
+    injectRstStyle();
+    if (q && q.code === 200 && q.data) {
+      rstBuildPage(info, q.data);
+      if (info.type === "article") rstLoadComments(info);
+      // 每访问必申请更新（owner 拍板）；存档很新鲜（<10 分钟）时跳过，减轻保存站压力
+      const ageMs = Date.now() - Date.parse(q.data.updatedAt || 0);
+      if (!(ageMs >= 0 && ageMs < 10 * 60 * 1000)) {
+        try {
+          await rstTriggerSave(info);
+          rstSetStatus("已显示存档，正在后台检查更新…");
+          const fresh = await rstPollFresh(info, q.data.contentHash, 8, 3000);
+          if (fresh) rstApplyFresh(info, fresh);
+          else
+            rstSetStatus(
+              `存档更新于 ${rstFmtTime(q.data.updatedAt)}，已是最新`,
+            );
+        } catch (e) {
+          console.error("LuoguSP restricted freshen:", e);
+          rstSetStatus("后台更新请求失败（不影响当前存档显示）");
+        }
+      }
+      return;
+    }
+    // 未收录：发起保存并等待入库
+    rstBuildLoading(info);
+    try {
+      await rstTriggerSave(info);
+    } catch (e) {
+      console.error("LuoguSP restricted save:", e);
+      return rstBuildFailure(info, "向保存站发起收录请求失败。");
+    }
+    for (let i = 0; i < 15; i++) {
+      await sleep(3000);
+      let poll;
+      try {
+        poll = await rstQuery(info);
+      } catch (e) {
+        continue;
+      }
+      if (poll && poll.code === 200 && poll.data) {
+        rstBuildPage(info, poll.data);
+        if (info.type === "article") rstLoadComments(info);
+        rstSetStatus("已完成首次收录", true);
+        return;
+      }
+    }
+    rstBuildFailure(info, "保存站在限定时间内未能完成收录。");
   }
 
   function watchRestrictedPage() {
