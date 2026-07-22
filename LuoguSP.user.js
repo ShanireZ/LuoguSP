@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.9.2
+// @version      2.9.3
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -155,7 +155,6 @@
 			.luogusp-ide-pane .luogusp-ide-diffline{background:#fcebeb;color:#a32d2d;display:block;margin:0 -8px;padding:0 8px;}
 			.luogusp-ide-note{font-size:12px;color:#a32d2d;margin:0 0 8px;}
 			.luogusp-ide-empty{color:#aaa;font-style:italic;}
-			.luogusp-ide-legend{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed #eee;font-size:12px;color:#999;}
 			.luogusp-ide-panel .code-container:hover>.copy-button{opacity:1;}
 			.luogusp-ide-panel .copy-button{position:absolute;top:.3em;right:.3em;padding:.45em;display:flex;align-items:center;justify-content:center;transition:opacity .2s;opacity:0;background:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
 			.luogusp-ide-panel .copy-button.copied{color:#52c41a;}
@@ -1433,15 +1432,6 @@
     );
   }
 
-  // 实测原生内联配色（侦察实录 §5）；MLE/OLE/UKE 未实测，行内以运行时复制为准
-  const IDE_LEGEND = [
-    ["AC", "rgb(83,196,26)", "rgb(80,161,39)", "#fff"],
-    ["WA", "rgb(231,77,60)", "rgb(208,69,53)", "#fff"],
-    ["TLE", "rgb(5,34,66)", "rgb(10,31,54)", "#fff"],
-    ["RE", "rgb(156,61,207)", "rgb(138,62,179)", "#fff"],
-    ["CE", "rgb(250,219,20)", "rgb(215,190,28)", "#614700"],
-    ["UKE", "#3d3d3d", "#333", "#fff"],
-  ];
   function finishIdeSummary() {
     if (!IDE_BATCH.summaryEl || !IDE_BATCH.results) return;
     const rs = IDE_BATCH.results;
@@ -1556,8 +1546,7 @@
       '<span class="luogusp-ide-summary">尚未运行</span>' +
       '<span class="luogusp-ide-headbtns"></span>' +
       "</div>" +
-      '<div class="luogusp-ide-rows"></div>' +
-      '<div class="luogusp-ide-legend"></div>';
+      '<div class="luogusp-ide-rows"></div>';
     // 停止/重新测试：同样克隆原生「自测」继承样式
     const tpl = [
       ...document.querySelectorAll(`${SELECTORS.ideToolbar} button`),
@@ -1593,13 +1582,6 @@
     IDE_BATCH.ioLayout = ioLayout;
     IDE_BATCH.rowsEl = panel.querySelector(".luogusp-ide-rows");
     IDE_BATCH.summaryEl = panel.querySelector(".luogusp-ide-summary");
-    panel.querySelector(".luogusp-ide-legend").innerHTML =
-      "图例：" +
-      IDE_LEGEND.map(
-        ([t, bg, bd, fg]) =>
-          `<span class="luogusp-ide-pill" style="background-color:${bg};border-color:${bd};color:${fg};">${t}</span>`,
-      ).join("") +
-      '<span style="margin-left:4px;">行内颜色实时取自洛谷原生结果</span>';
     syncIdeTabVisibility();
   }
   function switchIdeTab(tab) {
