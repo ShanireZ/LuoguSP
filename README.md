@@ -2,20 +2,22 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.9.0](https://img.shields.io/badge/version-2.9.0-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+[![Version: 2.9.1](https://img.shields.io/badge/version-2.9.1-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
 LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页面体验。
+
+仓库：[GitHub](https://github.com/ShanireZ/LuoguSP)（主仓库）／[Gitee](https://gitee.com/shanire/LuoguSP)（境内镜像，自动更新源）。
 
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 或兼容的用户脚本管理器。
-2. 下载 [LuoguSP.user.js](https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js)，然后在油猴管理面板中拖放脚本文件。
+2. 下载脚本后在油猴管理面板中拖放安装：境内推荐 [Gitee 下载](https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js)，也可用 [GitHub 下载](https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js)。
 3. 也可以在油猴管理面板中新建脚本，复制 `LuoguSP.user.js` 的完整代码，粘贴后保存。
 
 ## 更新
 
-- 自动更新：在油猴管理面板进入 LuoguSP 脚本，通过设置页面检查并执行更新。
-- 手动更新：重新获取最新版 `LuoguSP.user.js`，按安装方式覆盖保存。
+- 自动更新：脚本的更新源指向 Gitee 镜像；在油猴管理面板进入 LuoguSP 脚本，通过设置页面检查并执行更新。
+- 手动更新：从上述任一渠道重新获取最新版 `LuoguSP.user.js`，按安装方式覆盖保存。
 
 ## 功能
 
