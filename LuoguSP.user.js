@@ -62,6 +62,9 @@
     ideSampleBlock: ".io-sample-block", // 题面样例块（输入 #N / 输出 #N 各一块）
     cmContent: ".cm-content", // CodeMirror 6 内容层
     lentilleContext: "script#lentille-context", // 新版页面数据（JSON，含 problem.samples）
+    // —— 安全访问中心拦截页（侦察实录 docs/superpowers/specs/2026-07-22-saver-api-recon-notes.md）——
+    restrictedUrlPre: "pre#url", // 拦截页里的目标链接文本
+    restrictedGoButton: "button#go", // 拦截页「继续访问」按钮
   };
 
   // 功能开关：key → 显示名。新增功能只需在此登记 + 在底部 FEATURES 注册启动器。
@@ -70,6 +73,7 @@
     [`${STORAGE_PREFIX}addMessageLink`, "私信界面 Ctrl+Click 打开用户主页"],
     [`${STORAGE_PREFIX}showIntro`, "显示隐藏的个人简介"],
     [`${STORAGE_PREFIX}ideBatchSampleTest`, "IDE 一键测试样例"],
+    [`${STORAGE_PREFIX}showRestrictedContent`, "受限文章/剪贴板就地显示"],
   ]);
 
   const storage = {
@@ -1696,6 +1700,53 @@
   }
 
   // ============================================================
+  // 受限文章/剪贴板就地显示
+  // 国内站访问非本人/未审核的 /article、/paste 会落在「安全访问中心」拦截页
+  // （独立静态页、零全站样式）。本功能就地接管整页，数据来自洛谷保存站
+  // （api.luogu.me，CORS 开放、匿名），markdown 走脚本自有渲染链路。
+  // 事实来源：docs/superpowers/specs/2026-07-22-saver-api-recon-notes.md
+  // ============================================================
+  const SAVER_API = "https://api.luogu.me";
+  async function saverGet(path) {
+    const res = await fetch(SAVER_API + path);
+    return res.json(); // 统一壳 {code,message,data}；业务码 404=未收录
+  }
+  async function saverPost(path, body) {
+    const res = await fetch(SAVER_API + path, {
+      method: "POST",
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return res.json();
+  }
+
+  // 拦截页判定：URL 形态 + 标题 + pre#url 内容三重锚点；不满足=正常页面，绝不接管
+  function restrictedPageInfo() {
+    const m = location.pathname.match(/^\/(article|paste)\/([A-Za-z0-9]+)\/?$/);
+    if (!m) return null;
+    if (document.title.indexOf("安全访问中心") === -1) return null;
+    const pre = document.querySelector(SELECTORS.restrictedUrlPre);
+    const target = pre ? (pre.textContent || "").trim() : "";
+    if (target.indexOf(`/${m[1]}/${m[2]}`) === -1) return null;
+    return {
+      type: m[1],
+      id: m[2],
+      origUrl: target || `https://www.luogu.com/${m[1]}/${m[2]}`,
+    };
+  }
+
+  async function rstRun() {
+    const info = restrictedPageInfo();
+    if (!info) return;
+    console.log("LuoguSP restricted: TODO(Task 3)", info);
+  }
+
+  function watchRestrictedPage() {
+    // 拦截页是独立静态页，无 SPA，一次性执行即可
+    rstRun().catch((e) => console.error("LuoguSP restricted:", e));
+  }
+
+  // ============================================================
   // 启动
   // ============================================================
   const isChatPage = location.href.startsWith("https://www.luogu.com.cn/chat");
@@ -1714,6 +1765,7 @@
     },
     { key: `${STORAGE_PREFIX}showIntro`, run: watchHiddenIntro },
     { key: `${STORAGE_PREFIX}ideBatchSampleTest`, run: watchIdeBatch },
+    { key: `${STORAGE_PREFIX}showRestrictedContent`, run: watchRestrictedPage },
   ];
 
   injectStyle();
