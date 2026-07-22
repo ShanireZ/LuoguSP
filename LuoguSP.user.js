@@ -130,6 +130,36 @@
 			.luogusp-intro-card .hljs-built_in,.luogusp-intro-card .hljs-class .hljs-title,.luogusp-intro-card .hljs-title.class_,.luogusp-intro-card .hljs-title.function_{color:#c18401;}
 			.luogusp-intro-card .hljs-emphasis{font-style:italic;}
 			.luogusp-intro-card .hljs-strong{font-weight:700;}
+			.luogusp-ide-tabbar{display:flex;gap:20px;padding:0 12px;border-bottom:1px solid #e8e8e8;flex:none;}
+			.luogusp-ide-tab{font-size:13px;color:#606266;padding:7px 2px 5px;cursor:pointer;border-bottom:2px solid transparent;}
+			.luogusp-ide-tab.on{color:#3498db;border-bottom-color:#3498db;font-weight:500;}
+			.luogusp-ide-panel{overflow:auto;flex:1 1 0;min-height:0;padding:8px 12px 12px;font-size:13px;color:#333;}
+			.luogusp-ide-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+			.luogusp-ide-title{font-weight:500;}
+			.luogusp-ide-summary{font-size:12px;color:#888;}
+			.luogusp-ide-headbtns{margin-left:auto;display:flex;gap:6px;}
+			.luogusp-ide-row{border:1px solid #e8e8e8;border-radius:6px;margin:0 0 8px;background:#fff;overflow:hidden;}
+			.luogusp-ide-rowhead{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;}
+			.luogusp-ide-rowhead:hover{background:#f7fbfe;}
+			.luogusp-ide-chev{color:#999;width:10px;transition:transform .2s;}
+			.luogusp-ide-row.open .luogusp-ide-chev{transform:rotate(90deg);}
+			.luogusp-ide-meta{font-size:12px;color:#999;margin-left:auto;}
+			.luogusp-ide-pill{font-size:12px;padding:1px 10px;border-radius:10px;border:1px solid transparent;white-space:nowrap;}
+			.luogusp-ide-detail{display:none;border-top:1px solid #eee;background:#fcfcfc;padding:10px 12px;}
+			.luogusp-ide-row.open .luogusp-ide-detail{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+			.luogusp-ide-row.open .luogusp-ide-detail.luogusp-ide-log{display:block;}
+			@media (max-width:1500px){.luogusp-ide-row.open .luogusp-ide-detail{grid-template-columns:1fr;}}
+			.luogusp-ide-pane h5{margin:0 0 4px;font-size:12px;font-weight:500;color:#888;}
+			.luogusp-ide-pane .code-container{margin:0;}
+			.luogusp-ide-pane pre{margin:0;border:1px solid #e6e6e6;border-radius:4px;background:#fff;padding:6px 8px;font-size:12px;line-height:1.55;color:#333;overflow-x:auto;min-height:40px;font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;}
+			.luogusp-ide-pane .luogusp-ide-diffline{background:#fcebeb;color:#a32d2d;display:block;margin:0 -8px;padding:0 8px;}
+			.luogusp-ide-note{font-size:12px;color:#a32d2d;margin:0 0 8px;}
+			.luogusp-ide-empty{color:#aaa;font-style:italic;}
+			.luogusp-ide-legend{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed #eee;font-size:12px;color:#999;}
+			.luogusp-ide-panel .code-container:hover>.copy-button{opacity:1;}
+			.luogusp-ide-panel .copy-button{position:absolute;top:.3em;right:.3em;padding:.45em;display:flex;align-items:center;justify-content:center;transition:opacity .2s;opacity:0;background:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
+			.luogusp-ide-panel .copy-button.copied{color:#52c41a;}
+			.luogusp-ide-panel .copy-icon{width:1em;height:1em;}
 		`;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -1049,6 +1079,59 @@
     );
   }
 
+  function lentilleProblem() {
+    try {
+      const el = document.querySelector(SELECTORS.lentilleContext);
+      if (!el) return null;
+      const json = JSON.parse(el.textContent);
+      return (json && json.data && json.data.problem) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function currentPid() {
+    const m = location.pathname.match(/^\/problem\/([A-Za-z0-9_]+)/);
+    return m ? m[1] : "";
+  }
+  async function getIdeSamples() {
+    const pid = currentPid();
+    if (!pid) return null;
+    const p = lentilleProblem();
+    if (p && p.pid === pid && Array.isArray(p.samples)) return p.samples;
+    // SPA 换题后 lentille-context 可能滞留旧题 → 同源接口兜底
+    try {
+      const text = await limiter.fetchText(`/problem/${pid}?_contentOnly=1`);
+      const json = JSON.parse(text);
+      const prob =
+        (json.currentData && json.currentData.problem) ||
+        (json.data && json.data.problem);
+      if (prob && Array.isArray(prob.samples)) return prob.samples;
+    } catch (e) {
+      console.error("LuoguSP ide samples:", e);
+    }
+    return null;
+  }
+  function sampleRunButtons() {
+    // 「输入 #N」「输出 #N」各一块都带「运行」；只取输入块的，按 DOM 序=样例序
+    const btns = [];
+    for (const block of document.querySelectorAll(SELECTORS.ideSampleBlock)) {
+      if (!/^(输入|Input)/i.test((block.textContent || "").trim())) continue;
+      const run = [...block.querySelectorAll("a, button")].find(
+        (b) => (b.textContent || "").trim() === "运行",
+      );
+      if (run) btns.push(run);
+    }
+    return btns;
+  }
+  function readIdeCode() {
+    const content = document.querySelector(SELECTORS.cmContent);
+    if (!content) return "";
+    // 洛谷构建把 CM6 的 cmView 命名为 cmTile；拿不到就退化为可见文本（空代码检测够用）
+    const view = content.cmTile && content.cmTile.view;
+    if (view && view.state && view.state.doc) return view.state.doc.toString();
+    return content.textContent || "";
+  }
+
   function startIdeBatch() {
     console.log("LuoguSP ide batch: TODO(Task 3)");
   }
@@ -1075,12 +1158,147 @@
     actions.insertBefore(btn, selfTest);
   }
 
+  function mountIdeTabs() {
+    if (IDE_BATCH.tabBar && document.contains(IDE_BATCH.tabBar)) return;
+    const inputTb = ideToolbarByTitle("输入");
+    if (!inputTb) return;
+    const ioLayout = inputTb.closest(".panel-layout"); // 底部 输入|输出 水平分栏
+    const host = ioLayout && ioLayout.parentElement;
+    if (!host) return;
+    host
+      .querySelectorAll(".luogusp-ide-tabbar, .luogusp-ide-panel")
+      .forEach((e) => e.remove());
+    const tabBar = document.createElement("div");
+    tabBar.className = "luogusp-ide-tabbar";
+    tabBar.innerHTML =
+      '<span class="luogusp-ide-tab" data-tab="custom">自定义测试</span>' +
+      '<span class="luogusp-ide-tab" data-tab="samples">样例测试</span>';
+    tabBar.addEventListener("click", (e) => {
+      const t = e.target.closest("[data-tab]");
+      if (t) switchIdeTab(t.dataset.tab);
+    });
+    const panel = document.createElement("div");
+    panel.className = "luogusp-ide-panel";
+    panel.innerHTML =
+      '<div class="luogusp-ide-head">' +
+      '<span class="luogusp-ide-title">样例测试</span>' +
+      '<span class="luogusp-ide-summary">尚未运行</span>' +
+      '<span class="luogusp-ide-headbtns"></span>' +
+      "</div>" +
+      '<div class="luogusp-ide-rows"></div>' +
+      '<div class="luogusp-ide-legend"></div>';
+    // 停止/重新测试：同样克隆原生「自测」继承样式
+    const tpl = [
+      ...document.querySelectorAll(`${SELECTORS.ideToolbar} button`),
+    ].find(
+      (b) =>
+        (b.textContent || "").trim() === "自测" ||
+        b.classList.contains("luogusp-ide-batch-btn"),
+    );
+    const headBtns = panel.querySelector(".luogusp-ide-headbtns");
+    const mkBtn = (text, cls, onClick) => {
+      const b = tpl ? tpl.cloneNode(true) : document.createElement("button");
+      b.textContent = text;
+      b.className = (tpl ? tpl.className : "") + " " + cls;
+      b.classList.remove("luogusp-ide-batch-btn");
+      b.disabled = false;
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      });
+      headBtns.appendChild(b);
+      return b;
+    };
+    IDE_BATCH.stopBtn = mkBtn("停止", "luogusp-ide-stop", () => {
+      IDE_BATCH.stopReq = true;
+    });
+    IDE_BATCH.stopBtn.style.display = "none";
+    mkBtn("重新测试", "luogusp-ide-rerun", () => startIdeBatch());
+    host.insertBefore(tabBar, ioLayout);
+    host.appendChild(panel);
+    IDE_BATCH.tabBar = tabBar;
+    IDE_BATCH.panel = panel;
+    IDE_BATCH.ioLayout = ioLayout;
+    IDE_BATCH.rowsEl = panel.querySelector(".luogusp-ide-rows");
+    IDE_BATCH.summaryEl = panel.querySelector(".luogusp-ide-summary");
+    syncIdeTabVisibility();
+  }
+  function switchIdeTab(tab) {
+    IDE_BATCH.activeTab = tab;
+    syncIdeTabVisibility();
+  }
+  function syncIdeTabVisibility() {
+    const { tabBar, panel, ioLayout } = IDE_BATCH;
+    if (!tabBar || !document.contains(tabBar) || !panel || !ioLayout) return;
+    const samples = IDE_BATCH.activeTab === "samples";
+    ioLayout.style.display = samples ? "none" : "";
+    panel.style.display = samples ? "" : "none";
+    tabBar.querySelectorAll(".luogusp-ide-tab").forEach((t) => {
+      t.classList.toggle("on", (t.dataset.tab === "samples") === samples);
+    });
+  }
+
+  const IDE_PILL_WAIT =
+    "background-color:#bfbfbf;border-color:#b3b3b3;color:#fff;";
+  const IDE_PILL_RUN =
+    "background-color:#3498db;border-color:#2f89c5;color:#fff;";
+  function renderIdeRows(samples) {
+    const rowsEl = IDE_BATCH.rowsEl;
+    if (!rowsEl) return;
+    rowsEl.innerHTML = samples
+      .map(
+        (s, i) => `
+      <div class="luogusp-ide-row" data-idx="${i}">
+        <div class="luogusp-ide-rowhead">
+          <span class="luogusp-ide-chev">▶</span>样例 #${i + 1}
+          <span class="luogusp-ide-meta"></span>
+          <span class="luogusp-ide-pill" style="${IDE_PILL_WAIT}">等待</span>
+        </div>
+        <div class="luogusp-ide-detail"></div>
+      </div>`,
+      )
+      .join("");
+    rowsEl.querySelectorAll(".luogusp-ide-rowhead").forEach((h) => {
+      h.addEventListener("click", () => {
+        const row = h.parentElement;
+        const was = row.classList.contains("open");
+        rowsEl
+          .querySelectorAll(".luogusp-ide-row.open")
+          .forEach((r) => r.classList.remove("open"));
+        if (!was) row.classList.add("open");
+      });
+    });
+  }
+  function ideRowParts(i) {
+    const row =
+      IDE_BATCH.rowsEl &&
+      IDE_BATCH.rowsEl.querySelector(`.luogusp-ide-row[data-idx="${i}"]`);
+    if (!row) return null;
+    return {
+      row,
+      pill: row.querySelector(".luogusp-ide-pill"),
+      meta: row.querySelector(".luogusp-ide-meta"),
+      detail: row.querySelector(".luogusp-ide-detail"),
+    };
+  }
+  function expandIdeRow(i) {
+    if (!IDE_BATCH.rowsEl) return;
+    IDE_BATCH.rowsEl
+      .querySelectorAll(".luogusp-ide-row.open")
+      .forEach((r) => r.classList.remove("open"));
+    const p = ideRowParts(i);
+    if (p) p.row.classList.add("open");
+  }
+
   function ensureIdeBatchUI() {
     if (!ideModeActive()) {
       unmountIdeBatchUI();
       return;
     }
     mountIdeButton();
+    mountIdeTabs();
+    syncIdeTabVisibility();
   }
 
   function unmountIdeBatchUI() {
