@@ -251,8 +251,7 @@
 
   const navTextSpan = (a) => a.querySelector(SELECTORS.navText);
 
-  // forceInlineText：受限内容接管页用——统一「插件设置」单行（新版侧栏格式），不走首页两行折行
-  function addSettingButton(forceInlineText) {
+  function addSettingButton() {
     // 两套导航都试：首页竖排 nav.lfe-body / 内容页侧栏 nav.sidebar
     let nav = null,
       navSel = null;
@@ -290,7 +289,7 @@
     link.setAttribute("role", "button");
     const textEl = navTextSpan(link);
     if (textEl) {
-      if (navSel === "nav.lfe-body" && !forceInlineText) {
+      if (navSel === "nav.lfe-body") {
         // 首页竖排栏窄：强制「插件」「设置」两字两行，避免默认 3+1 难看折行
         textEl.textContent = "";
         textEl.append("插件", document.createElement("br"), "设置");
@@ -313,13 +312,15 @@
   }
 
   // 洛谷是 SPA：首页顶栏↔内容页侧栏随路由切换而重挂，入口须在导航变化时补上（rAF 节流，加了就早退）。
-  // ★受限内容接管页 document.write 后旧 body 上的观察器全灭——接管流程会带 forceInlineText 重新调用本函数。
-  function watchSettingButton(forceInlineText) {
+  // ★受限内容接管页 document.write 后旧 body 上的观察器全灭——接管流程会重新调用本函数。
+  // 格式随导航自适应：旧版竖排栏（nav.lfe-body，首页/剪贴板同款）=「插件/设置」两行，
+  // 新版侧栏（nav.sidebar，columba 文章页等）=「插件设置」单行。
+  function watchSettingButton() {
     let scheduled = false;
     const tick = () => {
       scheduled = false;
       try {
-        addSettingButton(forceInlineText);
+        addSettingButton();
       } catch (e) {
         console.error("LuoguSP setting entry:", e);
       }
@@ -330,7 +331,7 @@
         requestAnimationFrame(tick);
       }
     }).observe(document.body, { childList: true, subtree: true });
-    addSettingButton(forceInlineText);
+    addSettingButton();
   }
 
   // ============================================================
@@ -2028,9 +2029,9 @@
     document.write(html);
     document.close();
     rstMountArticleButtons(info);
-    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（统一「插件设置」单行格式）
+    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（格式随导航自适应）
     injectStyle();
-    watchSettingButton(true);
+    watchSettingButton();
   }
 
   // 剪贴板页：合成 window._feInjection（currentTemplate PasteShow）+ 官方 lfe 前端
@@ -2099,9 +2100,9 @@
     document.write(html);
     document.close();
     rstMountPasteButtons(info);
-    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（统一「插件设置」单行格式）
+    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（格式随导航自适应）
     injectStyle();
-    watchSettingButton(true);
+    watchSettingButton();
   }
 
   // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种
