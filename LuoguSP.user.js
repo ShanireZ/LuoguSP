@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.11.0
+// @version      2.11.1
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -2259,14 +2259,16 @@
   // Vue 重渲染会抹掉按钮由观察器重种，故状态存模块级、每次补种后重新套用（rstApplyRefreshBtns）。
   let rstRefreshState = "idle";
   let rstRefreshText = "申请更新";
+  // ★本函数被 inject 观察器（body childList+subtree）的回调无条件调用，必须幂等：
+  // textContent 同值重写也会删旧建新 Text 节点、产生 childList 变更记录，
+  // 会把观察器自己再触发一遍 → 微任务死循环整页卡死（2.11.0 事故），故同值不写。
   function rstApplyRefreshBtns() {
     const off = rstRefreshState !== "idle";
     document.querySelectorAll(".luogusp-rst-btn-refresh").forEach((el) => {
-      const t = el.querySelector(".text");
-      if (t) t.textContent = rstRefreshText;
-      else el.textContent = rstRefreshText;
+      const t = el.querySelector(".text") || el;
+      if (t.textContent !== rstRefreshText) t.textContent = rstRefreshText;
       el.classList.toggle("luogusp-rst-off", off);
-      if (el.tagName === "BUTTON") el.disabled = off;
+      if (el.tagName === "BUTTON" && el.disabled !== off) el.disabled = off;
     });
   }
   function rstSetRefresh(state, text) {
