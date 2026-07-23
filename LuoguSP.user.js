@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.11.1
+// @version      2.11.3
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -1780,7 +1780,9 @@
     ".luogusp-rst-pactions{display:flex;align-items:center;}" +
     ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
     ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}" +
-    ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}";
+    ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}" +
+    // 剪贴板页「更新时间」行与上方「发表时间」行的间隔（div 选择器只命中剪贴板行，文章页是内联 span 不受影响）
+    "div.luogusp-rst-updtime{margin-top:.4em;}";
   // 扩展按钮图标（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
   const RST_BTN_ICONS = {
     refresh: {
@@ -2126,10 +2128,10 @@
   // 供 owner 判断是否需要点「申请更新」。
   function rstMountArticleButtons(info, data) {
     const updText = rstFmtTime(data && data.updatedAt, true);
-    const make = (icon, extraCls, text, title, onClick) => {
+    // owner 要求：扩展按钮不带 title 悬浮说明（与时间栏一致，页面不出浏览器浮泡）
+    const make = (icon, extraCls, text, onClick) => {
       const div = document.createElement("div");
       div.className = `button-2line luogusp-rst-abtn ${extraCls}`;
-      div.title = title;
       div.innerHTML = `<svg class="svg-inline--fa icon" style="font-size:1.25em" viewBox="${icon.vb}" aria-hidden="true"><path fill="currentColor" d="${icon.d}"/></svg><span class="text">${text}</span>`;
       div.addEventListener("click", onClick);
       return div;
@@ -2140,24 +2142,26 @@
         if (bar.classList.contains("left-mode")) return;
         if (bar.querySelector(".luogusp-rst-abtn")) return;
         bar.appendChild(
-          make(
-            RST_BTN_ICONS.refresh,
-            "luogusp-rst-btn-refresh",
-            "申请更新",
-            "向保存站申请更新存档",
-            () => rstManualRefresh(info),
+          make(RST_BTN_ICONS.refresh, "luogusp-rst-btn-refresh", "申请更新", () =>
+            rstManualRefresh(info),
           ),
         );
         bar.appendChild(
-          make(
-            RST_BTN_ICONS.external,
-            "",
-            "国际站原文",
-            "前往国际站查看原文（可点赞/收藏/评论）",
-            () => window.open(info.origUrl, "_blank", "noopener"),
+          make(RST_BTN_ICONS.external, "", "国际站原文", () =>
+            window.open(info.origUrl, "_blank", "noopener"),
           ),
         );
       });
+      // owner 要求：指向创建/更新时间不出浏览器悬浮泡 → 整条时间栏剥 title
+      // （removeAttribute 无属性时不产生变更记录，天然幂等）
+      document
+        .querySelectorAll(".article-content .update-info")
+        .forEach((bar) => {
+          bar.removeAttribute("title");
+          bar
+            .querySelectorAll("[title]")
+            .forEach((n) => n.removeAttribute("title"));
+        });
       if (updText)
         document
           .querySelectorAll(".article-content .update-info")
@@ -2172,7 +2176,6 @@
                 if (at.name.startsWith("data-v-"))
                   span.setAttribute(at.name, at.value); // 继承 data-v 作用域样式
             span.classList.add("luogusp-rst-updtime");
-            span.title = "保存站存档最近更新时间（可据此判断是否需要申请更新）";
             span.textContent = `更新时间：${updText}`;
             const sep = document.createTextNode("    ");
             if (ref) ref.after(sep, span);
@@ -2195,46 +2198,49 @@
       const top = document.querySelector(".card .content-card-top");
       if (!top) return;
       if (!top.querySelector(".luogusp-rst-pactions")) {
-        const mk = (extraCls, text, title, onClick) => {
+        // owner 要求：扩展按钮不带 title 悬浮说明（与时间栏一致，页面不出浏览器浮泡）
+        const mk = (extraCls, text, onClick) => {
           const b = document.createElement("button");
           b.type = "button";
           b.className = `luogusp-rst-pbtn ${extraCls}`;
           b.textContent = text;
-          b.title = title;
           b.addEventListener("click", onClick);
           return b;
         };
         const box = document.createElement("div");
         box.className = "luogusp-rst-pactions";
         box.append(
-          mk(
-            "luogusp-rst-btn-refresh",
-            "申请更新",
-            "向保存站申请更新存档",
-            () => rstManualRefresh(info),
+          mk("luogusp-rst-btn-refresh", "申请更新", () =>
+            rstManualRefresh(info),
           ),
-          mk("", "国际站原文", "前往国际站查看原文", () =>
+          mk("", "国际站原文", () =>
             window.open(info.origUrl, "_blank", "noopener"),
           ),
         );
         top.appendChild(box);
       }
-      if (updText) {
-        const author = top.querySelector(".author");
-        if (author && !author.querySelector(".luogusp-rst-updtime")) {
-          const ref = [...author.querySelectorAll("div.lfe-caption")].find(
-            (d) => /发表时间/.test(d.textContent || ""),
-          );
-          if (ref) {
-            const row = ref.cloneNode(false); // 浅克隆保留 lfe-caption 类与 data-v 作用域属性
-            row.classList.add("luogusp-rst-updtime");
-            row.title = "保存站存档最近更新时间（可据此判断是否需要申请更新）";
-            const span = document.createElement("span");
-            span.textContent = `更新时间: ${updText}`;
-            row.appendChild(span);
-            ref.after(row);
-          }
-        }
+      const author = top.querySelector(".author");
+      // owner 要求：指向发表/更新时间不出浏览器悬浮泡 → 发表时间行剥 title
+      // （removeAttribute 无属性时不产生变更记录，天然幂等）
+      const pubRow = author
+        ? [...author.querySelectorAll("div.lfe-caption")].find((d) =>
+            /发表时间/.test(d.textContent || ""),
+          )
+        : null;
+      if (pubRow) {
+        pubRow.removeAttribute("title");
+        pubRow
+          .querySelectorAll("[title]")
+          .forEach((n) => n.removeAttribute("title"));
+      }
+      if (updText && pubRow && !author.querySelector(".luogusp-rst-updtime")) {
+        // 浅克隆保留 lfe-caption 类与 data-v 作用域属性（title 已在上方剥净）
+        const row = pubRow.cloneNode(false);
+        row.classList.add("luogusp-rst-updtime");
+        const span = document.createElement("span");
+        span.textContent = `更新时间: ${updText}`;
+        row.appendChild(span);
+        pubRow.after(row);
       }
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
     };
