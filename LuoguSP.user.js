@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.11.3
+// @version      2.11.5
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -1781,8 +1781,9 @@
     ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
     ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}" +
     ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}" +
-    // 剪贴板页「更新时间」行与上方「发表时间」行的间隔（div 选择器只命中剪贴板行，文章页是内联 span 不受影响）
-    "div.luogusp-rst-updtime{margin-top:.4em;}";
+    // 剪贴板页「更新时间」与同行左侧「发表时间」的水平间隔（author 行内横排；
+    // ★勿用 margin-top——会把本项在行内往下推出错位。div 选择器只命中剪贴板项，文章页是内联 span 不受影响）
+    "div.luogusp-rst-updtime{margin-left:1em;}";
   // 扩展按钮图标（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
   const RST_BTN_ICONS = {
     refresh: {
@@ -2142,8 +2143,11 @@
         if (bar.classList.contains("left-mode")) return;
         if (bar.querySelector(".luogusp-rst-abtn")) return;
         bar.appendChild(
-          make(RST_BTN_ICONS.refresh, "luogusp-rst-btn-refresh", "申请更新", () =>
-            rstManualRefresh(info),
+          make(
+            RST_BTN_ICONS.refresh,
+            "luogusp-rst-btn-refresh",
+            "申请更新",
+            () => rstManualRefresh(info),
           ),
         );
         bar.appendChild(
