@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.10.9
+// @version      2.11.0
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -1779,7 +1779,8 @@
     ".luogusp-rst-abtn>*{color:#3498db !important;}" +
     ".luogusp-rst-pactions{display:flex;align-items:center;}" +
     ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
-    ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}";
+    ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}" +
+    ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}";
   // 扩展按钮图标（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
   const RST_BTN_ICONS = {
     refresh: {
@@ -1794,6 +1795,15 @@
 
   function rstAvatar(uid) {
     return `https://cdn.luogu.com.cn/upload/usericon/${uid}.png`;
+  }
+  // 保存站 ISO 时间 → 本地 "YYYY-MM-DD HH:mm[:ss]"（对齐洛谷原生 <time> 显示格式）
+  function rstFmtTime(iso, withSec) {
+    const ms = Date.parse(iso || "");
+    if (!ms) return null;
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, "0");
+    const base = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return withSec ? `${base}:${p(d.getSeconds())}` : base;
   }
   // 作者等用户数据一律走国内站同源接口（owner 要求：不吃保存站/国际站的用户数据；头像也全走 .cn CDN）。
   // 接口=/api/user/search?keyword={uid}（拦截页源实测可用；旧 /user/{uid}?_contentOnly=1 已死，返回 HTML），
@@ -2028,10 +2038,13 @@
     document.open();
     document.write(html);
     document.close();
-    rstMountArticleButtons(info);
-    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（格式随导航自适应）
-    injectStyle();
-    watchSettingButton();
+    rstOnNewDocReady(() => {
+      rstMountArticleButtons(info, data);
+      // document.write 把旧文档上的监听/观察器全部抹掉 → 全量功能重挂
+      // （设置入口/难度着色/简介/IDE 批测等；受限接管自身重跑会因拦截页锚点不匹配安全空转）
+      startFeatures();
+      rstArmReturnReload();
+    });
   }
 
   // 剪贴板页：合成 window._feInjection（currentTemplate PasteShow）+ 官方 lfe 前端
@@ -2099,14 +2112,20 @@
     document.open();
     document.write(html);
     document.close();
-    rstMountPasteButtons(info);
-    // document.write 抹掉了启动期挂在旧 body 上的设置入口观察器 → 重挂（格式随导航自适应）
-    injectStyle();
-    watchSettingButton();
+    rstOnNewDocReady(() => {
+      rstMountPasteButtons(info, data);
+      // document.write 把旧文档上的监听/观察器全部抹掉 → 全量功能重挂
+      // （设置入口/难度着色/简介/IDE 批测等；受限接管自身重跑会因拦截页锚点不匹配安全空转）
+      startFeatures();
+      rstArmReturnReload();
+    });
   }
 
-  // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种
-  function rstMountArticleButtons(info) {
+  // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种。
+  // 同时在正文底部「创建时间：…」后方补「更新时间」＝保存站存档最近更新时间（updatedAt），
+  // 供 owner 判断是否需要点「申请更新」。
+  function rstMountArticleButtons(info, data) {
+    const updText = rstFmtTime(data && data.updatedAt, true);
     const make = (icon, extraCls, text, title, onClick) => {
       const div = document.createElement("div");
       div.className = `button-2line luogusp-rst-abtn ${extraCls}`;
@@ -2139,6 +2158,27 @@
           ),
         );
       });
+      if (updText)
+        document
+          .querySelectorAll(".article-content .update-info")
+          .forEach((bar) => {
+            if (bar.querySelector(".luogusp-rst-updtime")) return;
+            const ref = [...bar.querySelectorAll("span")].find((s) =>
+              /创建时间/.test(s.textContent || ""),
+            );
+            const span = document.createElement("span");
+            if (ref)
+              for (const at of ref.attributes)
+                if (at.name.startsWith("data-v-"))
+                  span.setAttribute(at.name, at.value); // 继承 data-v 作用域样式
+            span.classList.add("luogusp-rst-updtime");
+            span.title = "保存站存档最近更新时间（可据此判断是否需要申请更新）";
+            span.textContent = `更新时间：${updText}`;
+            const sep = document.createTextNode("    ");
+            if (ref) ref.after(sep, span);
+            else bar.append(sep, span);
+          });
+      rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
     };
     inject();
     new MutationObserver(inject).observe(
@@ -2147,31 +2187,56 @@
     );
   }
   // 扩展按钮（剪贴板页）：内容卡首行（content-card-top）最右侧两枚实心蓝钮
-  // （首行是 flex space-between，作者信息在左，本容器落位最右）
-  function rstMountPasteButtons(info) {
+  // （首行是 flex space-between，作者信息在左，本容器落位最右）。
+  // 同时在「发表时间: …」行下方补「更新时间」行＝保存站存档最近更新时间（updatedAt）。
+  function rstMountPasteButtons(info, data) {
+    const updText = rstFmtTime(data && data.updatedAt, false);
     const inject = () => {
       const top = document.querySelector(".card .content-card-top");
-      if (!top || top.querySelector(".luogusp-rst-pactions")) return;
-      const mk = (extraCls, text, title, onClick) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = `luogusp-rst-pbtn ${extraCls}`;
-        b.textContent = text;
-        b.title = title;
-        b.addEventListener("click", onClick);
-        return b;
-      };
-      const box = document.createElement("div");
-      box.className = "luogusp-rst-pactions";
-      box.append(
-        mk("luogusp-rst-btn-refresh", "申请更新", "向保存站申请更新存档", () =>
-          rstManualRefresh(info),
-        ),
-        mk("", "国际站原文", "前往国际站查看原文", () =>
-          window.open(info.origUrl, "_blank", "noopener"),
-        ),
-      );
-      top.appendChild(box);
+      if (!top) return;
+      if (!top.querySelector(".luogusp-rst-pactions")) {
+        const mk = (extraCls, text, title, onClick) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = `luogusp-rst-pbtn ${extraCls}`;
+          b.textContent = text;
+          b.title = title;
+          b.addEventListener("click", onClick);
+          return b;
+        };
+        const box = document.createElement("div");
+        box.className = "luogusp-rst-pactions";
+        box.append(
+          mk(
+            "luogusp-rst-btn-refresh",
+            "申请更新",
+            "向保存站申请更新存档",
+            () => rstManualRefresh(info),
+          ),
+          mk("", "国际站原文", "前往国际站查看原文", () =>
+            window.open(info.origUrl, "_blank", "noopener"),
+          ),
+        );
+        top.appendChild(box);
+      }
+      if (updText) {
+        const author = top.querySelector(".author");
+        if (author && !author.querySelector(".luogusp-rst-updtime")) {
+          const ref = [...author.querySelectorAll("div.lfe-caption")].find(
+            (d) => /发表时间/.test(d.textContent || ""),
+          );
+          if (ref) {
+            const row = ref.cloneNode(false); // 浅克隆保留 lfe-caption 类与 data-v 作用域属性
+            row.classList.add("luogusp-rst-updtime");
+            row.title = "保存站存档最近更新时间（可据此判断是否需要申请更新）";
+            const span = document.createElement("span");
+            span.textContent = `更新时间: ${updText}`;
+            row.appendChild(span);
+            ref.after(row);
+          }
+        }
+      }
+      rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
     };
     inject();
     new MutationObserver(inject).observe(
@@ -2188,55 +2253,73 @@
       targetId: info.id,
     });
   }
-  async function rstPollFresh(info, oldHash, times, gapMs) {
-    for (let i = 0; i < times; i++) {
-      await sleep(gapMs);
-      let q;
-      try {
-        q = await rstQuery(info);
-      } catch (e) {
-        continue; // 网络抖动，下轮再试
-      }
-      if (q && q.code === 200 && q.data && q.data.contentHash !== oldHash)
-        return q.data;
-    }
-    return null;
+  // 申请更新（手动）：状态机 idle=可点 / busy=更新中… / done=已申请。
+  // owner 口径（2026-07-23）：提交成功即锁定「已申请」且不可再点，不轮询不自动刷新，
+  // 直至用户主动刷新页面（保存工作流异步完成，刷新后自然装配新档）；仅提交失败允许重试。
+  // Vue 重渲染会抹掉按钮由观察器重种，故状态存模块级、每次补种后重新套用（rstApplyRefreshBtns）。
+  let rstRefreshState = "idle";
+  let rstRefreshText = "申请更新";
+  function rstApplyRefreshBtns() {
+    const off = rstRefreshState !== "idle";
+    document.querySelectorAll(".luogusp-rst-btn-refresh").forEach((el) => {
+      const t = el.querySelector(".text");
+      if (t) t.textContent = rstRefreshText;
+      else el.textContent = rstRefreshText;
+      el.classList.toggle("luogusp-rst-off", off);
+      if (el.tagName === "BUTTON") el.disabled = off;
+    });
   }
-  // 申请更新：发保存工作流（文章同时刷评论存档）→ 轮询到新档 → 整页重载重走接管；无变化=提示已最新
-  let rstRefreshing = false;
+  function rstSetRefresh(state, text) {
+    rstRefreshState = state;
+    rstRefreshText = text;
+    rstApplyRefreshBtns();
+  }
   async function rstManualRefresh(info) {
-    if (rstRefreshing) return;
-    rstRefreshing = true;
-    const setText = (t) => {
-      document
-        .querySelectorAll(".luogusp-rst-btn-refresh .text")
-        .forEach((el) => (el.textContent = t));
-      document
-        .querySelectorAll("button.luogusp-rst-btn-refresh")
-        .forEach((el) => (el.textContent = t));
-    };
-    setText("更新中…");
+    if (rstRefreshState !== "idle") return;
+    rstSetRefresh("busy", "更新中…");
     try {
-      const cur = await rstQuery(info);
-      await rstTriggerSave(info);
+      const r = await rstTriggerSave(info);
+      if (r && typeof r.code === "number" && r.code >= 500)
+        throw new Error(`保存站返回 ${r.code}`);
       if (info.type === "article")
         saverPost(`/article/comments/${info.id}/refresh`).catch(() => {});
-      const fresh = await rstPollFresh(
-        info,
-        cur && cur.data ? cur.data.contentHash : "",
-        10,
-        3000,
-      );
-      if (fresh) return location.reload();
-      setText("已是最新");
-      setTimeout(() => setText("申请更新"), 3000);
+      rstSetRefresh("done", "已申请");
     } catch (e) {
       console.error("LuoguSP restricted refresh:", e);
-      setText("更新失败");
-      setTimeout(() => setText("申请更新"), 3000);
-    } finally {
-      rstRefreshing = false;
+      rstSetRefresh("idle", "更新失败");
+      setTimeout(() => {
+        if (rstRefreshState === "idle") rstSetRefresh("idle", "申请更新");
+      }, 3000);
     }
+  }
+
+  // 接管文档是官方 SPA：站内路由（pushState/popstate，含浏览器前进后退）驶向任一
+  // article/paste 路由时，官方前端会去真实接口取数——受限内容必失败，且没有页面加载、
+  // 脚本不会重跑（本次接管文档的监听已随 document.write 重挂，history 包装器天然存活）。
+  // 侦测到 pathname 切到 article/paste 即整页刷新：受限 → 服务器重出拦截页 → 脚本重新接管；
+  // 公开 → 原生页面正常整页加载，无副作用。
+  function rstArmReturnReload() {
+    let lastPath = location.pathname;
+    watchUrlChange(() => {
+      const p = location.pathname;
+      if (p === lastPath) return; // 同路径 hash/query 变化不刷
+      lastPath = p;
+      if (/^\/(article|paste)\/[A-Za-z0-9]+\/?$/.test(p)) location.reload();
+    });
+  }
+
+  // ★document.write 的新文档解析是异步收尾的：close() 返回时 body 可能尚未建出，
+  // 直接 observe(document.body) 会抛 TypeError（真机实测 2026-07-23）→ 等 body 就绪再挂。
+  function rstOnNewDocReady(fn) {
+    const run = () => {
+      try {
+        fn();
+      } catch (e) {
+        console.error("LuoguSP restricted post-boot:", e);
+      }
+    };
+    if (document.body) return run();
+    document.addEventListener("DOMContentLoaded", run, { once: true });
   }
 
   async function rstBootPage(info, data) {
@@ -2327,13 +2410,17 @@
     { key: `${STORAGE_PREFIX}showRestrictedContent`, run: watchRestrictedPage },
   ];
 
-  injectStyle();
-  for (const f of FEATURES) {
-    if (!f.always && !storage.get(f.key)) continue;
-    try {
-      f.run();
-    } catch (e) {
-      console.error("LuoguSP feature failed:", e);
+  // 受限内容接管 document.write 重建文档后也会调用本函数，重挂全部功能
+  function startFeatures() {
+    injectStyle();
+    for (const f of FEATURES) {
+      if (!f.always && !storage.get(f.key)) continue;
+      try {
+        f.run();
+      } catch (e) {
+        console.error("LuoguSP feature failed:", e);
+      }
     }
   }
+  startFeatures();
 })();
