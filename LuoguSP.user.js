@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.10.7
-// @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章剪贴板就地显示
+// @version      2.10.9
+// @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
 // @match        https://www.luogu.com.cn/*
@@ -73,7 +73,7 @@
     [`${STORAGE_PREFIX}addMessageLink`, "私信界面 Ctrl+Click 打开用户主页"],
     [`${STORAGE_PREFIX}showIntro`, "显示隐藏的个人简介"],
     [`${STORAGE_PREFIX}ideBatchSampleTest`, "IDE 一键测试样例"],
-    [`${STORAGE_PREFIX}showRestrictedContent`, "受限文章/剪贴板就地显示"],
+    [`${STORAGE_PREFIX}showRestrictedContent`, "受限文章/剪贴板直接显示"],
   ]);
 
   const storage = {
@@ -1707,7 +1707,7 @@
   }
 
   // ============================================================
-  // 受限文章/剪贴板就地显示（原生壳注入）
+  // 受限文章/剪贴板直接显示（原生壳注入）
   // 国内站访问非本人/未审核的 /article、/paste 会落在「安全访问中心」拦截页
   // （独立静态页、零全站样式、无 CSP）。本功能在拦截页上重建官方页面：
   //   1) 壳骨架收割：从 .cn 同源页拿官方壳（columba 源=/ranking 等，lfe 源=/image 等；
@@ -2262,7 +2262,7 @@
       tip.style.cssText =
         "margin:12px auto;max-width:640px;color:#e74c3c;font-size:13px;text-align:center;";
       tip.textContent =
-        "LuoguSP：保存站(api.luogu.me)不可达，无法就地显示该内容。";
+        "LuoguSP：保存站(api.luogu.me)不可达，无法直接显示该内容。";
       document.body.insertBefore(tip, document.body.firstChild);
       return;
     }
