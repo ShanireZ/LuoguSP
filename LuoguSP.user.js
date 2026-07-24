@@ -559,19 +559,31 @@ function createIdeBatchRunner(config) {
         }) || null;
     return dispose;
   };
-  const dispose = () => {
-    if (disposed) return;
-    disposed = true;
-    mounted = false;
+  const unmount = () => {
+    if (!mounted) return;
     invalidate();
     if (stopMount) stopMount();
     stopMount = null;
     mountKey = null;
+    mounted = false;
+  };
+  const dispose = () => {
+    if (disposed) return;
+    unmount();
+    disposed = true;
   };
   const getState = () =>
     Object.freeze({ state, runId, driving, stale, mounted, disposed });
 
-  return Object.freeze({ mount, start, stop, markStale, dispose, getState });
+  return Object.freeze({
+    mount,
+    unmount,
+    start,
+    stop,
+    markStale,
+    dispose,
+    getState,
+  });
 }
 
 function createSaverTransport(config) {
@@ -913,6 +925,360 @@ function createSaverWorkflow(config, policy) {
     refreshComments,
     dispose,
   });
+}
+
+function createPageLifecycle(config) {
+  const {
+    routeAdapter,
+    documentAdapter,
+    storage,
+    logError = () => {},
+  } = config || {};
+  if (!routeAdapter || typeof routeAdapter.subscribe !== "function")
+    throw new TypeError("Page Lifecycle requires a route adapter");
+  if (
+    !documentAdapter ||
+    typeof documentAdapter.schedule !== "function" ||
+    typeof documentAdapter.whenReady !== "function"
+  )
+    throw new TypeError("Page Lifecycle requires a document adapter");
+
+  const features = new Map();
+  let disposers = [];
+  let routeDispose = null;
+  let scheduledDispose = null;
+  let generation = 0;
+  let started = false;
+  let disposed = false;
+  let replacing = false;
+  let lastRouteToken = "";
+
+  const context = () =>
+    Object.freeze({
+      generation,
+      routeToken:
+        typeof routeAdapter.token === "function" ? routeAdapter.token() : "",
+      isCurrent: (expected = generation) =>
+        !disposed && !replacing && generation === expected,
+    });
+  const disposeFeatures = () => {
+    const current = disposers;
+    disposers = [];
+    for (let index = current.length - 1; index >= 0; index--) {
+      try {
+        current[index]();
+      } catch (error) {
+        logError("dispose", error);
+      }
+    }
+  };
+  const mountFeatures = () => {
+    if (!started || disposed || replacing) return;
+    const mountContext = context();
+    for (const feature of features.values()) {
+      let enabled = true;
+      try {
+        enabled =
+          typeof feature.enabled === "function"
+            ? !!feature.enabled(storage)
+            : true;
+        if (!enabled) continue;
+        const dispose = feature.mount(mountContext);
+        if (typeof dispose === "function") disposers.push(dispose);
+      } catch (error) {
+        logError(feature.id, error);
+      }
+    }
+  };
+  const cancelScheduled = () => {
+    if (!scheduledDispose) return;
+    scheduledDispose();
+    scheduledDispose = null;
+  };
+  const remount = () => {
+    if (!started || disposed || replacing) return;
+    cancelScheduled();
+    disposeFeatures();
+    generation++;
+    scheduledDispose =
+      documentAdapter.schedule(() => {
+        scheduledDispose = null;
+        mountFeatures();
+      }) || null;
+  };
+  const handleRoute = () => {
+    if (!started || disposed || replacing) return;
+    const nextRouteToken =
+      typeof routeAdapter.token === "function" ? routeAdapter.token() : "";
+    const routeContext = Object.freeze({
+      generation,
+      previousRouteToken: lastRouteToken,
+      routeToken: nextRouteToken,
+    });
+    for (const feature of features.values()) {
+      if (typeof feature.onRoute !== "function") continue;
+      try {
+        feature.onRoute(routeContext);
+      } catch (error) {
+        logError(`${feature.id}:route`, error);
+      }
+    }
+    lastRouteToken = nextRouteToken;
+    remount();
+  };
+  const register = (feature) => {
+    if (
+      !feature ||
+      typeof feature.id !== "string" ||
+      typeof feature.mount !== "function"
+    )
+      throw new TypeError("Page Lifecycle feature is invalid");
+    if (features.has(feature.id))
+      throw new Error(`Page Lifecycle feature already registered: ${feature.id}`);
+    features.set(feature.id, feature);
+    if (started && !disposed) remount();
+    return lifecycle;
+  };
+  const start = () => {
+    if (disposed || started) return;
+    started = true;
+    generation++;
+    lastRouteToken =
+      typeof routeAdapter.token === "function" ? routeAdapter.token() : "";
+    routeDispose = routeAdapter.subscribe(handleRoute) || null;
+    mountFeatures();
+  };
+  const replaceDocument = (commit) => {
+    if (disposed || replacing || typeof commit !== "function") return false;
+    cancelScheduled();
+    disposeFeatures();
+    generation++;
+    const replacementGeneration = generation;
+    replacing = true;
+    let afterReady;
+    try {
+      afterReady = commit(context());
+    } catch (error) {
+      replacing = false;
+      logError("replaceDocument", error);
+      mountFeatures();
+      return false;
+    }
+    documentAdapter.whenReady(() => {
+      if (disposed || generation !== replacementGeneration) return;
+      replacing = false;
+      mountFeatures();
+      if (typeof afterReady === "function") {
+        try {
+          afterReady(context());
+        } catch (error) {
+          logError("afterDocumentReady", error);
+        }
+      }
+    });
+    return true;
+  };
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    cancelScheduled();
+    disposeFeatures();
+    if (routeDispose) routeDispose();
+    routeDispose = null;
+  };
+  const getState = () =>
+    Object.freeze({
+      generation,
+      started,
+      disposed,
+      replacing,
+      featureCount: features.size,
+      mountedCount: disposers.length,
+    });
+  const lifecycle = Object.freeze({
+    register,
+    start,
+    replaceDocument,
+    dispose,
+    getState,
+  });
+  return lifecycle;
+}
+
+function createRestrictedDocumentBoot(config) {
+  const {
+    pageAdapter,
+    saverWorkflow,
+    documentBuilder,
+    documentCommitter,
+    pageLifecycle,
+    createAbortController = () => new AbortController(),
+    logError = () => {},
+  } = config || {};
+  if (!pageAdapter || typeof pageAdapter.detect !== "function")
+    throw new TypeError("Restricted Document Boot requires a page adapter");
+  if (!saverWorkflow || typeof saverWorkflow.ensureArchived !== "function")
+    throw new TypeError("Restricted Document Boot requires Saver Workflow");
+  if (!documentBuilder || typeof documentBuilder.prepare !== "function")
+    throw new TypeError("Restricted Document Boot requires a document builder");
+  if (!documentCommitter || typeof documentCommitter.commit !== "function")
+    throw new TypeError("Restricted Document Boot requires a document committer");
+  if (!pageLifecycle || typeof pageLifecycle.replaceDocument !== "function")
+    throw new TypeError("Restricted Document Boot requires Page Lifecycle");
+
+  let taskId = 0;
+  let activeController = null;
+  let rebuiltPath = "";
+  const isCancelled = (error) =>
+    error &&
+    (error.kind === "cancelled" ||
+      error.name === "AbortError" ||
+      error.category === "cancelled");
+  const mount = (lifecycleContext) => {
+    const info = pageAdapter.detect();
+    const currentTask = ++taskId;
+    if (!info)
+      return () => {
+        if (typeof documentBuilder.dispose === "function")
+          documentBuilder.dispose();
+      };
+    const controller = createAbortController();
+    activeController = controller;
+    pageAdapter.showLoader();
+    const current = () =>
+      currentTask === taskId &&
+      !controller.signal.aborted &&
+      (!lifecycleContext || lifecycleContext.isCurrent());
+    (async () => {
+      try {
+        const archive = await saverWorkflow.ensureArchived(info.type, info.id, {
+          signal: controller.signal,
+          onAccepted: () => {
+            if (current())
+              pageAdapter.showLoader(
+                "该内容尚未被保存站收录，已自动发起收录…",
+              );
+          },
+        });
+        if (!current()) return;
+        if (archive.kind !== "archived") {
+          if (archive.category === "cancelled") return;
+          if (archive.stage === "lookup")
+            return pageAdapter.showUnavailable(
+              `LuoguSP：${archive.reason}，未自动发起收录。`,
+            );
+          return pageAdapter.showFailure(
+            info,
+            archive.stage === "create" || archive.kind === "unknown"
+              ? "向保存站发起收录请求失败。"
+              : archive.reason || "保存站在限定时间内未能完成收录。",
+          );
+        }
+        const prepared = await documentBuilder.prepare(
+          info,
+          archive.data,
+          controller.signal,
+        );
+        if (!current()) return;
+        pageLifecycle.replaceDocument(() => {
+          documentCommitter.commit(prepared);
+          rebuiltPath = info.path || "";
+          return () => {
+            if (typeof prepared.afterReady === "function")
+              prepared.afterReady();
+          };
+        });
+      } catch (error) {
+        if (!current() || isCancelled(error)) return;
+        logError(error);
+        pageAdapter.showFailure(
+          info,
+          error && error.userMessage
+            ? error.userMessage
+            : `原生页面装配失败：${error}`,
+        );
+      }
+    })();
+    return () => {
+      if (currentTask === taskId) {
+        taskId++;
+        controller.abort();
+        if (activeController === controller) activeController = null;
+      }
+      if (typeof documentBuilder.dispose === "function")
+        documentBuilder.dispose();
+    };
+  };
+  const onRoute = () => {
+    if (
+      rebuiltPath &&
+      pageAdapter.currentPath() !== rebuiltPath &&
+      pageAdapter.isRestrictedRoute(pageAdapter.currentPath())
+    )
+      pageAdapter.reload();
+  };
+  const dispose = () => {
+    taskId++;
+    if (activeController) activeController.abort();
+    activeController = null;
+    rebuiltPath = "";
+    if (typeof documentBuilder.dispose === "function")
+      documentBuilder.dispose();
+  };
+  const getState = () =>
+    Object.freeze({ taskId, rebuiltPath, running: !!activeController });
+  return Object.freeze({ mount, onRoute, dispose, getState });
+}
+
+function serializeJsonForScript(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003C");
+}
+
+function createRestrictedDocumentCommitter(config) {
+  const { documentAdapter, resourcePolicy } = config || {};
+  if (
+    !documentAdapter ||
+    typeof documentAdapter.open !== "function" ||
+    typeof documentAdapter.write !== "function" ||
+    typeof documentAdapter.close !== "function"
+  )
+    throw new TypeError("Document Committer requires a document adapter");
+  if (!resourcePolicy || typeof resourcePolicy.isAllowed !== "function")
+    throw new TypeError("Document Committer requires a resource policy");
+  const committed = new WeakSet();
+  const commit = (prepared) => {
+    if (
+      !prepared ||
+      typeof prepared !== "object" ||
+      typeof prepared.html !== "string" ||
+      !prepared.html.startsWith("<!DOCTYPE html>") ||
+      !prepared.html.includes('<div id="app"') ||
+      committed.has(prepared)
+    )
+      throw Object.assign(new Error("受限文档提交数据无效"), {
+        kind: "invariant",
+      });
+    const resources = [
+      ...prepared.html.matchAll(
+        /<(?:script[^>]+src|link[^>]+href)="(https:[^"]+)"/g,
+      ),
+    ].map((match) => match[1]);
+    if (!resources.every(resourcePolicy.isAllowed))
+      throw Object.assign(new Error("受限文档包含未授权资源"), {
+        kind: "invariant",
+      });
+    committed.add(prepared);
+    try {
+      if (typeof prepared.install === "function") prepared.install();
+      documentAdapter.open();
+      documentAdapter.write(prepared.html);
+      documentAdapter.close();
+    } catch (error) {
+      if (typeof prepared.rollback === "function") prepared.rollback();
+      throw error;
+    }
+  };
+  return Object.freeze({ commit });
 }
 
 function createRestrictedUrlPolicy() {
@@ -1279,22 +1645,29 @@ function createLuoguSPApp(options = {}) {
   // 格式随导航自适应：旧版竖排栏（nav.lfe-body，首页/剪贴板同款）=「插件/设置」两行，
   // 新版侧栏（nav.sidebar，columba 文章页等）=「插件设置」单行。
   function watchSettingButton() {
-    let scheduled = false;
+    let frame = null;
     const tick = () => {
-      scheduled = false;
+      frame = null;
       try {
         addSettingButton();
       } catch (e) {
         console.error("LuoguSP setting entry:", e);
       }
     };
-    new MutationObserver(() => {
-      if (!scheduled) {
-        scheduled = true;
-        requestAnimationFrame(tick);
-      }
-    }).observe(document.body, { childList: true, subtree: true });
+    const observer = new MutationObserver(() => {
+      if (frame === null) frame = requestAnimationFrame(tick);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     addSettingButton();
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      document
+        .querySelectorAll(".luogusp-setting-entry")
+        .forEach((entry) => (entry.closest("li") || entry).remove());
+      const settings = document.getElementById("luogusp-settings");
+      if (settings) settings.remove();
+    };
   }
 
   // ============================================================
@@ -1303,6 +1676,8 @@ function createLuoguSPApp(options = {}) {
   function addMessageLink() {
     const bound = new WeakSet(); // 去重，避免重复绑定
     const uidCache = new Map(); // username -> uid 缓存
+    const cleanups = [];
+    let active = true;
 
     const openUser = (uid) => {
       if (uid) window.open(`/user/${uid}`, "_blank");
@@ -1329,13 +1704,16 @@ function createLuoguSPApp(options = {}) {
     function bindName(trigger) {
       if (bound.has(trigger) || inUserLink(trigger)) return;
       bound.add(trigger);
-      trigger.addEventListener("click", async (e) => {
+      const onClick = async (e) => {
         if (!e.ctrlKey) return;
         e.preventDefault();
         e.stopPropagation(); // Ctrl 时才拦，普通点击不影响洛谷原有行为
         const name = (trigger.textContent || "").trim();
-        if (name) openUser(await getUidByName(name));
-      });
+        const uid = name && (await getUidByName(name));
+        if (active && uid) openUser(uid);
+      };
+      trigger.addEventListener("click", onClick);
+      cleanups.push(() => trigger.removeEventListener("click", onClick));
     }
     // 头像：Ctrl+Click → 直接从 src（usericon/{uid}）取 uid，无需查接口
     const AVATAR_RE = /\/usericon\/(\d+)/;
@@ -1343,13 +1721,19 @@ function createLuoguSPApp(options = {}) {
       if (bound.has(img) || inUserLink(img) || !AVATAR_RE.test(img.src || ""))
         return;
       bound.add(img);
+      const oldCursor = img.style.cursor;
       img.style.cursor = "pointer";
-      img.addEventListener("click", (e) => {
+      const onClick = (e) => {
         if (!e.ctrlKey) return;
         e.preventDefault();
         e.stopPropagation();
         const m = (img.src || "").match(AVATAR_RE); // 点击时再读，兼容虚拟滚动换头像
         if (m) openUser(m[1]);
+      };
+      img.addEventListener("click", onClick);
+      cleanups.push(() => {
+        img.removeEventListener("click", onClick);
+        img.style.cursor = oldCursor;
       });
     }
     const scan = (root) => {
@@ -1358,7 +1742,7 @@ function createLuoguSPApp(options = {}) {
       root.querySelectorAll("img").forEach(bindAvatar);
     };
     scan(document);
-    new MutationObserver((muts) => {
+    const observer = new MutationObserver((muts) => {
       for (const m of muts)
         for (const n of m.addedNodes)
           if (n.nodeType === Node.ELEMENT_NODE) {
@@ -1366,7 +1750,13 @@ function createLuoguSPApp(options = {}) {
             if (n.matches && n.matches("img")) bindAvatar(n);
             scan(n);
           }
-    }).observe(document, { childList: true, subtree: true });
+    });
+    observer.observe(document, { childList: true, subtree: true });
+    return () => {
+      active = false;
+      observer.disconnect();
+      for (const cleanup of cleanups) cleanup();
+    };
   }
 
   // ============================================================
@@ -1705,7 +2095,8 @@ function createLuoguSPApp(options = {}) {
     card.append(header, body);
     col.appendChild(card);
   }
-  async function showHiddenIntro(expectedRoute) {
+  const introWaiters = new Set();
+  async function showHiddenIntro(expectedRoute, lifecycleContext) {
     const route = expectedRoute || currentUserRoute();
     if (!route.uid || !route.isHome) return;
     const uid = route.uid;
@@ -1713,6 +2104,7 @@ function createLuoguSPApp(options = {}) {
     const stillCurrent = () => {
       const current = currentUserRoute();
       return (
+        (!lifecycleContext || lifecycleContext.isCurrent()) &&
         current.uid === uid && current.key === routeKey && current.isHome
       );
     };
@@ -1732,11 +2124,18 @@ function createLuoguSPApp(options = {}) {
     };
     if (place()) return;
     // 内容列尚未渲染（SPA 换页）：等它出现再补，8s 后放弃
+    let timer = null;
     const obs = new MutationObserver(() => {
-      if (place()) obs.disconnect();
+      if (place()) cleanup();
     });
+    const cleanup = () => {
+      obs.disconnect();
+      if (timer !== null) clearTimeout(timer);
+      introWaiters.delete(cleanup);
+    };
+    introWaiters.add(cleanup);
     obs.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => obs.disconnect(), 8000);
+    timer = setTimeout(cleanup, 8000);
   }
   // SPA 换页时 URL 变但脚本不重跑：监听用户主页 uid 变化补显。
   function currentUserRoute() {
@@ -1749,29 +2148,49 @@ function createLuoguSPApp(options = {}) {
         !!m && (!hash || hash === "#" || hash === "#home" || hash === "#main"),
     };
   }
-  function watchUrlChange(onChange) {
-    if (!history.pushState._luoguspWrapped) {
+  const browserRouteAdapter = (() => {
+    const listeners = new Set();
+    const originals = {};
+    let installed = false;
+    const notify = () => {
+      for (const listener of [...listeners]) listener();
+    };
+    const install = () => {
+      if (installed) return;
+      installed = true;
       for (const method of ["pushState", "replaceState"]) {
         const raw = history[method];
-        const wrapped = function (...args) {
-          const ret = raw.apply(this, args);
-          window.dispatchEvent(new Event("luogusp:urlchange"));
-          return ret;
+        originals[method] = raw;
+        history[method] = function (...args) {
+          const result = raw.apply(this, args);
+          notify();
+          return result;
         };
-        wrapped._luoguspWrapped = true;
-        history[method] = wrapped;
       }
-    }
-    window.addEventListener("popstate", onChange);
-    window.addEventListener("hashchange", onChange);
-    window.addEventListener("luogusp:urlchange", onChange);
-    return () => {
-      window.removeEventListener("popstate", onChange);
-      window.removeEventListener("hashchange", onChange);
-      window.removeEventListener("luogusp:urlchange", onChange);
+      window.addEventListener("popstate", notify);
+      window.addEventListener("hashchange", notify);
     };
-  }
-  function watchHiddenIntro() {
+    const uninstall = () => {
+      if (!installed || listeners.size) return;
+      installed = false;
+      for (const method of ["pushState", "replaceState"])
+        if (originals[method]) history[method] = originals[method];
+      window.removeEventListener("popstate", notify);
+      window.removeEventListener("hashchange", notify);
+    };
+    return Object.freeze({
+      token: () => `${location.pathname}${location.search}${location.hash}`,
+      subscribe: (listener) => {
+        listeners.add(listener);
+        install();
+        return () => {
+          listeners.delete(listener);
+          uninstall();
+        };
+      },
+    });
+  })();
+  function watchHiddenIntro(lifecycleContext) {
     let requestedRouteKey = "";
     const check = () => {
       const route = currentUserRoute();
@@ -1797,27 +2216,34 @@ function createLuoguSPApp(options = {}) {
       }
       if (route.key !== requestedRouteKey) {
         requestedRouteKey = route.key;
-        showHiddenIntro(route).catch((e) =>
+        showHiddenIntro(route, lifecycleContext).catch((e) =>
           console.error("LuoguSP intro render:", e),
         );
       }
     };
     check();
-    let scheduled = false;
+    let frame = null;
     const queueCheck = () => {
-      if (!scheduled) {
-        scheduled = true;
-        requestAnimationFrame(() => {
-          scheduled = false;
+      if (frame === null) {
+        frame = requestAnimationFrame(() => {
+          frame = null;
           check();
         });
       }
     };
-    new MutationObserver(() => {
+    const observer = new MutationObserver(() => {
       const route = currentUserRoute();
       if (route.uid && route.isHome) queueCheck();
-    }).observe(document.body, { childList: true, subtree: true });
-    watchUrlChange(queueCheck);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      for (const cleanup of [...introWaiters]) cleanup();
+      document
+        .querySelectorAll(".luogusp-intro-card")
+        .forEach((card) => card.remove());
+    };
   }
 
   // ============================================================
@@ -1981,7 +2407,7 @@ function createLuoguSPApp(options = {}) {
 
   // Phase 5 统一 Page Lifecycle 前保留旧门面；重复调用 mount() 无副作用。
   function addProblemsColor() {
-    if (problemPipeline) problemPipeline.mount();
+    return problemPipeline ? problemPipeline.mount() : () => {};
   }
 
   // ============================================================
@@ -2660,14 +3086,9 @@ function createLuoguSPApp(options = {}) {
           queue();
       });
       observer.observe(document.body, { childList: true, subtree: true });
-      const unwatchRoute = watchUrlChange(() => {
-        controls.invalidate();
-        queue();
-      });
       ensureIdeBatchUI(controls);
       return () => {
         observer.disconnect();
-        unwatchRoute();
         unhook();
         if (frame !== null) cancelAnimationFrame(frame);
         cancelIdeSubmitWaiter();
@@ -2711,6 +3132,7 @@ function createLuoguSPApp(options = {}) {
   // Phase 5 统一 Page Lifecycle 前保留旧门面；重复 mount() 无副作用。
   function watchIdeBatch() {
     ideBatchRunner.mount();
+    return () => ideBatchRunner.unmount();
   }
 
   // ============================================================
@@ -2769,6 +3191,7 @@ function createLuoguSPApp(options = {}) {
     return {
       type: m[1],
       id: m[2],
+      path: location.pathname,
       origUrl: normalizeOriginalUrl(target, m[1], m[2]),
     };
   }
@@ -2930,13 +3353,40 @@ function createLuoguSPApp(options = {}) {
     return null;
   }
   // 嵌入 <script> 的 JSON 防拆壳（内容里出现 </script> 会截断壳文档）
-  function rstJsonForScript(obj) {
-    return JSON.stringify(obj).replace(/</g, "\\u003C");
+  const rstPreparationError = (message) =>
+    Object.assign(new Error(message), {
+      kind: "dom-drift",
+      userMessage: message,
+    });
+  function rstTrustedCdnUrl(value) {
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === "https:" &&
+        url.origin === "https://fecdn.luogu.com.cn"
+      );
+    } catch (error) {
+      return false;
+    }
   }
+  const rstSafeCsrf = (value) =>
+    typeof value === "string" && !/["'<>\s]/.test(value);
+  const rstEscapeHtmlText = (value) =>
+    String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
   // 评论接口桩：官方文章组件启动后会 GET /article/{lid}/replies（?sort=&after=）。
   // window.fetch 包装器不随 document.write 重建，天然对新文档生效；其余请求全部放行。
+  const RST_REPLY_FETCH_BRAND = Symbol("LuoguSP restricted replies");
+  let rstReplyFetchDispose = null;
+  function rstDisposeReplyStub() {
+    if (rstReplyFetchDispose) rstReplyFetchDispose();
+    rstReplyFetchDispose = null;
+  }
   function rstStubReplies(lid, comments) {
+    const installed = window.fetch && window.fetch[RST_REPLY_FETCH_BRAND];
+    if (installed && typeof installed.dispose === "function")
+      installed.dispose();
+    rstDisposeReplyStub();
     const mapped = comments.map((c, i) => {
       const a = c.author || {};
       return {
@@ -2946,16 +3396,25 @@ function createLuoguSPApp(options = {}) {
         content: String(c.content || ""),
       };
     });
-    const realFetch = window.fetch.bind(window);
+    const realFetch = window.fetch;
     const adapter = createRestrictedReplyFetchAdapter({
-      fetch: realFetch,
+      fetch: (input, init) => realFetch.call(window, input, init),
       origin: location.origin,
       Response,
       URL,
       lid,
       replies: mapped,
     });
-    window.fetch = adapter.fetch;
+    const wrapped = adapter.fetch;
+    const dispose = () => {
+      if (window.fetch === wrapped) window.fetch = realFetch;
+    };
+    Object.defineProperty(wrapped, RST_REPLY_FETCH_BRAND, {
+      value: Object.freeze({ dispose }),
+    });
+    window.fetch = wrapped;
+    rstReplyFetchDispose = dispose;
+    return dispose;
   }
 
   // 文章页：合成 lentille-context（template article.show）+ 官方 columba 前端
@@ -2966,7 +3425,7 @@ function createLuoguSPApp(options = {}) {
       saverWorkflow.loadComments(info.id),
     ]);
     if (!scaffold)
-      return rstBuildFailure(info, "无法获取洛谷页面骨架，暂不能就地渲染。");
+      throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
     const pick = (re) => {
       const m = scaffold.match(re);
       return m ? m[1] : null;
@@ -2991,8 +3450,22 @@ function createLuoguSPApp(options = {}) {
         /<link rel="stylesheet" href="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+)"/g,
       ),
     ].map((m) => m[1]);
-    if (!ctxRaw || !scripts.length)
-      return rstBuildFailure(info, "洛谷页面骨架解析失败（结构可能已改版）。");
+    if (
+      !ctxRaw ||
+      !scripts.length ||
+      !scripts.every(rstTrustedCdnUrl) ||
+      !cssLinks.every(rstTrustedCdnUrl) ||
+      !rstSafeCsrf(csrf) ||
+      /<\/script/i.test(globalsRaw)
+    )
+      throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
+    if (themeRaw) {
+      try {
+        JSON.parse(themeRaw);
+      } catch (error) {
+        throw rstPreparationError("洛谷主题数据解析失败（结构可能已改版）。");
+      }
+    }
     let viewer = null;
     try {
       viewer = JSON.parse(ctxRaw).user || null;
@@ -3036,8 +3509,7 @@ function createLuoguSPApp(options = {}) {
       user: viewer,
       time: Math.floor(Date.now() / 1000),
     };
-    rstStubReplies(info.id, comments);
-    const title = String(data.title || "文章").replace(/</g, "&lt;");
+    const title = rstEscapeHtmlText(data.title || "文章");
     const html =
       `<!DOCTYPE html><html lang="zh-CN" class="no-js"><head><meta charset="utf-8">` +
       `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` +
@@ -3045,7 +3517,7 @@ function createLuoguSPApp(options = {}) {
       `<title>${title} - 洛谷专栏</title>` +
       `<link rel="icon" href="https://fecdn.luogu.com.cn/favicon.ico">` +
       `<script>${globalsRaw}<\/script>` +
-      `<script id="lentille-context" type="application/json">${rstJsonForScript(ctx)}<\/script>` +
+      `<script id="lentille-context" type="application/json">${serializeJsonForScript(ctx)}<\/script>` +
       scripts
         .map((s) => `<script src="${s}" charset="utf-8" defer><\/script>`)
         .join("") +
@@ -3053,16 +3525,13 @@ function createLuoguSPApp(options = {}) {
       `<script id="luogu-theme" type="application/json">${themeRaw}<\/script>` +
       `<style>${RST_EXTRA_CSS}</style>` +
       `</head><body><div id="app"></div></body></html>`;
-    document.open();
-    document.write(html);
-    document.close();
-    rstOnNewDocReady(() => {
-      rstMountArticleButtons(info, data);
-      // document.write 把旧文档上的监听/观察器全部抹掉 → 全量功能重挂
-      // （设置入口/难度着色/简介/IDE 批测等；受限接管自身重跑会因拦截页锚点不匹配安全空转）
-      startFeatures();
-      rstArmReturnReload();
-    });
+    return {
+      kind: "article",
+      html,
+      install: () => rstStubReplies(info.id, comments),
+      rollback: rstDisposeReplyStub,
+      afterReady: () => rstMountArticleButtons(info, data),
+    };
   }
 
   // 剪贴板页：合成 window._feInjection（currentTemplate PasteShow）+ 官方 lfe 前端
@@ -3072,7 +3541,7 @@ function createLuoguSPApp(options = {}) {
       rstCnUser(data.authorId),
     ]);
     if (!scaffold)
-      return rstBuildFailure(info, "无法获取洛谷页面骨架，暂不能就地渲染。");
+      throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
     const injRaw = (scaffold.match(
       /_feInjection = JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/,
     ) || [])[1];
@@ -3087,13 +3556,22 @@ function createLuoguSPApp(options = {}) {
     const loaderJs = (scaffold.match(
       /<script src="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+loader\.js[^"]*)"/,
     ) || [])[1];
-    if (!injRaw || !loaderJs || !loaderCss)
-      return rstBuildFailure(info, "洛谷页面骨架解析失败（结构可能已改版）。");
+    if (
+      !injRaw ||
+      !feCfg ||
+      !tagVer ||
+      !loaderJs ||
+      !loaderCss ||
+      !rstTrustedCdnUrl(loaderJs) ||
+      !rstTrustedCdnUrl(loaderCss) ||
+      !rstSafeCsrf(csrf)
+    )
+      throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
     let scafInj = {};
     try {
       scafInj = JSON.parse(decodeURIComponent(injRaw)) || {};
     } catch (e) {
-      /* 匿名/默认主题兜底 */
+      throw rstPreparationError("洛谷页面骨架数据损坏（结构可能已改版）。");
     }
     const inj = {
       code: 200,
@@ -3127,43 +3605,46 @@ function createLuoguSPApp(options = {}) {
       `<script>window._feInjection = JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(inj))}"));window._feConfigVersion=${feCfg};window._tagVersion=${tagVer};<\/script>` +
       `<script src="${loaderJs}" charset="utf-8" defer><\/script>` +
       `</head><body><div id="app"><noscript><h3>请<b style="color:#f00;">不要禁用</b>脚本，否则网页无法正常加载</h3></noscript></div></body></html>`;
-    document.open();
-    document.write(html);
-    document.close();
-    rstOnNewDocReady(() => {
-      rstMountPasteButtons(info, data);
-      // document.write 把旧文档上的监听/观察器全部抹掉 → 全量功能重挂
-      // （设置入口/难度着色/简介/IDE 批测等；受限接管自身重跑会因拦截页锚点不匹配安全空转）
-      startFeatures();
-      rstArmReturnReload();
-    });
+    return {
+      kind: "paste",
+      html,
+      afterReady: () => rstMountPasteButtons(info, data),
+    };
   }
 
   // 官方前端可能连续多次重绘；同一帧只补种一次，并在补种期间暂停观察，
   // 避免扩展节点自身触发下一轮全页扫描。
+  const rstInjectionDisposers = new Set();
   function rstObserveInjection(inject) {
     const root = document.body || document.documentElement;
     const options = { childList: true, subtree: true };
-    let scheduled = false;
+    let frame = null;
     let observer = null;
     const run = () => {
+      frame = null;
       if (observer) observer.disconnect();
       try {
         inject();
       } catch (e) {
         console.error("LuoguSP restricted inject:", e);
       } finally {
-        scheduled = false;
         if (observer) observer.observe(root, options);
       }
     };
     run(); // 首次同步补种，保持按钮出现时机不变
     observer = new MutationObserver(() => {
-      if (scheduled) return;
-      scheduled = true;
-      requestAnimationFrame(run);
+      if (frame === null) frame = requestAnimationFrame(run);
     });
     observer.observe(root, options);
+    const dispose = () => {
+      if (observer) observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      observer = null;
+      frame = null;
+      rstInjectionDisposers.delete(dispose);
+    };
+    rstInjectionDisposers.add(dispose);
+    return dispose;
   }
 
   // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种。
@@ -3229,7 +3710,7 @@ function createLuoguSPApp(options = {}) {
           });
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
     };
-    rstObserveInjection(inject);
+    return rstObserveInjection(inject);
   }
   // 扩展按钮（剪贴板页）：内容卡首行（content-card-top）最右侧两枚实心蓝钮
   // （首行是 flex space-between，作者信息在左，本容器落位最右）。
@@ -3286,7 +3767,7 @@ function createLuoguSPApp(options = {}) {
       }
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
     };
-    rstObserveInjection(inject);
+    return rstObserveInjection(inject);
   }
 
   // 申请更新（手动）：状态机 idle=可点 / busy=更新中… / done=已申请。
@@ -3295,6 +3776,7 @@ function createLuoguSPApp(options = {}) {
   // Vue 重渲染会抹掉按钮由观察器重种，故状态存模块级、每次补种后重新套用（rstApplyRefreshBtns）。
   let rstRefreshState = "idle";
   let rstRefreshText = "申请更新";
+  let rstRefreshResetTimer = null;
   // ★本函数被 inject 观察器（body childList+subtree）的回调无条件调用，必须幂等：
   // textContent 同值重写也会删旧建新 Text 节点、产生 childList 变更记录，
   // 会把观察器自己再触发一遍 → 微任务死循环整页卡死（2.11.0 事故），故同值不写。
@@ -3325,124 +3807,160 @@ function createLuoguSPApp(options = {}) {
     } catch (e) {
       console.error("LuoguSP restricted refresh:", e);
       rstSetRefresh("idle", "更新失败");
-      setTimeout(() => {
+      if (rstRefreshResetTimer !== null)
+        clearTimeout(rstRefreshResetTimer);
+      rstRefreshResetTimer = setTimeout(() => {
+        rstRefreshResetTimer = null;
         if (rstRefreshState === "idle") rstSetRefresh("idle", "申请更新");
       }, 3000);
     }
   }
 
-  // 接管文档是官方 SPA：站内路由（pushState/popstate，含浏览器前进后退）驶向任一
-  // article/paste 路由时，官方前端会去真实接口取数——受限内容必失败，且没有页面加载、
-  // 脚本不会重跑（本次接管文档的监听已随 document.write 重挂，history 包装器天然存活）。
-  // 侦测到 pathname 切到 article/paste 即整页刷新：受限 → 服务器重出拦截页 → 脚本重新接管；
-  // 公开 → 原生页面正常整页加载，无副作用。
-  function rstArmReturnReload() {
-    let lastPath = location.pathname;
-    watchUrlChange(() => {
-      const p = location.pathname;
-      if (p === lastPath) return; // 同路径 hash/query 变化不刷
-      lastPath = p;
-      if (/^\/(article|paste)\/[A-Za-z0-9]+\/?$/.test(p)) location.reload();
-    });
-  }
-
-  // ★document.write 的新文档解析是异步收尾的：close() 返回时 body 可能尚未建出，
-  // 直接 observe(document.body) 会抛 TypeError（真机实测 2026-07-23）→ 等 body 就绪再挂。
-  function rstOnNewDocReady(fn) {
-    const run = () => {
-      try {
-        fn();
-      } catch (e) {
-        console.error("LuoguSP restricted post-boot:", e);
+  const restrictedDocumentBuilder = {
+    prepare: async (info, data, signal) => {
+      if (signal.aborted)
+        throw Object.assign(new Error("受限文档准备已取消"), {
+          kind: "cancelled",
+        });
+      const prepared =
+        info.type === "article"
+          ? await rstBootArticle(info, data)
+          : await rstBootPaste(info, data);
+      if (signal.aborted)
+        throw Object.assign(new Error("受限文档准备已取消"), {
+          kind: "cancelled",
+        });
+      return prepared;
+    },
+    dispose: () => {
+      rstDisposeReplyStub();
+      for (const dispose of [...rstInjectionDisposers]) dispose();
+      if (rstRefreshResetTimer !== null) {
+        clearTimeout(rstRefreshResetTimer);
+        rstRefreshResetTimer = null;
       }
-    };
-    if (document.body) return run();
-    document.addEventListener("DOMContentLoaded", run, { once: true });
-  }
-
-  async function rstBootPage(info, data) {
-    try {
-      if (info.type === "article") await rstBootArticle(info, data);
-      else await rstBootPaste(info, data);
-    } catch (e) {
-      console.error("LuoguSP restricted boot:", e);
-      rstBuildFailure(info, `原生页面装配失败：${e}`);
-    }
-  }
-  async function rstRun() {
-    const info = restrictedPageInfo();
-    if (!info) return;
-    injectRstStyle();
-    const archive = await saverWorkflow.ensureArchived(info.type, info.id, {
-      onAccepted: () =>
-        rstShowLoader("该内容尚未被保存站收录，已自动发起收录…"),
-    });
-    if (archive.kind === "archived") {
-      // 已收录：直接装配存档，不自动申请更新（owner 拍板：更新只走「申请更新」按钮）
-      return rstBootPage(info, archive.data);
-    }
-    if (archive.stage === "lookup") {
-      // 查询阶段不可用或非预期业务结果：还原原生拦截页，不误判为未收录。
-      console.error("LuoguSP restricted query:", archive.reason);
-      rstShowUnavailableTip(
-        `LuoguSP：${archive.reason}，未自动发起收录。`,
-      );
-      return;
-    }
-    if (archive.stage === "create" || archive.kind === "unknown") {
-      console.error("LuoguSP restricted save:", archive.reason);
-      return rstBuildFailure(info, "向保存站发起收录请求失败。");
-    }
-    console.error("LuoguSP restricted poll:", archive.reason);
-    rstBuildFailure(
-      info,
-      archive.reason || "保存站在限定时间内未能完成收录。",
-    );
-  }
-
-  function watchRestrictedPage() {
-    // 拦截页是独立静态页，无 SPA。命中即刻盖上加载动效层（不闪原生跳转确认页），
-    // 随后异步取数装配；取数失败会撤层还原拦截页。
-    try {
-      if (restrictedPageInfo()) rstShowLoader();
-    } catch (e) {
-      console.error("LuoguSP restricted loader:", e);
-    }
-    rstRun().catch((e) => console.error("LuoguSP restricted:", e));
-  }
+      rstRefreshState = "idle";
+      rstRefreshText = "申请更新";
+      document
+        .querySelectorAll(
+          ".luogusp-rst-abtn,.luogusp-rst-pactions,.luogusp-rst-updtime",
+        )
+        .forEach((node) => node.remove());
+    },
+  };
+  const restrictedDocumentCommitter = createRestrictedDocumentCommitter({
+    documentAdapter: {
+      open: () => document.open(),
+      write: (html) => document.write(html),
+      close: () => document.close(),
+    },
+    resourcePolicy: { isAllowed: rstTrustedCdnUrl },
+  });
+  let restrictedDocumentBoot = null;
 
   // ============================================================
   // 启动
   // ============================================================
   const FEATURES = [
-    { always: true, run: watchSettingButton },
     {
-      key: `${STORAGE_PREFIX}addProblemsColor`,
-      run: () => setTimeout(addProblemsColor, 500),
-    },
-    {
-      key: `${STORAGE_PREFIX}addMessageLink`,
-      run: () => {
-        if (location.href.startsWith("https://www.luogu.com.cn/chat"))
-          setTimeout(addMessageLink, 500);
+      id: "settings",
+      mount: () => {
+        injectStyle();
+        return watchSettingButton();
       },
     },
-    { key: `${STORAGE_PREFIX}showIntro`, run: watchHiddenIntro },
-    { key: `${STORAGE_PREFIX}ideBatchSampleTest`, run: watchIdeBatch },
-    { key: `${STORAGE_PREFIX}showRestrictedContent`, run: watchRestrictedPage },
+    {
+      id: "problem-pipeline",
+      enabled: () => storage.get(`${STORAGE_PREFIX}addProblemsColor`),
+      mount: (context) => {
+        let disposePipeline = null;
+        const timer = setTimeout(() => {
+          if (context.isCurrent()) disposePipeline = addProblemsColor();
+        }, 500);
+        return () => {
+          clearTimeout(timer);
+          if (disposePipeline) disposePipeline();
+        };
+      },
+    },
+    {
+      id: "chat-shortcut",
+      enabled: () => storage.get(`${STORAGE_PREFIX}addMessageLink`),
+      mount: (context) => {
+        if (!location.pathname.startsWith("/chat")) return;
+        let disposeChat = null;
+        const timer = setTimeout(() => {
+          if (context.isCurrent()) disposeChat = addMessageLink();
+        }, 500);
+        return () => {
+          clearTimeout(timer);
+          if (disposeChat) disposeChat();
+        };
+      },
+    },
+    {
+      id: "hidden-intro",
+      enabled: () => storage.get(`${STORAGE_PREFIX}showIntro`),
+      mount: (context) => watchHiddenIntro(context),
+    },
+    {
+      id: "ide-batch",
+      enabled: () => storage.get(`${STORAGE_PREFIX}ideBatchSampleTest`),
+      mount: () => watchIdeBatch(),
+    },
+    {
+      id: "restricted-document",
+      enabled: () => storage.get(`${STORAGE_PREFIX}showRestrictedContent`),
+      mount: (context) =>
+        restrictedDocumentBoot
+          ? restrictedDocumentBoot.mount(context)
+          : () => {},
+      onRoute: () => {
+        if (restrictedDocumentBoot) restrictedDocumentBoot.onRoute();
+      },
+    },
   ];
 
-  // 受限内容接管 document.write 重建文档后也会调用本函数，重挂全部功能
+  const pageLifecycle = createPageLifecycle({
+    routeAdapter: browserRouteAdapter,
+    documentAdapter: {
+      schedule: (callback) => {
+        const frame = requestAnimationFrame(callback);
+        return () => cancelAnimationFrame(frame);
+      },
+      whenReady: (callback) => {
+        if (document.body) return callback();
+        document.addEventListener("DOMContentLoaded", callback, {
+          once: true,
+        });
+      },
+    },
+    storage,
+    logError: (id, error) =>
+      console.error(`LuoguSP lifecycle ${id}:`, error),
+  });
+  FEATURES.forEach((feature) => pageLifecycle.register(feature));
+  restrictedDocumentBoot = createRestrictedDocumentBoot({
+    pageAdapter: {
+      detect: restrictedPageInfo,
+      showLoader: rstShowLoader,
+      showUnavailable: rstShowUnavailableTip,
+      showFailure: rstBuildFailure,
+      currentPath: () => location.pathname,
+      isRestrictedRoute: (path) =>
+        /^\/(article|paste)\/[A-Za-z0-9]+\/?$/.test(path),
+      reload: () => location.reload(),
+    },
+    saverWorkflow,
+    documentBuilder: restrictedDocumentBuilder,
+    documentCommitter: restrictedDocumentCommitter,
+    pageLifecycle,
+    logError: (error) => console.error("LuoguSP restricted boot:", error),
+  });
+
+  // Phase 7 删除兼容门面；当前只把启动委托给 Page Lifecycle Module。
   function startFeatures() {
-    injectStyle();
-    for (const f of FEATURES) {
-      if (!f.always && !storage.get(f.key)) continue;
-      try {
-        f.run();
-      } catch (e) {
-        console.error("LuoguSP feature failed:", e);
-      }
-    }
+    pageLifecycle.start();
   }
   let bootstrapped = false;
   const bootstrapAdapter =
@@ -3487,6 +4005,10 @@ if (LUOGUSP_NODE_MODULE) {
     createSaverTransport,
     createSaverProtocol,
     createSaverWorkflow,
+    createPageLifecycle,
+    createRestrictedDocumentBoot,
+    serializeJsonForScript,
+    createRestrictedDocumentCommitter,
     createRestrictedUrlPolicy,
     createRestrictedReplyFetchAdapter,
     createLuoguSPApp,
