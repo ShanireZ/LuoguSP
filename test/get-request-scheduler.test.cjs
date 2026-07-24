@@ -130,6 +130,35 @@ test("GET scheduler honors Retry-After and retries 503 only once", async () => {
   scheduler.dispose();
 });
 
+test("GET scheduler parses HTTP-date Retry-After for 429", async () => {
+  const now = Date.parse("2026-07-24T00:00:00Z");
+  const clock = new FakeClock(now);
+  let attempts = 0;
+  const scheduler = createGetRequestScheduler({
+    fetch: async () => {
+      attempts++;
+      return attempts === 1
+        ? textResponse("limited", 429, {
+            "retry-after": new Date(now + 3000).toUTCString(),
+          })
+        : textResponse("ready");
+    },
+    clock: clock.adapter(),
+    launchGap: 300,
+    concurrency: 3,
+    maxRetries: 1,
+  });
+
+  const result = scheduler.text("/date-retry");
+  await flushMicrotasks();
+  await clock.advance(2999);
+  assert.equal(attempts, 1);
+  await clock.advance(1);
+  assert.equal(await result, "ready");
+  assert.equal(attempts, 2);
+  scheduler.dispose();
+});
+
 test("GET scheduler aborts timed-out work and rejects queued work on dispose", async () => {
   const clock = new FakeClock();
   const scheduler = createGetRequestScheduler({

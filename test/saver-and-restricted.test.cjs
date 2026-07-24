@@ -15,6 +15,7 @@ test("Saver transport separates HTTP, malformed JSON and business responses", as
   const responses = [
     new Response('{"code":200}', { status: 400 }),
     new Response("not-json", { status: 200 }),
+    new Response('{"message":"missing code"}', { status: 200 }),
     new Response('{"code":400,"message":"bad"}', { status: 200 }),
   ];
   const transport = createSaverTransport({
@@ -28,6 +29,9 @@ test("Saver transport separates HTTP, malformed JSON and business responses", as
     status: 400,
   });
   await assert.rejects(transport.get("/json"), {
+    kind: "malformed-response",
+  });
+  await assert.rejects(transport.get("/shell"), {
     kind: "malformed-response",
   });
   assert.deepEqual(await transport.get("/business"), {
