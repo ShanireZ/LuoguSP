@@ -5,12 +5,50 @@ const assert = require("node:assert/strict");
 const {
   createRestrictedDocumentBoot,
   createRestrictedDocumentCommitter,
+  createRestrictedLoadingGate,
   serializeJsonForScript,
 } = require("../LuoguSP.user.js");
 const { deferred, flushMicrotasks } = require("./helpers.cjs");
 
 const HTML =
   '<!DOCTYPE html><html><head><script src="https://fecdn.luogu.com.cn/app.js"></script></head><body><div id="app"></div></body></html>';
+
+test("Restricted Loading Gate starts synchronously only for enabled candidate routes", () => {
+  const calls = [];
+  let path = "/article/abc";
+  let enabled = true;
+  const gate = createRestrictedLoadingGate({
+    pageAdapter: {
+      currentPath: () => path,
+      isEnabled: () => enabled,
+      isCandidateRoute: (value) =>
+        /^\/(article|paste)\/[A-Za-z0-9]+\/?$/.test(value),
+    },
+    overlayAdapter: {
+      mount: () => {
+        calls.push("mount");
+        return () => calls.push("unmount");
+      },
+    },
+  });
+
+  assert.equal(gate.start(), true);
+  assert.equal(gate.start(), true);
+  assert.deepEqual(calls, ["mount"]);
+  assert.equal(gate.getState().active, true);
+
+  gate.release();
+  gate.release();
+  assert.deepEqual(calls, ["mount", "unmount"]);
+  assert.equal(gate.getState().active, false);
+
+  path = "/problem/P1000";
+  assert.equal(gate.start(), false);
+  enabled = false;
+  path = "/paste/abc";
+  assert.equal(gate.start(), false);
+  assert.deepEqual(calls, ["mount", "unmount"]);
+});
 
 test("Document Committer validates resources and commits a prepared document once", () => {
   const calls = [];
@@ -108,7 +146,8 @@ function bootFixture(overrides = {}) {
   const pageAdapter = {
     detect: () => info,
     showLoader: (message) => calls.push(["loader", message || "default"]),
-    showUnavailable: (message) => calls.push(["unavailable", message]),
+    hideLoader: () => calls.push(["loaderHidden"]),
+    showUnavailable: (_info, message) => calls.push(["unavailable", message]),
     showFailure: (_info, message) => calls.push(["failure", message]),
     currentPath: () => path,
     isRestrictedRoute: (value) => /^\/(article|paste)\//.test(value),
@@ -193,6 +232,7 @@ test("Restricted Document Boot does nothing without the interstitial triple matc
   const fx = bootFixture({
     pageAdapter: {
       detect: () => null,
+      hideLoader: () => fx.calls.push(["loaderHidden"]),
       currentPath: () => "/article/abc",
       isRestrictedRoute: () => true,
       reload() {},
@@ -207,6 +247,7 @@ test("Restricted Document Boot does nothing without the interstitial triple matc
   const dispose = fx.boot.mount({ isCurrent: () => true });
   await flushMicrotasks();
   assert.equal(saverCalls, 0);
+  assert.deepEqual(fx.calls, [["loaderHidden"]]);
   dispose();
 });
 

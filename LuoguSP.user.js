@@ -15,7 +15,7 @@
 // @require      https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js
 // @require      https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js
 // @require      https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js
-// @run-at       document-end
+// @run-at       document-start
 // ==/UserScript==
 
 (function () {
@@ -1292,6 +1292,43 @@ function createPageLifecycle(config) {
   return lifecycle;
 }
 
+function createRestrictedLoadingGate(config) {
+  const { pageAdapter, overlayAdapter } = config || {};
+  if (
+    !pageAdapter ||
+    typeof pageAdapter.currentPath !== "function" ||
+    typeof pageAdapter.isEnabled !== "function" ||
+    typeof pageAdapter.isCandidateRoute !== "function" ||
+    !overlayAdapter ||
+    typeof overlayAdapter.mount !== "function"
+  )
+    throw new TypeError("Restricted Loading Gate configuration is invalid");
+
+  let active = false;
+  let releaseOverlay = null;
+  const start = () => {
+    if (active) return true;
+    if (
+      !pageAdapter.isEnabled() ||
+      !pageAdapter.isCandidateRoute(pageAdapter.currentPath())
+    )
+      return false;
+    const release = overlayAdapter.mount();
+    releaseOverlay = typeof release === "function" ? release : null;
+    active = true;
+    return true;
+  };
+  const release = () => {
+    if (!active) return;
+    active = false;
+    const dispose = releaseOverlay;
+    releaseOverlay = null;
+    if (dispose) dispose();
+  };
+  const getState = () => Object.freeze({ active });
+  return Object.freeze({ start, release, getState });
+}
+
 function createRestrictedDocumentBoot(config) {
   const {
     pageAdapter,
@@ -1328,13 +1365,18 @@ function createRestrictedDocumentBoot(config) {
       info = pageAdapter.detect();
     } catch (error) {
       logError(error);
+      if (typeof pageAdapter.hideLoader === "function")
+        pageAdapter.hideLoader();
       return () => {};
     }
-    if (!info)
+    if (!info) {
+      if (typeof pageAdapter.hideLoader === "function")
+        pageAdapter.hideLoader();
       return () => {
         if (typeof documentBuilder.dispose === "function")
           documentBuilder.dispose();
       };
+    }
     const controller = createAbortController();
     activeController = controller;
     pageAdapter.showLoader();
@@ -1358,6 +1400,7 @@ function createRestrictedDocumentBoot(config) {
           if (archive.category === "cancelled") return;
           if (archive.stage === "lookup")
             return pageAdapter.showUnavailable(
+              info,
               `LuoguSP：${archive.reason}，未自动发起收录。`,
             );
           return pageAdapter.showFailure(
@@ -1409,6 +1452,8 @@ function createRestrictedDocumentBoot(config) {
       }
       if (typeof documentBuilder.dispose === "function")
         documentBuilder.dispose();
+      if (typeof pageAdapter.hideLoader === "function")
+        pageAdapter.hideLoader();
     };
   };
   const onRoute = () => {
@@ -1426,6 +1471,8 @@ function createRestrictedDocumentBoot(config) {
     rebuiltPath = "";
     if (typeof documentBuilder.dispose === "function")
       documentBuilder.dispose();
+    if (typeof pageAdapter.hideLoader === "function")
+      pageAdapter.hideLoader();
   };
   const getState = () =>
     Object.freeze({ taskId, rebuiltPath, running: !!activeController });
@@ -1760,6 +1807,7 @@ function createLuoguSPApp(options = {}) {
     set: (k, v) => localStorage.setItem(k, String(v)),
     has: (k) => localStorage.getItem(k) !== null,
   };
+  const restrictedLoadingGate = options.restrictedLoadingGate || null;
   function initializeFeatureDefaults() {
     // 首次运行：所有功能默认开启。只在浏览器显式启动时访问 localStorage。
     for (const k of FEATURE_LABELS.keys())
@@ -3556,15 +3604,22 @@ function createLuoguSPApp(options = {}) {
     },
     urlPolicy: restrictedUrlPolicy,
   });
+  const RST_LOADER_CSS =
+    ".luogusp-rst-loader{position:fixed;inset:0;z-index:2147483000;background:#f5f5f5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#595959;font:14px/1.5 -apple-system,BlinkMacSystemFont,\"Helvetica Neue\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;}" +
+    ".luogusp-rst-spinner{width:36px;height:36px;border:3px solid rgba(52,152,219,.25);border-top-color:#3498db;border-radius:50%;animation:luogusp-rst-spin .8s linear infinite;}" +
+    "@keyframes luogusp-rst-spin{to{transform:rotate(360deg);}}" +
+    "@media (prefers-reduced-motion:reduce){.luogusp-rst-spinner{animation-duration:1.8s;}}";
+  const RST_LOADER_CONTENT_HTML =
+    '<div class="luogusp-rst-spinner" aria-hidden="true"></div><div class="msg">加载中…</div>';
+  const RST_LOADER_HTML =
+    `<div id="luogusp-rst-loader" class="luogusp-rst-loader" role="status" aria-live="polite">${RST_LOADER_CONTENT_HTML}</div>`;
+
   // 最小自有样式：加载层/失败卡（注入拦截页文档），扩展按钮样式随壳 HTML 走（见 RST_EXTRA_CSS）
   function injectRstStyle() {
     if (document.getElementById("luogusp-rst-style")) return;
     const style = document.createElement("style");
     style.id = "luogusp-rst-style";
-    style.textContent = `
-			.luogusp-rst-loader{position:fixed;inset:0;z-index:2147483000;background:#f5f5f5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#595959;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;}
-			.luogusp-rst-spinner{width:36px;height:36px;border:3px solid rgba(52,152,219,.25);border-top-color:#3498db;border-radius:50%;animation:luogusp-rst-spin .8s linear infinite;}
-			@keyframes luogusp-rst-spin{to{transform:rotate(360deg);}}
+    style.textContent = `${RST_LOADER_CSS}
 			.luogusp-rst-plain{margin:0;background:#f5f5f5;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;color:#404040;}
 			.luogusp-rst-plain a{color:#3498db;text-decoration:none;}
 			.luogusp-rst-plaincard{max-width:640px;margin:15vh auto 0;background:#fff;border-radius:4px;box-shadow:0 1px 3px rgba(26,26,26,.1);padding:1.5em;}
@@ -3575,6 +3630,7 @@ function createLuoguSPApp(options = {}) {
   // 扩展按钮样式（写进壳文档；蓝色=与原生灰色互动钮区分，owner 拍板）。
   // ★button-2line 的官方规则是 data-v 作用域的，注入节点吃不到 → 布局自带（镜像官方值）。
   const RST_EXTRA_CSS =
+    RST_LOADER_CSS +
     ".luogusp-rst-abtn{display:flex;flex-direction:column;align-items:center;margin:0 1em;cursor:pointer;}" +
     ".luogusp-rst-abtn .icon{font-size:1.25em;margin-bottom:.3em;}" +
     ".luogusp-rst-abtn .text{text-align:center;font-size:.75em;}" +
@@ -3687,29 +3743,24 @@ function createLuoguSPApp(options = {}) {
       el = document.createElement("div");
       el.id = "luogusp-rst-loader";
       el.className = "luogusp-rst-loader";
-      el.innerHTML =
-        '<div class="luogusp-rst-spinner"></div><div class="msg">加载中…</div>';
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
+      el.innerHTML = RST_LOADER_CONTENT_HTML;
       (document.body || document.documentElement).appendChild(el);
     }
     el.querySelector(".msg").textContent = text || "加载中…";
+    if (restrictedLoadingGate) restrictedLoadingGate.release();
   }
   function rstHideLoader() {
     const el = document.getElementById("luogusp-rst-loader");
     if (el) el.remove();
+    if (restrictedLoadingGate) restrictedLoadingGate.release();
   }
-  function rstShowUnavailableTip(message) {
-    rstHideLoader();
-    let tip = document.getElementById("luogusp-rst-unavailable");
-    if (!tip) {
-      tip = document.createElement("p");
-      tip.id = "luogusp-rst-unavailable";
-      tip.style.cssText =
-        "margin:12px auto;max-width:640px;color:#e74c3c;font-size:13px;text-align:center;";
-      document.body.insertBefore(tip, document.body.firstChild);
-    }
-    tip.textContent = message;
+  function rstShowUnavailableTip(info, message) {
+    rstBuildFailure(info, message);
   }
   function rstBuildFailure(info, reason) {
+    rstHideLoader();
     document.title =
       (info.type === "article" ? "文章" : "云剪贴板") + " - 洛谷";
     document.body.className = "luogusp-rst-plain";
@@ -3901,7 +3952,7 @@ function createLuoguSPApp(options = {}) {
       cssLinks.map((c) => `<link rel="stylesheet" href="${c}" />`).join("") +
       `<script id="luogu-theme" type="application/json">${safeThemeRaw}<\/script>` +
       `<style>${RST_EXTRA_CSS}</style>` +
-      `</head><body><div id="app"></div></body></html>`;
+      `</head><body><div id="app"></div>${RST_LOADER_HTML}</body></html>`;
     return {
       kind: "article",
       html,
@@ -3959,7 +4010,7 @@ function createLuoguSPApp(options = {}) {
       `<style>${RST_EXTRA_CSS}</style>` +
       `<script>window._feInjection = JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(inj))}"));window._feConfigVersion=${parsed.configVersionLiteral};window._tagVersion=${parsed.tagVersionLiteral};<\/script>` +
       `<script src="${parsed.loaderJs}" charset="utf-8" defer><\/script>` +
-      `</head><body><div id="app"><noscript><h3>请<b style="color:#f00;">不要禁用</b>脚本，否则网页无法正常加载</h3></noscript></div></body></html>`;
+      `</head><body><div id="app"><noscript><h3>请<b style="color:#f00;">不要禁用</b>脚本，否则网页无法正常加载</h3></noscript></div>${RST_LOADER_HTML}</body></html>`;
     return {
       kind: "paste",
       html,
@@ -4016,9 +4067,11 @@ function createLuoguSPApp(options = {}) {
       return div;
     };
     const inject = () => {
-      document.querySelectorAll(".article-content .actions").forEach((bar) => {
+      const actionBars = [
+        ...document.querySelectorAll(".article-content .actions"),
+      ].filter((bar) => !bar.classList.contains("left-mode"));
+      actionBars.forEach((bar) => {
         // owner 拍板：左浮条（left-mode）不放扩展按钮，只挂内联互动条
-        if (bar.classList.contains("left-mode")) return;
         if (bar.querySelector(".luogusp-rst-abtn")) return;
         bar.appendChild(
           make(
@@ -4036,34 +4089,34 @@ function createLuoguSPApp(options = {}) {
       });
       // owner 要求：指向创建/更新时间不出浏览器悬浮泡 → 整条时间栏剥 title
       // （removeAttribute 无属性时不产生变更记录，天然幂等）
-      document
-        .querySelectorAll(".article-content .update-info")
-        .forEach((bar) => {
-          bar.removeAttribute("title");
-          bar
-            .querySelectorAll("[title]")
-            .forEach((n) => n.removeAttribute("title"));
-        });
+      const updateBars = [
+        ...document.querySelectorAll(".article-content .update-info"),
+      ];
+      updateBars.forEach((bar) => {
+        bar.removeAttribute("title");
+        bar
+          .querySelectorAll("[title]")
+          .forEach((n) => n.removeAttribute("title"));
+      });
       if (updText)
-        document
-          .querySelectorAll(".article-content .update-info")
-          .forEach((bar) => {
-            if (bar.querySelector(".luogusp-rst-updtime")) return;
-            const ref = [...bar.querySelectorAll("span")].find((s) =>
-              /创建时间/.test(s.textContent || ""),
-            );
-            const span = document.createElement("span");
-            if (ref)
-              for (const at of ref.attributes)
-                if (at.name.startsWith("data-v-"))
-                  span.setAttribute(at.name, at.value); // 继承 data-v 作用域样式
-            span.classList.add("luogusp-rst-updtime");
-            span.textContent = `更新时间：${updText}`;
-            const sep = document.createTextNode("    ");
-            if (ref) ref.after(sep, span);
-            else bar.append(sep, span);
-          });
+        updateBars.forEach((bar) => {
+          if (bar.querySelector(".luogusp-rst-updtime")) return;
+          const ref = [...bar.querySelectorAll("span")].find((s) =>
+            /创建时间/.test(s.textContent || ""),
+          );
+          const span = document.createElement("span");
+          if (ref)
+            for (const at of ref.attributes)
+              if (at.name.startsWith("data-v-"))
+                span.setAttribute(at.name, at.value); // 继承 data-v 作用域样式
+          span.classList.add("luogusp-rst-updtime");
+          span.textContent = `更新时间：${updText}`;
+          const sep = document.createTextNode("    ");
+          if (ref) ref.after(sep, span);
+          else bar.append(sep, span);
+        });
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
+      if (actionBars.length && updateBars.length) rstHideLoader();
     };
     return rstObserveInjection(inject);
   }
@@ -4121,6 +4174,7 @@ function createLuoguSPApp(options = {}) {
         pubRow.after(row);
       }
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
+      if (author && pubRow) rstHideLoader();
     };
     return rstObserveInjection(inject);
   }
@@ -4353,6 +4407,7 @@ function createLuoguSPApp(options = {}) {
     pageAdapter: {
       detect: () => restrictedPageDetector.detect(),
       showLoader: rstShowLoader,
+      hideLoader: rstHideLoader,
       showUnavailable: rstShowUnavailableTip,
       showFailure: rstBuildFailure,
       currentPath: () => location.pathname,

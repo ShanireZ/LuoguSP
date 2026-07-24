@@ -26,6 +26,7 @@ test("release metadata, README badge and update endpoints stay aligned", () => {
   );
   assert.equal(metadata.get("match"), "https://www.luogu.com.cn/*");
   assert.equal(metadata.get("grant"), "none");
+  assert.equal(metadata.get("run-at"), "document-start");
   assert.equal(
     metadata.get("homepageURL"),
     "https://github.com/ShanireZ/LuoguSP",
