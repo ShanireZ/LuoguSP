@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.11.5
+// @version      2.11.6
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -199,7 +199,16 @@
     document.body.appendChild(overlay);
 
     const boxes = () => overlay.querySelectorAll('input[type="checkbox"]');
-    const close = () => overlay.remove();
+    let closed = false;
+    function esc(e) {
+      if (e.key === "Escape") close();
+    }
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      overlay.remove();
+      document.removeEventListener("keydown", esc);
+    };
 
     overlay.addEventListener("click", (e) => {
       const t = e.target;
@@ -214,12 +223,7 @@
         if (confirm("设置已保存，是否立即刷新页面生效？")) location.reload();
       }
     });
-    document.addEventListener("keydown", function esc(e) {
-      if (e.key === "Escape") {
-        close();
-        document.removeEventListener("keydown", esc);
-      }
-    });
+    document.addEventListener("keydown", esc);
   }
 
   // 齿轮图标（24×24 Material settings，fill=currentColor 跟随导航文字色）
@@ -742,17 +746,23 @@
     card.append(header, body);
     col.appendChild(card);
   }
-  async function showHiddenIntro() {
-    const m = location.pathname.match(/^\/(?:user|space)\/(\d+)/);
-    if (!m) return;
-    const route = currentUserRoute();
-    if (!route.isHome) return;
-    const uid = m[1];
+  async function showHiddenIntro(expectedRoute) {
+    const route = expectedRoute || currentUserRoute();
+    if (!route.uid || !route.isHome) return;
+    const uid = route.uid;
+    const routeKey = route.key;
+    const stillCurrent = () => {
+      const current = currentUserRoute();
+      return (
+        current.uid === uid && current.key === routeKey && current.isHome
+      );
+    };
     document.querySelectorAll(".luogusp-intro-card").forEach((e) => e.remove()); // 清换页残留
     if (document.querySelector(SELECTORS.nativeIntro)) return; // 原生已显示，不重复补
     const intro = await getIntroduction(uid);
-    if (!intro || !intro.trim()) return;
+    if (!stillCurrent() || !intro || !intro.trim()) return;
     const place = () => {
+      if (!stillCurrent()) return true; // 请求期间已换页：停止等待，绝不把旧简介挂到新路由
       if (document.querySelector(".introduction:not(.luogusp-intro-card *)"))
         return true; // 原生简介已出现（管理员等）→ 别补
       if (document.querySelector(".luogusp-intro-card")) return true;
@@ -802,6 +812,13 @@
     const check = () => {
       const route = currentUserRoute();
       const uid = route.uid;
+      if (!uid || !route.isHome) {
+        document
+          .querySelectorAll(".luogusp-intro-card")
+          .forEach((e) => e.remove());
+        requestedRouteKey = "";
+        return;
+      }
       // 原生简介出现（管理员等原生可见）→ 移除我的卡，避免重复渲染
       if (document.querySelector(".introduction:not(.luogusp-intro-card *)")) {
         document
@@ -810,20 +827,15 @@
         requestedRouteKey = route.key;
         return;
       }
-      if (!uid || !route.isHome) {
-        document
-          .querySelectorAll(".luogusp-intro-card")
-          .forEach((e) => e.remove());
-        requestedRouteKey = "";
-        return;
-      }
       if (document.querySelector(".luogusp-intro-card")) {
         requestedRouteKey = route.key;
         return;
       }
       if (route.key !== requestedRouteKey) {
         requestedRouteKey = route.key;
-        showHiddenIntro();
+        showHiddenIntro(route).catch((e) =>
+          console.error("LuoguSP intro render:", e),
+        );
       }
     };
     check();
@@ -837,16 +849,17 @@
         });
       }
     };
-    new MutationObserver(queueCheck).observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+    new MutationObserver(() => {
+      const route = currentUserRoute();
+      if (route.uid && route.isHome) queueCheck();
+    }).observe(document.body, { childList: true, subtree: true });
     watchUrlChange(queueCheck);
   }
 
   // ============================================================
   // 题目难度着色
   // ============================================================
+  const FETCH_TEXT_CACHE_LIMIT = 256;
   class FetchRateLimiter {
     // launchGap：相邻两次发起 fetch 的最小间隔（越小越快，但过快可能被洛谷限流）
     // concurrency：最大同时在飞请求数（并发上限，网络慢时防堆积）
@@ -857,13 +870,20 @@
       this.queue = [];
       this.active = 0;
       this.nextAt = 0;
+      this.wakeTimer = null;
+      this.inflight = new Map();
       this.cache = new Map();
     }
     _drain() {
       while (this.active < this.concurrency && this.queue.length) {
         const wait = this.nextAt - Date.now();
         if (wait > 0) {
-          setTimeout(() => this._drain(), wait);
+          if (this.wakeTimer === null) {
+            this.wakeTimer = setTimeout(() => {
+              this.wakeTimer = null;
+              this._drain();
+            }, wait);
+          }
           return;
         } // 距上次发起未满 launchGap
         this.nextAt = Date.now() + this.launchGap;
@@ -878,18 +898,47 @@
       }
     }
     fetchText(url) {
-      if (this.cache.has(url)) return this.cache.get(url);
+      if (this.cache.has(url)) {
+        const text = this.cache.get(url);
+        this.cache.delete(url);
+        this.cache.set(url, text); // LRU：命中后移到末尾
+        return Promise.resolve(text);
+      }
+      if (this.inflight.has(url)) return this.inflight.get(url);
       const p = new Promise((resolve, reject) => {
         this.queue.push({ url, resolve, reject });
         this._drain();
-      }).then((res) => res.text());
-      this.cache.set(url, p);
+      })
+        .then((res) => res.text())
+        .then(
+          (text) => {
+            this.inflight.delete(url);
+            this.cache.set(url, text);
+            if (this.cache.size > FETCH_TEXT_CACHE_LIMIT) {
+              const oldest = this.cache.keys().next().value;
+              this.cache.delete(oldest);
+            }
+            return text;
+          },
+          (error) => {
+            this.inflight.delete(url); // 瞬时失败不留坏 Promise，后续允许重试
+            throw error;
+          },
+        );
+      this.inflight.set(url, p);
       return p;
     }
   }
-  const limiter = new FetchRateLimiter(200, 3); // 200ms 发起间隔、最多 3 并发（原为 300ms 串行）
+  const limiter = new FetchRateLimiter(300, 3); // 300ms 发起间隔、最多 3 并发
 
+  const COLOR_CACHE_LIMIT = 1000;
   const colorCache = new Map(); // pid -> css 颜色
+  const coloringAnchors = new WeakMap(); // anchor -> pid；同题去重，虚拟列表换题仍可启动新请求
+  const PROBLEM_ANCHOR_SELECTOR = [
+    'a[href*="/problem/"]',
+    'a[href*="?forum="]',
+    SELECTORS.voidAnchor,
+  ].join(",");
   const DIFF_RE = /"difficulty":\s*(\d+)/; // HTML 回退用
   let contentOnlyOk = null; // null 未知 / true 支持 / false 不支持
 
@@ -925,9 +974,18 @@
   }
 
   // 记录列表 / 练习页：洛谷已把整批题目难度注入 _feInstance，直接批量取，省去逐题抓取。
+  function rememberProblemColor(pid, color) {
+    if (!pid || !color) return;
+    if (colorCache.has(pid)) colorCache.delete(pid);
+    colorCache.set(pid, color);
+    if (colorCache.size > COLOR_CACHE_LIMIT) {
+      const oldest = colorCache.keys().next().value;
+      colorCache.delete(oldest);
+    }
+  }
   function cacheDifficulty(pid, difficulty) {
     if (pid && typeof difficulty === "number")
-      colorCache.set(pid, diffColor(difficulty));
+      rememberProblemColor(pid, diffColor(difficulty));
   }
   function harvestFromFeInstance() {
     const cur = window._feInstance && window._feInstance.currentData;
@@ -961,7 +1019,7 @@
     const d = await fetchDifficulty(pid);
     if (d == null) return null;
     const color = diffColor(d);
-    colorCache.set(pid, color);
+    rememberProblemColor(pid, color);
     return color;
   }
 
@@ -1008,39 +1066,44 @@
     if (!isForum && !isVoid && !a.href.includes("/problem/")) return;
     if (!a.innerText.startsWith(pid)) return;
     if (a.dataset.luoguspPid === pid) return; // 已着色，跳过（防重复处理/嵌套 <b>）
-
-    const span = a.children[0];
-    if (span && span.matches("span.pid") && span.innerText === pid) {
+    if (coloringAnchors.get(a) === pid) return;
+    coloringAnchors.set(a, pid);
+    try {
       const color = await getProblemColor(pid);
-      if (color) {
+      // 虚拟列表可能在请求期间复用锚点；只把结果写回仍代表同一题号的节点。
+      if (!color || !a.innerText.startsWith(pid)) return;
+      const span = a.children[0];
+      if (span && span.matches("span.pid") && span.innerText === pid) {
         span.style.color = color;
         span.style.fontWeight = "bold";
         a.dataset.luoguspPid = pid;
+      } else if (wrapPidText(a, pid, color)) {
+        a.dataset.luoguspPid = pid;
       }
-    } else {
-      const color = await getProblemColor(pid);
-      if (color && wrapPidText(a, pid, color)) a.dataset.luoguspPid = pid;
+    } finally {
+      if (coloringAnchors.get(a) === pid) coloringAnchors.delete(a);
     }
   }
 
   function addProblemsColor() {
-    new MutationObserver(async (muts) => {
+    const scan = (root) => {
+      if (!root.querySelectorAll) return;
+      if (root.matches && root.matches(PROBLEM_ANCHOR_SELECTOR))
+        colorAnchor(root);
+      root.querySelectorAll(PROBLEM_ANCHOR_SELECTOR).forEach(colorAnchor);
+    };
+    new MutationObserver((muts) => {
       for (const m of muts) {
         if (m.type === "childList") {
           for (const n of m.addedNodes) {
             if (n.nodeType !== Node.ELEMENT_NODE) continue;
-            if (n.matches && n.matches("a[href]")) colorAnchor(n);
-            if (n.querySelectorAll)
-              n.querySelectorAll("a[href]").forEach(colorAnchor);
+            scan(n);
           }
         } else if (m.type === "characterData") {
           const span = m.target.parentElement;
           if (span && span.matches && span.matches("span.pid")) {
-            const color = await getProblemColor(span.textContent);
-            if (color) {
-              span.style.color = color;
-              span.style.fontWeight = "bold";
-            }
+            const anchor = span.closest("a[href]");
+            if (anchor) colorAnchor(anchor);
           }
         }
       }
@@ -1050,7 +1113,7 @@
       characterData: true,
     });
 
-    document.querySelectorAll("a[href]").forEach(colorAnchor);
+    scan(document);
   }
 
   // ============================================================
@@ -1272,10 +1335,6 @@
         samples.length,
         runBtns.length,
       );
-    IDE_BATCH.running = true;
-    IDE_BATCH.stopReq = false;
-    IDE_BATCH.stale = false;
-    IDE_BATCH.results = new Array(n).fill(null);
     const inputTa = (() => {
       const tb = ideToolbarByTitle("输入");
       return tb && tb.parentElement
@@ -1293,53 +1352,64 @@
           )
         : null;
     })();
-    if (batchBtn) batchBtn.disabled = true;
-    if (selfTest) selfTest.disabled = true; // 批测中禁原生自测防互相干扰
-    if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "";
-    switchIdeTab("samples");
-    renderIdeRows(samples);
-    if (IDE_BATCH.summaryEl) IDE_BATCH.summaryEl.textContent = "测试中…";
-    let ceLog = null;
-    for (let i = 0; i < n; i++) {
-      if (IDE_BATCH.stopReq) break;
-      const p = ideRowParts(i);
-      if (p) {
-        p.pill.setAttribute("style", IDE_PILL_RUN);
-        p.pill.textContent = "运行中";
-      }
-      expandIdeRow(i);
-      let r;
-      try {
-        r = await runOneSample(runBtns[i]);
-      } catch (e) {
-        console.error("LuoguSP ide batch:", e);
-        r = { verdict: "UKE", note: String(e) };
-      }
-      IDE_BATCH.results[i] = r;
-      applyIdeResult(i, r, samples[i]);
-      if (r.verdict === "CE") {
-        ceLog = r.output || "";
-        for (let j = i + 1; j < n; j++) {
-          IDE_BATCH.results[j] = {
-            verdict: "CE",
-            output: ceLog,
-            note: "编译错误",
-          };
-          applyIdeResult(j, IDE_BATCH.results[j], samples[j]);
+    IDE_BATCH.running = true;
+    IDE_BATCH.stopReq = false;
+    IDE_BATCH.stale = false;
+    IDE_BATCH.results = new Array(n).fill(null);
+    try {
+      if (batchBtn) batchBtn.disabled = true;
+      if (selfTest) selfTest.disabled = true; // 批测中禁原生自测防互相干扰
+      if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "";
+      switchIdeTab("samples");
+      renderIdeRows(samples);
+      if (IDE_BATCH.summaryEl) IDE_BATCH.summaryEl.textContent = "测试中…";
+      let ceLog = null;
+      for (let i = 0; i < n; i++) {
+        if (IDE_BATCH.stopReq) break;
+        const p = ideRowParts(i);
+        if (p) {
+          p.pill.setAttribute("style", IDE_PILL_RUN);
+          p.pill.textContent = "运行中";
         }
-        break;
+        expandIdeRow(i);
+        let r;
+        try {
+          r = await runOneSample(runBtns[i]);
+        } catch (e) {
+          console.error("LuoguSP ide batch:", e);
+          r = { verdict: "UKE", note: String(e) };
+        }
+        IDE_BATCH.results[i] = r;
+        applyIdeResult(i, r, samples[i]);
+        if (r.verdict === "CE") {
+          ceLog = r.output || "";
+          for (let j = i + 1; j < n; j++) {
+            IDE_BATCH.results[j] = {
+              verdict: "CE",
+              output: ceLog,
+              note: "编译错误",
+            };
+            applyIdeResult(j, IDE_BATCH.results[j], samples[j]);
+          }
+          break;
+        }
+        if (i < n - 1 && !IDE_BATCH.stopReq) await sleep(500); // 组间限速
       }
-      if (i < n - 1 && !IDE_BATCH.stopReq) await sleep(500); // 组间限速
+    } finally {
+      try {
+        if (inputTa && IDE_BATCH.inputSnapshot != null) {
+          inputTa.value = IDE_BATCH.inputSnapshot; // 还原用户自定义输入
+          inputTa.dispatchEvent(new Event("input", { bubbles: true })); // 同步 Vue 绑定
+        }
+      } catch (e) {
+        console.error("LuoguSP ide input restore:", e);
+      }
+      IDE_BATCH.running = false;
+      if (batchBtn) batchBtn.disabled = false;
+      if (selfTest) selfTest.disabled = false;
+      if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "none";
+      finishIdeSummary();
     }
-    if (inputTa && IDE_BATCH.inputSnapshot != null) {
-      inputTa.value = IDE_BATCH.inputSnapshot; // 还原用户自定义输入
-      inputTa.dispatchEvent(new Event("input", { bubbles: true })); // 同步 Vue 绑定
-    }
-    IDE_BATCH.running = false;
-    if (batchBtn) batchBtn.disabled = false;
-    if (selfTest) selfTest.disabled = false;
-    if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "none";
-    finishIdeSummary();
   }
 
   // 判定口径同洛谷：CRLF 归一、去行尾空格、去末尾空行。仅用于 diff 渲染与交叉校验，
@@ -1698,10 +1768,14 @@
         requestAnimationFrame(tick);
       }
     };
-    new MutationObserver(queue).observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+    new MutationObserver(() => {
+      if (
+        location.hash === "#ide" ||
+        IDE_BATCH.tabBar ||
+        IDE_BATCH.running
+      )
+        queue();
+    }).observe(document.body, { childList: true, subtree: true });
     watchUrlChange(queue);
     ensureIdeBatchUI();
   }
@@ -2124,6 +2198,33 @@
     });
   }
 
+  // 官方前端可能连续多次重绘；同一帧只补种一次，并在补种期间暂停观察，
+  // 避免扩展节点自身触发下一轮全页扫描。
+  function rstObserveInjection(inject) {
+    const root = document.body || document.documentElement;
+    const options = { childList: true, subtree: true };
+    let scheduled = false;
+    let observer = null;
+    const run = () => {
+      if (observer) observer.disconnect();
+      try {
+        inject();
+      } catch (e) {
+        console.error("LuoguSP restricted inject:", e);
+      } finally {
+        scheduled = false;
+        if (observer) observer.observe(root, options);
+      }
+    };
+    run(); // 首次同步补种，保持按钮出现时机不变
+    observer = new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(run);
+    });
+    observer.observe(root, options);
+  }
+
   // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种。
   // 同时在正文底部「创建时间：…」后方补「更新时间」＝保存站存档最近更新时间（updatedAt），
   // 供 owner 判断是否需要点「申请更新」。
@@ -2187,11 +2288,7 @@
           });
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
     };
-    inject();
-    new MutationObserver(inject).observe(
-      document.body || document.documentElement,
-      { childList: true, subtree: true },
-    );
+    rstObserveInjection(inject);
   }
   // 扩展按钮（剪贴板页）：内容卡首行（content-card-top）最右侧两枚实心蓝钮
   // （首行是 flex space-between，作者信息在左，本容器落位最右）。
@@ -2248,11 +2345,7 @@
       }
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
     };
-    inject();
-    new MutationObserver(inject).observe(
-      document.body || document.documentElement,
-      { childList: true, subtree: true },
-    );
+    rstObserveInjection(inject);
   }
 
   function rstQuery(info) {
