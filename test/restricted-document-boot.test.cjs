@@ -174,6 +174,20 @@ test("Restricted Document Boot prepares everything before a single lifecycle com
   dispose();
 });
 
+test("Restricted Document Boot shows a stable failure when commit is rejected", async () => {
+  const fx = bootFixture({
+    lifecycle: {
+      replaceDocument: () => false,
+    },
+  });
+  fx.boot.mount({ isCurrent: () => true });
+  await flushMicrotasks();
+  assert.deepEqual(fx.calls, [
+    ["loader", "default"],
+    ["failure", "原生页面提交失败，请刷新页面后重试。"],
+  ]);
+});
+
 test("Restricted Document Boot does nothing without the interstitial triple match", async () => {
   let saverCalls = 0;
   const fx = bootFixture({

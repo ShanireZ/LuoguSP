@@ -1174,7 +1174,6 @@ function createPageLifecycle(config) {
     } catch (error) {
       replacing = false;
       logError("replaceDocument", error);
-      mountFeatures();
       return false;
     }
     documentAdapter.whenReady(() => {
@@ -1301,7 +1300,7 @@ function createRestrictedDocumentBoot(config) {
           controller.signal,
         );
         if (!current()) return;
-        pageLifecycle.replaceDocument(() => {
+        const replaced = pageLifecycle.replaceDocument(() => {
           documentCommitter.commit(prepared);
           rebuiltPath = info.path || "";
           return () => {
@@ -1309,6 +1308,11 @@ function createRestrictedDocumentBoot(config) {
               prepared.afterReady();
           };
         });
+        if (!replaced)
+          pageAdapter.showFailure(
+            info,
+            "原生页面提交失败，请刷新页面后重试。",
+          );
       } catch (error) {
         if (!current() || isCancelled(error)) return;
         logError(error);

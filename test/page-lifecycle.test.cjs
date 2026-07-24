@@ -203,6 +203,29 @@ test("Page Lifecycle replaces a document once and mounts only after ready", () =
   assert.equal(commits, 1);
 });
 
+test("Page Lifecycle does not remount into a failing document commit loop", () => {
+  const fx = fixture();
+  let mounts = 0;
+  fx.lifecycle.register({
+    id: "feature",
+    mount: () => {
+      mounts++;
+      return () => {};
+    },
+  });
+  fx.lifecycle.start();
+  assert.equal(
+    fx.lifecycle.replaceDocument(() => {
+      throw new Error("commit failed");
+    }),
+    false,
+  );
+  assert.equal(mounts, 1);
+  assert.deepEqual(fx.errors, [["replaceDocument", "commit failed"]]);
+  assert.equal(fx.lifecycle.getState().mountedCount, 0);
+  assert.equal(fx.lifecycle.getState().replacing, false);
+});
+
 test("Page Lifecycle dispose cancels scheduled work and owned resources", () => {
   const fx = fixture();
   let mounts = 0;
