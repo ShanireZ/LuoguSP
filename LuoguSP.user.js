@@ -405,6 +405,7 @@ function createIdeBatchRunner(config) {
   let stale = false;
   let results = null;
   let stopMount = null;
+  let mountKey = null;
   let delay = null;
 
   const cancelDelay = () => {
@@ -485,6 +486,7 @@ function createIdeBatchRunner(config) {
           result = await ideDriver.runSample(context, index, {
             runId: taskRunId,
             drive: (action) => drive(taskRunId, action),
+            isCurrent: () => isCurrent(taskRunId, context),
           });
         } catch (error) {
           logError(error);
@@ -531,8 +533,20 @@ function createIdeBatchRunner(config) {
     }
   };
   const mount = () => {
-    if (disposed || mounted) return dispose;
+    if (disposed) return dispose;
+    const nextMountKey =
+      typeof ideDriver.mountKey === "function"
+        ? ideDriver.mountKey()
+        : ideDriver;
+    if (mounted && mountKey === nextMountKey) return dispose;
+    if (mounted) {
+      invalidate();
+      if (stopMount) stopMount();
+      stopMount = null;
+      mounted = false;
+    }
     mounted = true;
+    mountKey = nextMountKey;
     if (typeof ideDriver.mount === "function")
       stopMount =
         ideDriver.mount({
@@ -552,6 +566,7 @@ function createIdeBatchRunner(config) {
     invalidate();
     if (stopMount) stopMount();
     stopMount = null;
+    mountKey = null;
   };
   const getState = () =>
     Object.freeze({ state, runId, driving, stale, mounted, disposed });
@@ -1858,7 +1873,10 @@ function createLuoguSPApp(options = {}) {
       ? null
       : createProblemPipeline({
     identity: problemIdentity,
-    routeAdapter: { token: () => location.href },
+    routeAdapter: {
+      token: () =>
+        `${location.origin}${location.pathname}${location.search}`,
+    },
     difficultySource: {
       text: (path) => limiter.text(path),
       // 记录列表 / 练习页已把整批难度注入 _feInstance；返回来源对象与纯题目数据，
@@ -2115,9 +2133,10 @@ function createLuoguSPApp(options = {}) {
   }
   // 完成锚点：胶囊 存在→消失→重现（实测清空 300~560ms、结果 1~3.5s）
   // 注意：此处不看 stopReq——设计口径是「当前组跑完即停」，停止只在组间生效
-  async function waitIdePill(present, timeoutMs) {
+  async function waitIdePill(present, timeoutMs, isCurrent = () => true) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
+      if (!isCurrent()) return null;
       const parts = outputParts();
       if (!parts) return null; // IDE 已卸载
       if (!!parts.pill === present) return parts.pill || true;
@@ -2126,7 +2145,7 @@ function createLuoguSPApp(options = {}) {
     return null;
   }
 
-  async function runOneSample(runBtn, runId, drive) {
+  async function runOneSample(runBtn, runId, drive, isCurrent) {
     const before = outputParts();
     if (!before) return { verdict: "UKE", note: "IDE 面板不存在" };
     const hadPill = !!before.pill;
@@ -2135,6 +2154,7 @@ function createLuoguSPApp(options = {}) {
     let status = await submitP;
     if (status === 429) {
       await sleep(3000); // 限流：等 3s 原地重试一次
+      if (!isCurrent()) return { verdict: "UKE", note: "页面已切换" };
       submitP = waitIdeSubmit(10000, runId);
       drive(() => runBtn.click());
       status = await submitP;
@@ -2144,9 +2164,12 @@ function createLuoguSPApp(options = {}) {
         verdict: "UKE",
         note: status == null ? "未观测到提交请求" : `提交失败 HTTP ${status}`,
       };
-    if (hadPill && (await waitIdePill(false, 5000)) === null)
+    if (
+      hadPill &&
+      (await waitIdePill(false, 5000, isCurrent)) === null
+    )
       return { verdict: "UKE", note: "旧结果未清空，疑似运行未开始" };
-    const pill = await waitIdePill(true, 30000);
+    const pill = await waitIdePill(true, 30000, isCurrent);
     if (!pill || pill === true)
       return { verdict: "UKE", note: "30s 未返回结果" };
     const parts = outputParts();
@@ -2506,6 +2529,7 @@ function createLuoguSPApp(options = {}) {
   }
 
   const ideBrowserDriver = {
+    mountKey: () => document.body,
     prepare: async ({ runId }) => {
       mountIdeTabs(ideBrowserDriver.controls);
       const pid = currentPid();
@@ -2588,6 +2612,7 @@ function createLuoguSPApp(options = {}) {
           context.runButtons[index],
           task.runId,
           task.drive,
+          task.isCurrent,
         );
       } catch (error) {
         cancelIdeSubmitWaiter(task.runId);

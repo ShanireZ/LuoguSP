@@ -173,3 +173,31 @@ test("IDE Batch Runner dispose cancels delay, waiter and mounted listeners", asy
   assert.equal(unmounted, 1);
   assert.equal(runner.getState().disposed, true);
 });
+
+test("IDE Batch Runner remounts only when the document generation changes", () => {
+  const clock = new FakeClock();
+  let generation = {};
+  let mounts = 0;
+  let unmounts = 0;
+  const runner = createIdeBatchRunner({
+    ideDriver: {
+      mountKey: () => generation,
+      mount: () => {
+        mounts++;
+        return () => unmounts++;
+      },
+      prepare: async () => ({ kind: "ready", count: 0 }),
+      runSample: async () => ({ verdict: "AC" }),
+    },
+    clock: clock.adapter(),
+  });
+
+  runner.mount();
+  runner.mount();
+  assert.deepEqual({ mounts, unmounts }, { mounts: 1, unmounts: 0 });
+  generation = {};
+  runner.mount();
+  assert.deepEqual({ mounts, unmounts }, { mounts: 2, unmounts: 1 });
+  runner.dispose();
+  assert.equal(unmounts, 2);
+});
