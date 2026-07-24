@@ -127,6 +127,29 @@ test("IDE Batch Runner contains click failures and always restores input", async
   );
 });
 
+test("IDE Batch Runner never restores stale input after unmount", async () => {
+  const pending = deferred();
+  let restores = 0;
+  const runner = createIdeBatchRunner({
+    ideDriver: {
+      prepare: async () => ({ kind: "ready", count: 1 }),
+      runSample: () => pending.promise,
+      restore: () => restores++,
+    },
+    clock: new FakeClock().adapter(),
+  });
+
+  runner.mount();
+  const run = runner.start();
+  await flushMicrotasks();
+  runner.unmount();
+  pending.resolve({ verdict: "AC" });
+  await run;
+
+  assert.equal(restores, 0);
+  assert.equal(runner.getState().state, "idle");
+});
+
 test("IDE Batch Runner stops after current group and expands CE to remaining groups", async () => {
   const current = deferred();
   const applied = [];

@@ -581,7 +581,13 @@ function createIdeBatchRunner(config) {
       if (!controller.signal.aborted) logError(error);
     } finally {
       if (activeController === controller) activeController = null;
-      if (context && typeof ideDriver.restore === "function") {
+      const shouldRestore =
+        context &&
+        taskRunId === runId &&
+        !disposed &&
+        !controller.signal.aborted &&
+        (!ideDriver.isCurrent || ideDriver.isCurrent(context));
+      if (shouldRestore && typeof ideDriver.restore === "function") {
         try {
           ideDriver.restore(context);
         } catch (error) {
