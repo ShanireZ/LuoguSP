@@ -578,9 +578,21 @@ function createSaverTransport(config) {
 
   const fail = (kind, message, extra) =>
     Object.assign(new Error(message), { kind, ...(extra || {}) });
-  const request = async (path, init) => {
+  const request = async (path, init, options) => {
     const controller = createAbortController();
-    const timer = clock.setTimeout(() => controller.abort(), timeoutMs);
+    const externalSignal = options && options.signal;
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort();
+    if (externalSignal && externalSignal.aborted)
+      throw fail("cancelled", "保存站请求已取消");
+    if (externalSignal)
+      externalSignal.addEventListener("abort", abortFromCaller, {
+        once: true,
+      });
+    const timer = clock.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
     try {
       const response = await fetchImpl(baseUrl + path, {
         ...(init || {}),
@@ -601,22 +613,30 @@ function createSaverTransport(config) {
       return payload;
     } catch (error) {
       if (error && error.name === "AbortError")
-        throw fail("timeout", `保存站请求超时（${timeoutMs / 1000}s）`);
+        throw timedOut
+          ? fail("timeout", `保存站请求超时（${timeoutMs / 1000}s）`)
+          : fail("cancelled", "保存站请求已取消");
       if (error && error.kind) throw error;
       throw fail("transport", String((error && error.message) || error));
     } finally {
       clock.clearTimeout(timer);
+      if (externalSignal)
+        externalSignal.removeEventListener("abort", abortFromCaller);
     }
   };
 
   return Object.freeze({
-    get: (path) => request(path),
-    post: (path, body) =>
-      request(path, {
-        method: "POST",
-        headers: body ? { "content-type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      }),
+    get: (path, options) => request(path, null, options),
+    post: (path, body, options) =>
+      request(
+        path,
+        {
+          method: "POST",
+          headers: body ? { "content-type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        },
+        options,
+      ),
   });
 }
 
@@ -644,9 +664,240 @@ function createSaverProtocol() {
     return {
       kind: "unavailable",
       reason: failureMessage(payload, "保存站查询失败"),
+      retryable: false,
+      category: "business",
     };
   };
-  return Object.freeze({ isSuccess, failureMessage, classifyLookup });
+  const classifyAction = (payload, fallback = "保存站拒绝请求") =>
+    isSuccess(payload)
+      ? { kind: "accepted" }
+      : {
+          kind: "unavailable",
+          reason: failureMessage(payload, fallback),
+          retryable: true,
+          category: "business",
+        };
+  return Object.freeze({
+    isSuccess,
+    failureMessage,
+    classifyLookup,
+    classifyAction,
+  });
+}
+
+function createSaverWorkflow(config, policy) {
+  const {
+    transport,
+    protocol = createSaverProtocol(),
+    clock,
+    createAbortController = () => new AbortController(),
+  } = config || {};
+  const {
+    pollAttempts = 15,
+    pollIntervalMs = 3000,
+  } = policy || {};
+  if (
+    !transport ||
+    typeof transport.get !== "function" ||
+    typeof transport.post !== "function"
+  )
+    throw new TypeError("Saver Workflow requires a transport adapter");
+  if (
+    !clock ||
+    typeof clock.setTimeout !== "function" ||
+    typeof clock.clearTimeout !== "function"
+  )
+    throw new TypeError("Saver Workflow requires a clock adapter");
+
+  let disposed = false;
+  const controllers = new Set();
+  const timers = new Map();
+  const unavailableFromError = (error) => ({
+    kind: "unavailable",
+    reason: String((error && error.message) || error || "保存站暂时不可用"),
+    retryable: !!(
+      error &&
+      (error.kind === "transport" || error.kind === "timeout")
+    ),
+    category: (error && error.kind) || "transport",
+  });
+  const unknownFromPost = (error) => ({
+    kind: "unknown",
+    reason: String((error && error.message) || error || "请求结果未知"),
+    retryable: false,
+    category: (error && error.kind) || "transport",
+  });
+  const validateTarget = (type, id) =>
+    (type === "article" || type === "paste") &&
+    typeof id === "string" &&
+    /^[A-Za-z0-9]+$/.test(id);
+  const invalidTarget = () => ({
+    kind: "unavailable",
+    reason: "保存站目标无效",
+    retryable: false,
+    category: "invariant",
+  });
+  const withTask = async (externalSignal, task) => {
+    if (disposed)
+      return {
+        kind: "unavailable",
+        reason: "保存工作流已取消",
+        retryable: true,
+        category: "cancelled",
+      };
+    const controller = createAbortController();
+    const abort = () => controller.abort();
+    if (externalSignal && externalSignal.aborted) abort();
+    else if (externalSignal)
+      externalSignal.addEventListener("abort", abort, { once: true });
+    controllers.add(controller);
+    try {
+      return await task(controller.signal);
+    } finally {
+      controllers.delete(controller);
+      if (externalSignal)
+        externalSignal.removeEventListener("abort", abort);
+    }
+  };
+  const pause = (ms, signal) =>
+    new Promise((resolve) => {
+      if (signal.aborted) return resolve(false);
+      const finish = (value) => {
+        if (!timers.has(timer)) return;
+        clock.clearTimeout(timer);
+        timers.delete(timer);
+        signal.removeEventListener("abort", cancel);
+        resolve(value);
+      };
+      const cancel = () => finish(false);
+      const timer = clock.setTimeout(() => finish(true), ms);
+      timers.set(timer, cancel);
+      signal.addEventListener("abort", cancel, { once: true });
+    });
+  const lookupRaw = async (type, id, signal) => {
+    try {
+      const payload = await transport.get(`/${type}/query/${id}`, { signal });
+      return protocol.classifyLookup(payload);
+    } catch (error) {
+      return unavailableFromError(error);
+    }
+  };
+  const postRaw = async (path, body, signal, fallback) => {
+    try {
+      const payload = await transport.post(path, body, { signal });
+      return protocol.classifyAction(payload, fallback);
+    } catch (error) {
+      return unknownFromPost(error);
+    }
+  };
+  const lookup = (type, id, options) => {
+    if (!validateTarget(type, id)) return Promise.resolve(invalidTarget());
+    return withTask(options && options.signal, (signal) =>
+      lookupRaw(type, id, signal),
+    );
+  };
+  const ensureArchived = (type, id, options) => {
+    if (!validateTarget(type, id)) return Promise.resolve(invalidTarget());
+    return withTask(options && options.signal, async (signal) => {
+      const initial = await lookupRaw(type, id, signal);
+      if (initial.kind !== "missing")
+        return initial.kind === "unavailable"
+          ? { ...initial, stage: "lookup" }
+          : initial;
+      const created = await postRaw(
+        `/workflow/create/template/${type}-save-pipeline`,
+        { targetId: id },
+        signal,
+        "保存站拒绝收录请求",
+      );
+      if (created.kind !== "accepted") return { ...created, stage: "create" };
+      if (options && typeof options.onAccepted === "function")
+        options.onAccepted();
+      for (let attempt = 0; attempt < pollAttempts; attempt++) {
+        if (!(await pause(pollIntervalMs, signal)))
+          return {
+            ...unavailableFromError({
+              kind: "cancelled",
+              message: "保存工作流已取消",
+            }),
+            stage: "poll",
+          };
+        const result = await lookupRaw(type, id, signal);
+        if (result.kind === "archived") return result;
+        if (result.kind === "missing") continue;
+        if (
+          result.kind === "unavailable" &&
+          result.retryable &&
+          (result.category === "transport" || result.category === "timeout")
+        )
+          continue;
+        return { ...result, stage: "poll" };
+      }
+      return {
+        kind: "unavailable",
+        reason: "保存站在限定时间内未能完成收录。",
+        retryable: true,
+        category: "timeout",
+        stage: "poll",
+      };
+    });
+  };
+  const requestRefresh = (type, id, options) => {
+    if (!validateTarget(type, id)) return Promise.resolve(invalidTarget());
+    return withTask(options && options.signal, (signal) =>
+      postRaw(
+        `/workflow/create/template/${type}-save-pipeline`,
+        { targetId: id },
+        signal,
+        "保存站拒绝更新请求",
+      ),
+    );
+  };
+  const loadComments = (id, options) =>
+    withTask(options && options.signal, async (signal) => {
+      try {
+        const payload = await transport.get(`/article/comments/${id}`, {
+          signal,
+        });
+        if (protocol.isSuccess(payload))
+          return { kind: "available", data: payload.data || {} };
+        return {
+          ...protocol.classifyAction(payload, "评论存档读取失败"),
+          kind: "unavailable",
+        };
+      } catch (error) {
+        return unavailableFromError(error);
+      }
+    });
+  const refreshComments = (id, options) =>
+    withTask(options && options.signal, (signal) =>
+      postRaw(
+        `/article/comments/${id}/refresh`,
+        null,
+        signal,
+        "评论刷新请求失败",
+      ),
+    );
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    for (const controller of controllers) controller.abort();
+    controllers.clear();
+    for (const [timer, cancel] of timers) {
+      clock.clearTimeout(timer);
+      cancel();
+    }
+    timers.clear();
+  };
+
+  return Object.freeze({
+    lookup,
+    ensureArchived,
+    requestRefresh,
+    loadComments,
+    refreshComments,
+    dispose,
+  });
 }
 
 function createRestrictedUrlPolicy() {
@@ -2457,26 +2708,23 @@ function createLuoguSPApp(options = {}) {
   // ★保存站硬边界：payload 的 createdAt 是入档时间，非原文发布时间（无接口可取原始时间）。
   // ============================================================
   const SAVER_API = "https://api.luogu.me";
+  const saverClock = {
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (id) => clearTimeout(id),
+  };
   const saverTransport = createSaverTransport({
     baseUrl: SAVER_API,
     fetch: (url, init) => fetch(url, init),
-    clock: {
-      setTimeout: (fn, ms) => setTimeout(fn, ms),
-      clearTimeout: (id) => clearTimeout(id),
-    },
+    clock: saverClock,
     timeoutMs: 15000,
   });
   const saverProtocol = createSaverProtocol();
+  const saverWorkflow = createSaverWorkflow({
+    transport: saverTransport,
+    protocol: saverProtocol,
+    clock: saverClock,
+  });
   const restrictedUrlPolicy = createRestrictedUrlPolicy();
-  async function saverGet(path) {
-    return saverTransport.get(path); // 统一壳 {code,message,data}；业务码 404=未收录
-  }
-  async function saverPost(path, body) {
-    return saverTransport.post(path, body);
-  }
-  const saverOk = (payload) => saverProtocol.isSuccess(payload);
-  const saverFailure = (payload, fallback) =>
-    saverProtocol.failureMessage(payload, fallback);
 
   function normalizeOriginalUrl(target, type, id) {
     // pre#url 仅作为拦截页真实性锚点，不把其文本带入 href：
@@ -2687,10 +2935,10 @@ function createLuoguSPApp(options = {}) {
 
   // 文章页：合成 lentille-context（template article.show）+ 官方 columba 前端
   async function rstBootArticle(info, data) {
-    const [scaffold, cnUser, commentsQ] = await Promise.all([
+    const [scaffold, cnUser, commentsResult] = await Promise.all([
       rstHarvest("columba"),
       rstCnUser(data.authorId),
-      saverGet(`/article/comments/${info.id}`).catch(() => null),
+      saverWorkflow.loadComments(info.id),
     ]);
     if (!scaffold)
       return rstBuildFailure(info, "无法获取洛谷页面骨架，暂不能就地渲染。");
@@ -2727,7 +2975,10 @@ function createLuoguSPApp(options = {}) {
       /* 匿名兜底 */
     }
     const comments =
-      (commentsQ && commentsQ.data && commentsQ.data.comments) || [];
+      commentsResult.kind === "available" &&
+      Array.isArray(commentsResult.data.comments)
+        ? commentsResult.data.comments
+        : [];
     const ctx = {
       instance: "main",
       template: "article.show",
@@ -3013,14 +3264,6 @@ function createLuoguSPApp(options = {}) {
     rstObserveInjection(inject);
   }
 
-  function rstQuery(info) {
-    return saverGet(`/${info.type}/query/${info.id}`);
-  }
-  function rstTriggerSave(info) {
-    return saverPost(`/workflow/create/template/${info.type}-save-pipeline`, {
-      targetId: info.id,
-    });
-  }
   // 申请更新（手动）：状态机 idle=可点 / busy=更新中… / done=已申请。
   // owner 口径（2026-07-23）：提交成功即锁定「已申请」且不可再点，不轮询不自动刷新，
   // 直至用户主动刷新页面（保存工作流异步完成，刷新后自然装配新档）；仅提交失败允许重试。
@@ -3048,10 +3291,11 @@ function createLuoguSPApp(options = {}) {
     if (rstRefreshState !== "idle") return;
     rstSetRefresh("busy", "更新中…");
     try {
-      const r = await rstTriggerSave(info);
-      if (!saverOk(r)) throw new Error(saverFailure(r, "保存站拒绝更新请求"));
+      const result = await saverWorkflow.requestRefresh(info.type, info.id);
+      if (result.kind !== "accepted")
+        throw new Error(result.reason || "保存站拒绝更新请求");
       if (info.type === "article")
-        saverPost(`/article/comments/${info.id}/refresh`).catch(() => {});
+        saverWorkflow.refreshComments(info.id).catch(() => {});
       rstSetRefresh("done", "已申请");
     } catch (e) {
       console.error("LuoguSP restricted refresh:", e);
@@ -3103,55 +3347,32 @@ function createLuoguSPApp(options = {}) {
   async function rstRun() {
     const info = restrictedPageInfo();
     if (!info) return;
-    let q;
-    try {
-      q = await rstQuery(info);
-    } catch (e) {
-      // 保存站不可达：撤掉加载层还原拦截页，仅置顶提示，保留原生跳转能力
-      console.error("LuoguSP restricted:", e);
-      rstShowUnavailableTip(
-        "LuoguSP：保存站(api.luogu.me)不可达，无法直接显示该内容。",
-      );
-      return;
-    }
     injectRstStyle();
-    const lookup = saverProtocol.classifyLookup(q);
-    if (lookup.kind === "archived") {
+    const archive = await saverWorkflow.ensureArchived(info.type, info.id, {
+      onAccepted: () =>
+        rstShowLoader("该内容尚未被保存站收录，已自动发起收录…"),
+    });
+    if (archive.kind === "archived") {
       // 已收录：直接装配存档，不自动申请更新（owner 拍板：更新只走「申请更新」按钮）
-      return rstBootPage(info, lookup.data);
+      return rstBootPage(info, archive.data);
     }
-    if (lookup.kind !== "missing") {
-      console.error("LuoguSP restricted query:", q);
+    if (archive.stage === "lookup") {
+      // 查询阶段不可用或非预期业务结果：还原原生拦截页，不误判为未收录。
+      console.error("LuoguSP restricted query:", archive.reason);
       rstShowUnavailableTip(
-        `LuoguSP：${lookup.reason}，未自动发起收录。`,
+        `LuoguSP：${archive.reason}，未自动发起收录。`,
       );
       return;
     }
-    // 未收录：发起保存并等待入库（加载层持续转圈，完成后装配）
-    rstShowLoader("该内容尚未被保存站收录，已自动发起收录…");
-    try {
-      const created = await rstTriggerSave(info);
-      if (!saverOk(created))
-        throw new Error(saverFailure(created, "保存站拒绝收录请求"));
-    } catch (e) {
-      console.error("LuoguSP restricted save:", e);
+    if (archive.stage === "create" || archive.kind === "unknown") {
+      console.error("LuoguSP restricted save:", archive.reason);
       return rstBuildFailure(info, "向保存站发起收录请求失败。");
     }
-    for (let i = 0; i < 15; i++) {
-      await sleep(3000);
-      let poll;
-      try {
-        poll = await rstQuery(info);
-      } catch (e) {
-        continue;
-      }
-      const polled = saverProtocol.classifyLookup(poll);
-      if (polled.kind === "archived")
-        return rstBootPage(info, polled.data);
-      if (polled.kind !== "missing")
-        return rstBuildFailure(info, polled.reason);
-    }
-    rstBuildFailure(info, "保存站在限定时间内未能完成收录。");
+    console.error("LuoguSP restricted poll:", archive.reason);
+    rstBuildFailure(
+      info,
+      archive.reason || "保存站在限定时间内未能完成收录。",
+    );
   }
 
   function watchRestrictedPage() {
@@ -3240,6 +3461,7 @@ if (LUOGUSP_NODE_MODULE) {
     createIdeBatchRunner,
     createSaverTransport,
     createSaverProtocol,
+    createSaverWorkflow,
     createRestrictedUrlPolicy,
     createRestrictedReplyFetchAdapter,
     createLuoguSPApp,
