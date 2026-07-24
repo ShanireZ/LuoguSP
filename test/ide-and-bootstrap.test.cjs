@@ -51,6 +51,33 @@ test("IDE Batch Runner prevents double start throughout preparing", async () => 
   assert.equal(runner.getState().state, "idle");
 });
 
+test("IDE Batch Runner aborts pending preparation on dispose", async () => {
+  let preparationSignal = null;
+  const runner = createIdeBatchRunner({
+    ideDriver: {
+      prepare: ({ signal }) => {
+        preparationSignal = signal;
+        return new Promise((resolve) => {
+          signal.addEventListener(
+            "abort",
+            () => resolve({ kind: "hint", message: "cancelled" }),
+            { once: true },
+          );
+        });
+      },
+      runSample: async () => ({ verdict: "AC" }),
+    },
+    clock: new FakeClock().adapter(),
+  });
+
+  const run = runner.start();
+  assert.equal(preparationSignal.aborted, false);
+  runner.dispose();
+  await run;
+  assert.equal(preparationSignal.aborted, true);
+  assert.equal(runner.getState().disposed, true);
+});
+
 test("IDE Batch Runner rejects route drift after preparation", async () => {
   const prepared = deferred();
   let current = true;

@@ -2,7 +2,7 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.11.7](https://img.shields.io/badge/version-2.11.7-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+[![Version: 2.12.0](https://img.shields.io/badge/version-2.12.0-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
 LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页面体验。
 
@@ -26,7 +26,7 @@ LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页
 - 显示个人简介：在用户主页补充显示隐藏的个人简介。
 - 原生风格渲染：个人简介支持 Markdown、表格、任务列表、KaTeX 公式、代码语法高亮和代码块复制按钮。
 - IDE 一键测试样例：题目页 IDE 模式下，「自测」左侧新增按钮，一键逐组运行全部输入输出样例；「自定义测试 | 样例测试」标签页切换，逐组展示 AC/WA/CE/TLE/RE 状态（配色同洛谷原生）、用时内存与逐行 diff 高亮，支持停止、重新测试与结果过期提示。
-- 受限文章/剪贴板就地显示：国内站访问受限的专栏文章与云剪贴板（「安全访问中心」拦截页）时，就地按洛谷原生页面版式渲染内容（文章=专栏页复刻，剪贴板=云剪贴板页复刻），含作者信息、目录、只读评论区；数据来自[洛谷保存站](https://www.luogu.me/)存档，未收录内容首次访问自动发起收录、完成后显示，已收录内容点「申请更新」手动刷新；点赞收藏等互动仅国际站可用（显示为 `-`）。
+- 受限文章/剪贴板就地显示：国内站访问受限的专栏文章与云剪贴板（「安全访问中心」拦截页）时，读取[洛谷保存站](https://www.luogu.me/)存档并注入洛谷官方页面壳，由洛谷原生前端渲染作者信息、正文与只读评论区；未收录内容首次访问会自动发起收录，已收录内容可点「申请更新」手动刷新；点赞收藏等互动仅国际站可用（显示为 `-`）。
 - 页面内设置：在洛谷导航中加入插件设置入口，可开关各项功能。
 - SPA 兼容：洛谷站内路由切换后会自动补充入口和个人简介。
 
@@ -37,7 +37,10 @@ LuoguSP 是面向洛谷的浏览器用户脚本，用于补充和改善常用页
 - 洛谷的前端 DOM 和接口可能变化。涉及页面选择器或用户资料接口的修改，应在真实洛谷页面中逐项验证。
 - 脚本为单文件项目，没有构建步骤；确定性回归使用
   `node --test "test/*.test.cjs"`，语法检查使用 `node --check LuoguSP.user.js`。
-  发布版本时须同步 `LuoguSP.user.js` 的 `@version` 与本 README 的版本徽记。
+  发布版本时须同步 `LuoguSP.user.js` 的 `@version` 与本 README 的版本徽记，
+  推送 GitHub 后还须手动同步 Gitee 镜像并核对其 raw 脚本版本。
+- 长期监听器、观察器、请求包装器和异步任务均由所属功能或页面生命周期负责销毁；
+  维护时应通过现有 Node 测试 seam 注入 fake，不要新增页面可访问的测试全局量。
 
 ## 作者
 

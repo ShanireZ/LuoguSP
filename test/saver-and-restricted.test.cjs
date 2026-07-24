@@ -282,6 +282,9 @@ test("restricted original URL policy discards untrusted input", () => {
     policy.originalUrl("article", "abc"),
     "https://www.luogu.com/article/abc",
   );
+  assert.throws(() => policy.originalUrl("problem", "P1000"), TypeError);
+  assert.throws(() => policy.originalUrl("article", "../abc"), TypeError);
+  assert.throws(() => policy.originalUrl("paste", ""), TypeError);
 });
 
 test("restricted page detection requires all three anchors and canonicalizes output", () => {
@@ -356,6 +359,19 @@ test("reply fetch adapter intercepts only exact same-origin GET", async () => {
     "fallback",
   );
   assert.equal(fallbackCalls.length, 3);
+
+  assert.throws(
+    () =>
+      createRestrictedReplyFetchAdapter({
+        fetch: async () => "fallback",
+        origin: "https://www.luogu.com.cn",
+        Response,
+        URL,
+        lid: "../abc",
+        replies: [],
+      }),
+    TypeError,
+  );
 });
 
 test("reply fetch installer replaces its own wrapper and restores safely", async () => {
@@ -379,8 +395,14 @@ test("reply fetch installer replaces its own wrapper and restores safely", async
   assert.equal(host.fetch, originalFetch);
 
   installer.install("abc", []);
+  const staleWrapper = host.fetch;
   const laterPagePatch = async () => new Response("page");
   host.fetch = laterPagePatch;
   installer.dispose();
   assert.equal(host.fetch, laterPagePatch);
+
+  // 后置包装器日后拆除时可能恢复旧引用；已 dispose 的 LuoguSP 包装必须保持惰性透传。
+  host.fetch = staleWrapper;
+  const revived = await host.fetch("/article/abc/replies");
+  assert.equal(await revived.text(), "fallback");
 });

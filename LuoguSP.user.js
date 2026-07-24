@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.11.7
+// @version      2.12.0
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -249,6 +249,7 @@ function createProblemPipeline(config) {
     difficultySource,
     colorForDifficulty,
     cacheLimit = 1000,
+    createAbortController = () => new AbortController(),
     logError = () => {},
   } = config || {};
   if (!identity || typeof identity.resolve !== "function")
@@ -273,6 +274,7 @@ function createProblemPipeline(config) {
   let mounted = false;
   let generation = 0;
   let stopObserving = null;
+  let activeController = null;
 
   const routeToken = () =>
     routeAdapter && typeof routeAdapter.token === "function"
@@ -309,14 +311,16 @@ function createProblemPipeline(config) {
       harvestedLists.add(batch.source);
     }
   };
-  const fetchDifficulty = async (pid) => {
+  const fetchDifficulty = async (pid, signal) => {
     if (contentOnlySupport !== false) {
       let text;
       try {
         text = await difficultySource.text(
           `/problem/${pid}?_contentOnly=1`,
+          { signal },
         );
       } catch (error) {
+        if (signal.aborted) return null;
         /* 临时网络错误不能永久降级 _contentOnly。 */
       }
       if (text != null) {
@@ -336,25 +340,28 @@ function createProblemPipeline(config) {
         }
       }
     }
+    if (signal.aborted) return null;
     try {
-      const html = await difficultySource.text(`/problem/${pid}`);
+      const html = await difficultySource.text(`/problem/${pid}`, { signal });
       const match = html.match(DIFFICULTY_RE);
       return match ? Number(match[1]) : null;
     } catch (error) {
-      logError(pid, error);
+      if (!signal.aborted) logError(pid, error);
       return null;
     }
   };
-  const getColor = async (pid) => {
+  const getColor = async (pid, signal) => {
     harvest();
     if (colors.has(pid)) return colors.get(pid);
-    const difficulty = await fetchDifficulty(pid);
-    if (difficulty == null) return null;
+    const difficulty = await fetchDifficulty(pid, signal);
+    if (signal.aborted || difficulty == null) return null;
     const color = colorForDifficulty(difficulty);
     rememberColor(pid, color);
     return color;
   };
   const colorAnchor = async (anchor) => {
+    const controller = activeController;
+    if (!controller) return;
     const taskGeneration = generation;
     const taskRoute = routeToken();
     const taskIdentity = identity.resolve(anchor);
@@ -367,7 +374,7 @@ function createProblemPipeline(config) {
     if (coloringAnchors.get(anchor) === taskIdentity.key) return;
     coloringAnchors.set(anchor, taskIdentity.key);
     try {
-      const color = await getColor(taskIdentity.pid);
+      const color = await getColor(taskIdentity.pid, controller.signal);
       const currentIdentity = identity.resolve(anchor);
       if (
         !mounted ||
@@ -394,6 +401,8 @@ function createProblemPipeline(config) {
     if (!mounted) return;
     mounted = false;
     generation++;
+    if (activeController) activeController.abort();
+    activeController = null;
     if (stopObserving) stopObserving();
     stopObserving = null;
     coloringAnchors = new WeakMap();
@@ -402,6 +411,7 @@ function createProblemPipeline(config) {
     if (mounted) return dispose;
     mounted = true;
     generation++;
+    activeController = createAbortController();
     stopObserving = documentAdapter.observeAnchors(acceptAnchors) || null;
     scan(documentAdapter.root);
     return dispose;
@@ -411,7 +421,12 @@ function createProblemPipeline(config) {
 }
 
 function createIdeBatchRunner(config) {
-  const { ideDriver, clock, logError = () => {} } = config || {};
+  const {
+    ideDriver,
+    clock,
+    createAbortController = () => new AbortController(),
+    logError = () => {},
+  } = config || {};
   if (
     !ideDriver ||
     typeof ideDriver.prepare !== "function" ||
@@ -435,6 +450,7 @@ function createIdeBatchRunner(config) {
   let stopMount = null;
   let mountKey = null;
   let delay = null;
+  let activeController = null;
 
   const cancelDelay = () => {
     if (!delay) return;
@@ -451,9 +467,10 @@ function createIdeBatchRunner(config) {
       }, ms);
       delay = { timer, resolve };
     });
-  const isCurrent = (taskRunId, context) =>
+  const isCurrent = (taskRunId, context, signal) =>
     taskRunId === runId &&
     !disposed &&
+    !signal.aborted &&
     (!ideDriver.isCurrent || ideDriver.isCurrent(context));
   const drive = (taskRunId, action) => {
     if (taskRunId !== runId || disposed) return;
@@ -466,6 +483,8 @@ function createIdeBatchRunner(config) {
   };
   const invalidate = () => {
     if (state === "idle") return;
+    if (activeController) activeController.abort();
+    activeController = null;
     runId++;
     state = "idle";
     driving = false;
@@ -483,10 +502,15 @@ function createIdeBatchRunner(config) {
   const start = async () => {
     if (disposed || state !== "idle") return;
     const taskRunId = ++runId;
+    const controller = createAbortController();
+    activeController = controller;
     let context = null;
     state = "preparing";
     try {
-      context = await ideDriver.prepare({ runId: taskRunId });
+      context = await ideDriver.prepare({
+        runId: taskRunId,
+        signal: controller.signal,
+      });
       if (taskRunId !== runId || disposed) return;
       if (!context || context.kind !== "ready") {
         if (context && context.message && typeof ideDriver.hint === "function")
@@ -494,7 +518,7 @@ function createIdeBatchRunner(config) {
         return;
       }
       if (state === "stopping") return;
-      if (!isCurrent(taskRunId, context)) {
+      if (!isCurrent(taskRunId, context, controller.signal)) {
         if (typeof ideDriver.hint === "function")
           ideDriver.hint("页面已切换");
         return;
@@ -506,22 +530,29 @@ function createIdeBatchRunner(config) {
       if (typeof ideDriver.begin === "function")
         ideDriver.begin(context, results);
       for (let index = 0; index < context.count; index++) {
-        if (state === "stopping" || !isCurrent(taskRunId, context)) break;
+        if (
+          state === "stopping" ||
+          !isCurrent(taskRunId, context, controller.signal)
+        )
+          break;
         if (typeof ideDriver.setRunning === "function")
           ideDriver.setRunning(context, index);
         let result;
         try {
           result = await ideDriver.runSample(context, index, {
             runId: taskRunId,
+            signal: controller.signal,
             drive: (action) => drive(taskRunId, action),
-            isCurrent: () => isCurrent(taskRunId, context),
+            isCurrent: () =>
+              isCurrent(taskRunId, context, controller.signal),
             wait: (ms) => pause(ms, taskRunId),
           });
         } catch (error) {
+          if (controller.signal.aborted) break;
           logError(error);
           result = { verdict: "UKE", note: String(error) };
         }
-        if (!isCurrent(taskRunId, context)) break;
+        if (!isCurrent(taskRunId, context, controller.signal)) break;
         results[index] = result;
         if (typeof ideDriver.applyResult === "function")
           ideDriver.applyResult(context, index, result);
@@ -539,12 +570,17 @@ function createIdeBatchRunner(config) {
         }
         if (index < context.count - 1 && state !== "stopping") {
           const continued = await pause(500, taskRunId);
-          if (!continued || !isCurrent(taskRunId, context)) break;
+          if (
+            !continued ||
+            !isCurrent(taskRunId, context, controller.signal)
+          )
+            break;
         }
       }
     } catch (error) {
-      logError(error);
+      if (!controller.signal.aborted) logError(error);
     } finally {
+      if (activeController === controller) activeController = null;
       if (context && typeof ideDriver.restore === "function") {
         try {
           ideDriver.restore(context);
@@ -598,7 +634,8 @@ function createIdeBatchRunner(config) {
   };
   const dispose = () => {
     if (disposed) return;
-    unmount();
+    if (mounted) unmount();
+    else invalidate();
     disposed = true;
   };
   const getState = () =>
@@ -981,6 +1018,7 @@ function createBrowserRouteAdapter(config) {
   const listeners = new Set();
   const originals = {};
   const wrappers = {};
+  const wrapperStates = {};
   let installed = false;
   const notify = () => {
     for (const listener of [...listeners]) {
@@ -996,13 +1034,15 @@ function createBrowserRouteAdapter(config) {
     installed = true;
     for (const method of ["pushState", "replaceState"]) {
       const raw = historyAdapter[method];
+      const wrapperState = { active: true };
       originals[method] = raw;
       const wrapped = function (...args) {
         const result = raw.apply(this, args);
-        notify();
+        if (wrapperState.active) notify();
         return result;
       };
       wrappers[method] = wrapped;
+      wrapperStates[method] = wrapperState;
       historyAdapter[method] = wrapped;
     }
     eventTarget.addEventListener("popstate", notify);
@@ -1012,10 +1052,12 @@ function createBrowserRouteAdapter(config) {
     if (!installed || listeners.size) return;
     installed = false;
     for (const method of ["pushState", "replaceState"]) {
+      if (wrapperStates[method]) wrapperStates[method].active = false;
       if (originals[method] && historyAdapter[method] === wrappers[method])
         historyAdapter[method] = originals[method];
       delete originals[method];
       delete wrappers[method];
+      delete wrapperStates[method];
     }
     eventTarget.removeEventListener("popstate", notify);
     eventTarget.removeEventListener("hashchange", notify);
@@ -1058,6 +1100,7 @@ function createPageLifecycle(config) {
   let disposers = [];
   let routeDispose = null;
   let scheduledDispose = null;
+  let readyDispose = null;
   let generation = 0;
   let started = false;
   let disposed = false;
@@ -1107,6 +1150,15 @@ function createPageLifecycle(config) {
     if (!scheduledDispose) return;
     scheduledDispose();
     scheduledDispose = null;
+  };
+  const releaseReady = (dispose = readyDispose) => {
+    if (dispose === readyDispose) readyDispose = null;
+    if (typeof dispose !== "function") return;
+    try {
+      dispose();
+    } catch (error) {
+      logError("documentReadyDispose", error);
+    }
   };
   const remount = () => {
     if (!started || disposed || replacing) return;
@@ -1176,24 +1228,40 @@ function createPageLifecycle(config) {
       logError("replaceDocument", error);
       return false;
     }
-    documentAdapter.whenReady(() => {
-      if (disposed || generation !== replacementGeneration) return;
-      replacing = false;
-      mountFeatures();
-      if (typeof afterReady === "function") {
-        try {
-          afterReady(context());
-        } catch (error) {
-          logError("afterDocumentReady", error);
+    let readyFired = false;
+    let pendingReadyDispose = null;
+    try {
+      const disposeReady = documentAdapter.whenReady(() => {
+        readyFired = true;
+        releaseReady();
+        if (disposed || generation !== replacementGeneration) return;
+        replacing = false;
+        mountFeatures();
+        if (typeof afterReady === "function") {
+          try {
+            afterReady(context());
+          } catch (error) {
+            logError("afterDocumentReady", error);
+          }
         }
-      }
-    });
+      });
+      if (typeof disposeReady === "function")
+        pendingReadyDispose = disposeReady;
+    } catch (error) {
+      replacing = false;
+      logError("documentReady", error);
+      return false;
+    }
+    if (readyFired) {
+      releaseReady(pendingReadyDispose);
+    } else readyDispose = pendingReadyDispose;
     return true;
   };
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     cancelScheduled();
+    releaseReady();
     disposeFeatures();
     if (routeDispose) routeDispose();
     routeDispose = null;
@@ -1416,8 +1484,16 @@ function createRestrictedDocumentCommitter(config) {
 }
 
 function createRestrictedUrlPolicy() {
+  const validate = (type, id) =>
+    (type === "article" || type === "paste") &&
+    typeof id === "string" &&
+    /^[A-Za-z0-9]+$/.test(id);
   return Object.freeze({
-    originalUrl: (type, id) => `https://www.luogu.com/${type}/${id}`,
+    originalUrl: (type, id) => {
+      if (!validate(type, id))
+        throw new TypeError("Restricted original URL target is invalid");
+      return `https://www.luogu.com/${type}/${id}`;
+    },
   });
 }
 
@@ -1465,6 +1541,15 @@ function createRestrictedReplyFetchAdapter(config) {
   } = config || {};
   if (typeof realFetch !== "function")
     throw new TypeError("Reply fetch adapter requires fetch");
+  if (
+    typeof ResponseCtor !== "function" ||
+    typeof URLCtor !== "function" ||
+    typeof origin !== "string" ||
+    typeof lid !== "string" ||
+    !/^[A-Za-z0-9]+$/.test(lid) ||
+    !Array.isArray(replies)
+  )
+    throw new TypeError("Reply fetch adapter configuration is invalid");
   const repliesPath = `/article/${lid}/replies`;
   const wrappedFetch = function (input, init) {
     const rawUrl =
@@ -1538,8 +1623,15 @@ function createRestrictedReplyFetchInstaller(config) {
       lid,
       replies,
     });
-    const wrapped = adapter.fetch;
+    const interceptingFetch = adapter.fetch;
+    let active = true;
+    const wrapped = function (input, init) {
+      return active
+        ? interceptingFetch(input, init)
+        : realFetch.call(host, input, init);
+    };
     const release = () => {
+      active = false;
       if (host.fetch === wrapped) host.fetch = realFetch;
       if (currentDispose === release) currentDispose = null;
     };
@@ -1890,6 +1982,7 @@ function createLuoguSPApp(options = {}) {
     const bound = new WeakSet(); // 去重，避免重复绑定
     const uidCache = new Map(); // username -> uid 缓存
     const cleanups = [];
+    const controllers = new Set();
     let active = true;
 
     const openUser = (uid) => {
@@ -1901,16 +1994,21 @@ function createLuoguSPApp(options = {}) {
 
     async function getUidByName(username) {
       if (uidCache.has(username)) return uidCache.get(username);
+      const controller = new AbortController();
+      controllers.add(controller);
       try {
         const res = await fetch(
           `/api/user/search?keyword=${encodeURIComponent(username)}`,
+          { signal: controller.signal },
         );
         const data = await res.json();
         const uid = data && data.users && data.users[0] && data.users[0].uid;
-        uidCache.set(username, uid);
+        if (active && !controller.signal.aborted) uidCache.set(username, uid);
         return uid;
       } catch (e) {
-        console.error("LuoguSP getUid:", e);
+        if (!controller.signal.aborted) console.error("LuoguSP getUid:", e);
+      } finally {
+        controllers.delete(controller);
       }
     }
     // 用户名触发点：Ctrl+Click → 按用户名查 uid
@@ -1967,6 +2065,8 @@ function createLuoguSPApp(options = {}) {
     observer.observe(document, { childList: true, subtree: true });
     return () => {
       active = false;
+      for (const controller of controllers) controller.abort();
+      controllers.clear();
       observer.disconnect();
       for (const cleanup of cleanups) cleanup();
     };
@@ -1992,7 +2092,7 @@ function createLuoguSPApp(options = {}) {
     })(obj, 0);
     return result;
   }
-  async function getIntroduction(uid) {
+  async function getIntroduction(uid, signal) {
     // 1) 整页加载：简介就在页面同源 SSR 脚本 JSON 里
     for (const s of document.querySelectorAll("script")) {
       const t = (s.textContent || "").trim();
@@ -2010,11 +2110,13 @@ function createLuoguSPApp(options = {}) {
     try {
       const r = await fetch(`/user/${uid}`, {
         headers: { "x-lentille-request": "content-only" },
+        signal,
       });
       const intro = digIntro(await r.json(), uid);
       if (intro != null) return intro;
     } catch (e) {
-      console.error("LuoguSP intro fetch:", e);
+      if (!signal || !signal.aborted)
+        console.error("LuoguSP intro fetch:", e);
     }
     return null;
   }
@@ -2032,13 +2134,17 @@ function createLuoguSPApp(options = {}) {
     const tt = (f, d) => {
       if (!kx) return null;
       try {
-        return kx.renderToString(f, { throwOnError: false, displayMode: d });
+        return dp.sanitize(
+          kx.renderToString(f, { throwOnError: false, displayMode: d }),
+        );
       } catch (e) {
         return null;
       }
     };
     const math = [];
-    const hold = (h) => `%%LGMATH${math.push(h) - 1}%%`; // 数学占位：纯文本，过 marked/DOMPurify 不变，最后回填
+    let mathPrefix = "%%LGMATH";
+    while (md.includes(mathPrefix)) mathPrefix += "X";
+    const hold = (h) => `${mathPrefix}${math.push(h) - 1}%%`; // 选择正文中不存在的前缀，避免用户文本伪造占位符
     const src = md
       .replace(/\$\$([\s\S]+?)\$\$/g, (m, f) => {
         const h = tt(f.trim(), true);
@@ -2055,10 +2161,11 @@ function createLuoguSPApp(options = {}) {
       return renderMarkdownLite(md);
     }
     html = dp.sanitize(html, { ADD_ATTR: ["target"] }); // 消毒：剥离 script/on*/javascript: 等
+    const mathPattern = new RegExp(`${mathPrefix}(\\d+)%%`, "g");
     return html
       .replace(/<a /gi, '<a target="_blank" rel="noopener noreferrer" ') // 链接新标签打开
       .replace(/<img /gi, '<img style="max-width:100%" ') // 图片限宽防溢出
-      .replace(/%%LGMATH(\d+)%%/g, (_, i) => math[i]); // 回填 KaTeX（可信，消毒后再插）
+      .replace(mathPattern, (_, i) => math[i]); // 回填已单独消毒的 KaTeX
   }
 
   // 内置轻量 Markdown → HTML（marked 未加载时的回退；XSS 安全：转义 HTML 实体防注入；URL 仅允许 http(s)/相对，挡 javascript:；
@@ -2094,7 +2201,9 @@ function createLuoguSPApp(options = {}) {
       }
     };
     const spans = []; // 抽出的「原样片段」（代码/公式/白名单裸 HTML），最后回填
-    const stash = (html) => `@@LGB${spans.push(html) - 1}@@`; // 占位符：printable、不含 esc 目标字符、正常文本不会出现
+    let spanPrefix = "@@LGB";
+    while (md.includes(spanPrefix)) spanPrefix += "X";
+    const stash = (html) => `${spanPrefix}${spans.push(html) - 1}@@`;
     const ga = (t, re) => (t.match(re) || [])[1] || ""; // 取标签属性值
     const inline = (s) =>
       s
@@ -2177,7 +2286,7 @@ function createLuoguSPApp(options = {}) {
       .split(/\n{2,}/)
       .map((block) => {
         const b = block.trim();
-        if (/^@@LGB\d+@@$/.test(b)) return b; // 独占一段的占位（代码块 / 行间公式）
+        if (new RegExp(`^${spanPrefix}\\d+@@$`).test(b)) return b; // 独占一段的占位（代码块 / 行间公式）
         const lines = block.split("\n");
         if (
           lines.length >= 2 &&
@@ -2198,7 +2307,10 @@ function createLuoguSPApp(options = {}) {
         return `<p>${inline(block).replace(/\n/g, "<br>")}</p>`;
       })
       .join("");
-    return html.replace(/@@LGB(\d+)@@/g, (_, i) => spans[i]); // 回填占位（inline 公式也在此步）
+    return html.replace(
+      new RegExp(`${spanPrefix}(\\d+)@@`, "g"),
+      (_, i) => spans[i],
+    ); // 回填占位（inline 公式也在此步）
   }
   function normalizeCodeLanguageClass(code) {
     const lang = [...code.classList].find((c) => c.startsWith("language-"));
@@ -2309,7 +2421,7 @@ function createLuoguSPApp(options = {}) {
     col.appendChild(card);
   }
   const introWaiters = new Set();
-  async function showHiddenIntro(expectedRoute, lifecycleContext) {
+  async function showHiddenIntro(expectedRoute, lifecycleContext, signal) {
     const route = expectedRoute || currentUserRoute();
     if (!route.uid || !route.isHome) return;
     const uid = route.uid;
@@ -2317,13 +2429,14 @@ function createLuoguSPApp(options = {}) {
     const stillCurrent = () => {
       const current = currentUserRoute();
       return (
+        (!signal || !signal.aborted) &&
         (!lifecycleContext || lifecycleContext.isCurrent()) &&
         current.uid === uid && current.key === routeKey && current.isHome
       );
     };
     document.querySelectorAll(".luogusp-intro-card").forEach((e) => e.remove()); // 清换页残留
     if (document.querySelector(SELECTORS.nativeIntro)) return; // 原生已显示，不重复补
-    const intro = await getIntroduction(uid);
+    const intro = await getIntroduction(uid, signal);
     if (!stillCurrent() || !intro || !intro.trim()) return;
     const place = () => {
       if (!stillCurrent()) return true; // 请求期间已换页：停止等待，绝不把旧简介挂到新路由
@@ -2376,6 +2489,7 @@ function createLuoguSPApp(options = {}) {
           logError: (error) => console.error("LuoguSP route:", error),
         }));
   function watchHiddenIntro(lifecycleContext) {
+    const controller = new AbortController();
     let requestedRouteKey = "";
     const check = () => {
       const route = currentUserRoute();
@@ -2401,9 +2515,10 @@ function createLuoguSPApp(options = {}) {
       }
       if (route.key !== requestedRouteKey) {
         requestedRouteKey = route.key;
-        showHiddenIntro(route, lifecycleContext).catch((e) =>
-          console.error("LuoguSP intro render:", e),
-        );
+        showHiddenIntro(route, lifecycleContext, controller.signal).catch((e) => {
+          if (!controller.signal.aborted)
+            console.error("LuoguSP intro render:", e);
+        });
       }
     };
     check();
@@ -2422,6 +2537,7 @@ function createLuoguSPApp(options = {}) {
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => {
+      controller.abort();
       observer.disconnect();
       if (frame !== null) cancelAnimationFrame(frame);
       for (const cleanup of [...introWaiters]) cleanup();
@@ -2489,7 +2605,7 @@ function createLuoguSPApp(options = {}) {
         `${location.origin}${location.pathname}${location.search}`,
     },
     difficultySource: {
-      text: (path) => limiter.text(path),
+      text: (path, options) => limiter.text(path, options),
       // 记录列表 / 练习页已把整批难度注入 _feInstance；返回来源对象与纯题目数据，
       // 去重和 LRU 均由 Problem Pipeline Module 持有，不污染洛谷原始数组。
       harvest: () => {
@@ -2590,11 +2706,6 @@ function createLuoguSPApp(options = {}) {
           },
         });
 
-  // Phase 5 统一 Page Lifecycle 前保留旧门面；重复调用 mount() 无副作用。
-  function addProblemsColor() {
-    return problemPipeline ? problemPipeline.mount() : () => {};
-  }
-
   // ============================================================
   // IDE 一键测试样例
   // 洛谷新版题目页（columba）IDE 模式（#ide）下，逐组驱动题面样例的原生「运行」，
@@ -2639,7 +2750,7 @@ function createLuoguSPApp(options = {}) {
     const m = location.pathname.match(/^\/problem\/([A-Za-z0-9_]+)/);
     return m ? m[1] : "";
   }
-  async function getIdeSamples() {
+  async function getIdeSamples(signal) {
     const pid = currentPid();
     if (!pid) return null;
     const p = lentilleProblem();
@@ -2650,12 +2761,14 @@ function createLuoguSPApp(options = {}) {
     try {
       const res = await fetch(`/problem/${pid}`, {
         headers: { "x-lentille-request": "content-only" },
+        signal,
       });
       const json = await res.json();
       const prob = json && json.data && json.data.problem;
       if (prob && Array.isArray(prob.samples)) return prob.samples;
     } catch (e) {
-      console.error("LuoguSP ide samples:", e);
+      if (!signal || !signal.aborted)
+        console.error("LuoguSP ide samples:", e);
     }
     return null;
   }
@@ -2694,15 +2807,17 @@ function createLuoguSPApp(options = {}) {
     const rawOpen = XMLHttpRequest.prototype.open;
     const rawSend = XMLHttpRequest.prototype.send;
     const submitRequests = new WeakMap();
+    let active = true;
     const open = function (method, url) {
-      submitRequests.set(
-        this,
-        typeof url === "string" && url.indexOf("/api/ide_submit") !== -1,
-      );
+      if (active)
+        submitRequests.set(
+          this,
+          typeof url === "string" && url.indexOf("/api/ide_submit") !== -1,
+        );
       return rawOpen.apply(this, arguments);
     };
     const send = function () {
-      if (submitRequests.get(this))
+      if (active && submitRequests.get(this))
         this.addEventListener("loadend", () => {
           if (ideSubmitWaiter) {
             const w = ideSubmitWaiter;
@@ -2715,6 +2830,7 @@ function createLuoguSPApp(options = {}) {
     XMLHttpRequest.prototype.open = open;
     XMLHttpRequest.prototype.send = send;
     const dispose = () => {
+      active = false;
       cancelIdeSubmitWaiter();
       if (XMLHttpRequest.prototype.open === open)
         XMLHttpRequest.prototype.open = rawOpen;
@@ -3160,11 +3276,11 @@ function createLuoguSPApp(options = {}) {
 
   const ideBrowserDriver = {
     mountKey: () => document.body,
-    prepare: async ({ runId }) => {
+    prepare: async ({ runId, signal }) => {
       mountIdeTabs(ideBrowserDriver.controls);
       const pid = currentPid();
       const routeToken = `${location.pathname}${location.search}${location.hash}`;
-      const samples = await getIdeSamples();
+      const samples = await getIdeSamples(signal);
       if (
         !pid ||
         currentPid() !== pid ||
@@ -3310,10 +3426,10 @@ function createLuoguSPApp(options = {}) {
   const idePreparation = options.idePreparationAdapter;
   const ideDriver = idePreparation
     ? {
-        prepare: async () => {
+        prepare: async ({ signal }) => {
           idePreparation.mountTabs();
           const pid = idePreparation.currentPid();
-          const samples = await idePreparation.loadSamples();
+          const samples = await idePreparation.loadSamples(signal);
           if (
             !pid ||
             idePreparation.currentPid() !== pid ||
@@ -3338,12 +3454,6 @@ function createLuoguSPApp(options = {}) {
     logError: (error) => console.error("LuoguSP ide batch:", error),
   });
   const startIdeBatch = () => ideBatchRunner.start();
-
-  // Phase 5 统一 Page Lifecycle 前保留旧门面；重复 mount() 无副作用。
-  function watchIdeBatch() {
-    ideBatchRunner.mount();
-    return () => ideBatchRunner.unmount();
-  }
 
   // ============================================================
   // 受限文章/剪贴板直接显示（原生壳注入）
@@ -3393,8 +3503,6 @@ function createLuoguSPApp(options = {}) {
     },
     urlPolicy: restrictedUrlPolicy,
   });
-  const restrictedPageInfo = () => restrictedPageDetector.detect();
-
   // 最小自有样式：加载层/失败卡（注入拦截页文档），扩展按钮样式随壳 HTML 走（见 RST_EXTRA_CSS）
   function injectRstStyle() {
     if (document.getElementById("luogusp-rst-style")) return;
@@ -3993,6 +4101,7 @@ function createLuoguSPApp(options = {}) {
   let rstRefreshState = "idle";
   let rstRefreshText = "申请更新";
   let rstRefreshResetTimer = null;
+  let rstRefreshController = null;
   // ★本函数被 inject 观察器（body childList+subtree）的回调无条件调用，必须幂等：
   // textContent 同值重写也会删旧建新 Text 节点、产生 childList 变更记录，
   // 会把观察器自己再触发一遍 → 微任务死循环整页卡死（2.11.0 事故），故同值不写。
@@ -4020,9 +4129,17 @@ function createLuoguSPApp(options = {}) {
   }
   async function rstManualRefresh(info) {
     if (rstRefreshState !== "idle") return;
+    const controller = new AbortController();
+    rstRefreshController = controller;
+    const current = () =>
+      rstRefreshController === controller && !controller.signal.aborted;
+    let commentsPending = false;
     rstSetRefresh("busy", "更新中…");
     try {
-      const result = await saverWorkflow.requestRefresh(info.type, info.id);
+      const result = await saverWorkflow.requestRefresh(info.type, info.id, {
+        signal: controller.signal,
+      });
+      if (!current()) return;
       if (result.kind === "unknown") {
         rstSetRefresh("idle", "结果未知");
         rstScheduleRefreshReset();
@@ -4030,13 +4147,25 @@ function createLuoguSPApp(options = {}) {
       }
       if (result.kind !== "accepted")
         throw new Error(result.reason || "保存站拒绝更新请求");
-      if (info.type === "article")
-        saverWorkflow.refreshComments(info.id).catch(() => {});
       rstSetRefresh("done", "已申请");
+      if (info.type === "article") {
+        commentsPending = true;
+        const finishComments = () => {
+          if (rstRefreshController === controller)
+            rstRefreshController = null;
+        };
+        void saverWorkflow
+          .refreshComments(info.id, { signal: controller.signal })
+          .then(finishComments, finishComments);
+      }
     } catch (e) {
+      if (!current()) return;
       console.error("LuoguSP restricted refresh:", e);
       rstSetRefresh("idle", "更新失败");
       rstScheduleRefreshReset();
+    } finally {
+      if (!commentsPending && rstRefreshController === controller)
+        rstRefreshController = null;
     }
   }
 
@@ -4057,6 +4186,8 @@ function createLuoguSPApp(options = {}) {
       return prepared;
     },
     dispose: () => {
+      if (rstRefreshController) rstRefreshController.abort();
+      rstRefreshController = null;
       rstDisposeReplyStub();
       for (const dispose of [...rstInjectionDisposers]) dispose();
       if (rstRefreshResetTimer !== null) {
@@ -4101,7 +4232,9 @@ function createLuoguSPApp(options = {}) {
         const timer = setTimeout(() => {
           if (!context.isCurrent()) return;
           try {
-            disposePipeline = addProblemsColor();
+            disposePipeline = problemPipeline
+              ? problemPipeline.mount()
+              : () => {};
           } catch (error) {
             console.error("LuoguSP lifecycle problem-pipeline:", error);
           }
@@ -4140,7 +4273,10 @@ function createLuoguSPApp(options = {}) {
     {
       id: "ide-batch",
       enabled: () => storage.get(`${STORAGE_PREFIX}ideBatchSampleTest`),
-      mount: () => watchIdeBatch(),
+      mount: () => {
+        ideBatchRunner.mount();
+        return () => ideBatchRunner.unmount();
+      },
     },
     {
       id: "restricted-document",
@@ -4164,9 +4300,17 @@ function createLuoguSPApp(options = {}) {
       },
       whenReady: (callback) => {
         if (document.body) return callback();
-        document.addEventListener("DOMContentLoaded", callback, {
+        let active = true;
+        const ready = () => {
+          if (active) callback();
+        };
+        document.addEventListener("DOMContentLoaded", ready, {
           once: true,
         });
+        return () => {
+          active = false;
+          document.removeEventListener("DOMContentLoaded", ready);
+        };
       },
     },
     storage,
@@ -4176,7 +4320,7 @@ function createLuoguSPApp(options = {}) {
   FEATURES.forEach((feature) => pageLifecycle.register(feature));
   restrictedDocumentBoot = createRestrictedDocumentBoot({
     pageAdapter: {
-      detect: restrictedPageInfo,
+      detect: () => restrictedPageDetector.detect(),
       showLoader: rstShowLoader,
       showUnavailable: rstShowUnavailableTip,
       showFailure: rstBuildFailure,
@@ -4192,16 +4336,12 @@ function createLuoguSPApp(options = {}) {
     logError: (error) => console.error("LuoguSP restricted boot:", error),
   });
 
-  // Phase 7 删除兼容门面；当前只把启动委托给 Page Lifecycle Module。
-  function startFeatures() {
-    pageLifecycle.start();
-  }
   let bootstrapped = false;
   const bootstrapAdapter =
     options.bootstrapAdapter ||
     Object.freeze({
       initialize: () => initializeFeatureDefaults(),
-      start: () => startFeatures(),
+      start: () => pageLifecycle.start(),
     });
   function bootstrapBrowser() {
     if (bootstrapped) return;

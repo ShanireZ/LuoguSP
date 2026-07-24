@@ -146,12 +146,17 @@ test("Problem Pipeline discards stale anchors, route generations and disposed wo
   assert.deepEqual(fx2.writes, []);
 
   const disposed = deferred();
+  let disposedSignal = null;
   const fx3 = fixture({
     anchors: [{ pid: "P30", href: "/problem/P30" }],
-    text: () => disposed.promise,
+    text: (_path, options) => {
+      disposedSignal = options.signal;
+      return disposed.promise;
+    },
   });
   fx3.pipeline.mount();
   fx3.pipeline.dispose();
+  assert.equal(disposedSignal.aborted, true);
   disposed.resolve('{"currentData":{"problem":{"difficulty":3}}}');
   await flushMicrotasks();
   assert.deepEqual(fx3.writes, []);
