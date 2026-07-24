@@ -1181,6 +1181,7 @@ function createPageLifecycle(config) {
     if (!started || disposed || replacing) return;
     const nextRouteToken =
       typeof routeAdapter.token === "function" ? routeAdapter.token() : "";
+    if (nextRouteToken === lastRouteToken) return;
     const routeContext = Object.freeze({
       generation,
       previousRouteToken: lastRouteToken,
@@ -1487,6 +1488,52 @@ function createRestrictedDocumentCommitter(config) {
     }
   };
   return Object.freeze({ commit });
+}
+
+function parseRestrictedPasteScaffold(scaffold) {
+  if (typeof scaffold !== "string") return null;
+  const match = (pattern) => {
+    const result = scaffold.match(pattern);
+    return result ? result[1] : null;
+  };
+  const encodedInjection = match(
+    /_feInjection\s*=\s*JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/,
+  );
+  const configVersionLiteral = match(
+    /window\._feConfigVersion\s*=\s*((?:["']\d+["'])|\d+)/,
+  );
+  const tagVersionLiteral = match(
+    /window\._tagVersion\s*=\s*((?:["']\d+["'])|\d+)/,
+  );
+  const csrf = match(/<meta name="csrf-token" content="([^"]+)"/);
+  const loaderCss = match(
+    /<link rel="stylesheet" href="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+loader\.css[^"]*)"/,
+  );
+  const loaderJs = match(
+    /<script src="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+loader\.js[^"]*)"/,
+  );
+  if (
+    !encodedInjection ||
+    !configVersionLiteral ||
+    !tagVersionLiteral ||
+    !loaderJs ||
+    !loaderCss
+  )
+    return null;
+  let injection;
+  try {
+    injection = JSON.parse(decodeURIComponent(encodedInjection)) || {};
+  } catch (error) {
+    return null;
+  }
+  return Object.freeze({
+    injection,
+    configVersionLiteral,
+    tagVersionLiteral,
+    csrf: csrf || "",
+    loaderCss,
+    loaderJs,
+  });
 }
 
 function createRestrictedUrlPolicy() {
@@ -3872,37 +3919,15 @@ function createLuoguSPApp(options = {}) {
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
-    const injRaw = (scaffold.match(
-      /_feInjection = JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/,
-    ) || [])[1];
-    const feCfg = (scaffold.match(/window\._feConfigVersion=(\d+)/) || [])[1];
-    const tagVer = (scaffold.match(/window\._tagVersion=(\d+)/) || [])[1];
-    const csrf =
-      (scaffold.match(/<meta name="csrf-token" content="([^"]+)"/) || [])[1] ||
-      "";
-    const loaderCss = (scaffold.match(
-      /<link rel="stylesheet" href="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+loader\.css[^"]*)"/,
-    ) || [])[1];
-    const loaderJs = (scaffold.match(
-      /<script src="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+loader\.js[^"]*)"/,
-    ) || [])[1];
+    const parsed = parseRestrictedPasteScaffold(scaffold);
     if (
-      !injRaw ||
-      !feCfg ||
-      !tagVer ||
-      !loaderJs ||
-      !loaderCss ||
-      !rstTrustedCdnUrl(loaderJs) ||
-      !rstTrustedCdnUrl(loaderCss) ||
-      !rstSafeCsrf(csrf)
+      !parsed ||
+      !rstTrustedCdnUrl(parsed.loaderJs) ||
+      !rstTrustedCdnUrl(parsed.loaderCss) ||
+      !rstSafeCsrf(parsed.csrf)
     )
       throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
-    let scafInj = {};
-    try {
-      scafInj = JSON.parse(decodeURIComponent(injRaw)) || {};
-    } catch (e) {
-      throw rstPreparationError("洛谷页面骨架数据损坏（结构可能已改版）。");
-    }
+    const scafInj = parsed.injection;
     const inj = {
       code: 200,
       currentTemplate: "PasteShow",
@@ -3926,14 +3951,14 @@ function createLuoguSPApp(options = {}) {
       `<!DOCTYPE html><html class="no-js" lang="zh"><head><meta charset="utf-8">` +
       `<meta http-equiv="X-UA-Compatible" content="IE=edge">` +
       `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` +
-      `<meta name="csrf-token" content="${csrf}">` +
+      `<meta name="csrf-token" content="${parsed.csrf}">` +
       `<meta name="renderer" content="webkit">` +
       `<title>云剪贴板 - 洛谷 | 计算机科学教育新生态</title>` +
       `<link rel="shortcut icon" type="image/x-icon" href="https://fecdn.luogu.com.cn/favicon.ico" media="screen"/>` +
-      `<link rel="stylesheet" href="${loaderCss}">` +
+      `<link rel="stylesheet" href="${parsed.loaderCss}">` +
       `<style>${RST_EXTRA_CSS}</style>` +
-      `<script>window._feInjection = JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(inj))}"));window._feConfigVersion=${feCfg};window._tagVersion=${tagVer};<\/script>` +
-      `<script src="${loaderJs}" charset="utf-8" defer><\/script>` +
+      `<script>window._feInjection = JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(inj))}"));window._feConfigVersion=${parsed.configVersionLiteral};window._tagVersion=${parsed.tagVersionLiteral};<\/script>` +
+      `<script src="${parsed.loaderJs}" charset="utf-8" defer><\/script>` +
       `</head><body><div id="app"><noscript><h3>请<b style="color:#f00;">不要禁用</b>脚本，否则网页无法正常加载</h3></noscript></div></body></html>`;
     return {
       kind: "paste",
@@ -4390,6 +4415,7 @@ if (LUOGUSP_NODE_MODULE) {
     createRestrictedDocumentBoot,
     serializeJsonForScript,
     createRestrictedDocumentCommitter,
+    parseRestrictedPasteScaffold,
     createRestrictedUrlPolicy,
     createRestrictedPageDetector,
     createRestrictedReplyFetchAdapter,

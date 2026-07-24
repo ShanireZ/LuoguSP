@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  parseRestrictedPasteScaffold,
   createRestrictedPageDetector,
   createRestrictedReplyFetchAdapter,
   createRestrictedReplyFetchInstaller,
@@ -12,6 +13,30 @@ const {
   createSaverWorkflow,
 } = require("../LuoguSP.user.js");
 const { FakeClock, flushMicrotasks } = require("./helpers.cjs");
+
+test("Paste scaffold parser accepts the quoted config version used by Luogu", () => {
+  const injection = encodeURIComponent(
+    JSON.stringify({ currentTheme: null, currentUser: null }),
+  );
+  const scaffold = [
+    '<meta name="csrf-token" content="token:abc=">',
+    '<link rel="stylesheet" href="https://fecdn.luogu.com.cn/luogu/loader.css?ver=20260422">',
+    `<script>window._feInjection = JSON.parse(decodeURIComponent("${injection}"));`,
+    "window._feConfigVersion='1784804286';",
+    "window._tagVersion=1784876547;</script>",
+    '<script src="https://fecdn.luogu.com.cn/luogu/loader.js?ver=20260422" charset="utf-8" defer></script>',
+  ].join("");
+
+  assert.deepEqual(parseRestrictedPasteScaffold(scaffold), {
+    injection: { currentTheme: null, currentUser: null },
+    configVersionLiteral: "'1784804286'",
+    tagVersionLiteral: "1784876547",
+    csrf: "token:abc=",
+    loaderCss:
+      "https://fecdn.luogu.com.cn/luogu/loader.css?ver=20260422",
+    loaderJs: "https://fecdn.luogu.com.cn/luogu/loader.js?ver=20260422",
+  });
+});
 
 test("Saver transport separates HTTP, malformed JSON and business responses", async () => {
   const clock = new FakeClock();

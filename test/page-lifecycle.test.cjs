@@ -186,6 +186,26 @@ test("Page Lifecycle coalesces routes and disposes each generation", () => {
   assert.equal(fx.lifecycle.getState().mountedCount, 1);
 });
 
+test("Page Lifecycle ignores no-op history events for the current route", () => {
+  const fx = fixture();
+  let mounts = 0;
+  let disposes = 0;
+  fx.lifecycle.register({
+    id: "feature",
+    mount: () => {
+      mounts++;
+      return () => disposes++;
+    },
+  });
+  fx.lifecycle.start();
+
+  fx.emitRoute("/one");
+  fx.flush();
+
+  assert.deepEqual({ mounts, disposes }, { mounts: 1, disposes: 0 });
+  assert.equal(fx.lifecycle.getState().mountedCount, 1);
+});
+
 test("Page Lifecycle replaces a document once and mounts only after ready", () => {
   const fx = fixture();
   const calls = [];
