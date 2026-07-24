@@ -96,15 +96,19 @@ test("Page Lifecycle starts once, respects enabled and isolates feature failures
 test("Page Lifecycle coalesces routes and disposes each generation", () => {
   const fx = fixture();
   const calls = [];
+  let firstContext = null;
   fx.lifecycle.register({
     id: "feature",
     mount: (context) => {
+      if (!firstContext) firstContext = context;
       calls.push(`mount:${context.generation}:${context.routeToken}`);
       return () => calls.push(`dispose:${context.generation}`);
     },
   });
   fx.lifecycle.start();
+  assert.equal(firstContext.isCurrent(), true);
   fx.emitRoute("/two");
+  assert.equal(firstContext.isCurrent(), false);
   fx.emitRoute("/three");
   fx.flush();
 

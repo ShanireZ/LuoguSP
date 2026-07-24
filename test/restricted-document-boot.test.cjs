@@ -62,6 +62,27 @@ test("Document Committer rejects untrusted resources before irreversible work", 
     { kind: "invariant" },
   );
   assert.equal(opens, 0);
+  assert.throws(
+    () =>
+      committer.commit({
+        html: HTML.replace(
+          'src="https://fecdn.luogu.com.cn/app.js"',
+          "src='https://evil.example/app.js'",
+        ),
+      }),
+    { kind: "invariant" },
+  );
+  assert.throws(
+    () =>
+      committer.commit({
+        html: HTML.replace(
+          'src="https://fecdn.luogu.com.cn/app.js"',
+          "src=https://evil.example/app.js",
+        ),
+      }),
+    { kind: "invariant" },
+  );
+  assert.equal(opens, 0);
 });
 
 test("JSON script serialization cannot terminate its containing script", () => {
@@ -190,6 +211,25 @@ test("Restricted Document Boot maps lookup failure and cancels stale preparation
   assert.deepEqual(unavailable.calls, [
     ["loader", "default"],
     ["unavailable", "LuoguSP：offline，未自动发起收录。"],
+  ]);
+  assert.equal(unavailable.boot.getState().running, false);
+
+  const unknown = bootFixture({
+    saver: {
+      ensureArchived: async () => ({
+        kind: "unknown",
+        stage: "create",
+      }),
+    },
+  });
+  unknown.boot.mount({ isCurrent: () => true });
+  await flushMicrotasks();
+  assert.deepEqual(unknown.calls, [
+    ["loader", "default"],
+    [
+      "failure",
+      "收录请求已发送，但保存站未在超时前确认结果，请稍后刷新页面查看。",
+    ],
   ]);
 
   const pending = deferred();

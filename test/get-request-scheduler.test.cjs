@@ -103,6 +103,31 @@ test("GET scheduler deduplicates only in-flight success and never caches HTTP er
   scheduler.dispose();
 });
 
+test("GET scheduler lets one consumer abort without cancelling shared work", async () => {
+  const clock = new FakeClock();
+  const pending = deferred();
+  let attempts = 0;
+  const scheduler = createGetRequestScheduler({
+    fetch: () => {
+      attempts++;
+      return pending.promise;
+    },
+    clock: clock.adapter(),
+    launchGap: 0,
+    concurrency: 3,
+  });
+  const controller = new AbortController();
+  const cancelled = scheduler.text("/shared", { signal: controller.signal });
+  const retained = scheduler.text("/shared");
+  controller.abort();
+
+  await assert.rejects(cancelled, { name: "AbortError" });
+  assert.equal(attempts, 1);
+  pending.resolve(textResponse("ok"));
+  assert.equal(await retained, "ok");
+  scheduler.dispose();
+});
+
 test("GET scheduler honors Retry-After and retries 503 only once", async () => {
   const clock = new FakeClock();
   let attempts = 0;

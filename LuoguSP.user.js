@@ -129,17 +129,41 @@ function createGetRequestScheduler(config) {
       })();
     }
   };
-  const text = (url) => {
-    if (disposed) return Promise.reject(abortError());
-    if (inflight.has(url)) return inflight.get(url);
-    const promise = new Promise((resolve, reject) => {
-      queue.push({ url, resolve, reject, retries: 0 });
-      drain();
-    }).finally(() => {
-      if (inflight.get(url) === promise) inflight.delete(url);
+  const attachSignal = (promise, signal) => {
+    if (!signal) return promise;
+    if (signal.aborted) return Promise.reject(abortError());
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        cleanup();
+        reject(abortError());
+      };
+      const cleanup = () => signal.removeEventListener("abort", onAbort);
+      signal.addEventListener("abort", onAbort, { once: true });
+      promise.then(
+        (value) => {
+          cleanup();
+          resolve(value);
+        },
+        (error) => {
+          cleanup();
+          reject(error);
+        },
+      );
     });
-    inflight.set(url, promise);
-    return promise;
+  };
+  const text = (url, options) => {
+    if (disposed) return Promise.reject(abortError());
+    let promise = inflight.get(url);
+    if (!promise) {
+      promise = new Promise((resolve, reject) => {
+        queue.push({ url, resolve, reject, retries: 0 });
+        drain();
+      }).finally(() => {
+        if (inflight.get(url) === promise) inflight.delete(url);
+      });
+      inflight.set(url, promise);
+    }
+    return attachSignal(promise, options && options.signal);
   };
   const dispose = () => {
     if (disposed) return;
@@ -276,7 +300,11 @@ function createProblemPipeline(config) {
         harvestedLists.has(batch.source)
       )
         continue;
-      for (const problem of batch.problems || [])
+      const problems =
+        typeof batch.problems === "function"
+          ? batch.problems()
+          : batch.problems;
+      for (const problem of problems || [])
         rememberDifficulty(problem && problem.pid, problem && problem.difficulty);
       harvestedLists.add(batch.source);
     }
@@ -487,6 +515,7 @@ function createIdeBatchRunner(config) {
             runId: taskRunId,
             drive: (action) => drive(taskRunId, action),
             isCurrent: () => isCurrent(taskRunId, context),
+            wait: (ms) => pause(ms, taskRunId),
           });
         } catch (error) {
           logError(error);
@@ -953,14 +982,16 @@ function createPageLifecycle(config) {
   let replacing = false;
   let lastRouteToken = "";
 
-  const context = () =>
-    Object.freeze({
+  const context = () => {
+    const contextGeneration = generation;
+    return Object.freeze({
       generation,
       routeToken:
         typeof routeAdapter.token === "function" ? routeAdapter.token() : "",
-      isCurrent: (expected = generation) =>
-        !disposed && !replacing && generation === expected,
+      isCurrent: () =>
+        !disposed && !replacing && generation === contextGeneration,
     });
+  };
   const disposeFeatures = () => {
     const current = disposers;
     disposers = [];
@@ -1135,8 +1166,14 @@ function createRestrictedDocumentBoot(config) {
       error.name === "AbortError" ||
       error.category === "cancelled");
   const mount = (lifecycleContext) => {
-    const info = pageAdapter.detect();
     const currentTask = ++taskId;
+    let info;
+    try {
+      info = pageAdapter.detect();
+    } catch (error) {
+      logError(error);
+      return () => {};
+    }
     if (!info)
       return () => {
         if (typeof documentBuilder.dispose === "function")
@@ -1169,8 +1206,10 @@ function createRestrictedDocumentBoot(config) {
             );
           return pageAdapter.showFailure(
             info,
-            archive.stage === "create" || archive.kind === "unknown"
-              ? "向保存站发起收录请求失败。"
+            archive.kind === "unknown"
+              ? "收录请求已发送，但保存站未在超时前确认结果，请稍后刷新页面查看。"
+              : archive.stage === "create"
+                ? "向保存站发起收录请求失败。"
               : archive.reason || "保存站在限定时间内未能完成收录。",
           );
         }
@@ -1197,6 +1236,8 @@ function createRestrictedDocumentBoot(config) {
             ? error.userMessage
             : `原生页面装配失败：${error}`,
         );
+      } finally {
+        if (activeController === controller) activeController = null;
       }
     })();
     return () => {
@@ -1258,11 +1299,18 @@ function createRestrictedDocumentCommitter(config) {
       throw Object.assign(new Error("受限文档提交数据无效"), {
         kind: "invariant",
       });
-    const resources = [
-      ...prepared.html.matchAll(
-        /<(?:script[^>]+src|link[^>]+href)="(https:[^"]+)"/g,
-      ),
-    ].map((match) => match[1]);
+    const resourceTags =
+      prepared.html.match(
+        /<(?:script|link)\b[^>]*(?:src|href)\s*=[^>]+>/gi,
+      ) || [];
+    const resources = resourceTags.map((tag) => {
+      const match = tag.match(/(?:src|href)\s*=\s*(["'])([^"']+)\1/i);
+      if (!match)
+        throw Object.assign(new Error("受限文档资源地址格式无效"), {
+          kind: "invariant",
+        });
+      return match[2];
+    });
     if (!resources.every(resourcePolicy.isAllowed))
       throw Object.assign(new Error("受限文档包含未授权资源"), {
         kind: "invariant",
@@ -1492,6 +1540,7 @@ function createLuoguSPApp(options = {}) {
     (document.head || document.documentElement).appendChild(style);
   }
 
+  let closeSettingsOverlay = null;
   function openSettings() {
     if (document.getElementById("luogusp-settings")) return; // 避免重复打开
     const overlay = document.createElement("div");
@@ -1533,7 +1582,9 @@ function createLuoguSPApp(options = {}) {
       closed = true;
       overlay.remove();
       document.removeEventListener("keydown", esc);
+      if (closeSettingsOverlay === close) closeSettingsOverlay = null;
     };
+    closeSettingsOverlay = close;
 
     overlay.addEventListener("click", (e) => {
       const t = e.target;
@@ -1665,8 +1716,7 @@ function createLuoguSPApp(options = {}) {
       document
         .querySelectorAll(".luogusp-setting-entry")
         .forEach((entry) => (entry.closest("li") || entry).remove());
-      const settings = document.getElementById("luogusp-settings");
-      if (settings) settings.remove();
+      if (closeSettingsOverlay) closeSettingsOverlay();
     };
   }
 
@@ -2151,6 +2201,7 @@ function createLuoguSPApp(options = {}) {
   const browserRouteAdapter = (() => {
     const listeners = new Set();
     const originals = {};
+    const wrappers = {};
     let installed = false;
     const notify = () => {
       for (const listener of [...listeners]) listener();
@@ -2161,11 +2212,13 @@ function createLuoguSPApp(options = {}) {
       for (const method of ["pushState", "replaceState"]) {
         const raw = history[method];
         originals[method] = raw;
-        history[method] = function (...args) {
+        const wrapped = function (...args) {
           const result = raw.apply(this, args);
           notify();
           return result;
         };
+        wrappers[method] = wrapped;
+        history[method] = wrapped;
       }
       window.addEventListener("popstate", notify);
       window.addEventListener("hashchange", notify);
@@ -2173,8 +2226,12 @@ function createLuoguSPApp(options = {}) {
     const uninstall = () => {
       if (!installed || listeners.size) return;
       installed = false;
-      for (const method of ["pushState", "replaceState"])
-        if (originals[method]) history[method] = originals[method];
+      for (const method of ["pushState", "replaceState"]) {
+        if (originals[method] && history[method] === wrappers[method])
+          history[method] = originals[method];
+        delete originals[method];
+        delete wrappers[method];
+      }
       window.removeEventListener("popstate", notify);
       window.removeEventListener("hashchange", notify);
     };
@@ -2317,7 +2374,7 @@ function createLuoguSPApp(options = {}) {
           if (list && typeof list === "object")
             batches.push({
               source: list,
-              problems: [...list].map((item) => ({
+              problems: () => [...list].map((item) => ({
                 pid: item.problem && item.problem.pid,
                 difficulty: item.problem && item.problem.difficulty,
               })),
@@ -2327,7 +2384,7 @@ function createLuoguSPApp(options = {}) {
           for (const key of ["submittedProblems", "passedProblems"]) {
             const list = cur[key];
             if (list && typeof list === "object")
-              batches.push({ source: list, problems: [...list] });
+              batches.push({ source: list, problems: () => [...list] });
           }
         }
         return batches;
@@ -2496,6 +2553,7 @@ function createLuoguSPApp(options = {}) {
   }
 
   let ideSubmitWaiter = null;
+  let ideSubmitPatchDispose = null;
   function cancelIdeSubmitWaiter(runId) {
     if (!ideSubmitWaiter) return;
     if (runId != null && ideSubmitWaiter.runId !== runId) return;
@@ -2504,16 +2562,19 @@ function createLuoguSPApp(options = {}) {
     waiter.resolve(null);
   }
   function installIdeSubmitObserver() {
-    if (XMLHttpRequest.prototype.open.__luoguspIde) return;
+    if (ideSubmitPatchDispose) return ideSubmitPatchDispose;
     const rawOpen = XMLHttpRequest.prototype.open;
     const rawSend = XMLHttpRequest.prototype.send;
+    const submitRequests = new WeakMap();
     const open = function (method, url) {
-      this.__luoguspIdeSubmit =
-        typeof url === "string" && url.indexOf("/api/ide_submit") !== -1;
+      submitRequests.set(
+        this,
+        typeof url === "string" && url.indexOf("/api/ide_submit") !== -1,
+      );
       return rawOpen.apply(this, arguments);
     };
     const send = function () {
-      if (this.__luoguspIdeSubmit)
+      if (submitRequests.get(this))
         this.addEventListener("loadend", () => {
           if (ideSubmitWaiter) {
             const w = ideSubmitWaiter;
@@ -2523,9 +2584,18 @@ function createLuoguSPApp(options = {}) {
         });
       return rawSend.apply(this, arguments);
     };
-    open.__luoguspIde = true;
     XMLHttpRequest.prototype.open = open;
     XMLHttpRequest.prototype.send = send;
+    const dispose = () => {
+      cancelIdeSubmitWaiter();
+      if (XMLHttpRequest.prototype.open === open)
+        XMLHttpRequest.prototype.open = rawOpen;
+      if (XMLHttpRequest.prototype.send === send)
+        XMLHttpRequest.prototype.send = rawSend;
+      if (ideSubmitPatchDispose === dispose) ideSubmitPatchDispose = null;
+    };
+    ideSubmitPatchDispose = dispose;
+    return dispose;
   }
   function waitIdeSubmit(ms, runId) {
     cancelIdeSubmitWaiter();
@@ -2542,8 +2612,6 @@ function createLuoguSPApp(options = {}) {
       ideSubmitWaiter = { runId, resolve: fn };
     });
   }
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
   function outputParts() {
     const tb = ideToolbarByTitle("输出");
     if (!tb) return null;
@@ -2559,19 +2627,24 @@ function createLuoguSPApp(options = {}) {
   }
   // 完成锚点：胶囊 存在→消失→重现（实测清空 300~560ms、结果 1~3.5s）
   // 注意：此处不看 stopReq——设计口径是「当前组跑完即停」，停止只在组间生效
-  async function waitIdePill(present, timeoutMs, isCurrent = () => true) {
+  async function waitIdePill(
+    present,
+    timeoutMs,
+    isCurrent = () => true,
+    wait,
+  ) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
       if (!isCurrent()) return null;
       const parts = outputParts();
       if (!parts) return null; // IDE 已卸载
       if (!!parts.pill === present) return parts.pill || true;
-      await sleep(150);
+      if (!(await wait(150))) return null;
     }
     return null;
   }
 
-  async function runOneSample(runBtn, runId, drive, isCurrent) {
+  async function runOneSample(runBtn, runId, drive, isCurrent, wait) {
     const before = outputParts();
     if (!before) return { verdict: "UKE", note: "IDE 面板不存在" };
     const hadPill = !!before.pill;
@@ -2579,7 +2652,7 @@ function createLuoguSPApp(options = {}) {
     drive(() => runBtn.click());
     let status = await submitP;
     if (status === 429) {
-      await sleep(3000); // 限流：等 3s 原地重试一次
+      if (!(await wait(3000))) return { verdict: "UKE", note: "页面已切换" };
       if (!isCurrent()) return { verdict: "UKE", note: "页面已切换" };
       submitP = waitIdeSubmit(10000, runId);
       drive(() => runBtn.click());
@@ -2592,10 +2665,10 @@ function createLuoguSPApp(options = {}) {
       };
     if (
       hadPill &&
-      (await waitIdePill(false, 5000, isCurrent)) === null
+      (await waitIdePill(false, 5000, isCurrent, wait)) === null
     )
       return { verdict: "UKE", note: "旧结果未清空，疑似运行未开始" };
-    const pill = await waitIdePill(true, 30000, isCurrent);
+    const pill = await waitIdePill(true, 30000, isCurrent, wait);
     if (!pill || pill === true)
       return { verdict: "UKE", note: "30s 未返回结果" };
     const parts = outputParts();
@@ -2607,13 +2680,16 @@ function createLuoguSPApp(options = {}) {
     };
   }
 
+  let ideHintTimer = null;
   function ideBatchHint(msg, running = false) {
     const btn = document.querySelector(".luogusp-ide-batch-btn");
     if (!btn) return;
     const old = btn.textContent;
     btn.textContent = msg;
     btn.disabled = true;
-    setTimeout(() => {
+    if (ideHintTimer !== null) clearTimeout(ideHintTimer);
+    ideHintTimer = setTimeout(() => {
+      ideHintTimer = null;
       btn.textContent = old;
       btn.disabled = running;
     }, 1500);
@@ -3039,6 +3115,7 @@ function createLuoguSPApp(options = {}) {
           task.runId,
           task.drive,
           task.isCurrent,
+          task.wait,
         );
       } catch (error) {
         cancelIdeSubmitWaiter(task.runId);
@@ -3063,7 +3140,7 @@ function createLuoguSPApp(options = {}) {
     markStale: showIdeStale,
     mount: (controls) => {
       ideBrowserDriver.controls = controls;
-      installIdeSubmitObserver();
+      const unpatchSubmit = installIdeSubmitObserver();
       const unhook = hookIdeStaleAndGuard(controls);
       let frame = null;
       const tick = () => {
@@ -3089,7 +3166,12 @@ function createLuoguSPApp(options = {}) {
       ensureIdeBatchUI(controls);
       return () => {
         observer.disconnect();
+        unpatchSubmit();
         unhook();
+        if (ideHintTimer !== null) {
+          clearTimeout(ideHintTimer);
+          ideHintTimer = null;
+        }
         if (frame !== null) cancelAnimationFrame(frame);
         cancelIdeSubmitWaiter();
         unmountIdeBatchUI();
@@ -3254,18 +3336,20 @@ function createLuoguSPApp(options = {}) {
   // 接口=/api/user/search?keyword={uid}（拦截页源实测可用；旧 /user/{uid}?_contentOnly=1 已死，返回 HTML），
   // 返回 userSummary：{uid,name,avatar,slogan,badge,color,ccfLevel,xcpcLevel,…}。失败回退存档快照。
   const rstUserCache = new Map();
-  async function rstCnUser(uid) {
+  async function rstCnUser(uid, signal) {
     if (!uid) return null;
     if (rstUserCache.has(uid)) return rstUserCache.get(uid);
     let user = null;
     try {
       const res = await fetch(
         `/api/user/search?keyword=${encodeURIComponent(uid)}`,
+        { signal },
       );
       const json = await res.json();
       const list = (json && json.users) || [];
       user = list.find((u) => u && Number(u.uid) === Number(uid)) || null;
     } catch (e) {
+      if (e && e.name === "AbortError") throw e;
       /* 回退存档快照 */
     }
     rstUserCache.set(uid, user);
@@ -3337,16 +3421,17 @@ function createLuoguSPApp(options = {}) {
 
   // 壳骨架收割：候选源逐个尝试（2026-07-22 实测：/ranking、/discuss 已迁 columba；
   // /image、/theme/list 仍为 lfe。任一命中即用；全挂=降级失败卡）
-  async function rstHarvest(kind) {
+  async function rstHarvest(kind, signal) {
     const sources =
       kind === "columba" ? ["/ranking", "/discuss"] : ["/image", "/theme/list"];
     const marker = kind === "columba" ? "lentille-context" : "_feInjection";
     for (const src of sources) {
       try {
-        const res = await fetch(src);
+        const res = await fetch(src, { signal });
         const html = await res.text();
         if (html.includes(marker)) return html;
       } catch (e) {
+        if (e && e.name === "AbortError") throw e;
         /* 换下一个源 */
       }
     }
@@ -3418,11 +3503,11 @@ function createLuoguSPApp(options = {}) {
   }
 
   // 文章页：合成 lentille-context（template article.show）+ 官方 columba 前端
-  async function rstBootArticle(info, data) {
+  async function rstBootArticle(info, data, signal) {
     const [scaffold, cnUser, commentsResult] = await Promise.all([
-      rstHarvest("columba"),
-      rstCnUser(data.authorId),
-      saverWorkflow.loadComments(info.id),
+      rstHarvest("columba", signal),
+      rstCnUser(data.authorId, signal),
+      saverWorkflow.loadComments(info.id, { signal }),
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
@@ -3459,9 +3544,10 @@ function createLuoguSPApp(options = {}) {
       /<\/script/i.test(globalsRaw)
     )
       throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
+    let safeThemeRaw = "";
     if (themeRaw) {
       try {
-        JSON.parse(themeRaw);
+        safeThemeRaw = serializeJsonForScript(JSON.parse(themeRaw));
       } catch (error) {
         throw rstPreparationError("洛谷主题数据解析失败（结构可能已改版）。");
       }
@@ -3522,7 +3608,7 @@ function createLuoguSPApp(options = {}) {
         .map((s) => `<script src="${s}" charset="utf-8" defer><\/script>`)
         .join("") +
       cssLinks.map((c) => `<link rel="stylesheet" href="${c}" />`).join("") +
-      `<script id="luogu-theme" type="application/json">${themeRaw}<\/script>` +
+      `<script id="luogu-theme" type="application/json">${safeThemeRaw}<\/script>` +
       `<style>${RST_EXTRA_CSS}</style>` +
       `</head><body><div id="app"></div></body></html>`;
     return {
@@ -3535,10 +3621,10 @@ function createLuoguSPApp(options = {}) {
   }
 
   // 剪贴板页：合成 window._feInjection（currentTemplate PasteShow）+ 官方 lfe 前端
-  async function rstBootPaste(info, data) {
+  async function rstBootPaste(info, data, signal) {
     const [scaffold, cnUser] = await Promise.all([
-      rstHarvest("lfe"),
-      rstCnUser(data.authorId),
+      rstHarvest("lfe", signal),
+      rstCnUser(data.authorId, signal),
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
@@ -3794,11 +3880,24 @@ function createLuoguSPApp(options = {}) {
     rstRefreshText = text;
     rstApplyRefreshBtns();
   }
+  function rstScheduleRefreshReset() {
+    if (rstRefreshResetTimer !== null)
+      clearTimeout(rstRefreshResetTimer);
+    rstRefreshResetTimer = setTimeout(() => {
+      rstRefreshResetTimer = null;
+      if (rstRefreshState === "idle") rstSetRefresh("idle", "申请更新");
+    }, 3000);
+  }
   async function rstManualRefresh(info) {
     if (rstRefreshState !== "idle") return;
     rstSetRefresh("busy", "更新中…");
     try {
       const result = await saverWorkflow.requestRefresh(info.type, info.id);
+      if (result.kind === "unknown") {
+        rstSetRefresh("idle", "结果未知");
+        rstScheduleRefreshReset();
+        return;
+      }
       if (result.kind !== "accepted")
         throw new Error(result.reason || "保存站拒绝更新请求");
       if (info.type === "article")
@@ -3807,12 +3906,7 @@ function createLuoguSPApp(options = {}) {
     } catch (e) {
       console.error("LuoguSP restricted refresh:", e);
       rstSetRefresh("idle", "更新失败");
-      if (rstRefreshResetTimer !== null)
-        clearTimeout(rstRefreshResetTimer);
-      rstRefreshResetTimer = setTimeout(() => {
-        rstRefreshResetTimer = null;
-        if (rstRefreshState === "idle") rstSetRefresh("idle", "申请更新");
-      }, 3000);
+      rstScheduleRefreshReset();
     }
   }
 
@@ -3824,8 +3918,8 @@ function createLuoguSPApp(options = {}) {
         });
       const prepared =
         info.type === "article"
-          ? await rstBootArticle(info, data)
-          : await rstBootPaste(info, data);
+          ? await rstBootArticle(info, data, signal)
+          : await rstBootPaste(info, data, signal);
       if (signal.aborted)
         throw Object.assign(new Error("受限文档准备已取消"), {
           kind: "cancelled",
@@ -3875,7 +3969,12 @@ function createLuoguSPApp(options = {}) {
       mount: (context) => {
         let disposePipeline = null;
         const timer = setTimeout(() => {
-          if (context.isCurrent()) disposePipeline = addProblemsColor();
+          if (!context.isCurrent()) return;
+          try {
+            disposePipeline = addProblemsColor();
+          } catch (error) {
+            console.error("LuoguSP lifecycle problem-pipeline:", error);
+          }
         }, 500);
         return () => {
           clearTimeout(timer);
@@ -3890,7 +3989,12 @@ function createLuoguSPApp(options = {}) {
         if (!location.pathname.startsWith("/chat")) return;
         let disposeChat = null;
         const timer = setTimeout(() => {
-          if (context.isCurrent()) disposeChat = addMessageLink();
+          if (!context.isCurrent()) return;
+          try {
+            disposeChat = addMessageLink();
+          } catch (error) {
+            console.error("LuoguSP lifecycle chat-shortcut:", error);
+          }
         }, 500);
         return () => {
           clearTimeout(timer);
