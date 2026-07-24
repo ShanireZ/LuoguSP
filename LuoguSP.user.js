@@ -382,6 +382,183 @@ function createProblemPipeline(config) {
   return Object.freeze({ mount, dispose });
 }
 
+function createIdeBatchRunner(config) {
+  const { ideDriver, clock, logError = () => {} } = config || {};
+  if (
+    !ideDriver ||
+    typeof ideDriver.prepare !== "function" ||
+    typeof ideDriver.runSample !== "function"
+  )
+    throw new TypeError("IDE Batch Runner requires a browser driver");
+  if (
+    !clock ||
+    typeof clock.setTimeout !== "function" ||
+    typeof clock.clearTimeout !== "function"
+  )
+    throw new TypeError("IDE Batch Runner requires a clock adapter");
+
+  let state = "idle";
+  let runId = 0;
+  let mounted = false;
+  let disposed = false;
+  let driving = false;
+  let stale = false;
+  let results = null;
+  let stopMount = null;
+  let delay = null;
+
+  const cancelDelay = () => {
+    if (!delay) return;
+    clock.clearTimeout(delay.timer);
+    const resolve = delay.resolve;
+    delay = null;
+    resolve(false);
+  };
+  const pause = (ms, taskRunId) =>
+    new Promise((resolve) => {
+      const timer = clock.setTimeout(() => {
+        if (delay && delay.timer === timer) delay = null;
+        resolve(taskRunId === runId && !disposed);
+      }, ms);
+      delay = { timer, resolve };
+    });
+  const isCurrent = (taskRunId, context) =>
+    taskRunId === runId &&
+    !disposed &&
+    (!ideDriver.isCurrent || ideDriver.isCurrent(context));
+  const drive = (taskRunId, action) => {
+    if (taskRunId !== runId || disposed) return;
+    driving = true;
+    try {
+      return action();
+    } finally {
+      driving = false;
+    }
+  };
+  const invalidate = () => {
+    if (state === "idle") return;
+    runId++;
+    state = "idle";
+    driving = false;
+    cancelDelay();
+    if (typeof ideDriver.cancel === "function") ideDriver.cancel();
+  };
+  const stop = () => {
+    if (state === "preparing" || state === "running") state = "stopping";
+  };
+  const markStale = () => {
+    if (stale || state !== "idle" || !results) return;
+    stale = true;
+    if (typeof ideDriver.markStale === "function") ideDriver.markStale();
+  };
+  const start = async () => {
+    if (disposed || state !== "idle") return;
+    const taskRunId = ++runId;
+    let context = null;
+    state = "preparing";
+    try {
+      context = await ideDriver.prepare({ runId: taskRunId });
+      if (taskRunId !== runId || disposed) return;
+      if (!context || context.kind !== "ready") {
+        if (context && context.message && typeof ideDriver.hint === "function")
+          ideDriver.hint(context.message);
+        return;
+      }
+      if (state === "stopping") return;
+      if (!isCurrent(taskRunId, context)) {
+        if (typeof ideDriver.hint === "function")
+          ideDriver.hint("页面已切换");
+        return;
+      }
+
+      state = "running";
+      stale = false;
+      results = new Array(context.count).fill(null);
+      if (typeof ideDriver.begin === "function")
+        ideDriver.begin(context, results);
+      for (let index = 0; index < context.count; index++) {
+        if (state === "stopping" || !isCurrent(taskRunId, context)) break;
+        if (typeof ideDriver.setRunning === "function")
+          ideDriver.setRunning(context, index);
+        let result;
+        try {
+          result = await ideDriver.runSample(context, index, {
+            runId: taskRunId,
+            drive: (action) => drive(taskRunId, action),
+          });
+        } catch (error) {
+          logError(error);
+          result = { verdict: "UKE", note: String(error) };
+        }
+        if (!isCurrent(taskRunId, context)) break;
+        results[index] = result;
+        if (typeof ideDriver.applyResult === "function")
+          ideDriver.applyResult(context, index, result);
+        if (result.verdict === "CE") {
+          for (let rest = index + 1; rest < context.count; rest++) {
+            results[rest] = {
+              verdict: "CE",
+              output: result.output || "",
+              note: "编译错误",
+            };
+            if (typeof ideDriver.applyResult === "function")
+              ideDriver.applyResult(context, rest, results[rest]);
+          }
+          break;
+        }
+        if (index < context.count - 1 && state !== "stopping") {
+          const continued = await pause(500, taskRunId);
+          if (!continued || !isCurrent(taskRunId, context)) break;
+        }
+      }
+    } catch (error) {
+      logError(error);
+    } finally {
+      if (context && typeof ideDriver.restore === "function") {
+        try {
+          ideDriver.restore(context);
+        } catch (error) {
+          logError(error);
+        }
+      }
+      if (taskRunId === runId) {
+        state = "idle";
+        driving = false;
+        cancelDelay();
+        if (context && context.kind === "ready" && ideDriver.finish)
+          ideDriver.finish(context, results);
+      }
+    }
+  };
+  const mount = () => {
+    if (disposed || mounted) return dispose;
+    mounted = true;
+    if (typeof ideDriver.mount === "function")
+      stopMount =
+        ideDriver.mount({
+          start,
+          stop,
+          invalidate,
+          markStale,
+          isRunning: () => state === "running" || state === "stopping",
+          isDriving: () => driving,
+        }) || null;
+    return dispose;
+  };
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    mounted = false;
+    invalidate();
+    if (stopMount) stopMount();
+    stopMount = null;
+  };
+  const getState = () =>
+    Object.freeze({ state, runId, driving, stale, mounted, disposed });
+
+  return Object.freeze({ mount, start, stop, markStale, dispose, getState });
+}
+
 function createSaverTransport(config) {
   const {
     baseUrl,
@@ -1322,6 +1499,11 @@ function createLuoguSPApp(options = {}) {
     window.addEventListener("popstate", onChange);
     window.addEventListener("hashchange", onChange);
     window.addEventListener("luogusp:urlchange", onChange);
+    return () => {
+      window.removeEventListener("popstate", onChange);
+      window.removeEventListener("hashchange", onChange);
+      window.removeEventListener("luogusp:urlchange", onChange);
+    };
   }
   function watchHiddenIntro() {
     let requestedRouteKey = "";
@@ -1547,11 +1729,7 @@ function createLuoguSPApp(options = {}) {
     return null;
   }
 
-  const IDE_BATCH = {
-    preparing: false, // 样例/DOM 探测中；与 running 一起构成完整防重入窗口
-    running: false, // 批测进行中（防重入）
-    stopReq: false, // 「停止」请求：当前组跑完即停
-    driving: false, // 程序化点击原生按钮的瞬间为 true（区分用户手点）
+  const IDE_VIEW = {
     activeTab: "custom", // custom=原生输入输出 / samples=样例面板
     tabBar: null,
     panel: null,
@@ -1559,9 +1737,6 @@ function createLuoguSPApp(options = {}) {
     rowsEl: null,
     summaryEl: null,
     stopBtn: null,
-    results: null, // 本轮各组结果（过期标注用）
-    stale: false,
-    inputSnapshot: null, // 批测前用户自定义输入快照
   };
 
   function ideModeActive() {
@@ -1626,11 +1801,12 @@ function createLuoguSPApp(options = {}) {
   }
 
   let ideSubmitWaiter = null;
-  function cancelIdeSubmitWaiter() {
+  function cancelIdeSubmitWaiter(runId) {
     if (!ideSubmitWaiter) return;
+    if (runId != null && ideSubmitWaiter.runId !== runId) return;
     const waiter = ideSubmitWaiter;
     ideSubmitWaiter = null;
-    waiter(null);
+    waiter.resolve(null);
   }
   function installIdeSubmitObserver() {
     if (XMLHttpRequest.prototype.open.__luoguspIde) return;
@@ -1647,7 +1823,7 @@ function createLuoguSPApp(options = {}) {
           if (ideSubmitWaiter) {
             const w = ideSubmitWaiter;
             ideSubmitWaiter = null;
-            w(this.status);
+            w.resolve(this.status);
           }
         });
       return rawSend.apply(this, arguments);
@@ -1656,18 +1832,19 @@ function createLuoguSPApp(options = {}) {
     XMLHttpRequest.prototype.open = open;
     XMLHttpRequest.prototype.send = send;
   }
-  function waitIdeSubmit(ms) {
+  function waitIdeSubmit(ms, runId) {
     cancelIdeSubmitWaiter();
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
-        if (ideSubmitWaiter === fn) ideSubmitWaiter = null;
+        if (ideSubmitWaiter && ideSubmitWaiter.resolve === fn)
+          ideSubmitWaiter = null;
         resolve(null);
       }, ms);
       const fn = (status) => {
         clearTimeout(timer);
         resolve(status);
       };
-      ideSubmitWaiter = fn;
+      ideSubmitWaiter = { runId, resolve: fn };
     });
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1698,17 +1875,17 @@ function createLuoguSPApp(options = {}) {
     return null;
   }
 
-  async function runOneSample(runBtn) {
+  async function runOneSample(runBtn, runId, drive) {
     const before = outputParts();
     if (!before) return { verdict: "UKE", note: "IDE 面板不存在" };
     const hadPill = !!before.pill;
-    let submitP = waitIdeSubmit(10000);
-    clickIdeRun(runBtn);
+    let submitP = waitIdeSubmit(10000, runId);
+    drive(() => runBtn.click());
     let status = await submitP;
     if (status === 429) {
       await sleep(3000); // 限流：等 3s 原地重试一次
-      submitP = waitIdeSubmit(10000);
-      clickIdeRun(runBtn);
+      submitP = waitIdeSubmit(10000, runId);
+      drive(() => runBtn.click());
       status = await submitP;
     }
     if (status == null || status < 200 || status >= 300)
@@ -1730,19 +1907,7 @@ function createLuoguSPApp(options = {}) {
     };
   }
 
-  function clickIdeRun(runBtn) {
-    IDE_BATCH.driving = true;
-    try {
-      runBtn.click();
-    } catch (e) {
-      cancelIdeSubmitWaiter();
-      throw e;
-    } finally {
-      IDE_BATCH.driving = false;
-    }
-  }
-
-  function ideBatchHint(msg) {
+  function ideBatchHint(msg, running = false) {
     const btn = document.querySelector(".luogusp-ide-batch-btn");
     if (!btn) return;
     const old = btn.textContent;
@@ -1750,126 +1915,8 @@ function createLuoguSPApp(options = {}) {
     btn.disabled = true;
     setTimeout(() => {
       btn.textContent = old;
-      btn.disabled = IDE_BATCH.running;
+      btn.disabled = running;
     }, 1500);
-  }
-  const idePreparation =
-    options.idePreparationAdapter ||
-    Object.freeze({
-      mountTabs: () => mountIdeTabs(),
-      currentPid: () => currentPid(),
-      loadSamples: () => getIdeSamples(),
-      isModeActive: () => ideModeActive(),
-      hint: (message) => ideBatchHint(message),
-    });
-  async function startIdeBatch() {
-    if (IDE_BATCH.running || IDE_BATCH.preparing) return;
-    IDE_BATCH.preparing = true;
-    try {
-      idePreparation.mountTabs();
-      const batchPid = idePreparation.currentPid();
-      const samples = await idePreparation.loadSamples();
-      if (
-        !batchPid ||
-        idePreparation.currentPid() !== batchPid ||
-        !idePreparation.isModeActive()
-      )
-        return idePreparation.hint("页面已切换");
-      if (!samples || !samples.length)
-        return idePreparation.hint("本题无样例");
-      if (!readIdeCode().trim()) return idePreparation.hint("代码为空");
-      const runBtns = sampleRunButtons();
-      if (!runBtns.length)
-        return idePreparation.hint("找不到样例运行按钮");
-      const n = Math.min(samples.length, runBtns.length);
-      if (runBtns.length !== samples.length)
-        console.error(
-          "LuoguSP ide batch: 样例数与运行按钮数不一致",
-          samples.length,
-          runBtns.length,
-        );
-      const inputTa = (() => {
-        const tb = ideToolbarByTitle("输入");
-        return tb && tb.parentElement
-          ? tb.parentElement.querySelector(SELECTORS.ideTextarea)
-          : null;
-      })();
-      IDE_BATCH.inputSnapshot = inputTa ? inputTa.value : null;
-      const batchBtn = document.querySelector(".luogusp-ide-batch-btn");
-      const selfTest = (() => {
-        const tb = ideToolbarByTitle("代码");
-        const actions = tb && tb.querySelector(SELECTORS.ideToolbarActions);
-        return actions
-          ? [...actions.querySelectorAll("button")].find(
-              (b) => (b.textContent || "").trim() === "自测",
-            )
-          : null;
-      })();
-      IDE_BATCH.running = true;
-      IDE_BATCH.stopReq = false;
-      IDE_BATCH.stale = false;
-      IDE_BATCH.results = new Array(n).fill(null);
-      try {
-        if (batchBtn) batchBtn.disabled = true;
-        if (selfTest) selfTest.disabled = true; // 批测中禁原生自测防互相干扰
-        if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "";
-        switchIdeTab("samples");
-        renderIdeRows(samples);
-        if (IDE_BATCH.summaryEl) IDE_BATCH.summaryEl.textContent = "测试中…";
-        let ceLog = null;
-        for (let i = 0; i < n; i++) {
-          if (IDE_BATCH.stopReq) break;
-          const p = ideRowParts(i);
-          if (p) {
-            p.pill.setAttribute("style", IDE_PILL_RUN);
-            p.pill.textContent = "运行中";
-          }
-          expandIdeRow(i);
-          let r;
-          try {
-            r = await runOneSample(runBtns[i]);
-          } catch (e) {
-            console.error("LuoguSP ide batch:", e);
-            r = { verdict: "UKE", note: String(e) };
-          }
-          IDE_BATCH.results[i] = r;
-          applyIdeResult(i, r, samples[i]);
-          if (r.verdict === "CE") {
-            ceLog = r.output || "";
-            for (let j = i + 1; j < n; j++) {
-              IDE_BATCH.results[j] = {
-                verdict: "CE",
-                output: ceLog,
-                note: "编译错误",
-              };
-              applyIdeResult(j, IDE_BATCH.results[j], samples[j]);
-            }
-            break;
-          }
-          if (i < n - 1 && !IDE_BATCH.stopReq) await sleep(500); // 组间限速
-        }
-      } finally {
-        try {
-          if (inputTa && IDE_BATCH.inputSnapshot != null) {
-            inputTa.value = IDE_BATCH.inputSnapshot; // 还原用户自定义输入
-            inputTa.dispatchEvent(new Event("input", { bubbles: true })); // 同步 Vue 绑定
-          }
-        } catch (e) {
-          console.error("LuoguSP ide input restore:", e);
-        }
-        IDE_BATCH.running = false;
-        if (batchBtn) batchBtn.disabled = false;
-        if (selfTest) selfTest.disabled = false;
-        if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "none";
-        finishIdeSummary();
-      }
-    } finally {
-      IDE_BATCH.preparing = false;
-    }
-  }
-
-  function startIdeBatchSafely() {
-    startIdeBatch().catch((e) => console.error("LuoguSP ide batch:", e));
   }
 
   // 判定口径同洛谷：CRLF 归一、去行尾空格、去末尾空行。仅用于 diff 渲染与交叉校验，
@@ -1973,9 +2020,9 @@ function createLuoguSPApp(options = {}) {
     );
   }
 
-  function finishIdeSummary() {
-    if (!IDE_BATCH.summaryEl || !IDE_BATCH.results) return;
-    const rs = IDE_BATCH.results;
+  function finishIdeSummary(results) {
+    if (!IDE_VIEW.summaryEl || !results) return;
+    const rs = results;
     const counts = {};
     let ac = 0,
       tested = 0;
@@ -1995,50 +2042,50 @@ function createLuoguSPApp(options = {}) {
         if (p) p.pill.textContent = "未测";
       });
     }
-    IDE_BATCH.summaryEl.textContent = text;
+    IDE_VIEW.summaryEl.textContent = text;
     const firstBad = rs.findIndex((r) => r && r.verdict !== "AC");
     if (firstBad !== -1) expandIdeRow(firstBad);
-    else if (IDE_BATCH.rowsEl)
-      IDE_BATCH.rowsEl
+    else if (IDE_VIEW.rowsEl)
+      IDE_VIEW.rowsEl
         .querySelectorAll(".luogusp-ide-row.open")
         .forEach((r) => r.classList.remove("open"));
   }
 
-  function markIdeStale() {
-    if (IDE_BATCH.stale || IDE_BATCH.running || !IDE_BATCH.results) return;
-    IDE_BATCH.stale = true;
-    if (IDE_BATCH.summaryEl && document.contains(IDE_BATCH.summaryEl))
-      IDE_BATCH.summaryEl.textContent += " · 结果可能已过期，建议重新测试";
+  function showIdeStale() {
+    if (IDE_VIEW.summaryEl && document.contains(IDE_VIEW.summaryEl))
+      IDE_VIEW.summaryEl.textContent += " · 结果可能已过期，建议重新测试";
   }
-  function hookIdeStaleAndGuard() {
+  function hookIdeStaleAndGuard(controls) {
     // 代码变更 → 过期标注（CM6 是 contenteditable，input/keydown 均会冒泡）
     const stale = (e) => {
       if (e.target && e.target.closest && e.target.closest(SELECTORS.cmContent))
-        markIdeStale();
+        controls.markStale();
     };
     document.addEventListener("input", stale, true);
     document.addEventListener("keydown", stale, true);
     // 批测中拦掉用户手点原生 运行/自测（程序化点击带 driving 标记放行）
-    document.addEventListener(
-      "click",
-      (e) => {
-        if (!IDE_BATCH.running || IDE_BATCH.driving) return;
-        const t =
-          e.target &&
-          e.target.closest &&
-          e.target.closest(
-            `${SELECTORS.ideSampleBlock} a, ${SELECTORS.ideToolbar} a.run`,
-          );
-        if (t) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      },
-      true,
-    );
+    const guard = (e) => {
+      if (!controls.isRunning() || controls.isDriving()) return;
+      const t =
+        e.target &&
+        e.target.closest &&
+        e.target.closest(
+          `${SELECTORS.ideSampleBlock} a, ${SELECTORS.ideToolbar} a.run`,
+        );
+      if (t) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener("click", guard, true);
+    return () => {
+      document.removeEventListener("input", stale, true);
+      document.removeEventListener("keydown", stale, true);
+      document.removeEventListener("click", guard, true);
+    };
   }
 
-  function mountIdeButton() {
+  function mountIdeButton(controls) {
     const tb = ideToolbarByTitle("代码");
     if (!tb) return;
     const actions = tb.querySelector(SELECTORS.ideToolbarActions);
@@ -2055,13 +2102,13 @@ function createLuoguSPApp(options = {}) {
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      startIdeBatchSafely();
+      controls.start();
     });
     actions.insertBefore(btn, selfTest);
   }
 
-  function mountIdeTabs() {
-    if (IDE_BATCH.tabBar && document.contains(IDE_BATCH.tabBar)) return;
+  function mountIdeTabs(controls) {
+    if (IDE_VIEW.tabBar && document.contains(IDE_VIEW.tabBar)) return;
     const inputTb = ideToolbarByTitle("输入");
     if (!inputTb) return;
     const ioLayout = inputTb.closest(".panel-layout"); // 底部 输入|输出 水平分栏
@@ -2111,28 +2158,26 @@ function createLuoguSPApp(options = {}) {
       headBtns.appendChild(b);
       return b;
     };
-    IDE_BATCH.stopBtn = mkBtn("停止", "luogusp-ide-stop", () => {
-      IDE_BATCH.stopReq = true;
-    });
-    IDE_BATCH.stopBtn.style.display = "none";
-    mkBtn("重新测试", "luogusp-ide-rerun", startIdeBatchSafely);
+    IDE_VIEW.stopBtn = mkBtn("停止", "luogusp-ide-stop", controls.stop);
+    IDE_VIEW.stopBtn.style.display = "none";
+    mkBtn("重新测试", "luogusp-ide-rerun", controls.start);
     host.insertBefore(tabBar, ioLayout);
     host.appendChild(panel);
-    IDE_BATCH.tabBar = tabBar;
-    IDE_BATCH.panel = panel;
-    IDE_BATCH.ioLayout = ioLayout;
-    IDE_BATCH.rowsEl = panel.querySelector(".luogusp-ide-rows");
-    IDE_BATCH.summaryEl = panel.querySelector(".luogusp-ide-summary");
+    IDE_VIEW.tabBar = tabBar;
+    IDE_VIEW.panel = panel;
+    IDE_VIEW.ioLayout = ioLayout;
+    IDE_VIEW.rowsEl = panel.querySelector(".luogusp-ide-rows");
+    IDE_VIEW.summaryEl = panel.querySelector(".luogusp-ide-summary");
     syncIdeTabVisibility();
   }
   function switchIdeTab(tab) {
-    IDE_BATCH.activeTab = tab;
+    IDE_VIEW.activeTab = tab;
     syncIdeTabVisibility();
   }
   function syncIdeTabVisibility() {
-    const { tabBar, panel, ioLayout } = IDE_BATCH;
+    const { tabBar, panel, ioLayout } = IDE_VIEW;
     if (!tabBar || !document.contains(tabBar) || !panel || !ioLayout) return;
-    const samples = IDE_BATCH.activeTab === "samples";
+    const samples = IDE_VIEW.activeTab === "samples";
     ioLayout.style.display = samples ? "none" : "";
     panel.style.display = samples ? "" : "none";
     tabBar.querySelectorAll(".luogusp-ide-tab").forEach((t) => {
@@ -2145,7 +2190,7 @@ function createLuoguSPApp(options = {}) {
   const IDE_PILL_RUN =
     "background-color:#3498db;border-color:#2f89c5;color:#fff;";
   function renderIdeRows(samples) {
-    const rowsEl = IDE_BATCH.rowsEl;
+    const rowsEl = IDE_VIEW.rowsEl;
     if (!rowsEl) return;
     rowsEl.innerHTML = samples
       .map(
@@ -2173,8 +2218,8 @@ function createLuoguSPApp(options = {}) {
   }
   function ideRowParts(i) {
     const row =
-      IDE_BATCH.rowsEl &&
-      IDE_BATCH.rowsEl.querySelector(`.luogusp-ide-row[data-idx="${i}"]`);
+      IDE_VIEW.rowsEl &&
+      IDE_VIEW.rowsEl.querySelector(`.luogusp-ide-row[data-idx="${i}"]`);
     if (!row) return null;
     return {
       row,
@@ -2184,63 +2229,212 @@ function createLuoguSPApp(options = {}) {
     };
   }
   function expandIdeRow(i) {
-    if (!IDE_BATCH.rowsEl) return;
-    IDE_BATCH.rowsEl
+    if (!IDE_VIEW.rowsEl) return;
+    IDE_VIEW.rowsEl
       .querySelectorAll(".luogusp-ide-row.open")
       .forEach((r) => r.classList.remove("open"));
     const p = ideRowParts(i);
     if (p) p.row.classList.add("open");
   }
 
-  function ensureIdeBatchUI() {
+  function ensureIdeBatchUI(controls) {
     if (!ideModeActive()) {
       unmountIdeBatchUI();
+      controls.invalidate();
       return;
     }
-    mountIdeButton();
-    mountIdeTabs();
+    mountIdeButton(controls);
+    mountIdeTabs(controls);
     syncIdeTabVisibility();
   }
 
   function unmountIdeBatchUI() {
-    if (IDE_BATCH.running) {
-      IDE_BATCH.stopReq = true; // 退出 IDE/换题：请求停止
-      cancelIdeSubmitWaiter();
-    }
-    IDE_BATCH.activeTab = "custom"; // 复位，防再次进入时默认落在空面板
-    IDE_BATCH.tabBar = IDE_BATCH.panel = IDE_BATCH.ioLayout = null;
-    IDE_BATCH.rowsEl = IDE_BATCH.summaryEl = IDE_BATCH.stopBtn = null;
+    IDE_VIEW.activeTab = "custom"; // 复位，防再次进入时默认落在空面板
+    IDE_VIEW.tabBar = IDE_VIEW.panel = IDE_VIEW.ioLayout = null;
+    IDE_VIEW.rowsEl = IDE_VIEW.summaryEl = IDE_VIEW.stopBtn = null;
   }
 
-  // SPA：进出 IDE 模式/换题时补挂与清理（rAF 节流，同既有 watchSettingButton 模式）
-  function watchIdeBatch() {
-    installIdeSubmitObserver();
-    hookIdeStaleAndGuard();
-    let scheduled = false;
-    const tick = () => {
-      scheduled = false;
-      try {
-        ensureIdeBatchUI();
-      } catch (e) {
-        console.error("LuoguSP ide batch:", e);
-      }
-    };
-    const queue = () => {
-      if (!scheduled) {
-        scheduled = true;
-        requestAnimationFrame(tick);
-      }
-    };
-    new MutationObserver(() => {
+  const ideBrowserDriver = {
+    prepare: async ({ runId }) => {
+      mountIdeTabs(ideBrowserDriver.controls);
+      const pid = currentPid();
+      const routeToken = `${location.pathname}${location.search}${location.hash}`;
+      const samples = await getIdeSamples();
       if (
-        location.hash === "#ide" ||
-        IDE_BATCH.tabBar ||
-        IDE_BATCH.running
+        !pid ||
+        currentPid() !== pid ||
+        `${location.pathname}${location.search}${location.hash}` !==
+          routeToken ||
+        !ideModeActive()
       )
+        return { kind: "hint", message: "页面已切换" };
+      if (!samples || !samples.length)
+        return { kind: "hint", message: "本题无样例" };
+      if (!readIdeCode().trim())
+        return { kind: "hint", message: "代码为空" };
+      const runButtons = sampleRunButtons();
+      if (!runButtons.length)
+        return { kind: "hint", message: "找不到样例运行按钮" };
+      const count = Math.min(samples.length, runButtons.length);
+      if (runButtons.length !== samples.length)
+        console.error(
+          "LuoguSP ide batch: 样例数与运行按钮数不一致",
+          samples.length,
+          runButtons.length,
+        );
+      const inputToolbar = ideToolbarByTitle("输入");
+      const input =
+        inputToolbar && inputToolbar.parentElement
+          ? inputToolbar.parentElement.querySelector(SELECTORS.ideTextarea)
+          : null;
+      const codeToolbar = ideToolbarByTitle("代码");
+      const actions =
+        codeToolbar && codeToolbar.querySelector(SELECTORS.ideToolbarActions);
+      const selfTest = actions
+        ? [...actions.querySelectorAll("button")].find(
+            (button) => (button.textContent || "").trim() === "自测",
+          )
+        : null;
+      return {
+        kind: "ready",
+        runId,
+        pid,
+        routeToken,
+        samples,
+        runButtons,
+        count,
+        input,
+        inputSnapshot: input ? input.value : null,
+        batchButton: document.querySelector(".luogusp-ide-batch-btn"),
+        selfTest,
+      };
+    },
+    isCurrent: (context) =>
+      ideModeActive() &&
+      currentPid() === context.pid &&
+      `${location.pathname}${location.search}${location.hash}` ===
+        context.routeToken,
+    hint: (message) => ideBatchHint(message),
+    begin: (context) => {
+      if (context.batchButton) context.batchButton.disabled = true;
+      if (context.selfTest) context.selfTest.disabled = true;
+      if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.style.display = "";
+      switchIdeTab("samples");
+      renderIdeRows(context.samples);
+      if (IDE_VIEW.summaryEl) IDE_VIEW.summaryEl.textContent = "测试中…";
+    },
+    setRunning: (_context, index) => {
+      const parts = ideRowParts(index);
+      if (parts) {
+        parts.pill.setAttribute("style", IDE_PILL_RUN);
+        parts.pill.textContent = "运行中";
+      }
+      expandIdeRow(index);
+    },
+    runSample: async (context, index, task) => {
+      try {
+        return await runOneSample(
+          context.runButtons[index],
+          task.runId,
+          task.drive,
+        );
+      } catch (error) {
+        cancelIdeSubmitWaiter(task.runId);
+        throw error;
+      }
+    },
+    applyResult: (context, index, result) =>
+      applyIdeResult(index, result, context.samples[index]),
+    restore: (context) => {
+      if (context.input && context.inputSnapshot != null) {
+        context.input.value = context.inputSnapshot;
+        context.input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    },
+    finish: (context, results) => {
+      if (context.batchButton) context.batchButton.disabled = false;
+      if (context.selfTest) context.selfTest.disabled = false;
+      if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.style.display = "none";
+      finishIdeSummary(results);
+    },
+    cancel: () => cancelIdeSubmitWaiter(),
+    markStale: showIdeStale,
+    mount: (controls) => {
+      ideBrowserDriver.controls = controls;
+      installIdeSubmitObserver();
+      const unhook = hookIdeStaleAndGuard(controls);
+      let frame = null;
+      const tick = () => {
+        frame = null;
+        try {
+          ensureIdeBatchUI(controls);
+        } catch (error) {
+          console.error("LuoguSP ide batch:", error);
+        }
+      };
+      const queue = () => {
+        if (frame === null) frame = requestAnimationFrame(tick);
+      };
+      const observer = new MutationObserver(() => {
+        if (
+          location.hash === "#ide" ||
+          IDE_VIEW.tabBar ||
+          controls.isRunning()
+        )
+          queue();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      const unwatchRoute = watchUrlChange(() => {
+        controls.invalidate();
         queue();
-    }).observe(document.body, { childList: true, subtree: true });
-    watchUrlChange(queue);
-    ensureIdeBatchUI();
+      });
+      ensureIdeBatchUI(controls);
+      return () => {
+        observer.disconnect();
+        unwatchRoute();
+        unhook();
+        if (frame !== null) cancelAnimationFrame(frame);
+        cancelIdeSubmitWaiter();
+        unmountIdeBatchUI();
+      };
+    },
+  };
+
+  const idePreparation = options.idePreparationAdapter;
+  const ideDriver = idePreparation
+    ? {
+        prepare: async () => {
+          idePreparation.mountTabs();
+          const pid = idePreparation.currentPid();
+          const samples = await idePreparation.loadSamples();
+          if (
+            !pid ||
+            idePreparation.currentPid() !== pid ||
+            !idePreparation.isModeActive()
+          )
+            return { kind: "hint", message: "页面已切换" };
+          if (!samples || !samples.length)
+            return { kind: "hint", message: "本题无样例" };
+          return { kind: "ready", count: 0, pid, samples };
+        },
+        isCurrent: () => true,
+        hint: (message) => idePreparation.hint(message),
+        runSample: async () => ({ verdict: "UKE" }),
+      }
+    : ideBrowserDriver;
+  const ideBatchRunner = createIdeBatchRunner({
+    ideDriver,
+    clock: {
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      clearTimeout: (id) => clearTimeout(id),
+    },
+    logError: (error) => console.error("LuoguSP ide batch:", error),
+  });
+  const startIdeBatch = () => ideBatchRunner.start();
+
+  // Phase 5 统一 Page Lifecycle 前保留旧门面；重复 mount() 无副作用。
+  function watchIdeBatch() {
+    ideBatchRunner.mount();
   }
 
   // ============================================================
@@ -3022,12 +3216,7 @@ function createLuoguSPApp(options = {}) {
   if (options.exposeTestInterface) {
     app.test = Object.freeze({
       startIdeBatch,
-      clickIdeRun,
-      ideState: () => ({
-        preparing: IDE_BATCH.preparing,
-        running: IDE_BATCH.running,
-        driving: IDE_BATCH.driving,
-      }),
+      ideState: () => ideBatchRunner.getState(),
     });
   }
   return Object.freeze(app);
@@ -3048,6 +3237,7 @@ if (LUOGUSP_NODE_MODULE) {
     createGetRequestScheduler,
     createProblemIdentityResolver,
     createProblemPipeline,
+    createIdeBatchRunner,
     createSaverTransport,
     createSaverProtocol,
     createRestrictedUrlPolicy,
