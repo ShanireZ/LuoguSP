@@ -17,7 +17,7 @@ const metadata = new Map(
 );
 
 test("release metadata, README badge and update endpoints stay aligned", () => {
-  assert.equal(metadata.get("version"), "2.12.1");
+  assert.equal(metadata.get("version"), "2.12.2");
   assert.match(
     readme,
     new RegExp(
