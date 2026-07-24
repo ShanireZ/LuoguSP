@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.11.6
+// @version      2.11.7
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -859,20 +859,38 @@
   // ============================================================
   // 题目难度着色
   // ============================================================
-  const FETCH_TEXT_CACHE_LIMIT = 256;
+  const FETCH_TIMEOUT_MS = 15000;
+  function retryAfterMs(raw) {
+    if (!raw) return 0;
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+    const at = Date.parse(raw);
+    return Number.isFinite(at) ? Math.max(0, at - Date.now()) : 0;
+  }
   class FetchRateLimiter {
     // launchGap：相邻两次发起 fetch 的最小间隔（越小越快，但过快可能被洛谷限流）
     // concurrency：最大同时在飞请求数（并发上限，网络慢时防堆积）
     // 单队列 FIFO：按入队顺序处理 = 页面 DOM 顺序（主列表在前先染，讨论标签最后）。
-    constructor(launchGap, concurrency) {
+    constructor(launchGap, concurrency, timeoutMs = FETCH_TIMEOUT_MS) {
       this.launchGap = launchGap;
       this.concurrency = concurrency;
+      this.timeoutMs = timeoutMs;
       this.queue = [];
       this.active = 0;
       this.nextAt = 0;
       this.wakeTimer = null;
       this.inflight = new Map();
-      this.cache = new Map();
+    }
+    _defer(ms) {
+      if (!(ms > 0)) return;
+      const until = Date.now() + ms;
+      if (until <= this.nextAt) return;
+      this.nextAt = until;
+      if (this.wakeTimer !== null) {
+        clearTimeout(this.wakeTimer);
+        this.wakeTimer = null;
+      }
+      this._drain();
     }
     _drain() {
       while (this.active < this.concurrency && this.queue.length) {
@@ -889,42 +907,49 @@
         this.nextAt = Date.now() + this.launchGap;
         const job = this.queue.shift();
         this.active++;
-        fetch(job.url)
-          .then(job.resolve, job.reject)
-          .finally(() => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+        (async () => {
+          try {
+            const res = await fetch(job.url, { signal: controller.signal });
+            if (!res.ok) {
+              const error = new Error(`HTTP ${res.status} ${job.url}`);
+              error.status = res.status;
+              if (
+                (res.status === 429 || res.status === 503) &&
+                job.retries < 1
+              ) {
+                job.retries++;
+                this._defer(
+                  retryAfterMs(res.headers.get("retry-after")) ||
+                    this.launchGap,
+                );
+                this.queue.unshift(job);
+                return;
+              }
+              throw error;
+            }
+            job.resolve(res);
+          } catch (e) {
+            job.reject(e);
+          } finally {
+            clearTimeout(timeout);
             this.active--;
             this._drain();
-          });
+          }
+        })();
       }
     }
     fetchText(url) {
-      if (this.cache.has(url)) {
-        const text = this.cache.get(url);
-        this.cache.delete(url);
-        this.cache.set(url, text); // LRU：命中后移到末尾
-        return Promise.resolve(text);
-      }
       if (this.inflight.has(url)) return this.inflight.get(url);
       const p = new Promise((resolve, reject) => {
-        this.queue.push({ url, resolve, reject });
+        this.queue.push({ url, resolve, reject, retries: 0 });
         this._drain();
       })
         .then((res) => res.text())
-        .then(
-          (text) => {
-            this.inflight.delete(url);
-            this.cache.set(url, text);
-            if (this.cache.size > FETCH_TEXT_CACHE_LIMIT) {
-              const oldest = this.cache.keys().next().value;
-              this.cache.delete(oldest);
-            }
-            return text;
-          },
-          (error) => {
-            this.inflight.delete(url); // 瞬时失败不留坏 Promise，后续允许重试
-            throw error;
-          },
-        );
+        .finally(() => {
+          if (this.inflight.get(url) === p) this.inflight.delete(url);
+        });
       this.inflight.set(url, p);
       return p;
     }
@@ -933,7 +958,8 @@
 
   const COLOR_CACHE_LIMIT = 1000;
   const colorCache = new Map(); // pid -> css 颜色
-  const coloringAnchors = new WeakMap(); // anchor -> pid；同题去重，虚拟列表换题仍可启动新请求
+  const coloringAnchors = new WeakMap(); // anchor -> identity key；同链接去重，虚拟列表换题仍可启动新请求
+  const harvestedDifficultyLists = new WeakSet(); // 不在洛谷注入的数据数组上写扩展私有标记
   const PROBLEM_ANCHOR_SELECTOR = [
     'a[href*="/problem/"]',
     'a[href*="?forum="]',
@@ -959,7 +985,13 @@
             return d;
           }
         } catch (e) {
-          if (contentOnlyOk === null) contentOnlyOk = false; // 拿到的是整页 HTML，判定不支持
+          // 只有确实拿到含难度的完整题面，才判定接口不支持；
+          // 临时挑战页/错误 HTML 不得把该能力永久关闭。
+          const htmlDifficulty = text.match(DIFF_RE);
+          if (htmlDifficulty) {
+            contentOnlyOk = false;
+            return Number(htmlDifficulty[1]);
+          }
         }
       }
     }
@@ -993,21 +1025,29 @@
     const url = location.href;
     if (url.startsWith("https://www.luogu.com.cn/record/list")) {
       const list = cur.records && cur.records.result;
-      if (list && !list._luogusp) {
+      if (
+        list &&
+        typeof list === "object" &&
+        !harvestedDifficultyLists.has(list)
+      ) {
         for (const it of list)
           cacheDifficulty(
             it.problem && it.problem.pid,
             it.problem && it.problem.difficulty,
           );
-        list._luogusp = true;
+        harvestedDifficultyLists.add(list);
       }
     }
     if (/^https:\/\/www\.luogu\.com\.cn\/user\/\d+#practice$/.test(url)) {
       for (const key of ["submittedProblems", "passedProblems"]) {
         const list = cur[key];
-        if (list && !list._luogusp) {
+        if (
+          list &&
+          typeof list === "object" &&
+          !harvestedDifficultyLists.has(list)
+        ) {
           for (const it of list) cacheDifficulty(it.pid, it.difficulty);
-          list._luogusp = true;
+          harvestedDifficultyLists.add(list);
         }
       }
     }
@@ -1024,8 +1064,49 @@
   }
 
   function isProblemId(id) {
+    if (typeof id !== "string" || !id) return false;
     if (id.startsWith("AT_")) return true;
     return /[a-zA-Z]/.test(id) && /[0-9]/.test(id);
+  }
+
+  function anchorShowsPid(a, pid) {
+    const first = a.firstElementChild;
+    if (
+      first &&
+      first.matches("span.pid") &&
+      (first.innerText || first.textContent || "").trim() === pid
+    )
+      return true;
+    const text = (a.innerText || a.textContent || "").trimStart();
+    if (!text.startsWith(pid)) return false;
+    return !/[A-Za-z0-9_]/.test(text.charAt(pid.length));
+  }
+
+  function problemAnchorIdentity(a) {
+    if (!a || !a.matches) return null;
+    if (a.matches(SELECTORS.voidAnchor)) {
+      const pid = (a.innerText || a.textContent || "").trim().split(/\s+/)[0];
+      return isProblemId(pid) && anchorShowsPid(a, pid)
+        ? { pid, kind: "void", key: `void:${pid}` }
+        : null;
+    }
+    let url;
+    try {
+      url = new URL(a.href, location.origin);
+    } catch (e) {
+      return null;
+    }
+    if (url.origin !== location.origin) return null;
+    const forumPid = url.searchParams.get("forum");
+    if (forumPid)
+      return isProblemId(forumPid) && anchorShowsPid(a, forumPid)
+        ? { pid: forumPid, kind: "forum", key: `forum:${url.href}` }
+        : null;
+    const path = url.pathname.match(/^\/problem\/([A-Za-z0-9_]+)\/?$/);
+    const pid = path && path[1];
+    return isProblemId(pid) && anchorShowsPid(a, pid)
+      ? { pid, kind: "problem", key: `problem:${url.href}` }
+      : null;
   }
 
   // 把子树中第一处 pid 文本包成 <b>（纯 DOM，避免 innerHTML.replace 误伤属性内同名子串、
@@ -1048,32 +1129,29 @@
   }
 
   async function colorAnchor(a) {
-    let pid = a.href.split("/").pop();
-    let isForum = false;
-    if (pid.includes("?forum=")) {
-      pid = pid.split("=").pop();
-      isForum = true;
-    }
-    pid = pid.split("?")[0].split("=").pop();
-    let isVoid = false;
-    if (a.matches(SELECTORS.voidAnchor) && pid === "javascript:void 0") {
-      pid = a.innerText.split(" ")[0];
-      isVoid = true;
-    }
-    if (!isProblemId(pid)) return;
-    // 只处理确属题目的锚点——/problem/ 链接、讨论区 ?forum= 标签、void 特链。
-    // 避免把 /paste/xxx、/user/xxx 等「字母+数字」尾段误判成题号而空跑请求。
-    if (!isForum && !isVoid && !a.href.includes("/problem/")) return;
-    if (!a.innerText.startsWith(pid)) return;
+    const identity = problemAnchorIdentity(a);
+    if (!identity) return;
+    const { pid } = identity;
     if (a.dataset.luoguspPid === pid) return; // 已着色，跳过（防重复处理/嵌套 <b>）
-    if (coloringAnchors.get(a) === pid) return;
-    coloringAnchors.set(a, pid);
+    if (coloringAnchors.get(a) === identity.key) return;
+    coloringAnchors.set(a, identity.key);
     try {
       const color = await getProblemColor(pid);
-      // 虚拟列表可能在请求期间复用锚点；只把结果写回仍代表同一题号的节点。
-      if (!color || !a.innerText.startsWith(pid)) return;
+      // 虚拟列表可能在请求期间复用锚点；URL 和可见题号都仍一致才允许写回。
+      const currentIdentity = problemAnchorIdentity(a);
+      if (
+        !color ||
+        !a.isConnected ||
+        !currentIdentity ||
+        currentIdentity.key !== identity.key
+      )
+        return;
       const span = a.children[0];
-      if (span && span.matches("span.pid") && span.innerText === pid) {
+      if (
+        span &&
+        span.matches("span.pid") &&
+        (span.innerText || span.textContent || "").trim() === pid
+      ) {
         span.style.color = color;
         span.style.fontWeight = "bold";
         a.dataset.luoguspPid = pid;
@@ -1081,7 +1159,7 @@
         a.dataset.luoguspPid = pid;
       }
     } finally {
-      if (coloringAnchors.get(a) === pid) coloringAnchors.delete(a);
+      if (coloringAnchors.get(a) === identity.key) coloringAnchors.delete(a);
     }
   }
 
@@ -1105,12 +1183,16 @@
             const anchor = span.closest("a[href]");
             if (anchor) colorAnchor(anchor);
           }
+        } else if (m.type === "attributes") {
+          colorAnchor(m.target);
         }
       }
     }).observe(document, {
       childList: true,
       subtree: true,
       characterData: true,
+      attributes: true,
+      attributeFilter: ["href"],
     });
 
     scan(document);
@@ -1131,6 +1213,7 @@
   }
 
   const IDE_BATCH = {
+    preparing: false, // 样例/DOM 探测中；与 running 一起构成完整防重入窗口
     running: false, // 批测进行中（防重入）
     stopReq: false, // 「停止」请求：当前组跑完即停
     driving: false, // 程序化点击原生按钮的瞬间为 true（区分用户手点）
@@ -1208,6 +1291,12 @@
   }
 
   let ideSubmitWaiter = null;
+  function cancelIdeSubmitWaiter() {
+    if (!ideSubmitWaiter) return;
+    const waiter = ideSubmitWaiter;
+    ideSubmitWaiter = null;
+    waiter(null);
+  }
   function installIdeSubmitObserver() {
     if (XMLHttpRequest.prototype.open.__luoguspIde) return;
     const rawOpen = XMLHttpRequest.prototype.open;
@@ -1233,6 +1322,7 @@
     XMLHttpRequest.prototype.send = send;
   }
   function waitIdeSubmit(ms) {
+    cancelIdeSubmitWaiter();
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         if (ideSubmitWaiter === fn) ideSubmitWaiter = null;
@@ -1278,16 +1368,12 @@
     if (!before) return { verdict: "UKE", note: "IDE 面板不存在" };
     const hadPill = !!before.pill;
     let submitP = waitIdeSubmit(10000);
-    IDE_BATCH.driving = true;
-    runBtn.click();
-    IDE_BATCH.driving = false;
+    clickIdeRun(runBtn);
     let status = await submitP;
     if (status === 429) {
       await sleep(3000); // 限流：等 3s 原地重试一次
       submitP = waitIdeSubmit(10000);
-      IDE_BATCH.driving = true;
-      runBtn.click();
-      IDE_BATCH.driving = false;
+      clickIdeRun(runBtn);
       status = await submitP;
     }
     if (status == null || status < 200 || status >= 300)
@@ -1309,6 +1395,18 @@
     };
   }
 
+  function clickIdeRun(runBtn) {
+    IDE_BATCH.driving = true;
+    try {
+      runBtn.click();
+    } catch (e) {
+      cancelIdeSubmitWaiter();
+      throw e;
+    } finally {
+      IDE_BATCH.driving = false;
+    }
+  }
+
   function ideBatchHint(msg) {
     const btn = document.querySelector(".luogusp-ide-batch-btn");
     if (!btn) return;
@@ -1321,95 +1419,107 @@
     }, 1500);
   }
   async function startIdeBatch() {
-    if (IDE_BATCH.running) return;
-    mountIdeTabs();
-    const samples = await getIdeSamples();
-    if (!samples || !samples.length) return ideBatchHint("本题无样例");
-    if (!readIdeCode().trim()) return ideBatchHint("代码为空");
-    const runBtns = sampleRunButtons();
-    if (!runBtns.length) return ideBatchHint("找不到样例运行按钮");
-    const n = Math.min(samples.length, runBtns.length);
-    if (runBtns.length !== samples.length)
-      console.error(
-        "LuoguSP ide batch: 样例数与运行按钮数不一致",
-        samples.length,
-        runBtns.length,
-      );
-    const inputTa = (() => {
-      const tb = ideToolbarByTitle("输入");
-      return tb && tb.parentElement
-        ? tb.parentElement.querySelector(SELECTORS.ideTextarea)
-        : null;
-    })();
-    IDE_BATCH.inputSnapshot = inputTa ? inputTa.value : null;
-    const batchBtn = document.querySelector(".luogusp-ide-batch-btn");
-    const selfTest = (() => {
-      const tb = ideToolbarByTitle("代码");
-      const actions = tb && tb.querySelector(SELECTORS.ideToolbarActions);
-      return actions
-        ? [...actions.querySelectorAll("button")].find(
-            (b) => (b.textContent || "").trim() === "自测",
-          )
-        : null;
-    })();
-    IDE_BATCH.running = true;
-    IDE_BATCH.stopReq = false;
-    IDE_BATCH.stale = false;
-    IDE_BATCH.results = new Array(n).fill(null);
+    if (IDE_BATCH.running || IDE_BATCH.preparing) return;
+    IDE_BATCH.preparing = true;
     try {
-      if (batchBtn) batchBtn.disabled = true;
-      if (selfTest) selfTest.disabled = true; // 批测中禁原生自测防互相干扰
-      if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "";
-      switchIdeTab("samples");
-      renderIdeRows(samples);
-      if (IDE_BATCH.summaryEl) IDE_BATCH.summaryEl.textContent = "测试中…";
-      let ceLog = null;
-      for (let i = 0; i < n; i++) {
-        if (IDE_BATCH.stopReq) break;
-        const p = ideRowParts(i);
-        if (p) {
-          p.pill.setAttribute("style", IDE_PILL_RUN);
-          p.pill.textContent = "运行中";
-        }
-        expandIdeRow(i);
-        let r;
-        try {
-          r = await runOneSample(runBtns[i]);
-        } catch (e) {
-          console.error("LuoguSP ide batch:", e);
-          r = { verdict: "UKE", note: String(e) };
-        }
-        IDE_BATCH.results[i] = r;
-        applyIdeResult(i, r, samples[i]);
-        if (r.verdict === "CE") {
-          ceLog = r.output || "";
-          for (let j = i + 1; j < n; j++) {
-            IDE_BATCH.results[j] = {
-              verdict: "CE",
-              output: ceLog,
-              note: "编译错误",
-            };
-            applyIdeResult(j, IDE_BATCH.results[j], samples[j]);
+      mountIdeTabs();
+      const batchPid = currentPid();
+      const samples = await getIdeSamples();
+      if (!batchPid || currentPid() !== batchPid || !ideModeActive())
+        return ideBatchHint("页面已切换");
+      if (!samples || !samples.length) return ideBatchHint("本题无样例");
+      if (!readIdeCode().trim()) return ideBatchHint("代码为空");
+      const runBtns = sampleRunButtons();
+      if (!runBtns.length) return ideBatchHint("找不到样例运行按钮");
+      const n = Math.min(samples.length, runBtns.length);
+      if (runBtns.length !== samples.length)
+        console.error(
+          "LuoguSP ide batch: 样例数与运行按钮数不一致",
+          samples.length,
+          runBtns.length,
+        );
+      const inputTa = (() => {
+        const tb = ideToolbarByTitle("输入");
+        return tb && tb.parentElement
+          ? tb.parentElement.querySelector(SELECTORS.ideTextarea)
+          : null;
+      })();
+      IDE_BATCH.inputSnapshot = inputTa ? inputTa.value : null;
+      const batchBtn = document.querySelector(".luogusp-ide-batch-btn");
+      const selfTest = (() => {
+        const tb = ideToolbarByTitle("代码");
+        const actions = tb && tb.querySelector(SELECTORS.ideToolbarActions);
+        return actions
+          ? [...actions.querySelectorAll("button")].find(
+              (b) => (b.textContent || "").trim() === "自测",
+            )
+          : null;
+      })();
+      IDE_BATCH.running = true;
+      IDE_BATCH.stopReq = false;
+      IDE_BATCH.stale = false;
+      IDE_BATCH.results = new Array(n).fill(null);
+      try {
+        if (batchBtn) batchBtn.disabled = true;
+        if (selfTest) selfTest.disabled = true; // 批测中禁原生自测防互相干扰
+        if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "";
+        switchIdeTab("samples");
+        renderIdeRows(samples);
+        if (IDE_BATCH.summaryEl) IDE_BATCH.summaryEl.textContent = "测试中…";
+        let ceLog = null;
+        for (let i = 0; i < n; i++) {
+          if (IDE_BATCH.stopReq) break;
+          const p = ideRowParts(i);
+          if (p) {
+            p.pill.setAttribute("style", IDE_PILL_RUN);
+            p.pill.textContent = "运行中";
           }
-          break;
+          expandIdeRow(i);
+          let r;
+          try {
+            r = await runOneSample(runBtns[i]);
+          } catch (e) {
+            console.error("LuoguSP ide batch:", e);
+            r = { verdict: "UKE", note: String(e) };
+          }
+          IDE_BATCH.results[i] = r;
+          applyIdeResult(i, r, samples[i]);
+          if (r.verdict === "CE") {
+            ceLog = r.output || "";
+            for (let j = i + 1; j < n; j++) {
+              IDE_BATCH.results[j] = {
+                verdict: "CE",
+                output: ceLog,
+                note: "编译错误",
+              };
+              applyIdeResult(j, IDE_BATCH.results[j], samples[j]);
+            }
+            break;
+          }
+          if (i < n - 1 && !IDE_BATCH.stopReq) await sleep(500); // 组间限速
         }
-        if (i < n - 1 && !IDE_BATCH.stopReq) await sleep(500); // 组间限速
+      } finally {
+        try {
+          if (inputTa && IDE_BATCH.inputSnapshot != null) {
+            inputTa.value = IDE_BATCH.inputSnapshot; // 还原用户自定义输入
+            inputTa.dispatchEvent(new Event("input", { bubbles: true })); // 同步 Vue 绑定
+          }
+        } catch (e) {
+          console.error("LuoguSP ide input restore:", e);
+        }
+        IDE_BATCH.running = false;
+        if (batchBtn) batchBtn.disabled = false;
+        if (selfTest) selfTest.disabled = false;
+        if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "none";
+        finishIdeSummary();
       }
     } finally {
-      try {
-        if (inputTa && IDE_BATCH.inputSnapshot != null) {
-          inputTa.value = IDE_BATCH.inputSnapshot; // 还原用户自定义输入
-          inputTa.dispatchEvent(new Event("input", { bubbles: true })); // 同步 Vue 绑定
-        }
-      } catch (e) {
-        console.error("LuoguSP ide input restore:", e);
-      }
-      IDE_BATCH.running = false;
-      if (batchBtn) batchBtn.disabled = false;
-      if (selfTest) selfTest.disabled = false;
-      if (IDE_BATCH.stopBtn) IDE_BATCH.stopBtn.style.display = "none";
-      finishIdeSummary();
+      IDE_BATCH.preparing = false;
     }
+  }
+
+  function startIdeBatchSafely() {
+    startIdeBatch().catch((e) => console.error("LuoguSP ide batch:", e));
   }
 
   // 判定口径同洛谷：CRLF 归一、去行尾空格、去末尾空行。仅用于 diff 渲染与交叉校验，
@@ -1595,7 +1705,7 @@
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      startIdeBatch();
+      startIdeBatchSafely();
     });
     actions.insertBefore(btn, selfTest);
   }
@@ -1655,7 +1765,7 @@
       IDE_BATCH.stopReq = true;
     });
     IDE_BATCH.stopBtn.style.display = "none";
-    mkBtn("重新测试", "luogusp-ide-rerun", () => startIdeBatch());
+    mkBtn("重新测试", "luogusp-ide-rerun", startIdeBatchSafely);
     host.insertBefore(tabBar, ioLayout);
     host.appendChild(panel);
     IDE_BATCH.tabBar = tabBar;
@@ -1743,7 +1853,10 @@
   }
 
   function unmountIdeBatchUI() {
-    if (IDE_BATCH.running) IDE_BATCH.stopReq = true; // 退出 IDE/换题：请求停止
+    if (IDE_BATCH.running) {
+      IDE_BATCH.stopReq = true; // 退出 IDE/换题：请求停止
+      cancelIdeSubmitWaiter();
+    }
     IDE_BATCH.activeTab = "custom"; // 复位，防再次进入时默认落在空面板
     IDE_BATCH.tabBar = IDE_BATCH.panel = IDE_BATCH.ioLayout = null;
     IDE_BATCH.rowsEl = IDE_BATCH.summaryEl = IDE_BATCH.stopBtn = null;
@@ -1800,17 +1913,65 @@
   // ★保存站硬边界：payload 的 createdAt 是入档时间，非原文发布时间（无接口可取原始时间）。
   // ============================================================
   const SAVER_API = "https://api.luogu.me";
+  const SAVER_TIMEOUT_MS = 15000;
+  async function saverRequest(path, init) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SAVER_TIMEOUT_MS);
+    try {
+      const res = await fetch(SAVER_API + path, {
+        ...(init || {}),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const error = new Error(`保存站 HTTP ${res.status}`);
+        error.status = res.status;
+        throw error;
+      }
+      const payload = await res.json();
+      if (!payload || typeof payload.code !== "number")
+        throw new Error("保存站响应格式无效");
+      return payload;
+    } catch (e) {
+      if (e && e.name === "AbortError")
+        throw new Error(`保存站请求超时（${SAVER_TIMEOUT_MS / 1000}s）`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   async function saverGet(path) {
-    const res = await fetch(SAVER_API + path);
-    return res.json(); // 统一壳 {code,message,data}；业务码 404=未收录
+    return saverRequest(path); // 统一壳 {code,message,data}；业务码 404=未收录
   }
   async function saverPost(path, body) {
-    const res = await fetch(SAVER_API + path, {
+    return saverRequest(path, {
       method: "POST",
       headers: body ? { "content-type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
-    return res.json();
+  }
+  function saverOk(payload) {
+    return (
+      payload &&
+      typeof payload.code === "number" &&
+      payload.code >= 200 &&
+      payload.code < 300
+    );
+  }
+  function saverFailure(payload, fallback) {
+    const code =
+      payload && typeof payload.code === "number" ? ` ${payload.code}` : "";
+    const message =
+      payload && typeof payload.message === "string" && payload.message.trim()
+        ? `：${payload.message.trim()}`
+        : "";
+    return `${fallback}${code}${message}`;
+  }
+
+  function normalizeOriginalUrl(target, type, id) {
+    // pre#url 仅作为拦截页真实性锚点，不把其文本带入 href：
+    // 丢弃凭据、query、hash 及任何非 HTTPS/非洛谷输入，始终构造可信规范地址。
+    void target;
+    return `https://www.luogu.com/${type}/${id}`;
   }
 
   // 拦截页判定：URL 形态 + 标题 + pre#url 内容三重锚点；不满足=正常页面，绝不接管
@@ -1824,7 +1985,7 @@
     return {
       type: m[1],
       id: m[2],
-      origUrl: target || `https://www.luogu.com/${m[1]}/${m[2]}`,
+      origUrl: normalizeOriginalUrl(target, m[1], m[2]),
     };
   }
 
@@ -1940,6 +2101,18 @@
     const el = document.getElementById("luogusp-rst-loader");
     if (el) el.remove();
   }
+  function rstShowUnavailableTip(message) {
+    rstHideLoader();
+    let tip = document.getElementById("luogusp-rst-unavailable");
+    if (!tip) {
+      tip = document.createElement("p");
+      tip.id = "luogusp-rst-unavailable";
+      tip.style.cssText =
+        "margin:12px auto;max-width:640px;color:#e74c3c;font-size:13px;text-align:center;";
+      document.body.insertBefore(tip, document.body.firstChild);
+    }
+    tip.textContent = message;
+  }
   function rstBuildFailure(info, reason) {
     document.title =
       (info.type === "article" ? "文章" : "云剪贴板") + " - 洛谷";
@@ -1948,10 +2121,11 @@
 			<div class="luogusp-rst-plaincard"><h1 style="font-size:20px;margin:0 0 10px;">未能获取内容</h1>
 			<p></p>
 			<p>可能原因：内容未公开、未通过审核，或保存站暂时不可用。</p>
-			<p><a href="${info.origUrl}" rel="noopener noreferrer">前往国际站查看原文 →</a></p>
+			<p><a class="luogusp-rst-original" rel="noopener noreferrer">前往国际站查看原文 →</a></p>
 			<p class="luogusp-rst-note">此页面由 LuoguSP 生成 · 数据来源：洛谷保存站</p></div>`;
     document.querySelector(".luogusp-rst-plaincard p").textContent =
       String(reason);
+    document.querySelector(".luogusp-rst-original").href = info.origUrl;
   }
 
   // 壳骨架收割：候选源逐个尝试（2026-07-22 实测：/ranking、/discuss 已迁 columba；
@@ -1988,15 +2162,31 @@
         content: String(c.content || ""),
       };
     });
-    const re = new RegExp(`/article/${lid}/replies`);
+    const repliesPath = `/article/${lid}/replies`;
     const realFetch = window.fetch.bind(window);
     window.fetch = function (input, init) {
-      const url =
-        typeof input === "string" ? input : (input && input.url) || "";
-      if (re.test(url)) {
+      const rawUrl =
+        typeof input === "string" || input instanceof URL
+          ? String(input)
+          : (input && input.url) || "";
+      const method = String(
+        (init && init.method) || (input && input.method) || "GET",
+      ).toUpperCase();
+      let requestUrl = null;
+      try {
+        requestUrl = new URL(rawUrl, location.origin);
+      } catch (e) {
+        /* 无法解析的请求交给原 fetch */
+      }
+      if (
+        method === "GET" &&
+        requestUrl &&
+        requestUrl.origin === location.origin &&
+        requestUrl.pathname === repliesPath
+      ) {
         let list = mapped;
         try {
-          const q = new URL(url, location.origin).searchParams;
+          const q = requestUrl.searchParams;
           if (q.get("sort") === "time-d")
             list = [...mapped].sort((x, y) => y.time - x.time);
           const after = Number(q.get("after"));
@@ -2384,8 +2574,7 @@
     rstSetRefresh("busy", "更新中…");
     try {
       const r = await rstTriggerSave(info);
-      if (r && typeof r.code === "number" && r.code >= 500)
-        throw new Error(`保存站返回 ${r.code}`);
+      if (!saverOk(r)) throw new Error(saverFailure(r, "保存站拒绝更新请求"));
       if (info.type === "article")
         saverPost(`/article/comments/${info.id}/refresh`).catch(() => {});
       rstSetRefresh("done", "已申请");
@@ -2445,13 +2634,9 @@
     } catch (e) {
       // 保存站不可达：撤掉加载层还原拦截页，仅置顶提示，保留原生跳转能力
       console.error("LuoguSP restricted:", e);
-      rstHideLoader();
-      const tip = document.createElement("p");
-      tip.style.cssText =
-        "margin:12px auto;max-width:640px;color:#e74c3c;font-size:13px;text-align:center;";
-      tip.textContent =
-        "LuoguSP：保存站(api.luogu.me)不可达，无法直接显示该内容。";
-      document.body.insertBefore(tip, document.body.firstChild);
+      rstShowUnavailableTip(
+        "LuoguSP：保存站(api.luogu.me)不可达，无法直接显示该内容。",
+      );
       return;
     }
     injectRstStyle();
@@ -2459,10 +2644,19 @@
       // 已收录：直接装配存档，不自动申请更新（owner 拍板：更新只走「申请更新」按钮）
       return rstBootPage(info, q.data);
     }
+    if (!q || q.code !== 404) {
+      console.error("LuoguSP restricted query:", q);
+      rstShowUnavailableTip(
+        `LuoguSP：${saverFailure(q, "保存站查询失败")}，未自动发起收录。`,
+      );
+      return;
+    }
     // 未收录：发起保存并等待入库（加载层持续转圈，完成后装配）
     rstShowLoader("该内容尚未被保存站收录，已自动发起收录…");
     try {
-      await rstTriggerSave(info);
+      const created = await rstTriggerSave(info);
+      if (!saverOk(created))
+        throw new Error(saverFailure(created, "保存站拒绝收录请求"));
     } catch (e) {
       console.error("LuoguSP restricted save:", e);
       return rstBuildFailure(info, "向保存站发起收录请求失败。");
@@ -2478,6 +2672,11 @@
       if (poll && poll.code === 200 && poll.data) {
         return rstBootPage(info, poll.data);
       }
+      if (!poll || poll.code !== 404)
+        return rstBuildFailure(
+          info,
+          saverFailure(poll, "保存站轮询查询失败"),
+        );
     }
     rstBuildFailure(info, "保存站在限定时间内未能完成收录。");
   }
