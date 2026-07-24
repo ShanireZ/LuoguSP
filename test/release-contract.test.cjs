@@ -54,6 +54,26 @@ test("runtime dependencies and browser privileges do not expand", () => {
   ]);
 });
 
+test("restricted first paint stays covered until native page anchors are ready", () => {
+  assert.equal(
+    (script.match(/\$\{RST_LOADER_HTML\}<\/body><\/html>/g) || []).length,
+    2,
+  );
+  assert.match(
+    script,
+    /if \(actionBars\.length && updateBars\.length\) rstHideLoader\(\)/,
+  );
+  assert.match(script, /if \(author && pubRow\) rstHideLoader\(\)/);
+  assert.match(
+    script,
+    /html\.\$\{className\} body>\*\{visibility:hidden!important;\}/,
+  );
+  assert.match(
+    script,
+    /document\.addEventListener\("DOMContentLoaded", bootstrap, \{ once: true \}\)/,
+  );
+});
+
 test("Phase 7 removes temporary compatibility facades and keeps one document committer", () => {
   for (const facade of [
     "function addProblemsColor(",

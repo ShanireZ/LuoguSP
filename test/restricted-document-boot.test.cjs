@@ -251,6 +251,25 @@ test("Restricted Document Boot does nothing without the interstitial triple matc
   dispose();
 });
 
+test("Restricted Document Boot releases the loading gate when detection fails", () => {
+  const calls = [];
+  const fx = bootFixture({
+    pageAdapter: {
+      detect: () => {
+        throw new Error("broken detector");
+      },
+      hideLoader: () => calls.push("loaderHidden"),
+      currentPath: () => "/article/abc",
+      isRestrictedRoute: () => true,
+      reload() {},
+    },
+  });
+
+  const dispose = fx.boot.mount({ isCurrent: () => true });
+  assert.deepEqual(calls, ["loaderHidden"]);
+  dispose();
+});
+
 test("Restricted Document Boot maps lookup failure and cancels stale preparation", async () => {
   const unavailable = bootFixture({
     saver: {

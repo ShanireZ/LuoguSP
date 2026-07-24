@@ -3735,7 +3735,7 @@ function createLuoguSPApp(options = {}) {
     };
   }
 
-  // 加载动效覆盖层：检测命中后立即出现（盖住拦截页），document.write 重建文档时自然消失
+  // 加载动效覆盖层：接管 document-start 早期遮罩，并跨 document.write 保持到原生内容锚点就绪
   function rstShowLoader(text) {
     injectRstStyle();
     let el = document.getElementById("luogusp-rst-loader");
@@ -4371,6 +4371,7 @@ function createLuoguSPApp(options = {}) {
           ? restrictedDocumentBoot.mount(context)
           : () => {},
       onRoute: () => {
+        if (restrictedLoadingGate) restrictedLoadingGate.start();
         if (restrictedDocumentBoot) restrictedDocumentBoot.onRoute();
       },
     },
@@ -4547,9 +4548,19 @@ if (LUOGUSP_NODE_MODULE) {
       },
     },
   });
-  restrictedLoadingGate.start();
-  const bootstrap = () =>
-    createLuoguSPApp({ restrictedLoadingGate }).bootstrapBrowser();
+  try {
+    restrictedLoadingGate.start();
+  } catch (error) {
+    console.error("LuoguSP restricted early loader:", error);
+  }
+  const bootstrap = () => {
+    try {
+      createLuoguSPApp({ restrictedLoadingGate }).bootstrapBrowser();
+    } catch (error) {
+      restrictedLoadingGate.release();
+      throw error;
+    }
+  };
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", bootstrap, { once: true });
   else bootstrap();
