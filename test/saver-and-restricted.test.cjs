@@ -3,7 +3,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  createRestrictedPageDetector,
   createRestrictedReplyFetchAdapter,
+  createRestrictedReplyFetchInstaller,
   createRestrictedUrlPolicy,
   createSaverProtocol,
   createSaverTransport,
@@ -167,6 +169,20 @@ test("Saver Workflow does not poll after create failure or retry a timed-out POS
   assert.equal(unknown.stage, "create");
   assert.equal(posts, 2);
   assert.equal(clock.timers.size, 0);
+
+  const cancelledPost = createSaverWorkflow({
+    transport: {
+      get: async () => ({ code: 404 }),
+      post: async () => {
+        throw Object.assign(new Error("cancelled"), { kind: "cancelled" });
+      },
+    },
+    clock: clock.adapter(),
+  });
+  const cancelled = await cancelledPost.ensureArchived("paste", "ghi");
+  assert.equal(cancelled.kind, "unavailable");
+  assert.equal(cancelled.category, "cancelled");
+  assert.equal(cancelled.stage, "create");
 });
 
 test("Saver Workflow continues polling after transient network errors", async () => {
@@ -268,6 +284,37 @@ test("restricted original URL policy discards untrusted input", () => {
   );
 });
 
+test("restricted page detection requires all three anchors and canonicalizes output", () => {
+  const policy = createRestrictedUrlPolicy();
+  const state = {
+    path: "/article/abc",
+    title: "安全访问中心",
+    target: "https://evil.example/?next=/article/abc",
+  };
+  const detector = createRestrictedPageDetector({
+    path: () => state.path,
+    title: () => state.title,
+    target: () => state.target,
+    urlPolicy: policy,
+  });
+  assert.deepEqual(detector.detect(), {
+    type: "article",
+    id: "abc",
+    path: "/article/abc",
+    origUrl: "https://www.luogu.com/article/abc",
+  });
+  state.title = "文章";
+  assert.equal(detector.detect(), null);
+  state.title = "安全访问中心";
+  state.target = "";
+  assert.equal(detector.detect(), null);
+  state.target = "/article/abc";
+  state.path = "/article/ab";
+  assert.equal(detector.detect(), null);
+  state.path = "/problem/P1000";
+  assert.equal(detector.detect(), null);
+});
+
 test("reply fetch adapter intercepts only exact same-origin GET", async () => {
   const fallbackCalls = [];
   const replies = [
@@ -309,4 +356,31 @@ test("reply fetch adapter intercepts only exact same-origin GET", async () => {
     "fallback",
   );
   assert.equal(fallbackCalls.length, 3);
+});
+
+test("reply fetch installer replaces its own wrapper and restores safely", async () => {
+  const originalFetch = async () => new Response("fallback");
+  const host = { fetch: originalFetch };
+  const installer = createRestrictedReplyFetchInstaller({
+    host,
+    origin: "https://www.luogu.com.cn",
+    Response,
+    URL,
+  });
+  const releaseFirst = installer.install("abc", [
+    { id: 1, time: 1, content: "first" },
+  ]);
+  const firstWrapper = host.fetch;
+  installer.install("abc", [{ id: 2, time: 2, content: "second" }]);
+  assert.notEqual(host.fetch, firstWrapper);
+  releaseFirst();
+  assert.notEqual(host.fetch, originalFetch);
+  installer.dispose();
+  assert.equal(host.fetch, originalFetch);
+
+  installer.install("abc", []);
+  const laterPagePatch = async () => new Response("page");
+  host.fetch = laterPagePatch;
+  installer.dispose();
+  assert.equal(host.fetch, laterPagePatch);
 });

@@ -2,7 +2,56 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createPageLifecycle } = require("../LuoguSP.user.js");
+const {
+  createBrowserRouteAdapter,
+  createPageLifecycle,
+} = require("../LuoguSP.user.js");
+
+test("Route Adapter wraps history once and restores only owned wrappers", () => {
+  const calls = [];
+  const events = new Map();
+  const rawPush = function (value) {
+    calls.push(["push", value]);
+  };
+  const rawReplace = function (value) {
+    calls.push(["replace", value]);
+  };
+  const history = { pushState: rawPush, replaceState: rawReplace };
+  const eventTarget = {
+    addEventListener(type, listener) {
+      events.set(type, listener);
+    },
+    removeEventListener(type, listener) {
+      if (events.get(type) === listener) events.delete(type);
+    },
+  };
+  const adapter = createBrowserRouteAdapter({
+    history,
+    eventTarget,
+    token: () => "/route",
+  });
+  let first = 0;
+  let second = 0;
+  const disposeFirst = adapter.subscribe(() => first++);
+  const wrappedPush = history.pushState;
+  const disposeSecond = adapter.subscribe(() => second++);
+  assert.equal(history.pushState, wrappedPush);
+  history.pushState("one");
+  events.get("popstate")();
+  assert.deepEqual([first, second], [2, 2]);
+  disposeFirst();
+  assert.equal(history.pushState, wrappedPush);
+  disposeSecond();
+  assert.equal(history.pushState, rawPush);
+  assert.equal(history.replaceState, rawReplace);
+  assert.equal(events.size, 0);
+
+  const disposeThird = adapter.subscribe(() => {});
+  const laterPagePatch = function () {};
+  history.pushState = laterPagePatch;
+  disposeThird();
+  assert.equal(history.pushState, laterPagePatch);
+});
 
 function fixture() {
   let routeListener = null;

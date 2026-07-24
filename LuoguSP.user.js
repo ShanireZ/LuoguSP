@@ -843,6 +843,8 @@ function createSaverWorkflow(config, policy) {
       const payload = await transport.post(path, body, { signal });
       return protocol.classifyAction(payload, fallback);
     } catch (error) {
+      if (error && error.kind === "cancelled")
+        return unavailableFromError(error);
       return unknownFromPost(error);
     }
   };
@@ -953,6 +955,86 @@ function createSaverWorkflow(config, policy) {
     loadComments,
     refreshComments,
     dispose,
+  });
+}
+
+function createBrowserRouteAdapter(config) {
+  const {
+    history: historyAdapter,
+    eventTarget,
+    token: getToken = () => "",
+    logError = () => {},
+  } = config || {};
+  if (
+    !historyAdapter ||
+    typeof historyAdapter.pushState !== "function" ||
+    typeof historyAdapter.replaceState !== "function"
+  )
+    throw new TypeError("Route Adapter requires a history adapter");
+  if (
+    !eventTarget ||
+    typeof eventTarget.addEventListener !== "function" ||
+    typeof eventTarget.removeEventListener !== "function"
+  )
+    throw new TypeError("Route Adapter requires an event target");
+
+  const listeners = new Set();
+  const originals = {};
+  const wrappers = {};
+  let installed = false;
+  const notify = () => {
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        logError(error);
+      }
+    }
+  };
+  const install = () => {
+    if (installed) return;
+    installed = true;
+    for (const method of ["pushState", "replaceState"]) {
+      const raw = historyAdapter[method];
+      originals[method] = raw;
+      const wrapped = function (...args) {
+        const result = raw.apply(this, args);
+        notify();
+        return result;
+      };
+      wrappers[method] = wrapped;
+      historyAdapter[method] = wrapped;
+    }
+    eventTarget.addEventListener("popstate", notify);
+    eventTarget.addEventListener("hashchange", notify);
+  };
+  const uninstall = () => {
+    if (!installed || listeners.size) return;
+    installed = false;
+    for (const method of ["pushState", "replaceState"]) {
+      if (originals[method] && historyAdapter[method] === wrappers[method])
+        historyAdapter[method] = originals[method];
+      delete originals[method];
+      delete wrappers[method];
+    }
+    eventTarget.removeEventListener("popstate", notify);
+    eventTarget.removeEventListener("hashchange", notify);
+  };
+  return Object.freeze({
+    token: () => getToken(),
+    subscribe: (listener) => {
+      if (typeof listener !== "function")
+        throw new TypeError("Route Adapter listener must be a function");
+      listeners.add(listener);
+      install();
+      let active = true;
+      return () => {
+        if (!active) return;
+        active = false;
+        listeners.delete(listener);
+        uninstall();
+      };
+    },
   });
 }
 
@@ -1335,6 +1417,39 @@ function createRestrictedUrlPolicy() {
   });
 }
 
+function createRestrictedPageDetector(config) {
+  const { path, title, target, urlPolicy } = config || {};
+  if (
+    typeof path !== "function" ||
+    typeof title !== "function" ||
+    typeof target !== "function" ||
+    !urlPolicy ||
+    typeof urlPolicy.originalUrl !== "function"
+  )
+    throw new TypeError("Restricted Page Detector configuration is invalid");
+  const detect = () => {
+    const pathname = path();
+    const match = pathname.match(
+      /^\/(article|paste)\/([A-Za-z0-9]+)\/?$/,
+    );
+    if (!match || !title().includes("安全访问中心")) return null;
+    const originalAnchor = String(target() || "").trim();
+    if (
+      !new RegExp(`/${match[1]}/${match[2]}(?:[/?#]|$)`).test(
+        originalAnchor,
+      )
+    )
+      return null;
+    return Object.freeze({
+      type: match[1],
+      id: match[2],
+      path: pathname,
+      origUrl: urlPolicy.originalUrl(match[1], match[2]),
+    });
+  };
+  return Object.freeze({ detect });
+}
+
 function createRestrictedReplyFetchAdapter(config) {
   const {
     fetch: realFetch,
@@ -1388,6 +1503,50 @@ function createRestrictedReplyFetchAdapter(config) {
     );
   };
   return Object.freeze({ fetch: wrappedFetch });
+}
+
+function createRestrictedReplyFetchInstaller(config) {
+  const {
+    host,
+    origin,
+    Response: ResponseCtor,
+    URL: URLCtor,
+    brand = Symbol("LuoguSP restricted replies"),
+  } = config || {};
+  if (!host || typeof host.fetch !== "function")
+    throw new TypeError("Reply fetch installer requires a host fetch");
+  let currentDispose = null;
+  const dispose = () => {
+    if (currentDispose) currentDispose();
+    currentDispose = null;
+  };
+  const install = (lid, replies) => {
+    const installed = host.fetch && host.fetch[brand];
+    if (installed && typeof installed.dispose === "function")
+      installed.dispose();
+    dispose();
+    const realFetch = host.fetch;
+    const adapter = createRestrictedReplyFetchAdapter({
+      fetch: (input, init) => realFetch.call(host, input, init),
+      origin,
+      Response: ResponseCtor,
+      URL: URLCtor,
+      lid,
+      replies,
+    });
+    const wrapped = adapter.fetch;
+    const release = () => {
+      if (host.fetch === wrapped) host.fetch = realFetch;
+      if (currentDispose === release) currentDispose = null;
+    };
+    Object.defineProperty(wrapped, brand, {
+      value: Object.freeze({ dispose: release }),
+    });
+    host.fetch = wrapped;
+    currentDispose = release;
+    return release;
+  };
+  return Object.freeze({ install, dispose });
 }
 
 function createLuoguSPApp(options = {}) {
@@ -2198,55 +2357,20 @@ function createLuoguSPApp(options = {}) {
         !!m && (!hash || hash === "#" || hash === "#home" || hash === "#main"),
     };
   }
-  const browserRouteAdapter = (() => {
-    const listeners = new Set();
-    const originals = {};
-    const wrappers = {};
-    let installed = false;
-    const notify = () => {
-      for (const listener of [...listeners]) listener();
-    };
-    const install = () => {
-      if (installed) return;
-      installed = true;
-      for (const method of ["pushState", "replaceState"]) {
-        const raw = history[method];
-        originals[method] = raw;
-        const wrapped = function (...args) {
-          const result = raw.apply(this, args);
-          notify();
-          return result;
-        };
-        wrappers[method] = wrapped;
-        history[method] = wrapped;
-      }
-      window.addEventListener("popstate", notify);
-      window.addEventListener("hashchange", notify);
-    };
-    const uninstall = () => {
-      if (!installed || listeners.size) return;
-      installed = false;
-      for (const method of ["pushState", "replaceState"]) {
-        if (originals[method] && history[method] === wrappers[method])
-          history[method] = originals[method];
-        delete originals[method];
-        delete wrappers[method];
-      }
-      window.removeEventListener("popstate", notify);
-      window.removeEventListener("hashchange", notify);
-    };
-    return Object.freeze({
-      token: () => `${location.pathname}${location.search}${location.hash}`,
-      subscribe: (listener) => {
-        listeners.add(listener);
-        install();
-        return () => {
-          listeners.delete(listener);
-          uninstall();
-        };
-      },
-    });
-  })();
+  const browserRouteAdapter =
+    options.routeAdapter ||
+    (typeof window === "undefined"
+      ? Object.freeze({
+          token: () => "",
+          subscribe: () => () => {},
+        })
+      : createBrowserRouteAdapter({
+          history,
+          eventTarget: window,
+          token: () =>
+            `${location.pathname}${location.search}${location.hash}`,
+          logError: (error) => console.error("LuoguSP route:", error),
+        }));
   function watchHiddenIntro(lifecycleContext) {
     let requestedRouteKey = "";
     const check = () => {
@@ -3255,28 +3379,17 @@ function createLuoguSPApp(options = {}) {
   });
   const restrictedUrlPolicy = createRestrictedUrlPolicy();
 
-  function normalizeOriginalUrl(target, type, id) {
-    // pre#url 仅作为拦截页真实性锚点，不把其文本带入 href：
-    // 丢弃凭据、query、hash 及任何非 HTTPS/非洛谷输入，始终构造可信规范地址。
-    void target;
-    return restrictedUrlPolicy.originalUrl(type, id);
-  }
-
   // 拦截页判定：URL 形态 + 标题 + pre#url 内容三重锚点；不满足=正常页面，绝不接管
-  function restrictedPageInfo() {
-    const m = location.pathname.match(/^\/(article|paste)\/([A-Za-z0-9]+)\/?$/);
-    if (!m) return null;
-    if (document.title.indexOf("安全访问中心") === -1) return null;
-    const pre = document.querySelector(SELECTORS.restrictedUrlPre);
-    const target = pre ? (pre.textContent || "").trim() : "";
-    if (target.indexOf(`/${m[1]}/${m[2]}`) === -1) return null;
-    return {
-      type: m[1],
-      id: m[2],
-      path: location.pathname,
-      origUrl: normalizeOriginalUrl(target, m[1], m[2]),
-    };
-  }
+  const restrictedPageDetector = createRestrictedPageDetector({
+    path: () => location.pathname,
+    title: () => document.title,
+    target: () => {
+      const pre = document.querySelector(SELECTORS.restrictedUrlPre);
+      return pre ? (pre.textContent || "").trim() : "";
+    },
+    urlPolicy: restrictedUrlPolicy,
+  });
+  const restrictedPageInfo = () => restrictedPageDetector.detect();
 
   // 最小自有样式：加载层/失败卡（注入拦截页文档），扩展按钮样式随壳 HTML 走（见 RST_EXTRA_CSS）
   function injectRstStyle() {
@@ -3336,20 +3449,47 @@ function createLuoguSPApp(options = {}) {
   // 接口=/api/user/search?keyword={uid}（拦截页源实测可用；旧 /user/{uid}?_contentOnly=1 已死，返回 HTML），
   // 返回 userSummary：{uid,name,avatar,slogan,badge,color,ccfLevel,xcpcLevel,…}。失败回退存档快照。
   const rstUserCache = new Map();
+  async function rstFetch(input, signal) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const cancel = () => controller.abort();
+    if (signal && signal.aborted)
+      throw Object.assign(new Error("受限文档准备已取消"), {
+        kind: "cancelled",
+      });
+    if (signal) signal.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 15000);
+    try {
+      return await fetch(input, { signal: controller.signal });
+    } catch (error) {
+      if (error && error.name === "AbortError")
+        throw Object.assign(
+          new Error(timedOut ? "洛谷页面数据请求超时" : "受限文档准备已取消"),
+          { kind: timedOut ? "timeout" : "cancelled" },
+        );
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", cancel);
+    }
+  }
   async function rstCnUser(uid, signal) {
     if (!uid) return null;
     if (rstUserCache.has(uid)) return rstUserCache.get(uid);
     let user = null;
     try {
-      const res = await fetch(
+      const res = await rstFetch(
         `/api/user/search?keyword=${encodeURIComponent(uid)}`,
-        { signal },
+        signal,
       );
       const json = await res.json();
       const list = (json && json.users) || [];
       user = list.find((u) => u && Number(u.uid) === Number(uid)) || null;
     } catch (e) {
-      if (e && e.name === "AbortError") throw e;
+      if (e && e.kind === "cancelled") throw e;
       /* 回退存档快照 */
     }
     rstUserCache.set(uid, user);
@@ -3427,11 +3567,11 @@ function createLuoguSPApp(options = {}) {
     const marker = kind === "columba" ? "lentille-context" : "_feInjection";
     for (const src of sources) {
       try {
-        const res = await fetch(src, { signal });
+        const res = await rstFetch(src, signal);
         const html = await res.text();
         if (html.includes(marker)) return html;
       } catch (e) {
-        if (e && e.name === "AbortError") throw e;
+        if (e && e.kind === "cancelled") throw e;
         /* 换下一个源 */
       }
     }
@@ -3461,17 +3601,19 @@ function createLuoguSPApp(options = {}) {
 
   // 评论接口桩：官方文章组件启动后会 GET /article/{lid}/replies（?sort=&after=）。
   // window.fetch 包装器不随 document.write 重建，天然对新文档生效；其余请求全部放行。
-  const RST_REPLY_FETCH_BRAND = Symbol("LuoguSP restricted replies");
-  let rstReplyFetchDispose = null;
-  function rstDisposeReplyStub() {
-    if (rstReplyFetchDispose) rstReplyFetchDispose();
-    rstReplyFetchDispose = null;
-  }
+  const rstReplyFetchInstaller =
+    typeof window === "undefined"
+      ? null
+      : createRestrictedReplyFetchInstaller({
+          host: window,
+          origin: location.origin,
+          Response,
+          URL,
+        });
+  const rstDisposeReplyStub = () => {
+    if (rstReplyFetchInstaller) rstReplyFetchInstaller.dispose();
+  };
   function rstStubReplies(lid, comments) {
-    const installed = window.fetch && window.fetch[RST_REPLY_FETCH_BRAND];
-    if (installed && typeof installed.dispose === "function")
-      installed.dispose();
-    rstDisposeReplyStub();
     const mapped = comments.map((c, i) => {
       const a = c.author || {};
       return {
@@ -3481,25 +3623,9 @@ function createLuoguSPApp(options = {}) {
         content: String(c.content || ""),
       };
     });
-    const realFetch = window.fetch;
-    const adapter = createRestrictedReplyFetchAdapter({
-      fetch: (input, init) => realFetch.call(window, input, init),
-      origin: location.origin,
-      Response,
-      URL,
-      lid,
-      replies: mapped,
-    });
-    const wrapped = adapter.fetch;
-    const dispose = () => {
-      if (window.fetch === wrapped) window.fetch = realFetch;
-    };
-    Object.defineProperty(wrapped, RST_REPLY_FETCH_BRAND, {
-      value: Object.freeze({ dispose }),
-    });
-    window.fetch = wrapped;
-    rstReplyFetchDispose = dispose;
-    return dispose;
+    return rstReplyFetchInstaller
+      ? rstReplyFetchInstaller.install(lid, mapped)
+      : () => {};
   }
 
   // 文章页：合成 lentille-context（template article.show）+ 官方 columba 前端
@@ -4109,12 +4235,15 @@ if (LUOGUSP_NODE_MODULE) {
     createSaverTransport,
     createSaverProtocol,
     createSaverWorkflow,
+    createBrowserRouteAdapter,
     createPageLifecycle,
     createRestrictedDocumentBoot,
     serializeJsonForScript,
     createRestrictedDocumentCommitter,
     createRestrictedUrlPolicy,
+    createRestrictedPageDetector,
     createRestrictedReplyFetchAdapter,
+    createRestrictedReplyFetchInstaller,
     createLuoguSPApp,
   });
 } else {
