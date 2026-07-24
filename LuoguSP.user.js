@@ -217,6 +217,171 @@ function createProblemIdentityResolver(config) {
   return Object.freeze({ resolve });
 }
 
+function createProblemPipeline(config) {
+  const {
+    identity,
+    documentAdapter,
+    routeAdapter,
+    difficultySource,
+    colorForDifficulty,
+    cacheLimit = 1000,
+    logError = () => {},
+  } = config || {};
+  if (!identity || typeof identity.resolve !== "function")
+    throw new TypeError("Problem Pipeline requires a Problem Identity adapter");
+  if (
+    !documentAdapter ||
+    typeof documentAdapter.anchors !== "function" ||
+    typeof documentAdapter.observeAnchors !== "function" ||
+    typeof documentAdapter.applyColor !== "function"
+  )
+    throw new TypeError("Problem Pipeline requires a document adapter");
+  if (!difficultySource || typeof difficultySource.text !== "function")
+    throw new TypeError("Problem Pipeline requires a difficulty source");
+  if (typeof colorForDifficulty !== "function")
+    throw new TypeError("Problem Pipeline requires a color adapter");
+
+  const DIFFICULTY_RE = /"difficulty":\s*(\d+)/;
+  const colors = new Map();
+  const harvestedLists = new WeakSet();
+  let coloringAnchors = new WeakMap();
+  let contentOnlySupport = null;
+  let mounted = false;
+  let generation = 0;
+  let stopObserving = null;
+
+  const routeToken = () =>
+    routeAdapter && typeof routeAdapter.token === "function"
+      ? routeAdapter.token()
+      : "";
+  const rememberColor = (pid, color) => {
+    if (!pid || !color) return;
+    if (colors.has(pid)) colors.delete(pid);
+    colors.set(pid, color);
+    if (colors.size > cacheLimit) colors.delete(colors.keys().next().value);
+  };
+  const rememberDifficulty = (pid, difficulty) => {
+    if (pid && typeof difficulty === "number")
+      rememberColor(pid, colorForDifficulty(difficulty));
+  };
+  const harvest = () => {
+    if (typeof difficultySource.harvest !== "function") return;
+    const batches = difficultySource.harvest() || [];
+    for (const batch of batches) {
+      if (
+        !batch ||
+        !batch.source ||
+        (typeof batch.source !== "object" &&
+          typeof batch.source !== "function") ||
+        harvestedLists.has(batch.source)
+      )
+        continue;
+      for (const problem of batch.problems || [])
+        rememberDifficulty(problem && problem.pid, problem && problem.difficulty);
+      harvestedLists.add(batch.source);
+    }
+  };
+  const fetchDifficulty = async (pid) => {
+    if (contentOnlySupport !== false) {
+      let text;
+      try {
+        text = await difficultySource.text(
+          `/problem/${pid}?_contentOnly=1`,
+        );
+      } catch (error) {
+        /* 临时网络错误不能永久降级 _contentOnly。 */
+      }
+      if (text != null) {
+        try {
+          const difficulty =
+            JSON.parse(text)?.currentData?.problem?.difficulty;
+          if (typeof difficulty === "number") {
+            contentOnlySupport = true;
+            return difficulty;
+          }
+        } catch (error) {
+          const htmlDifficulty = text.match(DIFFICULTY_RE);
+          if (htmlDifficulty) {
+            contentOnlySupport = false;
+            return Number(htmlDifficulty[1]);
+          }
+        }
+      }
+    }
+    try {
+      const html = await difficultySource.text(`/problem/${pid}`);
+      const match = html.match(DIFFICULTY_RE);
+      return match ? Number(match[1]) : null;
+    } catch (error) {
+      logError(pid, error);
+      return null;
+    }
+  };
+  const getColor = async (pid) => {
+    harvest();
+    if (colors.has(pid)) return colors.get(pid);
+    const difficulty = await fetchDifficulty(pid);
+    if (difficulty == null) return null;
+    const color = colorForDifficulty(difficulty);
+    rememberColor(pid, color);
+    return color;
+  };
+  const colorAnchor = async (anchor) => {
+    const taskGeneration = generation;
+    const taskRoute = routeToken();
+    const taskIdentity = identity.resolve(anchor);
+    if (!taskIdentity) return;
+    if (
+      typeof documentAdapter.appliedPid === "function" &&
+      documentAdapter.appliedPid(anchor) === taskIdentity.pid
+    )
+      return;
+    if (coloringAnchors.get(anchor) === taskIdentity.key) return;
+    coloringAnchors.set(anchor, taskIdentity.key);
+    try {
+      const color = await getColor(taskIdentity.pid);
+      const currentIdentity = identity.resolve(anchor);
+      if (
+        !mounted ||
+        generation !== taskGeneration ||
+        routeToken() !== taskRoute ||
+        !color ||
+        (typeof documentAdapter.isConnected === "function" &&
+          !documentAdapter.isConnected(anchor)) ||
+        !currentIdentity ||
+        currentIdentity.key !== taskIdentity.key
+      )
+        return;
+      documentAdapter.applyColor(anchor, taskIdentity.pid, color);
+    } finally {
+      if (coloringAnchors.get(anchor) === taskIdentity.key)
+        coloringAnchors.delete(anchor);
+    }
+  };
+  const acceptAnchors = (anchors) => {
+    for (const anchor of anchors || []) colorAnchor(anchor);
+  };
+  const scan = (root) => acceptAnchors(documentAdapter.anchors(root));
+  const dispose = () => {
+    if (!mounted) return;
+    mounted = false;
+    generation++;
+    if (stopObserving) stopObserving();
+    stopObserving = null;
+    coloringAnchors = new WeakMap();
+  };
+  const mount = () => {
+    if (mounted) return dispose;
+    mounted = true;
+    generation++;
+    stopObserving = documentAdapter.observeAnchors(acceptAnchors) || null;
+    scan(documentAdapter.root);
+    return dispose;
+  };
+
+  return Object.freeze({ mount, dispose });
+}
+
 function createSaverTransport(config) {
   const {
     baseUrl,
@@ -1224,112 +1389,11 @@ function createLuoguSPApp(options = {}) {
     maxRetries: 1,
   });
 
-  const COLOR_CACHE_LIMIT = 1000;
-  const colorCache = new Map(); // pid -> css 颜色
-  const coloringAnchors = new WeakMap(); // anchor -> identity key；同链接去重，虚拟列表换题仍可启动新请求
-  const harvestedDifficultyLists = new WeakSet(); // 不在洛谷注入的数据数组上写扩展私有标记
   const PROBLEM_ANCHOR_SELECTOR = [
     'a[href*="/problem/"]',
     'a[href*="?forum="]',
     SELECTORS.voidAnchor,
   ].join(",");
-  const DIFF_RE = /"difficulty":\s*(\d+)/; // HTML 回退用
-  let contentOnlyOk = null; // null 未知 / true 支持 / false 不支持
-
-  // 优先走 _contentOnly JSON 接口（轻量、结构稳定），失败回退整页 HTML 正则。
-  async function fetchDifficulty(pid) {
-    if (contentOnlyOk !== false) {
-      let text;
-      try {
-        text = await limiter.text(`/problem/${pid}?_contentOnly=1`);
-      } catch (e) {
-        /* 网络错误，别据此判定接口不支持 */
-      }
-      if (text != null) {
-        try {
-          const d = JSON.parse(text)?.currentData?.problem?.difficulty;
-          if (typeof d === "number") {
-            contentOnlyOk = true;
-            return d;
-          }
-        } catch (e) {
-          // 只有确实拿到含难度的完整题面，才判定接口不支持；
-          // 临时挑战页/错误 HTML 不得把该能力永久关闭。
-          const htmlDifficulty = text.match(DIFF_RE);
-          if (htmlDifficulty) {
-            contentOnlyOk = false;
-            return Number(htmlDifficulty[1]);
-          }
-        }
-      }
-    }
-    try {
-      const html = await limiter.text(`/problem/${pid}`);
-      const m = html.match(DIFF_RE);
-      if (m) return Number(m[1]);
-    } catch (e) {
-      console.error("LuoguSP difficulty:", pid, e);
-    }
-    return null;
-  }
-
-  // 记录列表 / 练习页：洛谷已把整批题目难度注入 _feInstance，直接批量取，省去逐题抓取。
-  function rememberProblemColor(pid, color) {
-    if (!pid || !color) return;
-    if (colorCache.has(pid)) colorCache.delete(pid);
-    colorCache.set(pid, color);
-    if (colorCache.size > COLOR_CACHE_LIMIT) {
-      const oldest = colorCache.keys().next().value;
-      colorCache.delete(oldest);
-    }
-  }
-  function cacheDifficulty(pid, difficulty) {
-    if (pid && typeof difficulty === "number")
-      rememberProblemColor(pid, diffColor(difficulty));
-  }
-  function harvestFromFeInstance() {
-    const cur = window._feInstance && window._feInstance.currentData;
-    if (!cur) return;
-    const url = location.href;
-    if (url.startsWith("https://www.luogu.com.cn/record/list")) {
-      const list = cur.records && cur.records.result;
-      if (
-        list &&
-        typeof list === "object" &&
-        !harvestedDifficultyLists.has(list)
-      ) {
-        for (const it of list)
-          cacheDifficulty(
-            it.problem && it.problem.pid,
-            it.problem && it.problem.difficulty,
-          );
-        harvestedDifficultyLists.add(list);
-      }
-    }
-    if (/^https:\/\/www\.luogu\.com\.cn\/user\/\d+#practice$/.test(url)) {
-      for (const key of ["submittedProblems", "passedProblems"]) {
-        const list = cur[key];
-        if (
-          list &&
-          typeof list === "object" &&
-          !harvestedDifficultyLists.has(list)
-        ) {
-          for (const it of list) cacheDifficulty(it.pid, it.difficulty);
-          harvestedDifficultyLists.add(list);
-        }
-      }
-    }
-  }
-
-  async function getProblemColor(pid) {
-    harvestFromFeInstance();
-    if (colorCache.has(pid)) return colorCache.get(pid);
-    const d = await fetchDifficulty(pid);
-    if (d == null) return null;
-    const color = diffColor(d);
-    rememberProblemColor(pid, color);
-    return color;
-  }
 
   const problemIdentity = createProblemIdentityResolver({
     getOrigin: () => location.origin,
@@ -1356,74 +1420,117 @@ function createLuoguSPApp(options = {}) {
     return false;
   }
 
-  async function colorAnchor(a) {
-    const identity = problemAnchorIdentity(a);
-    if (!identity) return;
-    const { pid } = identity;
-    if (a.dataset.luoguspPid === pid) return; // 已着色，跳过（防重复处理/嵌套 <b>）
-    if (coloringAnchors.get(a) === identity.key) return;
-    coloringAnchors.set(a, identity.key);
-    try {
-      const color = await getProblemColor(pid);
-      // 虚拟列表可能在请求期间复用锚点；URL 和可见题号都仍一致才允许写回。
-      const currentIdentity = problemAnchorIdentity(a);
-      if (
-        !color ||
-        !a.isConnected ||
-        !currentIdentity ||
-        currentIdentity.key !== identity.key
-      )
-        return;
-      const span = a.children[0];
-      if (
-        span &&
-        span.matches("span.pid") &&
-        (span.innerText || span.textContent || "").trim() === pid
-      ) {
-        span.style.color = color;
-        span.style.fontWeight = "bold";
-        a.dataset.luoguspPid = pid;
-      } else if (wrapPidText(a, pid, color)) {
-        a.dataset.luoguspPid = pid;
-      }
-    } finally {
-      if (coloringAnchors.get(a) === identity.key) coloringAnchors.delete(a);
-    }
-  }
-
-  function addProblemsColor() {
-    const scan = (root) => {
-      if (!root.querySelectorAll) return;
-      if (root.matches && root.matches(PROBLEM_ANCHOR_SELECTOR))
-        colorAnchor(root);
-      root.querySelectorAll(PROBLEM_ANCHOR_SELECTOR).forEach(colorAnchor);
-    };
-    new MutationObserver((muts) => {
-      for (const m of muts) {
-        if (m.type === "childList") {
-          for (const n of m.addedNodes) {
-            if (n.nodeType !== Node.ELEMENT_NODE) continue;
-            scan(n);
-          }
-        } else if (m.type === "characterData") {
-          const span = m.target.parentElement;
-          if (span && span.matches && span.matches("span.pid")) {
-            const anchor = span.closest("a[href]");
-            if (anchor) colorAnchor(anchor);
-          }
-        } else if (m.type === "attributes") {
-          colorAnchor(m.target);
+  const problemPipeline =
+    typeof document === "undefined"
+      ? null
+      : createProblemPipeline({
+    identity: problemIdentity,
+    routeAdapter: { token: () => location.href },
+    difficultySource: {
+      text: (path) => limiter.text(path),
+      // 记录列表 / 练习页已把整批难度注入 _feInstance；返回来源对象与纯题目数据，
+      // 去重和 LRU 均由 Problem Pipeline Module 持有，不污染洛谷原始数组。
+      harvest: () => {
+        const cur = window._feInstance && window._feInstance.currentData;
+        if (!cur) return [];
+        const batches = [];
+        const url = location.href;
+        if (url.startsWith("https://www.luogu.com.cn/record/list")) {
+          const list = cur.records && cur.records.result;
+          if (list && typeof list === "object")
+            batches.push({
+              source: list,
+              problems: [...list].map((item) => ({
+                pid: item.problem && item.problem.pid,
+                difficulty: item.problem && item.problem.difficulty,
+              })),
+            });
         }
-      }
-    }).observe(document, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["href"],
-    });
+        if (/^https:\/\/www\.luogu\.com\.cn\/user\/\d+#practice$/.test(url)) {
+          for (const key of ["submittedProblems", "passedProblems"]) {
+            const list = cur[key];
+            if (list && typeof list === "object")
+              batches.push({ source: list, problems: [...list] });
+          }
+        }
+        return batches;
+      },
+    },
+    colorForDifficulty: (difficulty) => diffColor(difficulty),
+    logError: (pid, error) =>
+      console.error("LuoguSP difficulty:", pid, error),
+    documentAdapter: {
+      root: document,
+      anchors: (root) => {
+        if (!root || !root.querySelectorAll) return [];
+        const anchors = [];
+        if (root.matches && root.matches(PROBLEM_ANCHOR_SELECTOR))
+          anchors.push(root);
+        root
+          .querySelectorAll(PROBLEM_ANCHOR_SELECTOR)
+          .forEach((anchor) => anchors.push(anchor));
+        return anchors;
+      },
+      observeAnchors: (accept) => {
+        const observer = new MutationObserver((mutations) => {
+          const anchors = new Set();
+          for (const mutation of mutations) {
+            if (mutation.type === "childList") {
+              for (const node of mutation.addedNodes) {
+                if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                if (node.matches && node.matches(PROBLEM_ANCHOR_SELECTOR))
+                  anchors.add(node);
+                if (node.querySelectorAll)
+                  node
+                    .querySelectorAll(PROBLEM_ANCHOR_SELECTOR)
+                    .forEach((anchor) => anchors.add(anchor));
+              }
+            } else if (mutation.type === "characterData") {
+              const span = mutation.target.parentElement;
+              const anchor =
+                span &&
+                span.matches &&
+                span.matches("span.pid") &&
+                span.closest("a[href]");
+              if (anchor) anchors.add(anchor);
+            } else if (mutation.type === "attributes") {
+              anchors.add(mutation.target);
+            }
+          }
+          accept(anchors);
+        });
+        observer.observe(document, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+          attributeFilter: ["href"],
+        });
+        return () => observer.disconnect();
+      },
+      appliedPid: (anchor) => anchor.dataset.luoguspPid,
+      isConnected: (anchor) => anchor.isConnected,
+      applyColor: (a, pid, color) => {
+        // 虚拟列表可能在请求期间复用锚点；Problem Pipeline 已复核身份后才会到这里。
+        const span = a.children[0];
+        if (
+          span &&
+          span.matches("span.pid") &&
+          (span.innerText || span.textContent || "").trim() === pid
+        ) {
+          span.style.color = color;
+          span.style.fontWeight = "bold";
+          a.dataset.luoguspPid = pid;
+        } else if (wrapPidText(a, pid, color)) {
+          a.dataset.luoguspPid = pid;
+        }
+      },
+          },
+        });
 
-    scan(document);
+  // Phase 5 统一 Page Lifecycle 前保留旧门面；重复调用 mount() 无副作用。
+  function addProblemsColor() {
+    if (problemPipeline) problemPipeline.mount();
   }
 
   // ============================================================
@@ -2940,6 +3047,7 @@ if (LUOGUSP_NODE_MODULE) {
   module.exports = Object.freeze({
     createGetRequestScheduler,
     createProblemIdentityResolver,
+    createProblemPipeline,
     createSaverTransport,
     createSaverProtocol,
     createRestrictedUrlPolicy,
