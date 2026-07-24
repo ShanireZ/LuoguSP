@@ -206,6 +206,28 @@ test("Page Lifecycle ignores no-op history events for the current route", () => 
   assert.equal(fx.lifecycle.getState().mountedCount, 1);
 });
 
+test("Page Lifecycle preserves rebuilt-document resources across no-op history events", () => {
+  const fx = fixture();
+  let mounted = 0;
+  let disposed = 0;
+  fx.lifecycle.register({
+    id: "restricted-document",
+    mount: () => {
+      mounted++;
+      return () => disposed++;
+    },
+  });
+  fx.lifecycle.start();
+  assert.equal(fx.lifecycle.replaceDocument(() => () => {}), true);
+  fx.ready();
+  assert.deepEqual({ mounted, disposed }, { mounted: 2, disposed: 1 });
+
+  fx.emitRoute("/one");
+  fx.flush();
+
+  assert.deepEqual({ mounted, disposed }, { mounted: 2, disposed: 1 });
+});
+
 test("Page Lifecycle replaces a document once and mounts only after ready", () => {
   const fx = fixture();
   const calls = [];

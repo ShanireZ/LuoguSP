@@ -36,6 +36,25 @@ test("Paste scaffold parser accepts the quoted config version used by Luogu", ()
       "https://fecdn.luogu.com.cn/luogu/loader.css?ver=20260422",
     loaderJs: "https://fecdn.luogu.com.cn/luogu/loader.js?ver=20260422",
   });
+
+  assert.equal(
+    parseRestrictedPasteScaffold(
+      scaffold.replace(
+        "window._feConfigVersion='1784804286';",
+        "window._feConfigVersion=1784804286;",
+      ),
+    ).configVersionLiteral,
+    "1784804286",
+  );
+  assert.equal(
+    parseRestrictedPasteScaffold(
+      scaffold.replace(
+        "window._feConfigVersion='1784804286';",
+        "window._feConfigVersion=1784804286+alert(1);",
+      ),
+    ),
+    null,
+  );
 });
 
 test("Saver transport separates HTTP, malformed JSON and business responses", async () => {

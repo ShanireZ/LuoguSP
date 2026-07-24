@@ -17,8 +17,13 @@ const metadata = new Map(
 );
 
 test("release metadata, README badge and update endpoints stay aligned", () => {
-  assert.equal(metadata.get("version"), "2.12.0");
-  assert.match(readme, /version-2\.12\.0-/);
+  assert.equal(metadata.get("version"), "2.12.1");
+  assert.match(
+    readme,
+    new RegExp(
+      `version-${metadata.get("version").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-`,
+    ),
+  );
   assert.equal(metadata.get("match"), "https://www.luogu.com.cn/*");
   assert.equal(metadata.get("grant"), "none");
   assert.equal(
