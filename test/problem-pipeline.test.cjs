@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   createProblemPipeline,
-  normalizeRecordDifficulty,
+  recordDifficultyForHarvest,
 } = require("../LuoguSP.user.js");
 const { deferred, flushMicrotasks } = require("./helpers.cjs");
 
@@ -49,15 +49,66 @@ function fixture({ anchors = [], text, harvest = () => [] } = {}) {
   };
 }
 
-test("record difficulties skip the tier inserted into the current scale", () => {
+test("record harvesting trusts only difficulty ids stable across both scales", () => {
   assert.deepEqual(
-    Array.from({ length: 8 }, (_, difficulty) =>
-      normalizeRecordDifficulty(difficulty),
+    Array.from({ length: 9 }, (_, difficulty) =>
+      recordDifficultyForHarvest(difficulty),
     ),
-    [0, 1, 2, 3, 4, 6, 7, 8],
+    [0, 1, 2, 3, 4, null, null, null, null],
   );
-  assert.equal(normalizeRecordDifficulty(8), 8);
-  assert.equal(normalizeRecordDifficulty(null), null);
+  assert.equal(recordDifficultyForHarvest(-1), null);
+  assert.equal(recordDifficultyForHarvest(null), null);
+});
+
+test("Problem Pipeline fetches all four ambiguous record tiers by pid", async () => {
+  const records = Object.freeze([
+    Object.freeze({ pid: "P5", difficulty: 5 }),
+    Object.freeze({ pid: "P6", difficulty: 6 }),
+    Object.freeze({ pid: "P7", difficulty: 6 }),
+    Object.freeze({ pid: "P8", difficulty: 7 }),
+  ]);
+  const currentDifficulties = { P5: 5, P6: 6, P7: 7, P8: 8 };
+  const paths = [];
+  const fx = fixture({
+    anchors: records.map(({ pid }) => ({ pid, href: `/problem/${pid}` })),
+    text: async (path) => {
+      paths.push(path);
+      const pid = path.match(/^\/problem\/([^?]+)/)[1];
+      return JSON.stringify({
+        currentData: { problem: { difficulty: currentDifficulties[pid] } },
+      });
+    },
+    harvest: () => [
+      {
+        source: records,
+        problems: () =>
+          records.map(({ pid, difficulty }) => ({
+            pid,
+            difficulty: recordDifficultyForHarvest(difficulty),
+          })),
+      },
+    ],
+  });
+
+  fx.pipeline.mount();
+  await flushMicrotasks();
+
+  assert.deepEqual(paths, [
+    "/problem/P5?_contentOnly=1",
+    "/problem/P6?_contentOnly=1",
+    "/problem/P7?_contentOnly=1",
+    "/problem/P8?_contentOnly=1",
+  ]);
+  assert.deepEqual(
+    fx.writes.map(({ pid, color }) => ({ pid, color })),
+    [
+      { pid: "P5", color: "color-5" },
+      { pid: "P6", color: "color-6" },
+      { pid: "P7", color: "color-7" },
+      { pid: "P8", color: "color-8" },
+    ],
+  );
+  fx.pipeline.dispose();
 });
 
 test("Problem Pipeline keeps temporary _contentOnly HTML from causing permanent downgrade", async () => {

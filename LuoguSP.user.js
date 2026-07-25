@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.12.3
+// @version      2.12.4
 // @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -241,12 +241,12 @@ function createProblemIdentityResolver(config) {
   return Object.freeze({ resolve });
 }
 
-// 评测记录仍返回旧 8 档编号；新 9 档在旧 4/5 档之间插入了「提高」。
-// 只有旧 5..7 档需要右移，题目页与练习页的新编号不得经过这里。
-function normalizeRecordDifficulty(difficulty) {
-  return Number.isInteger(difficulty) && difficulty >= 5 && difficulty <= 7
-    ? difficulty + 1
-    : difficulty;
+// 评测记录注入的 5..7 在新旧难度数据之间存在歧义：相同数值可能对应不同当前档位。
+// 只复用编号含义未变化的 0..4；高档题交给题目页接口按 pid 获取当前难度。
+function recordDifficultyForHarvest(difficulty) {
+  return Number.isInteger(difficulty) && difficulty >= 0 && difficulty <= 4
+    ? difficulty
+    : null;
 }
 
 function createProblemPipeline(config) {
@@ -2717,6 +2717,7 @@ function createLuoguSPApp(options = {}) {
       text: (path, options) => limiter.text(path, options),
       // 记录列表 / 练习页已把整批难度注入 _feInstance；返回来源对象与纯题目数据，
       // 去重和 LRU 均由 Problem Pipeline Module 持有，不污染洛谷原始数组。
+      // 记录列表的高档难度值不可靠，映射为 null 后由 Pipeline 查询题目页当前值。
       harvest: () => {
         const cur = window._feInstance && window._feInstance.currentData;
         if (!cur) return [];
@@ -2729,7 +2730,7 @@ function createLuoguSPApp(options = {}) {
               source: list,
               problems: () => [...list].map((item) => ({
                 pid: item.problem && item.problem.pid,
-                difficulty: normalizeRecordDifficulty(
+                difficulty: recordDifficultyForHarvest(
                   item.problem && item.problem.difficulty,
                 ),
               })),
@@ -4471,7 +4472,7 @@ if (LUOGUSP_NODE_MODULE) {
   module.exports = Object.freeze({
     createGetRequestScheduler,
     createProblemIdentityResolver,
-    normalizeRecordDifficulty,
+    recordDifficultyForHarvest,
     createProblemPipeline,
     createIdeBatchRunner,
     createSaverTransport,
