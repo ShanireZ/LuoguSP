@@ -2,7 +2,10 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createProblemPipeline } = require("../LuoguSP.user.js");
+const {
+  createProblemPipeline,
+  normalizeRecordDifficulty,
+} = require("../LuoguSP.user.js");
 const { deferred, flushMicrotasks } = require("./helpers.cjs");
 
 function fixture({ anchors = [], text, harvest = () => [] } = {}) {
@@ -45,6 +48,17 @@ function fixture({ anchors = [], text, harvest = () => [] } = {}) {
     },
   };
 }
+
+test("record difficulties skip the tier inserted into the current scale", () => {
+  assert.deepEqual(
+    Array.from({ length: 8 }, (_, difficulty) =>
+      normalizeRecordDifficulty(difficulty),
+    ),
+    [0, 1, 2, 3, 4, 6, 7, 8],
+  );
+  assert.equal(normalizeRecordDifficulty(8), 8);
+  assert.equal(normalizeRecordDifficulty(null), null);
+});
 
 test("Problem Pipeline keeps temporary _contentOnly HTML from causing permanent downgrade", async () => {
   const first = { pid: "P1", href: "/problem/P1" };
