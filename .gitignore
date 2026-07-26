@@ -1,3 +1,4 @@
 /docs/
+/node_modules/
+/.npm-cache/
 /AGENTS.md
-/CONTEXT.md

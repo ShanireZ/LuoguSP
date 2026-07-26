@@ -1,18 +1,30 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   parseRestrictedPasteScaffold,
+} from "../src/features/restricted-content/paste-scaffold.js";
+import {
   createRestrictedPageDetector,
+} from "../src/features/restricted-content/page-detector.js";
+import {
   createRestrictedReplyFetchAdapter,
+} from "../src/features/restricted-content/reply-fetch-adapter.js";
+import {
   createRestrictedReplyFetchInstaller,
+} from "../src/features/restricted-content/reply-fetch-installer.js";
+import {
   createRestrictedUrlPolicy,
+} from "../src/features/restricted-content/url-policy.js";
+import {
   createSaverProtocol,
+} from "../src/features/restricted-content/saver-protocol.js";
+import {
   createSaverTransport,
+} from "../src/features/restricted-content/saver-transport.js";
+import {
   createSaverWorkflow,
-} = require("../LuoguSP.user.js");
-const { FakeClock, flushMicrotasks } = require("./helpers.cjs");
+} from "../src/features/restricted-content/saver-workflow.js";
+import { FakeClock, flushMicrotasks } from "./helpers.js";
 
 test("Paste scaffold parser accepts the quoted config version used by Luogu", () => {
   const injection = encodeURIComponent(

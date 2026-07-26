@@ -1,10 +1,8 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   createProblemIdentityResolver,
-} = require("../LuoguSP.user.js");
+} from "../src/features/problem-color/identity.js";
 
 const resolver = createProblemIdentityResolver({
   getOrigin: () => "https://www.luogu.com.cn",

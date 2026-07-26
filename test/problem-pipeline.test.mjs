@@ -1,12 +1,12 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
-  createProblemPipeline,
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   recordDifficultyForHarvest,
-} = require("../LuoguSP.user.js");
-const { deferred, flushMicrotasks } = require("./helpers.cjs");
+} from "../src/features/problem-color/identity.js";
+import {
+  createProblemPipeline,
+} from "../src/features/problem-color/pipeline.js";
+import { deferred, flushMicrotasks } from "./helpers.js";
 
 function fixture({
   anchors = [],

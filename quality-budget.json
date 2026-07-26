@@ -1,0 +1,40 @@
+{
+  "artifact": {
+    "maxBytes": 190000,
+    "maxGzipBytes": 50000,
+    "maxParseMedianMs": 5
+  },
+  "browserQa": {
+    "maxStartupMs": 50,
+    "maxLuoguSpConsoleErrors": 0
+  },
+  "architecture": {
+    "maxCreateAppLines": 300,
+    "maxFeatureFileLines": 850,
+    "maxCoreBrowserGlobalReferences": 0
+  },
+  "requires": {
+    "resources": [
+      {
+        "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
+        "bytes": 275414,
+        "gzipBytes": 75592
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js",
+        "bytes": 49718,
+        "gzipBytes": 17045
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js",
+        "bytes": 21105,
+        "gzipBytes": 8216
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js",
+        "bytes": 127496,
+        "gzipBytes": 43082
+      }
+    ]
+  }
+}

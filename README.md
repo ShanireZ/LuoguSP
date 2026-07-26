@@ -35,6 +35,29 @@ LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信�
 - 复制最新版 `LuoguSP.user.js` 源码，替换现有脚本并保存。
 - 再次打开任一 Raw 地址，Tampermonkey 会自动识别脚本更新，确认更新即可。
 
+## 开发与构建
+
+源码位于 `src/`，按核心生命周期和功能目录拆分。根目录的
+`LuoguSP.user.js` 是由 esbuild 生成的单文件 IIFE 发布产物，请勿直接编辑。
+
+```bash
+npm ci
+npm run build
+npm test
+npm run check
+```
+
+- `npm run build`：从 `src/entry.js` 生成 `LuoguSP.user.js`。
+- `npm run build:check`：检查重新构建后发布产物是否完全一致。
+- `npm run quality:check`：检查体积、gzip、解析时间、浏览器启动耗时快照、装配入口行数、功能文件规模、`core` 浏览器全局边界和 `@require` 清单。
+- `npm run quality:report`：刷新 `reports/quality-report.json`，包括在线测得的四个 `@require` 资源体积。
+- `npm run qa:prepare`：下载 metadata 中固定版本的四个 `@require`，在系统临时目录生成真实页面手工验证用的注入载荷。
+- `npm run benchmark:origins`、`npm run analyze:chunks`：刷新 CDN 源站预演和实验性分块分析；它们不会改变生产加载架构。
+
+架构迁移结果与 CDN loader 研究见
+[`reports/architecture-modularization.md`](reports/architecture-modularization.md) 和
+[`reports/cdn-loader-feasibility.md`](reports/cdn-loader-feasibility.md)。
+
 ## 作者
 
 - ShanireZ

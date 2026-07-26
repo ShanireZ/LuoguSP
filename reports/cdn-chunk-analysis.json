@@ -1,0 +1,148 @@
+{
+  "generatedAt": "2026-07-26T03:21:08.417Z",
+  "model": {
+    "format": "ESM",
+    "minified": true,
+    "splitting": true,
+    "caveat": "Preflight graph only. It does not implement a production loader or include network latency, CSP, SRI, rollback, or Tampermonkey cache behavior."
+  },
+  "entries": {
+    "early-gate": {
+      "entryPoint": "virtual-analysis:virtual:early-gate",
+      "files": [
+        "analysis/early-gate.js"
+      ],
+      "bytes": 598,
+      "gzipBytes": 342,
+      "requestCount": 1
+    },
+    "app-core": {
+      "entryPoint": "virtual-analysis:virtual:app-core",
+      "files": [
+        "analysis/app-core.js",
+        "analysis/chunk-CZEYYP7N.js"
+      ],
+      "bytes": 3829,
+      "gzipBytes": 1674,
+      "requestCount": 2
+    },
+    "settings": {
+      "entryPoint": "src/features/settings/feature.js",
+      "files": [
+        "analysis/settings.js"
+      ],
+      "bytes": 6192,
+      "gzipBytes": 2676,
+      "requestCount": 1
+    },
+    "problem-color": {
+      "entryPoint": "src/features/problem-color/feature.js",
+      "files": [
+        "analysis/problem-color.js",
+        "analysis/chunk-CZEYYP7N.js"
+      ],
+      "bytes": 9740,
+      "gzipBytes": 4224,
+      "requestCount": 2
+    },
+    "chat-shortcut": {
+      "entryPoint": "src/features/chat-shortcut/feature.js",
+      "files": [
+        "analysis/chat-shortcut.js",
+        "analysis/chunk-CZEYYP7N.js"
+      ],
+      "bytes": 2411,
+      "gzipBytes": 1364,
+      "requestCount": 2
+    },
+    "hidden-intro": {
+      "entryPoint": "src/features/hidden-intro/feature.js",
+      "files": [
+        "analysis/hidden-intro.js",
+        "analysis/chunk-LU2R6CM4.js",
+        "analysis/chunk-CZEYYP7N.js"
+      ],
+      "bytes": 13273,
+      "gzipBytes": 5422,
+      "requestCount": 3
+    },
+    "ide-batch": {
+      "entryPoint": "src/features/ide-batch/feature.js",
+      "files": [
+        "analysis/ide-batch.js",
+        "analysis/chunk-LU2R6CM4.js",
+        "analysis/chunk-CZEYYP7N.js"
+      ],
+      "bytes": 22420,
+      "gzipBytes": 8294,
+      "requestCount": 3
+    },
+    "restricted-content": {
+      "entryPoint": "src/features/restricted-content/feature.js",
+      "files": [
+        "analysis/restricted-content.js",
+        "analysis/chunk-CZEYYP7N.js"
+      ],
+      "bytes": 31247,
+      "gzipBytes": 11338,
+      "requestCount": 2
+    }
+  },
+  "files": [
+    {
+      "path": "analysis/app-core.js",
+      "bytes": 3487,
+      "gzipBytes": 1420
+    },
+    {
+      "path": "analysis/chat-shortcut.js",
+      "bytes": 2069,
+      "gzipBytes": 1110
+    },
+    {
+      "path": "analysis/chunk-CZEYYP7N.js",
+      "bytes": 342,
+      "gzipBytes": 254
+    },
+    {
+      "path": "analysis/chunk-LU2R6CM4.js",
+      "bytes": 1359,
+      "gzipBytes": 784
+    },
+    {
+      "path": "analysis/early-gate.js",
+      "bytes": 598,
+      "gzipBytes": 342
+    },
+    {
+      "path": "analysis/hidden-intro.js",
+      "bytes": 11572,
+      "gzipBytes": 4384
+    },
+    {
+      "path": "analysis/ide-batch.js",
+      "bytes": 20719,
+      "gzipBytes": 7256
+    },
+    {
+      "path": "analysis/problem-color.js",
+      "bytes": 9398,
+      "gzipBytes": 3970
+    },
+    {
+      "path": "analysis/restricted-content.js",
+      "bytes": 30905,
+      "gzipBytes": 11084
+    },
+    {
+      "path": "analysis/settings.js",
+      "bytes": 6192,
+      "gzipBytes": 2676
+    }
+  ],
+  "allOutputs": {
+    "files": 10,
+    "bytes": 86641,
+    "gzipBytes": 33280
+  }
+}
