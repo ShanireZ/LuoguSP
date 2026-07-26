@@ -1,5 +1,9 @@
 export function createProblemIdentityResolver(config) {
-  const { getOrigin, voidAnchorSelector } = config || {};
+  const {
+    getOrigin,
+    voidAnchorSelector,
+    standalonePidSelector,
+  } = config || {};
   if (typeof getOrigin !== "function")
     throw new TypeError("Problem Identity requires an origin adapter");
 
@@ -24,36 +28,78 @@ export function createProblemIdentityResolver(config) {
     if (!text.startsWith(pid)) return false;
     return !/[A-Za-z0-9_]/.test(text.charAt(pid.length));
   };
-  const resolve = (anchor) => {
-    if (!anchor || !anchor.matches) return null;
-    if (voidAnchorSelector && anchor.matches(voidAnchorSelector)) {
+  const exactProblemUrl = (href, origin, pid) => {
+    let url;
+    try {
+      url = new URL(href, origin);
+    } catch (error) {
+      return null;
+    }
+    if (url.origin !== origin) return null;
+    const path = url.pathname.match(/^\/problem\/([A-Za-z0-9_]+)\/?$/);
+    return path && path[1] === pid ? url : null;
+  };
+  const standaloneIdentity = (target, origin) => {
+    const title = (
+      (target.getAttribute && target.getAttribute("title")) ||
+      target.title ||
+      ""
+    ).trim();
+    const text = (
+      target.innerText ||
+      target.textContent ||
+      ""
+    ).trim();
+    if (!isProblemId(title) || text !== title) return null;
+
+    const row = target.parentElement;
+    if (!row || !row.querySelectorAll) return null;
+    for (const anchor of row.querySelectorAll("a[href]")) {
+      const url = exactProblemUrl(anchor.href, origin, title);
+      if (url)
+        return {
+          pid: title,
+          kind: "standalone",
+          key: `standalone:${url.href}`,
+        };
+    }
+    return null;
+  };
+  const resolve = (target) => {
+    if (!target || !target.matches) return null;
+    const origin = getOrigin();
+    if (
+      standalonePidSelector &&
+      target.matches(standalonePidSelector)
+    )
+      return standaloneIdentity(target, origin);
+    if (voidAnchorSelector && target.matches(voidAnchorSelector)) {
       const pid = (
-        anchor.innerText ||
-        anchor.textContent ||
+        target.innerText ||
+        target.textContent ||
         ""
       )
         .trim()
         .split(/\s+/)[0];
-      return isProblemId(pid) && anchorShowsPid(anchor, pid)
+      return isProblemId(pid) && anchorShowsPid(target, pid)
         ? { pid, kind: "void", key: `void:${pid}` }
         : null;
     }
-    const origin = getOrigin();
     let url;
     try {
-      url = new URL(anchor.href, origin);
+      url = new URL(target.href, origin);
     } catch (error) {
       return null;
     }
     if (url.origin !== origin) return null;
     const forumPid = url.searchParams.get("forum");
     if (forumPid)
-      return isProblemId(forumPid) && anchorShowsPid(anchor, forumPid)
+      return isProblemId(forumPid) && anchorShowsPid(target, forumPid)
         ? { pid: forumPid, kind: "forum", key: `forum:${url.href}` }
         : null;
     const path = url.pathname.match(/^\/problem\/([A-Za-z0-9_]+)\/?$/);
     const pid = path && path[1];
-    return isProblemId(pid) && anchorShowsPid(anchor, pid)
+    return isProblemId(pid) && anchorShowsPid(target, pid)
       ? { pid, kind: "problem", key: `problem:${url.href}` }
       : null;
   };

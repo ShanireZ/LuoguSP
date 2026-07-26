@@ -229,12 +229,18 @@ const report = {
     parseMedianMs: median(parseSamples),
   },
   browserQa: {
+    status: browserQa.status || "unknown",
     checkedAt: browserQa.checkedAt,
     artifactSha256: browserQa.artifactSha256,
     maxStartupMs: Math.max(
       ...browserQa.startupMeasurements.map((sample) => sample.ms),
     ),
     luoguSpConsoleErrorCount: browserQa.console.luoguSpErrorCount,
+    failures: Array.isArray(browserQa.failures)
+      ? browserQa.failures.map(
+          (failure) => failure.summary || failure.id || String(failure),
+        )
+      : [],
   },
   requires: {
     count: requireUrls.length,
@@ -289,6 +295,13 @@ if (check) {
       `parse median ${report.artifact.parseMedianMs.toFixed(3)}ms > ${budget.artifact.maxParseMedianMs}ms`,
     );
   if (!skipBrowserQa) {
+    if (report.browserQa.status !== "passed")
+      failures.push(
+        `browser QA status ${report.browserQa.status}: ${
+          report.browserQa.failures.join("; ") ||
+          "no passing browser QA report"
+        }`,
+      );
     if (report.browserQa.artifactSha256 !== report.artifact.sha256)
       failures.push(
         "browser QA artifact hash differs from the current userscript",

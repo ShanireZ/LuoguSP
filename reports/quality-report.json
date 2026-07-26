@@ -1,28 +1,32 @@
 {
-  "generatedAt": "2026-07-26T13:04:48.533Z",
+  "generatedAt": "2026-07-26T13:44:37.506Z",
   "artifact": {
-    "sha256": "380e5bbed3e0a54a67d7f9108f6671e9a61f8709cd8c6107efd8ff84eb6dee82",
+    "sha256": "04056ff7421052224dddae81cd1553019286a0b4ec8dcde2494cf4b5460f0127",
     "bytes": 1608,
-    "gzipBytes": 870,
+    "gzipBytes": 869,
     "lines": 23,
     "parseMedianMs": 0.0015000000000000568
   },
   "browserQa": {
-    "checkedAt": "2026-07-26T15:31:20+08:00",
-    "artifactSha256": "ee44b5226850d6efd286537f342f88dd71ab16a8bf03ed7b1e1bc4b0088a402d",
-    "maxStartupMs": 19.1,
-    "luoguSpConsoleErrorCount": 0
+    "status": "blocked",
+    "checkedAt": "2026-07-26T21:26:04+08:00",
+    "artifactSha256": "380e5bbed3e0a54a67d7f9108f6671e9a61f8709cd8c6107efd8ff84eb6dee82",
+    "maxStartupMs": 15.8,
+    "luoguSpConsoleErrorCount": 0,
+    "failures": [
+      "The problem list leaves P1001 at the native default color and does not add data-luogusp-pid."
+    ]
   },
   "requires": {
     "count": 6,
-    "totalBytes": 563963,
-    "totalGzipBytes": 176160,
+    "totalBytes": 565127,
+    "totalGzipBytes": 176465,
     "resources": [
       {
-        "url": "https://spcdn.betaoi.cn/releases/2.13.1/compat/early-gate.80b8fb715564d525.js#sha256=80b8fb715564d5259cccc9e64908de60255c3209668355403cbf9daa1f9ccbce",
+        "url": "https://spcdn.betaoi.cn/releases/2.13.2/compat/early-gate.1c89b2903d361d85.js#sha256=1c89b2903d361d85619681922299914b7ea6822b7c952a72608043c27b741f4c",
         "bytes": 2896,
         "gzipBytes": 1464,
-        "sha256": "80b8fb715564d5259cccc9e64908de60255c3209668355403cbf9daa1f9ccbce"
+        "sha256": "1c89b2903d361d85619681922299914b7ea6822b7c952a72608043c27b741f4c"
       },
       {
         "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
@@ -49,10 +53,10 @@
         "sha256": "c4a399dd6f488bc97a3546e3476747b3e714c99c57b9473154c6fb8d259b9381"
       },
       {
-        "url": "https://spcdn.betaoi.cn/releases/2.13.1/compat/runtime.249d563c103523d8.js#sha256=249d563c103523d836966ff00662774fbd972b21f25f691651ab75d8f1b54dcd",
-        "bytes": 87334,
-        "gzipBytes": 30761,
-        "sha256": "249d563c103523d836966ff00662774fbd972b21f25f691651ab75d8f1b54dcd"
+        "url": "https://spcdn.betaoi.cn/releases/2.13.2/compat/runtime.61241a62869decdd.js#sha256=61241a62869decdd318ecc634671c71496604f3becbdf86ece8a19f6eb350621",
+        "bytes": 88498,
+        "gzipBytes": 31066,
+        "sha256": "61241a62869decdd318ecc634671c71496604f3becbdf86ece8a19f6eb350621"
       }
     ],
     "measuredOnline": true
@@ -88,11 +92,11 @@
       },
       "problem-color": {
         "files": 3,
-        "bytes": 18270,
-        "lines": 517,
-        "nonBlankLines": 499,
-        "functions": 68,
-        "branchPoints": 159
+        "bytes": 20753,
+        "lines": 597,
+        "nonBlankLines": 578,
+        "functions": 71,
+        "branchPoints": 189
       },
       "restricted-content": {
         "files": 12,
@@ -275,19 +279,19 @@
     },
     {
       "path": "src/features/problem-color/feature.js",
-      "bytes": 9077,
-      "lines": 254,
-      "nonBlankLines": 245,
-      "functions": 34,
-      "branchPoints": 51
+      "bytes": 10344,
+      "lines": 288,
+      "nonBlankLines": 279,
+      "functions": 35,
+      "branchPoints": 63
     },
     {
       "path": "src/features/problem-color/identity.js",
-      "bytes": 2366,
-      "lines": 71,
-      "nonBlankLines": 67,
-      "functions": 6,
-      "branchPoints": 34
+      "bytes": 3582,
+      "lines": 117,
+      "nonBlankLines": 112,
+      "functions": 8,
+      "branchPoints": 52
     },
     {
       "path": "src/features/problem-color/pipeline.js",
