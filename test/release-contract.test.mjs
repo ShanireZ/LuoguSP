@@ -34,7 +34,8 @@ const qualityBudget = JSON.parse(
     "utf8",
   ),
 );
-const releaseVersion = "2.13.0";
+const releaseVersion =
+  script.match(/^\/\/ @version\s+(\S+)$/m)?.[1];
 const releaseManifest = JSON.parse(
   fs.readFileSync(
     path.join(

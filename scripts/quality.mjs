@@ -15,6 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const check = process.argv.includes("--check");
 const fetchRequires = process.argv.includes("--fetch-requires");
 const writeReport = process.argv.includes("--write-report");
+const skipBrowserQa = process.argv.includes("--skip-browser-qa");
 const normalizePath = (path) => path.split(sep).join("/");
 
 async function walk(directory) {
@@ -178,12 +179,36 @@ const expectedRequireUrls = expectedRequireResources.map(
 );
 let requireResources = expectedRequireResources;
 if (fetchRequires) {
+  const fetchRequire = async (url) => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(15000),
+        });
+        const body = Buffer.from(await response.arrayBuffer());
+        if (!response.ok) {
+          lastError = new Error(
+            `Unable to fetch @require ${response.status}: ${url}`,
+          );
+          if (response.status < 500 || attempt === 5)
+            throw lastError;
+          continue;
+        }
+        return body;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 5)
+          await new Promise((resolveDelay) =>
+            setTimeout(resolveDelay, attempt * 250),
+          );
+      }
+    }
+    throw lastError;
+  };
   requireResources = await Promise.all(
     requireUrls.map(async (url) => {
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`Unable to fetch @require ${response.status}: ${url}`);
-      const body = Buffer.from(await response.arrayBuffer());
+      const body = await fetchRequire(url);
       return {
         url,
         bytes: body.length,
@@ -263,21 +288,23 @@ if (check) {
     failures.push(
       `parse median ${report.artifact.parseMedianMs.toFixed(3)}ms > ${budget.artifact.maxParseMedianMs}ms`,
     );
-  if (report.browserQa.artifactSha256 !== report.artifact.sha256)
-    failures.push(
-      "browser QA artifact hash differs from the current userscript",
-    );
-  if (report.browserQa.maxStartupMs > budget.browserQa.maxStartupMs)
-    failures.push(
-      `browser startup ${report.browserQa.maxStartupMs.toFixed(3)}ms > ${budget.browserQa.maxStartupMs}ms`,
-    );
-  if (
-    report.browserQa.luoguSpConsoleErrorCount >
-    budget.browserQa.maxLuoguSpConsoleErrors
-  )
-    failures.push(
-      `browser LuoguSP console errors ${report.browserQa.luoguSpConsoleErrorCount} > ${budget.browserQa.maxLuoguSpConsoleErrors}`,
-    );
+  if (!skipBrowserQa) {
+    if (report.browserQa.artifactSha256 !== report.artifact.sha256)
+      failures.push(
+        "browser QA artifact hash differs from the current userscript",
+      );
+    if (report.browserQa.maxStartupMs > budget.browserQa.maxStartupMs)
+      failures.push(
+        `browser startup ${report.browserQa.maxStartupMs.toFixed(3)}ms > ${budget.browserQa.maxStartupMs}ms`,
+      );
+    if (
+      report.browserQa.luoguSpConsoleErrorCount >
+      budget.browserQa.maxLuoguSpConsoleErrors
+    )
+      failures.push(
+        `browser LuoguSP console errors ${report.browserQa.luoguSpConsoleErrorCount} > ${budget.browserQa.maxLuoguSpConsoleErrors}`,
+      );
+  }
   if (
     report.architecture.createAppLines >
     budget.architecture.maxCreateAppLines
@@ -331,6 +358,6 @@ if (check) {
 if (!check) console.log(JSON.stringify(report, null, 2));
 else {
   console.log(
-    `artifact=${report.artifact.bytes}B gzip=${report.artifact.gzipBytes}B parse-median=${report.artifact.parseMedianMs.toFixed(3)}ms browser-startup-max=${report.browserQa.maxStartupMs.toFixed(3)}ms create-app=${report.architecture.createAppLines} lines requires=${report.requires.count}/${report.requires.totalBytes}B`,
+    `artifact=${report.artifact.bytes}B gzip=${report.artifact.gzipBytes}B parse-median=${report.artifact.parseMedianMs.toFixed(3)}ms browser-startup-max=${skipBrowserQa ? "deferred" : `${report.browserQa.maxStartupMs.toFixed(3)}ms`} create-app=${report.architecture.createAppLines} lines requires=${report.requires.count}/${report.requires.totalBytes}B`,
   );
 }
