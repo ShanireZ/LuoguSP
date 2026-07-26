@@ -17,7 +17,7 @@ const metadata = new Map(
 );
 
 test("release metadata, README badge and update endpoints stay aligned", () => {
-  assert.equal(metadata.get("version"), "2.12.4");
+  assert.equal(metadata.get("version"), "2.12.5");
   assert.match(
     readme,
     new RegExp(
@@ -99,17 +99,23 @@ test("Phase 7 removes temporary compatibility facades and keeps one document com
 });
 
 test("feature labels and lifecycle gates keep the same five setting keys", () => {
-  const keys = [
-    "addProblemsColor",
-    "addMessageLink",
-    "showIntro",
-    "ideBatchSampleTest",
-    "showRestrictedContent",
-  ];
-  for (const key of keys) {
+  const features = new Map([
+    ["addProblemsColor", "题号显示难度颜色"],
+    ["addMessageLink", "私信 Ctrl+Click 打开用户个人页"],
+    ["showIntro", "个人页显示个人介绍"],
+    ["ideBatchSampleTest", "IDE 模式一键测试所有样例"],
+    ["showRestrictedContent", "显示受限文章与剪贴板"],
+  ]);
+  assert.equal(
+    metadata.get("description"),
+    `LuoguSP：${[...features.values()].join(" / ")}`,
+  );
+  for (const [key, label] of features) {
     const matches = script.match(
       new RegExp(`STORAGE_PREFIX\\}${key}`, "g"),
     );
     assert.equal(matches && matches.length, 2, key);
+    assert.equal(script.includes(`"${label}"`), true, label);
+    assert.equal(readme.includes(`**${label}**`), true, label);
   }
 });

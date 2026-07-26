@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.12.4
-// @description  LuoguSP：题目难度着色 / 私信 Ctrl+Click(用户名+头像) 跳转主页 / 显示隐藏的个人简介 / IDE 一键测试样例 / 受限文章与剪贴板直接显示
+// @version      2.12.5
+// @description  LuoguSP：题号显示难度颜色 / 私信 Ctrl+Click 打开用户个人页 / 个人页显示个人介绍 / IDE 模式一键测试所有样例 / 显示受限文章与剪贴板
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
 // @match        https://www.luogu.com.cn/*
@@ -329,6 +329,9 @@ function createProblemPipeline(config) {
         );
       } catch (error) {
         if (signal.aborted) return null;
+        // 已删除、无权访问或尚未公开的题目都可能返回 403/404；它们没有可着色难度，
+        // 也不需要再请求完整页面或污染控制台。
+        if (error && (error.status === 403 || error.status === 404)) return null;
         /* 临时网络错误不能永久降级 _contentOnly。 */
       }
       if (text != null) {
@@ -373,12 +376,20 @@ function createProblemPipeline(config) {
     const taskGeneration = generation;
     const taskRoute = routeToken();
     const taskIdentity = identity.resolve(anchor);
-    if (!taskIdentity) return;
-    if (
-      typeof documentAdapter.appliedPid === "function" &&
-      documentAdapter.appliedPid(anchor) === taskIdentity.pid
-    )
+    const appliedPid =
+      typeof documentAdapter.appliedPid === "function"
+        ? documentAdapter.appliedPid(anchor)
+        : null;
+    if (!taskIdentity) {
+      if (appliedPid && typeof documentAdapter.clearColor === "function")
+        documentAdapter.clearColor(anchor, appliedPid);
       return;
+    }
+    if (appliedPid === taskIdentity.pid) return;
+    // 洛谷记录分页会复用同一批锚点。先撤销旧题号的样式，避免新题查询失败时
+    // （例如题目已删除而返回 403）继续显示上一页题目的难度色。
+    if (appliedPid && typeof documentAdapter.clearColor === "function")
+      documentAdapter.clearColor(anchor, appliedPid);
     if (coloringAnchors.get(anchor) === taskIdentity.key) return;
     coloringAnchors.set(anchor, taskIdentity.key);
     try {
@@ -1796,18 +1807,18 @@ function createLuoguSPApp(options = {}) {
     ideSampleBlock: ".io-sample-block", // 题面样例块（输入 #N / 输出 #N 各一块）
     cmContent: ".cm-content", // CodeMirror 6 内容层
     lentilleContext: "script#lentille-context", // 新版页面数据（JSON，含 problem.samples）
-    // —— 安全访问中心拦截页（接口与接管边界见下方受限内容区段注释）——
+    // —— 安全访问中心拦截页（接口与接管边界见下方“显示受限文章与剪贴板”区段注释）——
     restrictedUrlPre: "pre#url", // 拦截页里的目标链接文本
     restrictedGoButton: "button#go", // 拦截页「继续访问」按钮
   };
 
   // 功能开关：key → 显示名。新增功能只需在此登记 + 在底部 FEATURES 注册启动器。
   const FEATURE_LABELS = new Map([
-    [`${STORAGE_PREFIX}addProblemsColor`, "显示题目颜色"],
-    [`${STORAGE_PREFIX}addMessageLink`, "私信界面 Ctrl+Click 打开用户主页"],
-    [`${STORAGE_PREFIX}showIntro`, "显示隐藏的个人简介"],
-    [`${STORAGE_PREFIX}ideBatchSampleTest`, "IDE 一键测试样例"],
-    [`${STORAGE_PREFIX}showRestrictedContent`, "受限文章/剪贴板直接显示"],
+    [`${STORAGE_PREFIX}addProblemsColor`, "题号显示难度颜色"],
+    [`${STORAGE_PREFIX}addMessageLink`, "私信 Ctrl+Click 打开用户个人页"],
+    [`${STORAGE_PREFIX}showIntro`, "个人页显示个人介绍"],
+    [`${STORAGE_PREFIX}ideBatchSampleTest`, "IDE 模式一键测试所有样例"],
+    [`${STORAGE_PREFIX}showRestrictedContent`, "显示受限文章与剪贴板"],
   ]);
 
   const storage = {
@@ -2085,7 +2096,7 @@ function createLuoguSPApp(options = {}) {
   }
 
   // ============================================================
-  // 私信界面 Ctrl+Click 打开用户主页（用户名 + 头像）
+  // 私信 Ctrl+Click 打开用户个人页
   // ============================================================
   function addMessageLink() {
     const bound = new WeakSet(); // 去重，避免重复绑定
@@ -2182,8 +2193,8 @@ function createLuoguSPApp(options = {}) {
   }
 
   // ============================================================
-  // 显示隐藏的个人简介
-  // 洛谷把个人简介改为「仅国际站可见」，但境内站服务器仍把 introduction 下发到页面同源数据里
+  // 个人页显示个人介绍
+  // 洛谷把个人介绍改为「仅国际站可见」，但境内站服务器仍把 introduction 下发到页面同源数据里
   // （SSR 脚本 / lentille 接口），只是前端不渲染。这里读同源数据自行补显，无需跨域。
   // ============================================================
   function digIntro(obj, wantUid) {
@@ -2657,7 +2668,7 @@ function createLuoguSPApp(options = {}) {
   }
 
   // ============================================================
-  // 题目难度着色
+  // 题号显示难度颜色
   // ============================================================
   // 单队列 FIFO：300ms 发起间隔、最多 3 并发、15s 超时。
   const limiter = createGetRequestScheduler({
@@ -2686,7 +2697,7 @@ function createLuoguSPApp(options = {}) {
   const problemAnchorIdentity = (anchor) => problemIdentity.resolve(anchor);
 
   // 把子树中第一处 pid 文本包成 <b>（纯 DOM，避免 innerHTML.replace 误伤属性内同名子串、
-  // 重建整个锚点子树、抖掉已绑定的监听）。返回是否成功包裹。
+  // 重建整个锚点子树、抖掉已绑定的监听）。返回创建的包裹节点，未找到则返回 null。
   function wrapPidText(root, pid, color) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
@@ -2699,10 +2710,36 @@ function createLuoguSPApp(options = {}) {
       b.style.color = color;
       b.textContent = pid;
       mid.parentNode.replaceChild(b, mid);
-      return true;
+      return b;
     }
-    return false;
+    return null;
   }
+
+  const appliedProblemColors = new WeakMap();
+  const captureInlineProperty = (element, property) =>
+    Object.freeze({
+      value: element.style.getPropertyValue(property),
+      priority: element.style.getPropertyPriority(property),
+    });
+  const restoreInlineProperty = (element, property, original) => {
+    if (original.value)
+      element.style.setProperty(property, original.value, original.priority);
+    else element.style.removeProperty(property);
+  };
+  const clearProblemColor = (anchor) => {
+    const state = appliedProblemColors.get(anchor);
+    if (state && state.node && anchor.contains(state.node)) {
+      if (state.kind === "span") {
+        restoreInlineProperty(state.node, "color", state.color);
+        restoreInlineProperty(state.node, "font-weight", state.fontWeight);
+      } else if (state.kind === "wrapper") {
+        state.node.replaceWith(document.createTextNode(state.node.textContent || ""));
+        anchor.normalize();
+      }
+    }
+    appliedProblemColors.delete(anchor);
+    delete anchor.dataset.luoguspPid;
+  };
 
   const problemPipeline =
     typeof document === "undefined"
@@ -2800,18 +2837,32 @@ function createLuoguSPApp(options = {}) {
       },
       appliedPid: (anchor) => anchor.dataset.luoguspPid,
       isConnected: (anchor) => anchor.isConnected,
+      clearColor: (anchor) => clearProblemColor(anchor),
       applyColor: (a, pid, color) => {
         // 虚拟列表可能在请求期间复用锚点；Problem Pipeline 已复核身份后才会到这里。
+        clearProblemColor(a);
         const span = a.children[0];
         if (
           span &&
           span.matches("span.pid") &&
           (span.innerText || span.textContent || "").trim() === pid
         ) {
+          appliedProblemColors.set(a, {
+            kind: "span",
+            node: span,
+            color: captureInlineProperty(span, "color"),
+            fontWeight: captureInlineProperty(span, "font-weight"),
+          });
           span.style.color = color;
           span.style.fontWeight = "bold";
           a.dataset.luoguspPid = pid;
-        } else if (wrapPidText(a, pid, color)) {
+        } else {
+          const wrapper = wrapPidText(a, pid, color);
+          if (!wrapper) return;
+          appliedProblemColors.set(a, {
+            kind: "wrapper",
+            node: wrapper,
+          });
           a.dataset.luoguspPid = pid;
         }
       },
@@ -2819,7 +2870,7 @@ function createLuoguSPApp(options = {}) {
         });
 
   // ============================================================
-  // IDE 一键测试样例
+  // IDE 模式一键测试所有样例
   // 洛谷新版题目页（columba）IDE 模式（#ide）下，逐组驱动题面样例的原生「运行」，
   // 结果从输出面板 DOM 捕获（结果经页面常驻 WS 推送，网络层拿不到——勿改走拦截）。
   // 锚点与配色均来自 2026-07 洛谷 columba IDE 的真实页面观测。
@@ -3568,7 +3619,7 @@ function createLuoguSPApp(options = {}) {
   const startIdeBatch = () => ideBatchRunner.start();
 
   // ============================================================
-  // 受限文章/剪贴板直接显示（原生壳注入）
+  // 显示受限文章与剪贴板（原生壳注入）
   // 国内站访问非本人/未审核的 /article、/paste 会落在「安全访问中心」拦截页
   // （独立静态页、零全站样式、无 CSP）。本功能在拦截页上重建官方页面：
   //   1) 壳骨架收割：从 .cn 同源页拿官方壳（columba 源=/ranking 等，lfe 源=/image 等；

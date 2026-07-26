@@ -2,19 +2,19 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.12.4](https://img.shields.io/badge/version-2.12.4-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+[![Version: 2.12.5](https://img.shields.io/badge/version-2.12.5-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
-LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题目、私信、用户主页、在线 IDE 和受限内容页面提供实用增强。
+LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信、用户个人页、IDE 模式、受限文章与剪贴板提供实用增强。
 
 项目仓库：[GitHub](https://github.com/ShanireZ/LuoguSP)（主仓库）／[Gitee](https://gitee.com/shanire/LuoguSP)（境内镜像）
 
 ## 功能
 
-- **题目难度着色**：为题目链接、记录列表和练习页面中的题目显示对应的难度颜色。
-- **私信快捷跳转**：在私信页面按住 `Ctrl` 点击用户名或头像，直接打开用户主页。
-- **显示个人简介**：在用户主页显示被隐藏的个人简介，并支持 Markdown、表格、任务列表、KaTeX 公式、代码高亮和代码复制。
-- **IDE 批量测试样例**：在题目页 IDE 中一键运行全部样例，查看每组结果、用时、内存和差异；支持停止、重新测试及结果过期提示。
-- **直接查看受限内容**：遇到「安全访问中心」拦截时，通过[洛谷保存站](https://www.luogu.me/)直接显示已收录的专栏文章或云剪贴板，并支持申请收录和更新。
+- **题号显示难度颜色**：在题库、评测记录和练习页面中，为题号显示对应的难度颜色。
+- **私信 Ctrl+Click 打开用户个人页**：在私信页面按住 `Ctrl` 点击头像或用户名，直接打开对应用户的个人页。
+- **个人页显示个人介绍**：在用户个人页显示原本未渲染的个人介绍，并支持 Markdown、表格、任务列表、KaTeX 公式、代码高亮和代码复制。
+- **IDE 模式一键测试所有样例**：在题目页的 IDE 模式下一键运行所有样例，查看每组结果、用时、内存和差异；支持停止、重新测试及结果过期提示。
+- **显示受限文章与剪贴板**：遇到「安全访问中心」拦截时，通过[洛谷保存站](https://www.luogu.me/)显示已收录的专栏文章或云剪贴板，并支持申请收录和更新。
 - **页面内设置**：从洛谷导航栏进入「插件设置」，按需开启或关闭各项功能。
 
 ## 安装

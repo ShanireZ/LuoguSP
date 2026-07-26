@@ -8,8 +8,14 @@ const {
 } = require("../LuoguSP.user.js");
 const { deferred, flushMicrotasks } = require("./helpers.cjs");
 
-function fixture({ anchors = [], text, harvest = () => [] } = {}) {
+function fixture({
+  anchors = [],
+  text,
+  harvest = () => [],
+  logError = () => {},
+} = {}) {
   const writes = [];
+  const clears = [];
   let observed = null;
   let route = "/problem/list";
   const pipeline = createProblemPipeline({
@@ -30,18 +36,26 @@ function fixture({ anchors = [], text, harvest = () => [] } = {}) {
       },
       appliedPid: (anchor) => anchor.appliedPid,
       isConnected: (anchor) => anchor.connected !== false,
+      clearColor: (anchor, pid) => {
+        clears.push({ anchor, pid });
+        delete anchor.appliedPid;
+        delete anchor.color;
+      },
       applyColor: (anchor, pid, color) => {
         anchor.appliedPid = pid;
+        anchor.color = color;
         writes.push({ anchor, pid, color });
       },
     },
     routeAdapter: { token: () => route },
     difficultySource: { text, harvest },
     colorForDifficulty: (difficulty) => `color-${difficulty}`,
+    logError,
   });
   return {
     pipeline,
     writes,
+    clears,
     emit: (next) => observed && observed(next),
     setRoute: (next) => {
       route = next;
@@ -179,6 +193,50 @@ test("Problem Pipeline harvests injected lists once without mutating page data",
       { pid: "P1", color: "color-1" },
       { pid: "P2", color: "color-5" },
     ],
+  );
+  fx.pipeline.dispose();
+});
+
+test("Problem Pipeline clears a recycled anchor when the new problem has no difficulty", async () => {
+  const anchor = { pid: "P4", href: "/problem/P4" };
+  const paths = [];
+  const errors = [];
+  const fx = fixture({
+    anchors: [anchor],
+    text: async (path) => {
+      paths.push(path);
+      if (path === "/problem/P4?_contentOnly=1")
+        return '{"currentData":{"problem":{"difficulty":4}}}';
+      const error = new Error(`HTTP 403 ${path}`);
+      error.status = 403;
+      throw error;
+    },
+    logError: (pid, error) => errors.push([pid, error.message]),
+  });
+
+  fx.pipeline.mount();
+  await flushMicrotasks();
+  assert.equal(anchor.color, "color-4");
+
+  anchor.pid = "TDELETED";
+  anchor.href = "/problem/TDELETED";
+  fx.emit([anchor]);
+  await flushMicrotasks();
+
+  assert.deepEqual(paths, [
+    "/problem/P4?_contentOnly=1",
+    "/problem/TDELETED?_contentOnly=1",
+  ]);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(
+    fx.clears.map(({ pid }) => pid),
+    ["P4"],
+  );
+  assert.equal(anchor.appliedPid, undefined);
+  assert.equal(anchor.color, undefined);
+  assert.deepEqual(
+    fx.writes.map(({ pid, color }) => ({ pid, color })),
+    [{ pid: "P4", color: "color-4" }],
   );
   fx.pipeline.dispose();
 });
