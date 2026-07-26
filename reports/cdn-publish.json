@@ -7,11 +7,12 @@
     "cloudflare": "luogusp-cdn"
   },
   "detectedOrigins": {
-    "primary": "https://luogusp-cdn-v95z7zpj.edgeone.cool",
+    "primary": "https://spcdn.betaoi.cn",
     "fallback": "https://spcdn.betaoi.cc"
   },
   "previewTokenUsed": {
-    "primary": true,
+    "primary": false,
     "fallback": false
-  }
+  },
+  "platformDefaultDomainsUsed": false
 }

@@ -2,20 +2,29 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveConfiguredOrigins } from "./origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const argument = (name) => {
   const index = process.argv.indexOf(name);
   return index === -1 ? null : process.argv[index + 1];
 };
-const primary = argument("--primary");
-const fallback = argument("--fallback");
-if (!primary || !fallback)
+const primaryOverride = argument("--primary");
+const fallbackOverride = argument("--fallback");
+if (!primaryOverride || !fallbackOverride)
   throw new Error("Pass --primary and --fallback CDN origins");
 
-const channel = JSON.parse(
-  await readFile(resolve(root, "cdn/channels/canary.json"), "utf8"),
-);
+const [channelText, configText] = await Promise.all([
+  readFile(resolve(root, "cdn/channels/canary.json"), "utf8"),
+  readFile(resolve(root, "config/cdn.json"), "utf8"),
+]);
+const channel = JSON.parse(channelText);
+const config = JSON.parse(configText);
+const { primary, fallback } = resolveConfiguredOrigins({
+  config,
+  primaryOverride,
+  fallbackOverride,
+});
 const manifestFile = resolve(
   root,
   "cdn",
@@ -30,16 +39,10 @@ if (digest(manifestBody) !== channel.manifestSha256)
 
 const originRecord = (id, value) => {
   const url = new URL(value);
-  const cookie = ["eo_token", "eo_time"]
-    .map((key) => [key, url.searchParams.get(key)])
-    .filter(([, item]) => item)
-    .map(([key, item]) => `${key}=${item}`)
-    .join("; ");
   return {
     id,
     url: url.origin,
-    previewTokenUsed: Boolean(cookie),
-    headers: cookie ? { Cookie: cookie } : {},
+    previewTokenUsed: false,
   };
 };
 const origins = [
@@ -60,7 +63,6 @@ for (const origin of origins) {
     const response = await fetch(url, {
       cache: "no-store",
       credentials: "omit",
-      headers: origin.headers,
     });
     const body = Buffer.from(await response.arrayBuffer());
     const expected =
@@ -104,7 +106,6 @@ for (const origin of origins) {
 for (const origin of origins) {
   const response = await fetch(assetUrl(origin.url, "channels/canary.json"), {
     cache: "no-store",
-    headers: origin.headers,
   });
   const remote = Buffer.from(await response.arrayBuffer());
   const local = await readFile(

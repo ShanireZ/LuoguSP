@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveConfiguredOrigins } from "./origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const config = JSON.parse(
@@ -66,53 +67,8 @@ if (!skipBuild)
   ]);
 run("node", ["scripts/cdn/prepare.mjs"]);
 
-const stripAnsi = (value) =>
-  value.replace(/\u001b\[[0-9;]*m/g, "");
-const urlsFrom = (value) =>
-  [
-    ...stripAnsi(value).matchAll(/https:\/\/[^\s"'<>]+/g),
-  ].map((match) => match[0].replace(/[),.;]+$/, ""));
-const chooseOrigin = (output, predicate) => {
-  const candidates = urlsFrom(output);
-  for (let index = candidates.length - 1; index >= 0; index--) {
-    try {
-      const url = new URL(candidates[index]);
-      if (predicate(url))
-        return `${url.origin}${url.search}`;
-    } catch (error) {
-      // Ignore decorative or truncated URLs from CLI output.
-    }
-  }
-  return null;
-};
-const originIsReady = async (value) => {
-  const url = new URL("/channels/canary.json", value);
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    try {
-      const response = await fetch(url, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      if (response.ok) return true;
-    } catch {
-      // A newly bound edge domain can need several cold connection attempts.
-    } finally {
-      clearTimeout(timer);
-    }
-    if (attempt < 5)
-      await new Promise((resolveDelay) =>
-        setTimeout(resolveDelay, attempt * 250),
-      );
-  }
-  return false;
-};
-
-let edgeoneOutput = "";
-let cloudflareOutput = "";
 if (target === "all" || target === "edgeone")
-  edgeoneOutput = run("npx", [
+  run("npx", [
     "-y",
     `edgeone@${config.cli.edgeone}`,
     "makers",
@@ -124,7 +80,7 @@ if (target === "all" || target === "edgeone")
     "production",
   ]);
 if (target === "all" || target === "cloudflare")
-  cloudflareOutput = run("npx", [
+  run("npx", [
     "-y",
     `wrangler@${config.cli.wrangler}`,
     "deploy",
@@ -132,30 +88,11 @@ if (target === "all" || target === "cloudflare")
     "deploy/cloudflare/wrangler.jsonc",
   ]);
 
-const requestedPrimary = argument("--primary");
-const requestedFallback = argument("--fallback");
-const primary =
-  requestedPrimary ||
-  ((await originIsReady(config.origins.primary))
-    ? config.origins.primary
-    : chooseOrigin(
-        edgeoneOutput,
-        (url) =>
-          /edgeone|edgeone\.app|pages/i.test(url.hostname) &&
-          !/pages\.edgeone\.ai$/i.test(url.hostname),
-      )) ||
-  config.origins.primary;
-const fallback =
-  requestedFallback ||
-  ((await originIsReady(config.origins.fallback))
-    ? config.origins.fallback
-    : chooseOrigin(
-        cloudflareOutput,
-        (url) =>
-          url.hostname.endsWith(".workers.dev") ||
-          url.hostname === new URL(config.origins.fallback).hostname,
-      )) ||
-  config.origins.fallback;
+const { primary, fallback } = resolveConfiguredOrigins({
+  config,
+  primaryOverride: argument("--primary"),
+  fallbackOverride: argument("--fallback"),
+});
 
 const report = {
   publishedAt: new Date().toISOString(),
@@ -167,9 +104,10 @@ const report = {
     fallback: new URL(fallback).origin,
   },
   previewTokenUsed: {
-    primary: Boolean(new URL(primary).search),
-    fallback: Boolean(new URL(fallback).search),
+    primary: false,
+    fallback: false,
   },
+  platformDefaultDomainsUsed: false,
 };
 await writeFile(
   resolve(root, "reports/cdn-publish.json"),

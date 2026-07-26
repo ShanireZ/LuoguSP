@@ -117,7 +117,8 @@
 ### 2. Cloudflare Workers / Static Assets
 
 Cloudflare Static Assets 可以将 Worker 与静态文件作为一个部署单元，并自动
-边缘缓存；生产环境推荐自定义域名，而不是把 `workers.dev` 当关键基础设施。
+边缘缓存；生产及部署校验只允许配置中的两个自定义域名，平台默认域名和
+部署预览域名均禁止访问。
 
 但真正的中国大陆 Cloudflare China Network 是 Enterprise 的独立订阅，
 还要求 ICP 和 JD Cloud 内容审核。普通免费 Worker 不能据此推断为境内
