@@ -47,14 +47,22 @@ function median(values) {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-const [artifact, metadata, budgetText, browserQaText] = await Promise.all([
+const [
+  artifact,
+  metadata,
+  budgetText,
+  browserQaText,
+  cdnConfigText,
+] = await Promise.all([
   readFile(resolve(root, "LuoguSP.user.js")),
   readFile(resolve(root, "src/userscript.meta.js"), "utf8"),
   readFile(resolve(root, "config/quality-budget.json"), "utf8"),
   readFile(resolve(root, "reports/browser-qa.json"), "utf8"),
+  readFile(resolve(root, "config/cdn.json"), "utf8"),
 ]);
 const budget = JSON.parse(budgetText);
 const browserQa = JSON.parse(browserQaText);
+const cdnConfig = JSON.parse(cdnConfigText);
 const artifactText = artifact.toString("utf8");
 const artifactSha256 = createHash("sha256").update(artifact).digest("hex");
 const parseSamples = [];
@@ -115,7 +123,60 @@ for (const file of files.filter((item) => item.path.startsWith("src/core/"))) {
 const requireUrls = [
   ...metadata.matchAll(/^\/\/ @require\s+(\S+)$/gm),
 ].map((match) => match[1]);
-let requireResources = budget.requires.resources;
+const thirdPartyResources = budget.requires.resources;
+let expectedRequireResources = thirdPartyResources;
+const firstPartyRequires = requireUrls.filter((value) => {
+  const url = new URL(value);
+  return (
+    url.origin === new URL(cdnConfig.origins.primary).origin &&
+    url.pathname.startsWith("/releases/")
+  );
+});
+if (firstPartyRequires.length) {
+  const metadataVersion =
+    metadata.match(/^\/\/ @version\s+(\S+)$/m)?.[1];
+  if (!/^\d+\.\d+\.\d+$/.test(metadataVersion || ""))
+    throw new Error("CDN-backed metadata must use a stable version");
+  const manifest = JSON.parse(
+    await readFile(
+      resolve(
+        root,
+        `cdn/releases/${metadataVersion}/manifest.json`,
+      ),
+      "utf8",
+    ),
+  );
+  if (
+    manifest.release !== metadataVersion ||
+    manifest.esm?.enabled !== false
+  )
+    throw new Error("Production CDN manifest is not stable");
+  const localResource = async (file) => {
+    const body = await readFile(resolve(root, "cdn", file.path));
+    const sha256 = createHash("sha256").update(body).digest("hex");
+    if (sha256 !== file.sha256)
+      throw new Error(`Local CDN artifact hash drift: ${file.path}`);
+    return {
+      url:
+        `${new URL(
+          file.path,
+          `${cdnConfig.origins.primary.replace(/\/+$/, "")}/`,
+        )}#sha256=${file.sha256}`,
+      bytes: body.length,
+      gzipBytes: gzipSync(body, { level: 9 }).length,
+      sha256,
+    };
+  };
+  expectedRequireResources = [
+    await localResource(manifest.compat.earlyGate),
+    ...thirdPartyResources,
+    await localResource(manifest.compat.runtime),
+  ];
+}
+const expectedRequireUrls = expectedRequireResources.map(
+  (resource) => resource.url,
+);
+let requireResources = expectedRequireResources;
 if (fetchRequires) {
   requireResources = await Promise.all(
     requireUrls.map(async (url) => {
@@ -127,6 +188,7 @@ if (fetchRequires) {
         url,
         bytes: body.length,
         gzipBytes: gzipSync(body, { level: 9 }).length,
+        sha256: createHash("sha256").update(body).digest("hex"),
       };
     }),
   );
@@ -237,20 +299,23 @@ if (check) {
     failures.push(
       `core browser-global references ${coreBrowserGlobalReferences.length} > ${budget.architecture.maxCoreBrowserGlobalReferences}`,
     );
-  const expectedUrls = budget.requires.resources.map(
-    (resource) => resource.url,
-  );
-  if (JSON.stringify(requireUrls) !== JSON.stringify(expectedUrls))
-    failures.push("@require URLs differ from config/quality-budget.json");
+  if (
+    JSON.stringify(requireUrls) !==
+    JSON.stringify(expectedRequireUrls)
+  )
+    failures.push(
+      "@require URLs differ from the pinned production manifest",
+    );
   if (fetchRequires) {
     for (const actual of requireResources) {
-      const expected = budget.requires.resources.find(
+      const expected = expectedRequireResources.find(
         (resource) => resource.url === actual.url,
       );
       if (
         !expected ||
         expected.bytes !== actual.bytes ||
-        expected.gzipBytes !== actual.gzipBytes
+        expected.gzipBytes !== actual.gzipBytes ||
+        (expected.sha256 && expected.sha256 !== actual.sha256)
       )
         failures.push(`@require size drift: ${actual.url}`);
     }

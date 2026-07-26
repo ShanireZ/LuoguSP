@@ -2,17 +2,43 @@
 
 日期：2026-07-26
 
-状态：研究完成；本阶段不实施生产 loader。
+状态：`2.13.0` 兼容运行时已通过双自定义域名门禁并投入生产；动态 ESM
+仍保持 canary。
+
+## 2026-07-26 实装验证更新
+
+研究方案已经落成独立双 CDN canary：
+
+- EdgeOne 与 Cloudflare 项目均为 `luogusp-cdn`。
+- `2.13.0-canary.1` 生成兼容 early gate、兼容 runtime、9 个 ESM 入口、
+  内容哈希文件名、逐文件 SHA-256/SRI 和不可变 manifest。
+- 一键发布命令完成两个平台部署后，会校验 14 个不可变文件的状态码、
+  字节、SHA-256、MIME、CORS、缓存策略及双源字节一致性。
+- EdgeOne 主源为 `https://spcdn.betaoi.cn`，Cloudflare 长期镜像为
+  `https://spcdn.betaoi.cc`；两个自定义域名已对正式版 14 个不可变文件
+  完成逐文件一致性门禁。
+- 在真实洛谷题库页，兼容 runtime 正常挂载设置入口并打开五项设置面板；
+  在真实受限文章 `9vrutkkt`，early gate 正常启动和释放，文章恢复为原生
+  洛谷外壳，控制台没有错误或警告。
+- 动态 ESM 的完整性实现和回退实现通过单元测试，但真实页面发出的 CDN
+  `fetch` 被洛谷当前 CSP 的 `connect-src` 阻止。因此 `esm.enabled`
+  保持 `false`，不进入生产。
 
 ## 结论
 
-技术上可以把 LuoguSP 拆成一个小 loader 和多个远程 ESM chunk，但当前
-不建议替换单文件生产架构。
+技术上可以把 LuoguSP 拆成一个小 loader 和多个远程 ESM chunk；实际验证
+进一步把方案分成了两条：
 
-原因不是分块体积，而是 userscript 的执行模型：
+1. `@require + SHA-256` 加载不可变兼容 IIFE 可行，已由 `2.13.0` 生产
+   metadata 启用；资源由脚本管理器获取，不依赖洛谷页面的
+   `connect-src`。
+2. 页面内 `fetch + SHA-256 + Blob import()` 的动态 ESM 当前不可行，因为
+   网络请求在完整性校验和双源回退之前就被 CSP 阻断。
 
-1. 当前四个 `@require` 会在主脚本之前加载。只缩小第一方主脚本并不能
-   保证 `document-start` loading gate 更早执行。
+动态 ESM 未通过的关键不是分块体积，而是 userscript 的执行模型：
+
+1. 原有四个第三方 `@require` 会在主脚本之前加载；生产 metadata 因此把
+   第一方 early gate 放在它们之前，并把完整 runtime 放在它们之后。
 2. `@grant none` 关闭 userscript 沙箱，动态 `import()`、模块脚本、
    CSP、CORS 和 `blob:` 回退都需要在洛谷真实页面逐路由验证。
 3. 动态 `import()` 没有直接的 SRI 参数；自行 fetch、验 SHA-256、再
@@ -21,7 +47,9 @@
    重新变成网络关键路径。
 5. 多 chunk 更新需要版本原子性、失败回退和旧版本保留策略。
 
-建议继续以单文件 IIFE 为生产方案，把 CDN 分块保留为独立实验。
+生产继续使用固定版本的兼容 IIFE 与 SHA-256 `@require`，把动态 ESM
+分块保留为独立实验；Cloudflare 只作为同字节灾备镜像，不在同一次运行中
+重复执行。
 
 ## 预演分块体积
 
@@ -173,9 +201,12 @@ manifest、loader、chunk 必须在同一 tag/commit 生成。不得让主脚本
 
 ## 当前决策
 
-生产架构：继续使用源码多模块、发布单 IIFE。
+生产架构：在 EdgeOne 长期自定义域名就绪前继续发布单 IIFE；首个 CDN
+稳定版只采用 `EdgeOne @require + SHA-256` 的兼容运行时，Cloudflare 保存
+同字节镜像用于应急切换，不启用页面内动态加载。
 
-实验优先级：jsDelivr 精确 Git commit > 有备案域名的 EdgeOne >
-具备 Enterprise China Network 条件的 Cloudflare。
+动态 ESM：保持 canary 和 `enabled: false`。只有未来 CSP、完整性和真实
+双源回退三个门禁同时通过，才重新评估启用。
 
-当前不实施 loader，不修改 metadata，不新增运行时 CDN 权限。
+更新通道：继续使用 Gitee/GitHub 分发 `LuoguSP.user.js`；CDN 只承载固定
+版本第一方运行时，不承载用户脚本更新检查。

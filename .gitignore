@@ -1,4 +1,6 @@
 /docs/
+/dist/
 /node_modules/
 /.npm-cache/
+/.edgeone/
 /AGENTS.md

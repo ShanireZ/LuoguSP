@@ -1,42 +1,58 @@
 {
-  "generatedAt": "2026-07-26T04:30:42.375Z",
+  "generatedAt": "2026-07-26T07:33:38.499Z",
   "artifact": {
-    "sha256": "723a5e966b74260da167abeefe1538ab20151c23c3858fa97d5e28fdc93780ad",
-    "bytes": 164401,
-    "gzipBytes": 40495,
-    "lines": 4029,
-    "parseMedianMs": 0.0020999999999986585
+    "sha256": "ee44b5226850d6efd286537f342f88dd71ab16a8bf03ed7b1e1bc4b0088a402d",
+    "bytes": 1608,
+    "gzipBytes": 867,
+    "lines": 23,
+    "parseMedianMs": 0.0015000000000000568
   },
   "browserQa": {
-    "checkedAt": "2026-07-26T12:27:31+08:00",
-    "artifactSha256": "723a5e966b74260da167abeefe1538ab20151c23c3858fa97d5e28fdc93780ad",
-    "maxStartupMs": 20.3,
+    "checkedAt": "2026-07-26T15:31:20+08:00",
+    "artifactSha256": "ee44b5226850d6efd286537f342f88dd71ab16a8bf03ed7b1e1bc4b0088a402d",
+    "maxStartupMs": 19.1,
     "luoguSpConsoleErrorCount": 0
   },
   "requires": {
-    "count": 4,
-    "totalBytes": 473733,
-    "totalGzipBytes": 143935,
+    "count": 6,
+    "totalBytes": 563963,
+    "totalGzipBytes": 176160,
     "resources": [
+      {
+        "url": "https://spcdn.betaoi.cn/releases/2.13.0/compat/early-gate.3bf86a7d0658cf9c.js#sha256=3bf86a7d0658cf9cabbb789f96f19720663dfb32fce963e85a7a97f50e9b4f8e",
+        "bytes": 2896,
+        "gzipBytes": 1464,
+        "sha256": "3bf86a7d0658cf9cabbb789f96f19720663dfb32fce963e85a7a97f50e9b4f8e"
+      },
       {
         "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
         "bytes": 275414,
-        "gzipBytes": 75592
+        "gzipBytes": 75592,
+        "sha256": "e6bfe5deebd4c7ccd272055bab63bd3ab2c73b907b6e6a22d352740a81381fd4"
       },
       {
         "url": "https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js",
         "bytes": 49718,
-        "gzipBytes": 17045
+        "gzipBytes": 17045,
+        "sha256": "c68075672d976e4777390560baa112194855bd4404b13647da4855aae1f9360c"
       },
       {
         "url": "https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js",
         "bytes": 21105,
-        "gzipBytes": 8216
+        "gzipBytes": 8216,
+        "sha256": "a3876688dffda0991175e82ff447dba95895bcc702f5388d04ffaa6240f43ab2"
       },
       {
         "url": "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js",
         "bytes": 127496,
-        "gzipBytes": 43082
+        "gzipBytes": 43082,
+        "sha256": "c4a399dd6f488bc97a3546e3476747b3e714c99c57b9473154c6fb8d259b9381"
+      },
+      {
+        "url": "https://spcdn.betaoi.cn/releases/2.13.0/compat/runtime.dad6604731c7e837.js#sha256=dad6604731c7e837d932527d78c4f13aa5cfe85d60adbb29ff6ea76d570988e0",
+        "bytes": 87334,
+        "gzipBytes": 30761,
+        "sha256": "dad6604731c7e837d932527d78c4f13aa5cfe85d60adbb29ff6ea76d570988e0"
       }
     ],
     "measuredOnline": true
@@ -114,12 +130,68 @@
       "branchPoints": 6
     },
     {
+      "path": "src/bootstrap/restricted-early-gate.js",
+      "bytes": 3702,
+      "lines": 98,
+      "nonBlankLines": 93,
+      "functions": 11,
+      "branchPoints": 17
+    },
+    {
+      "path": "src/bootstrap/run-app.js",
+      "bytes": 469,
+      "lines": 18,
+      "nonBlankLines": 16,
+      "functions": 2,
+      "branchPoints": 2
+    },
+    {
       "path": "src/browser/copy-button.js",
       "bytes": 1736,
       "lines": 46,
       "nonBlankLines": 43,
       "functions": 4,
       "branchPoints": 4
+    },
+    {
+      "path": "src/cdn/app-core.js",
+      "bytes": 217,
+      "lines": 4,
+      "nonBlankLines": 3,
+      "functions": 0,
+      "branchPoints": 0
+    },
+    {
+      "path": "src/cdn/canary-loader.js",
+      "bytes": 4283,
+      "lines": 151,
+      "nonBlankLines": 143,
+      "functions": 10,
+      "branchPoints": 29
+    },
+    {
+      "path": "src/cdn/early-gate-entry.js",
+      "bytes": 295,
+      "lines": 11,
+      "nonBlankLines": 9,
+      "functions": 0,
+      "branchPoints": 0
+    },
+    {
+      "path": "src/cdn/loader-entry.js",
+      "bytes": 201,
+      "lines": 7,
+      "nonBlankLines": 5,
+      "functions": 0,
+      "branchPoints": 2
+    },
+    {
+      "path": "src/cdn/runtime-entry.js",
+      "bytes": 358,
+      "lines": 12,
+      "nonBlankLines": 10,
+      "functions": 0,
+      "branchPoints": 0
     },
     {
       "path": "src/core/browser-route-adapter.js",
@@ -147,11 +219,11 @@
     },
     {
       "path": "src/entry.js",
-      "bytes": 3488,
-      "lines": 88,
-      "nonBlankLines": 86,
-      "functions": 8,
-      "branchPoints": 16
+      "bytes": 179,
+      "lines": 5,
+      "nonBlankLines": 3,
+      "functions": 0,
+      "branchPoints": 0
     },
     {
       "path": "src/features/chat-shortcut/feature.js",
@@ -339,9 +411,9 @@
     },
     {
       "path": "src/userscript.meta.js",
-      "bytes": 1106,
-      "lines": 20,
-      "nonBlankLines": 19,
+      "bytes": 1437,
+      "lines": 22,
+      "nonBlankLines": 21,
       "functions": 0,
       "branchPoints": 0
     }

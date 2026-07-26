@@ -25,8 +25,39 @@ const root = path.resolve(
 );
 const script = fs.readFileSync(path.join(root, "LuoguSP.user.js"), "utf8");
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+const cdnConfig = JSON.parse(
+  fs.readFileSync(path.join(root, "config/cdn.json"), "utf8"),
+);
+const qualityBudget = JSON.parse(
+  fs.readFileSync(
+    path.join(root, "config/quality-budget.json"),
+    "utf8",
+  ),
+);
+const releaseVersion = "2.13.0";
+const releaseManifest = JSON.parse(
+  fs.readFileSync(
+    path.join(
+      root,
+      `cdn/releases/${releaseVersion}/manifest.json`,
+    ),
+    "utf8",
+  ),
+);
+const runtimeScript = fs.readFileSync(
+  path.join(root, "cdn", releaseManifest.compat.runtime.path),
+  "utf8",
+);
 const restrictedFeatureSource = fs.readFileSync(
   path.join(root, "src/features/restricted-content/feature.js"),
+  "utf8",
+);
+const restrictedEarlyGateSource = fs.readFileSync(
+  path.join(root, "src/bootstrap/restricted-early-gate.js"),
+  "utf8",
+);
+const runAppSource = fs.readFileSync(
+  path.join(root, "src/bootstrap/run-app.js"),
   "utf8",
 );
 
@@ -38,7 +69,7 @@ const metadata = new Map(
 );
 
 test("release metadata, README badge and update endpoints stay aligned", () => {
-  assert.equal(metadata.get("version"), "2.12.5");
+  assert.equal(metadata.get("version"), releaseVersion);
   assert.match(
     readme,
     new RegExp(
@@ -63,35 +94,51 @@ test("release metadata, README badge and update endpoints stay aligned", () => {
   assert.equal(metadata.get("downloadURL"), metadata.get("updateURL"));
 });
 
-test("runtime dependencies and browser privileges do not expand", () => {
+test("runtime dependencies pin EdgeOne compatibility files around third-party UI libraries", () => {
   const requires = [
     ...script.matchAll(/^\/\/ @require\s+(\S+)$/gm),
   ].map((match) => match[1]);
+  const compatibilityUrl = (file) =>
+    `${new URL(
+      file.path,
+      `${cdnConfig.origins.primary.replace(/\/+$/, "")}/`,
+    )}#sha256=${file.sha256}`;
   assert.deepEqual(requires, [
-    "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
-    "https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js",
-    "https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js",
-    "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js",
+    compatibilityUrl(releaseManifest.compat.earlyGate),
+    ...qualityBudget.requires.resources.map(
+      (resource) => resource.url,
+    ),
+    compatibilityUrl(releaseManifest.compat.runtime),
   ]);
+  assert.equal(Buffer.byteLength(script) <= 5000, true);
+  assert.equal(script.includes("/channels/"), false);
+  assert.equal(script.includes(cdnConfig.origins.fallback), false);
 });
 
 test("restricted first paint stays covered until native page anchors are ready", () => {
   assert.equal(
-    (script.match(/\$\{RST_LOADER_HTML\}<\/body><\/html>/g) || []).length,
+    (
+      restrictedFeatureSource.match(
+        /\$\{RST_LOADER_HTML\}<\/body><\/html>/g,
+      ) || []
+    ).length,
     2,
   );
   assert.match(
-    script,
+    restrictedFeatureSource,
     /if \(actionBars\.length && updateBars\.length\) rstHideLoader\(\)/,
   );
-  assert.match(script, /if \(author && pubRow\) rstHideLoader\(\)/);
   assert.match(
-    script,
+    restrictedFeatureSource,
+    /if \(author && pubRow\) rstHideLoader\(\)/,
+  );
+  assert.match(
+    restrictedEarlyGateSource,
     /html\.\$\{className\} body>\*\{visibility:hidden!important;\}/,
   );
   assert.match(
-    script,
-    /document\.addEventListener\("DOMContentLoaded", bootstrap, \{ once: true \}\)/,
+    runAppSource,
+    /document\.addEventListener\("DOMContentLoaded", bootstrap, \{\s*once: true,\s*\}\)/,
   );
 });
 
@@ -113,23 +160,34 @@ test("Phase 7 removes temporary compatibility facades and keeps one document com
     "restrictedPageInfo",
     "function startFeatures(",
   ])
-    assert.equal(script.includes(facade), false, facade);
+    assert.equal(runtimeScript.includes(facade), false, facade);
 
   assert.equal(
-    (script.match(/open:\s*\(\)\s*=>\s*document\.open\(\)/g) || []).length,
+    (
+      restrictedFeatureSource.match(
+        /open:\s*\(\)\s*=>\s*document\.open\(\)/g,
+      ) || []
+    ).length,
     1,
   );
   assert.equal(
-    (script.match(/write:\s*\(html\)\s*=>\s*document\.write\(html\)/g) || [])
-      .length,
+    (
+      restrictedFeatureSource.match(
+        /write:\s*\(html\)\s*=>\s*document\.write\(html\)/g,
+      ) || []
+    ).length,
     1,
   );
   assert.equal(
-    (script.match(/close:\s*\(\)\s*=>\s*document\.close\(\)/g) || []).length,
+    (
+      restrictedFeatureSource.match(
+        /close:\s*\(\)\s*=>\s*document\.close\(\)/g,
+      ) || []
+    ).length,
     1,
   );
-  assert.equal(script.includes("LUOGUSP_NODE_MODULE"), false);
-  assert.equal(script.includes("module.exports"), false);
+  assert.equal(runtimeScript.includes("LUOGUSP_NODE_MODULE"), false);
+  assert.equal(runtimeScript.includes("module.exports"), false);
 });
 
 test("feature labels and lifecycle gates keep the same five setting keys", () => {
@@ -168,7 +226,7 @@ test("feature labels and lifecycle gates keep the same five setting keys", () =>
     assert.equal(descriptor.storageKey, `LuoguSP.${key}`);
     assert.equal(descriptor.defaultEnabled, true);
     assert.equal(descriptor.enabled(), true);
-    assert.equal(script.includes(`"${label}"`), true, label);
+    assert.equal(runtimeScript.includes(label), true, label);
     assert.equal(readme.includes(`**${label}**`), true, label);
   }
 });

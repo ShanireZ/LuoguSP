@@ -1,7 +1,7 @@
 {
   "artifact": {
-    "maxBytes": 190000,
-    "maxGzipBytes": 50000,
+    "maxBytes": 5000,
+    "maxGzipBytes": 2000,
     "maxParseMedianMs": 5
   },
   "browserQa": {
