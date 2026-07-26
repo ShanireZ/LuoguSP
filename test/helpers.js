@@ -1,5 +1,3 @@
-"use strict";
-
 class FakeClock {
   constructor(now = 0) {
     this.nowMs = now;
@@ -83,7 +81,7 @@ function textResponse(text, status = 200, headers = {}) {
   };
 }
 
-module.exports = {
+export {
   FakeClock,
   deferred,
   flushMicrotasks,

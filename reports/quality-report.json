@@ -1,0 +1,349 @@
+{
+  "generatedAt": "2026-07-26T03:43:28.263Z",
+  "artifact": {
+    "sha256": "a9d6ef2acb9bb56f35745b9de5d09bd4665b6bc0e50ee3fab8f670abcab4fff0",
+    "bytes": 164402,
+    "gzipBytes": 40496,
+    "lines": 4029,
+    "parseMedianMs": 0.0015000000000000568
+  },
+  "browserQa": {
+    "checkedAt": "2026-07-26T11:40:00+08:00",
+    "artifactSha256": "a9d6ef2acb9bb56f35745b9de5d09bd4665b6bc0e50ee3fab8f670abcab4fff0",
+    "maxStartupMs": 19.2,
+    "luoguSpConsoleErrorCount": 0
+  },
+  "requires": {
+    "count": 4,
+    "totalBytes": 473733,
+    "totalGzipBytes": 143935,
+    "resources": [
+      {
+        "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
+        "bytes": 275414,
+        "gzipBytes": 75592
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js",
+        "bytes": 49718,
+        "gzipBytes": 17045
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js",
+        "bytes": 21105,
+        "gzipBytes": 8216
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js",
+        "bytes": 127496,
+        "gzipBytes": 43082
+      }
+    ],
+    "measuredOnline": true
+  },
+  "architecture": {
+    "createAppLines": 128,
+    "maxFeatureFileLines": 799,
+    "coreBrowserGlobalReferences": [],
+    "featureDirectories": {
+      "chat-shortcut": {
+        "files": 1,
+        "bytes": 4448,
+        "lines": 125,
+        "nonBlankLines": 119,
+        "functions": 17,
+        "branchPoints": 38
+      },
+      "hidden-intro": {
+        "files": 2,
+        "bytes": 22120,
+        "lines": 473,
+        "nonBlankLines": 466,
+        "functions": 70,
+        "branchPoints": 133
+      },
+      "ide-batch": {
+        "files": 3,
+        "bytes": 37962,
+        "lines": 1064,
+        "nonBlankLines": 1038,
+        "functions": 131,
+        "branchPoints": 277
+      },
+      "problem-color": {
+        "files": 3,
+        "bytes": 18270,
+        "lines": 517,
+        "nonBlankLines": 499,
+        "functions": 68,
+        "branchPoints": 159
+      },
+      "restricted-content": {
+        "files": 12,
+        "bytes": 61572,
+        "lines": 1599,
+        "nonBlankLines": 1561,
+        "functions": 205,
+        "branchPoints": 404
+      },
+      "settings": {
+        "files": 2,
+        "bytes": 9915,
+        "lines": 229,
+        "nonBlankLines": 215,
+        "functions": 24,
+        "branchPoints": 36
+      }
+    }
+  },
+  "sourceFiles": [
+    {
+      "path": "src/app/create-luogusp-app.js",
+      "bytes": 4070,
+      "lines": 128,
+      "nonBlankLines": 118,
+      "functions": 23,
+      "branchPoints": 11
+    },
+    {
+      "path": "src/app/feature-descriptor.js",
+      "bytes": 533,
+      "lines": 24,
+      "nonBlankLines": 23,
+      "functions": 4,
+      "branchPoints": 6
+    },
+    {
+      "path": "src/browser/copy-button.js",
+      "bytes": 1736,
+      "lines": 46,
+      "nonBlankLines": 43,
+      "functions": 4,
+      "branchPoints": 4
+    },
+    {
+      "path": "src/core/browser-route-adapter.js",
+      "bytes": 2575,
+      "lines": 85,
+      "nonBlankLines": 83,
+      "functions": 16,
+      "branchPoints": 20
+    },
+    {
+      "path": "src/core/get-request-scheduler.js",
+      "bytes": 4676,
+      "lines": 157,
+      "nonBlankLines": 153,
+      "functions": 24,
+      "branchPoints": 38
+    },
+    {
+      "path": "src/core/page-lifecycle.js",
+      "bytes": 5801,
+      "lines": 206,
+      "nonBlankLines": 203,
+      "functions": 31,
+      "branchPoints": 58
+    },
+    {
+      "path": "src/entry.js",
+      "bytes": 3488,
+      "lines": 88,
+      "nonBlankLines": 86,
+      "functions": 8,
+      "branchPoints": 16
+    },
+    {
+      "path": "src/features/chat-shortcut/feature.js",
+      "bytes": 4448,
+      "lines": 125,
+      "nonBlankLines": 119,
+      "functions": 17,
+      "branchPoints": 38
+    },
+    {
+      "path": "src/features/hidden-intro/feature.js",
+      "bytes": 18887,
+      "lines": 444,
+      "nonBlankLines": 438,
+      "functions": 70,
+      "branchPoints": 133
+    },
+    {
+      "path": "src/features/hidden-intro/style.js",
+      "bytes": 3233,
+      "lines": 29,
+      "nonBlankLines": 28,
+      "functions": 0,
+      "branchPoints": 0
+    },
+    {
+      "path": "src/features/ide-batch/feature.js",
+      "bytes": 28196,
+      "lines": 794,
+      "nonBlankLines": 774,
+      "functions": 94,
+      "branchPoints": 194
+    },
+    {
+      "path": "src/features/ide-batch/runner.js",
+      "bytes": 7046,
+      "lines": 238,
+      "nonBlankLines": 233,
+      "functions": 37,
+      "branchPoints": 83
+    },
+    {
+      "path": "src/features/ide-batch/style.js",
+      "bytes": 2720,
+      "lines": 32,
+      "nonBlankLines": 31,
+      "functions": 0,
+      "branchPoints": 0
+    },
+    {
+      "path": "src/features/problem-color/feature.js",
+      "bytes": 9077,
+      "lines": 254,
+      "nonBlankLines": 245,
+      "functions": 34,
+      "branchPoints": 51
+    },
+    {
+      "path": "src/features/problem-color/identity.js",
+      "bytes": 2366,
+      "lines": 71,
+      "nonBlankLines": 67,
+      "functions": 6,
+      "branchPoints": 34
+    },
+    {
+      "path": "src/features/problem-color/pipeline.js",
+      "bytes": 6827,
+      "lines": 192,
+      "nonBlankLines": 187,
+      "functions": 28,
+      "branchPoints": 74
+    },
+    {
+      "path": "src/features/restricted-content/document-boot.js",
+      "bytes": 5261,
+      "lines": 150,
+      "nonBlankLines": 148,
+      "functions": 29,
+      "branchPoints": 50
+    },
+    {
+      "path": "src/features/restricted-content/document-committer.js",
+      "bytes": 2020,
+      "lines": 58,
+      "nonBlankLines": 56,
+      "functions": 10,
+      "branchPoints": 22
+    },
+    {
+      "path": "src/features/restricted-content/feature.js",
+      "bytes": 35965,
+      "lines": 799,
+      "nonBlankLines": 782,
+      "functions": 84,
+      "branchPoints": 155
+    },
+    {
+      "path": "src/features/restricted-content/loading-gate.js",
+      "bytes": 1116,
+      "lines": 37,
+      "nonBlankLines": 35,
+      "functions": 9,
+      "branchPoints": 13
+    },
+    {
+      "path": "src/features/restricted-content/page-detector.js",
+      "bytes": 976,
+      "lines": 33,
+      "nonBlankLines": 32,
+      "functions": 6,
+      "branchPoints": 13
+    },
+    {
+      "path": "src/features/restricted-content/paste-scaffold.js",
+      "bytes": 1269,
+      "lines": 46,
+      "nonBlankLines": 45,
+      "functions": 2,
+      "branchPoints": 12
+    },
+    {
+      "path": "src/features/restricted-content/reply-fetch-adapter.js",
+      "bytes": 1949,
+      "lines": 64,
+      "nonBlankLines": 62,
+      "functions": 7,
+      "branchPoints": 24
+    },
+    {
+      "path": "src/features/restricted-content/reply-fetch-installer.js",
+      "bytes": 1622,
+      "lines": 53,
+      "nonBlankLines": 51,
+      "functions": 8,
+      "branchPoints": 10
+    },
+    {
+      "path": "src/features/restricted-content/saver-protocol.js",
+      "bytes": 1334,
+      "lines": 45,
+      "nonBlankLines": 44,
+      "functions": 5,
+      "branchPoints": 14
+    },
+    {
+      "path": "src/features/restricted-content/saver-transport.js",
+      "bytes": 2659,
+      "lines": 81,
+      "nonBlankLines": 78,
+      "functions": 11,
+      "branchPoints": 26
+    },
+    {
+      "path": "src/features/restricted-content/saver-workflow.js",
+      "bytes": 6983,
+      "lines": 219,
+      "nonBlankLines": 215,
+      "functions": 31,
+      "branchPoints": 61
+    },
+    {
+      "path": "src/features/restricted-content/url-policy.js",
+      "bytes": 418,
+      "lines": 14,
+      "nonBlankLines": 13,
+      "functions": 3,
+      "branchPoints": 4
+    },
+    {
+      "path": "src/features/settings/feature.js",
+      "bytes": 8530,
+      "lines": 211,
+      "nonBlankLines": 198,
+      "functions": 24,
+      "branchPoints": 36
+    },
+    {
+      "path": "src/features/settings/style.js",
+      "bytes": 1385,
+      "lines": 18,
+      "nonBlankLines": 17,
+      "functions": 0,
+      "branchPoints": 0
+    },
+    {
+      "path": "src/userscript.meta.js",
+      "bytes": 1106,
+      "lines": 20,
+      "nonBlankLines": 19,
+      "functions": 0,
+      "branchPoints": 0
+    }
+  ]
+}

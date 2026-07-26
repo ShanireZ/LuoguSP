@@ -1,16 +1,16 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   createIdeBatchRunner,
+} from "../src/features/ide-batch/runner.js";
+import {
   createLuoguSPApp,
-} = require("../LuoguSP.user.js");
-const {
+} from "../src/app/create-luogusp-app.js";
+import {
   FakeClock,
   deferred,
   flushMicrotasks,
-} = require("./helpers.cjs");
+} from "./helpers.js";
 
 test("bootstrap is explicit and idempotent", () => {
   const calls = [];

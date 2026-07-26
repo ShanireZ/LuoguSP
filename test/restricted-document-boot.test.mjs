@@ -1,14 +1,16 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   createRestrictedDocumentBoot,
+} from "../src/features/restricted-content/document-boot.js";
+import {
   createRestrictedDocumentCommitter,
-  createRestrictedLoadingGate,
   serializeJsonForScript,
-} = require("../LuoguSP.user.js");
-const { deferred, flushMicrotasks } = require("./helpers.cjs");
+} from "../src/features/restricted-content/document-committer.js";
+import {
+  createRestrictedLoadingGate,
+} from "../src/features/restricted-content/loading-gate.js";
+import { deferred, flushMicrotasks } from "./helpers.js";
 
 const HTML =
   '<!DOCTYPE html><html><head><script src="https://fecdn.luogu.com.cn/app.js"></script></head><body><div id="app"></div></body></html>';

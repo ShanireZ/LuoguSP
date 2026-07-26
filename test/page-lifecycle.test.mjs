@@ -1,11 +1,11 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   createBrowserRouteAdapter,
+} from "../src/core/browser-route-adapter.js";
+import {
   createPageLifecycle,
-} = require("../LuoguSP.user.js");
+} from "../src/core/page-lifecycle.js";
 
 test("Route Adapter wraps history once and restores only owned wrappers", () => {
   const calls = [];

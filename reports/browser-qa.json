@@ -1,0 +1,45 @@
+{
+  "checkedAt": "2026-07-26T11:40:00+08:00",
+  "browser": "Codex in-app Chromium",
+  "artifactSha256": "a9d6ef2acb9bb56f35745b9de5d09bd4665b6bc0e50ee3fab8f670abcab4fff0",
+  "injection": {
+    "method": "Runtime.evaluate after DOMContentLoaded",
+    "payload": "four pinned @require resources followed by LuoguSP.user.js",
+    "networkIncluded": false
+  },
+  "startupMeasurements": [
+    {
+      "route": "/",
+      "ms": 19.2
+    },
+    {
+      "route": "/problem/list",
+      "ms": 5.6
+    },
+    {
+      "route": "/user/3",
+      "ms": 5.9
+    }
+  ],
+  "checks": {
+    "settingsEntryCount": 1,
+    "settingsFeatureCount": 5,
+    "settingsDefaultsEnabled": true,
+    "problemPid": "P1001",
+    "problemColor": "rgb(254, 76, 97)",
+    "spaRoute": "/user/3 -> /user/3/activity -> /user/3",
+    "spaIntroCardCountOnActivity": 1,
+    "spaIntroCardCountAfterReturn": 0,
+    "spaSettingsEntryCount": 1,
+    "spaStyleCount": 3
+  },
+  "console": {
+    "luoguSpErrorCount": 0,
+    "siteErrorCount": 2,
+    "siteErrorSummary": "Luogu reported its expected unauthenticated API error in the signed-out test session."
+  },
+  "limitations": [
+    "The in-app browser cannot install the userscript extension or inject at document-start; loading-gate first paint remains covered by source tests.",
+    "IDE batch execution, private-message Ctrl+Click, and restricted-document reconstruction require authenticated or route-specific fixtures and were not exercised in this signed-out public-page pass."
+  ]
+}

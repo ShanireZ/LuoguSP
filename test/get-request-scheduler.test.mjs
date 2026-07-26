@@ -1,16 +1,14 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   createGetRequestScheduler,
-} = require("../LuoguSP.user.js");
-const {
+} from "../src/core/get-request-scheduler.js";
+import {
   FakeClock,
   deferred,
   flushMicrotasks,
   textResponse,
-} = require("./helpers.cjs");
+} from "./helpers.js";
 
 test("GET scheduler keeps FIFO order, 300ms launch gap and 3 concurrency", async () => {
   const clock = new FakeClock();
