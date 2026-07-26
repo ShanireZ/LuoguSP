@@ -12,7 +12,7 @@ export function userscriptVersion(metadata) {
     !/^\d+\.\d+\.\d+$/.test(versions[0])
   )
     throw new Error(
-      "src/userscript.meta.js must contain exactly one stable @version",
+      "Userscript metadata must contain exactly one stable @version",
     );
   return versions[0];
 }
