@@ -5,6 +5,7 @@ import {
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fetchVerified } from "./verify-lib.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const argument = (name) => {
@@ -110,27 +111,6 @@ if (Buffer.byteLength(stagedArtifact) > 5000)
 const paths = [manifestPath, ...Object.keys(manifest.files)];
 const remoteBodies = new Map();
 const results = [];
-const fetchRemote = async (url) => {
-  let lastError = null;
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    try {
-      const response = await fetch(url, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(15000),
-      });
-      const body = Buffer.from(await response.arrayBuffer());
-      if (response.status >= 500 && attempt < 5) continue;
-      return { response, body, attempts: attempt };
-    } catch (error) {
-      lastError = error;
-      if (attempt < 5)
-        await new Promise((resolveDelay) =>
-          setTimeout(resolveDelay, attempt * 250),
-        );
-    }
-  }
-  throw lastError;
-};
 for (const origin of originRecords) {
   let originAvailable = true;
   for (const path of paths) {
@@ -144,53 +124,65 @@ for (const origin of originRecords) {
       continue;
     }
     const url = new URL(path, `${origin.url}/`);
+    const expected =
+      path === manifestPath
+        ? manifestSha256
+        : manifest.files[path].sha256;
     try {
-      const { response, body, attempts } = await fetchRemote(url);
-      const expected =
-        path === manifestPath
-          ? manifestSha256
-          : manifest.files[path].sha256;
-      const actual = digest(body);
-      const contentType =
-        response.headers.get("content-type") || "";
-      const cacheControl =
-        response.headers.get("cache-control") || "";
-      const cors =
-        response.headers.get("access-control-allow-origin") || "";
-      const ok =
-        response.ok &&
-        actual === expected &&
-        cors === "*" &&
-        cacheControl.includes("immutable") &&
-        (path.endsWith(".json")
-          ? contentType.includes("json")
-          : contentType.includes("javascript"));
-      results.push({
-        origin: origin.id,
-        path,
-        status: response.status,
-        bytes: body.length,
-        sha256: actual,
-        contentType,
-        cacheControl,
-        cors,
-        attempts,
-        ok,
+      const verified = await fetchVerified({
+        url,
+        check: (response, body) => {
+          const actual = digest(body);
+          const contentType =
+            response.headers.get("content-type") || "";
+          const cacheControl =
+            response.headers.get("cache-control") || "";
+          const cors =
+            response.headers.get("access-control-allow-origin") || "";
+          return {
+            origin: origin.id,
+            path,
+            status: response.status,
+            bytes: body.length,
+            sha256: actual,
+            contentType,
+            cacheControl,
+            cors,
+            ok:
+              response.ok &&
+              actual === expected &&
+              cors === "*" &&
+              cacheControl.includes("immutable") &&
+              (path.endsWith(".json")
+                ? contentType.includes("json")
+                : contentType.includes("javascript")),
+          };
+        },
+        onRetry: (failure, delayMs, nextAttempt) => {
+          console.error(
+            `[production-gate] RETRY ${origin.id} ${path}: attempt ${failure.attempt} failed (${failure.status ?? failure.error}); waiting ${delayMs}ms before attempt ${nextAttempt}`,
+          );
+        },
       });
-      if (!ok)
-        failures.push(`${origin.id} failed response checks for ${path}`);
+      const { body, result } = verified;
+      results.push(result);
       const previous = remoteBodies.get(path);
       if (previous && !previous.equals(body))
         failures.push(`custom domains differ for ${path}`);
-      if (ok) remoteBodies.set(path, body);
+      remoteBodies.set(path, body);
     } catch (error) {
       results.push({
         origin: origin.id,
         path,
+        attempts: error.history?.length || 1,
+        attemptHistory: error.history || [],
+        lastResult: error.lastResult || null,
         ok: false,
         error: error.message,
       });
-      failures.push(`${origin.id} unavailable for ${path}: ${error.message}`);
+      failures.push(
+        `${origin.id} failed ${path} after ${error.history?.length || 1} attempt(s): ${JSON.stringify(error.lastResult || error.message)}`,
+      );
       originAvailable = false;
     }
   }

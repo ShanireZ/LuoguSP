@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  isResumablePublish,
   packageTextWithVersion,
   readmeTextWithVersion,
   userscriptMetadata,
@@ -78,6 +79,42 @@ test("publish helpers synchronize package and lockfile versions", () => {
   );
   assert.match(readme, /Version: 3\.0\.0/);
   assert.match(readme, /badge\/version-3\.0\.0-/);
+});
+
+test("publish resumes only the same blocked release after deployment started", () => {
+  assert.equal(
+    isResumablePublish(
+      {
+        status: "blocked",
+        release: "3.0.0",
+        deploymentStarted: true,
+      },
+      "3.0.0",
+    ),
+    true,
+  );
+  assert.equal(
+    isResumablePublish(
+      {
+        status: "blocked",
+        release: "3.0.0",
+        deploymentStarted: false,
+      },
+      "3.0.0",
+    ),
+    false,
+  );
+  assert.equal(
+    isResumablePublish(
+      {
+        status: "ready-for-browser-qa",
+        release: "3.0.0",
+        deploymentStarted: true,
+      },
+      "3.0.0",
+    ),
+    false,
+  );
 });
 
 test("publish promotion accepts only the verified compatibility runtime", () => {

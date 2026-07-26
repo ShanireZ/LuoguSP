@@ -11,18 +11,12 @@
 // @updateURL     https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js
 // @downloadURL   https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js
 // @grant        none
-// @require      https://spcdn.betaoi.cn/releases/2.13.0/compat/early-gate.3bf86a7d0658cf9c.js#sha256=3bf86a7d0658cf9cabbb789f96f19720663dfb32fce963e85a7a97f50e9b4f8e
+// @require      https://spcdn.betaoi.cn/releases/2.13.1/compat/early-gate.80b8fb715564d525.js#sha256=80b8fb715564d5259cccc9e64908de60255c3209668355403cbf9daa1f9ccbce
 // @require      https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
 // @require      https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js
 // @require      https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js
 // @require      https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js
-// @require      https://spcdn.betaoi.cn/releases/2.13.0/compat/runtime.dad6604731c7e837.js#sha256=dad6604731c7e837d932527d78c4f13aa5cfe85d60adbb29ff6ea76d570988e0
+// @require      https://spcdn.betaoi.cn/releases/2.13.1/compat/runtime.249d563c103523d8.js#sha256=249d563c103523d836966ff00662774fbd972b21f25f691651ab75d8f1b54dcd
 // @run-at       document-start
 // ==/UserScript==
-(() => {
-  var i = globalThis.__LUOGUSP_CDN_RUNTIME__;
-  (!i || i.apiVersion !== 1) &&
-    console.error(
-      "LuoguSP CDN runtime was not initialized. Please update or reinstall LuoguSP.",
-    );
-})();
+(()=>{var i=globalThis.__LUOGUSP_CDN_RUNTIME__;(!i||i.apiVersion!==1)&&console.error("LuoguSP CDN runtime was not initialized. Please update or reinstall LuoguSP.");})();

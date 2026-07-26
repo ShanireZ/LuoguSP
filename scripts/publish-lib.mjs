@@ -17,6 +17,15 @@ export function userscriptVersion(metadata) {
   return versions[0];
 }
 
+export function isResumablePublish(report, version) {
+  return Boolean(
+    report &&
+      report.status === "blocked" &&
+      report.release === version &&
+      report.deploymentStarted === true,
+  );
+}
+
 export function userscriptMetadata(artifact) {
   const source = String(artifact || "");
   const closing = "// ==/UserScript==";

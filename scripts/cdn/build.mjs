@@ -29,6 +29,7 @@ const argument = (name) => {
 };
 const version = argument("--version");
 const overwrite = process.argv.includes("--overwrite");
+const verifyExisting = process.argv.includes("--verify-existing");
 
 if (
   typeof version !== "string" ||
@@ -37,6 +38,8 @@ if (
   throw new Error(
     "Pass an immutable release version with --version, for example 2.13.0-canary.1",
   );
+if (overwrite && verifyExisting)
+  throw new Error("--overwrite and --verify-existing cannot be combined");
 
 const releaseDir = resolve(releasesRoot, version);
 if (
@@ -45,18 +48,27 @@ if (
 )
   throw new Error("Refusing to write outside cdn/releases");
 
+let releaseExists = false;
 try {
   await stat(releaseDir);
-  if (!overwrite)
+  releaseExists = true;
+  if (!overwrite && !verifyExisting)
     throw new Error(
       `CDN release ${version} already exists; release paths are immutable`,
     );
-  await rm(releaseDir, { recursive: true, force: true });
+  if (overwrite)
+    await rm(releaseDir, { recursive: true, force: true });
 } catch (error) {
   if (error.code !== "ENOENT") throw error;
 }
-await mkdir(releaseDir, { recursive: true });
-await mkdir(channelsRoot, { recursive: true });
+if (verifyExisting && !releaseExists)
+  throw new Error(
+    `Cannot resume CDN release ${version}: the local immutable release is missing`,
+  );
+if (!verifyExisting) {
+  await mkdir(releaseDir, { recursive: true });
+  await mkdir(channelsRoot, { recursive: true });
+}
 
 const digest = (body) =>
   createHash("sha256").update(body).digest("hex");
@@ -91,8 +103,10 @@ async function buildCompat(entryPoint, prefix) {
   const body = Buffer.from(result.outputFiles[0].contents);
   const relativePath =
     `compat/${prefix}.${digest(body).slice(0, 16)}.js`;
-  await mkdir(resolve(releaseDir, "compat"), { recursive: true });
-  await writeFile(resolve(releaseDir, relativePath), body);
+  if (!verifyExisting) {
+    await mkdir(resolve(releaseDir, "compat"), { recursive: true });
+    await writeFile(resolve(releaseDir, relativePath), body);
+  }
   return fileRecord(
     `releases/${version}/${relativePath}`,
     body,
@@ -147,11 +161,13 @@ for (const output of esmResult.outputFiles || []) {
   if (relativePath.startsWith("../"))
     throw new Error(`Unexpected ESM output path: ${output.path}`);
   const body = Buffer.from(output.contents);
-  await mkdir(
-    dirname(resolve(releaseDir, relativePath)),
-    { recursive: true },
-  );
-  await writeFile(resolve(releaseDir, relativePath), body);
+  if (!verifyExisting) {
+    await mkdir(
+      dirname(resolve(releaseDir, relativePath)),
+      { recursive: true },
+    );
+    await writeFile(resolve(releaseDir, relativePath), body);
+  }
   const deploymentPath = `releases/${version}/${relativePath}`;
   files[deploymentPath] = fileRecord(deploymentPath, body);
 }
@@ -176,11 +192,18 @@ for (const [outputPath, metadata] of Object.entries(
     )}`;
 }
 
+const existingManifestBody = verifyExisting
+  ? await readFile(resolve(releaseDir, "manifest.json"))
+  : null;
+const existingManifest = existingManifestBody
+  ? JSON.parse(existingManifestBody)
+  : null;
 const manifest = {
   schemaVersion: 1,
   release: version,
   loaderApiVersion: 1,
-  generatedAt: new Date().toISOString(),
+  generatedAt:
+    existingManifest?.generatedAt || new Date().toISOString(),
   origins: [
     config.origins.primary,
     config.origins.fallback,
@@ -196,6 +219,55 @@ const manifest = {
   },
   files,
 };
+if (verifyExisting) {
+  if (
+    JSON.stringify(existingManifest) !==
+    JSON.stringify(manifest)
+  )
+    throw new Error(
+      `Cannot resume CDN release ${version}: current source build differs from the existing immutable release; increase @version`,
+    );
+  for (const [deploymentPath, record] of Object.entries(files)) {
+    const localPath = resolve(root, "cdn", deploymentPath);
+    if (
+      localPath === releaseDir ||
+      !localPath.startsWith(`${releaseDir}${sep}`)
+    )
+      throw new Error(
+        `Cannot resume CDN release ${version}: manifest path escapes the release directory`,
+      );
+    const body = await readFile(localPath);
+    if (
+      body.length !== record.bytes ||
+      digest(body) !== record.sha256 ||
+      sri(body) !== record.sri
+    )
+      throw new Error(
+        `Cannot resume CDN release ${version}: local asset integrity failed for ${deploymentPath}`,
+      );
+  }
+  const existingManifestSha256 = digest(existingManifestBody);
+  const existingManifestPath =
+    `releases/${version}/manifest.${existingManifestSha256.slice(0, 16)}.json`;
+  const [pinnedManifest, channelBody] = await Promise.all([
+    readFile(resolve(root, "cdn", existingManifestPath)),
+    readFile(resolve(channelsRoot, "canary.json"), "utf8"),
+  ]);
+  const channel = JSON.parse(channelBody);
+  if (
+    !pinnedManifest.equals(existingManifestBody) ||
+    channel.release !== version ||
+    channel.manifestPath !== existingManifestPath ||
+    channel.manifestSha256 !== existingManifestSha256
+  )
+    throw new Error(
+      `Cannot resume CDN release ${version}: local manifest or canary channel integrity failed`,
+    );
+  console.log(
+    `Verified existing immutable CDN release ${version} against the current source build.`,
+  );
+  process.exit(0);
+}
 const manifestBody = Buffer.from(
   `${JSON.stringify(manifest, null, 2)}\n`,
 );

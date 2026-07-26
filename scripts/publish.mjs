@@ -10,6 +10,7 @@ import {
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  isResumablePublish,
   packageTextWithVersion,
   readmeTextWithVersion,
   userscriptVersion,
@@ -26,6 +27,14 @@ const readmePath = resolve(root, "README.md");
 const qualityReportPath = resolve(root, "reports/quality-report.json");
 const channelPath = resolve(root, "cdn/channels/canary.json");
 const reportPath = resolve(root, "reports/publish.json");
+const readJsonIfPresent = async (path) => {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+};
 const [
   initialMetadata,
   initialArtifact,
@@ -34,6 +43,7 @@ const [
   initialReadme,
   initialQualityReport,
   initialChannel,
+  previousReport,
 ] = await Promise.all([
   readFile(metadataPath, "utf8"),
   readFile(artifactPath, "utf8"),
@@ -42,6 +52,7 @@ const [
   readFile(readmePath, "utf8"),
   readFile(qualityReportPath, "utf8"),
   readFile(channelPath, "utf8"),
+  readJsonIfPresent(reportPath),
 ]);
 const version = userscriptVersion(initialArtifact);
 const sourceMetadataVersion = userscriptVersion(initialMetadata);
@@ -59,9 +70,13 @@ try {
   if (error.code === "ENOENT") releaseExists = false;
   else throw error;
 }
+const resumeMode =
+  releaseExists && isResumablePublish(previousReport, version);
 
 const steps = [
-  "build immutable CDN release",
+  resumeMode
+    ? "verify existing immutable CDN release against current source"
+    : "build immutable CDN release",
   "stage pinned userscript",
   "run pre-deployment tests",
   "deploy EdgeOne and Cloudflare",
@@ -77,7 +92,8 @@ if (planOnly) {
         versionSource: "LuoguSP.user.js",
         sourceMetadataVersion,
         releaseExists,
-        wouldPublish: !releaseExists,
+        mode: resumeMode ? "resume" : "new",
+        wouldPublish: !releaseExists || resumeMode,
         steps,
         commit: false,
         push: false,
@@ -89,7 +105,7 @@ if (planOnly) {
   );
   process.exit(0);
 }
-if (releaseExists)
+if (releaseExists && !resumeMode)
   {
     const message =
       `CDN release ${version} already exists. Increase @version before publishing; immutable releases are never overwritten.`;
@@ -154,8 +170,17 @@ const beginPhase = (value) => {
 };
 
 try {
-  beginPhase("build");
-  run(["scripts/cdn/build.mjs", "--version", version]);
+  beginPhase(
+    resumeMode
+      ? "verify existing immutable release"
+      : "build",
+  );
+  run([
+    "scripts/cdn/build.mjs",
+    "--version",
+    version,
+    ...(resumeMode ? ["--verify-existing"] : []),
+  ]);
   beginPhase("stage");
   run(["scripts/cdn/stage-userscript.mjs", "--version", version]);
   const stagedPath = resolve(
@@ -263,6 +288,7 @@ try {
     completedAt: new Date().toISOString(),
     status: "ready-for-browser-qa",
     release: version,
+    resumed: resumeMode,
     userscript: {
       bytes: promoted.bytes,
       sha256: promoted.sha256,
@@ -283,7 +309,7 @@ try {
   );
 } catch (error) {
   if (productionModified) await restoreProduction();
-  if (!deploymentStarted) {
+  if (!resumeMode && !deploymentStarted) {
     await rm(releaseDirectory, { recursive: true, force: true });
     await writeFile(channelPath, initialChannel, "utf8");
   }
@@ -297,7 +323,8 @@ try {
     command: error.command || null,
     exitCode: error.exitCode ?? null,
     productionRestored: productionModified,
-    deploymentStarted,
+    deploymentStarted: deploymentStarted || resumeMode,
+    resumed: resumeMode,
     commitPerformed: false,
     pushPerformed: false,
   });
