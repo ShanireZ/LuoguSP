@@ -1,9 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   resolveConfiguredOrigins,
 } from "../scripts/cdn/origin-policy.mjs";
 
+const root = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const config = {
   origins: {
     primary: "https://spcdn.betaoi.cn",
@@ -51,4 +58,21 @@ test("CDN tooling accepts only the two configured custom origins", () => {
       }),
     /clean HTTPS origin/,
   );
+});
+
+test("Cloudflare deployment keeps the workers.dev default domain disabled", async () => {
+  const wrangler = JSON.parse(
+    await readFile(
+      resolve(root, "deploy/cloudflare/wrangler.jsonc"),
+      "utf8",
+    ),
+  );
+  assert.equal(wrangler.workers_dev, false);
+  assert.equal(wrangler.preview_urls, false);
+  assert.deepEqual(wrangler.routes, [
+    {
+      pattern: "spcdn.betaoi.cc",
+      custom_domain: true,
+    },
+  ]);
 });

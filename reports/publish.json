@@ -1,0 +1,21 @@
+{
+  "startedAt": "2026-07-26T13:03:48.288Z",
+  "completedAt": "2026-07-26T13:04:48.951Z",
+  "status": "ready-for-browser-qa",
+  "release": "2.13.1",
+  "resumed": true,
+  "userscript": {
+    "bytes": 1608,
+    "sha256": "380e5bbed3e0a54a67d7f9108f6671e9a61f8709cd8c6107efd8ff84eb6dee82",
+    "requires": 6
+  },
+  "customOrigins": [
+    "https://spcdn.betaoi.cn",
+    "https://spcdn.betaoi.cc"
+  ],
+  "platformDefaultDomainsUsed": false,
+  "productionModified": true,
+  "commitPerformed": false,
+  "pushPerformed": false,
+  "browserQaRequiredBeforeCommit": true
+}

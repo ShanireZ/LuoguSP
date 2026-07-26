@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-07-26T07:33:38.499Z",
+  "generatedAt": "2026-07-26T13:04:48.533Z",
   "artifact": {
-    "sha256": "ee44b5226850d6efd286537f342f88dd71ab16a8bf03ed7b1e1bc4b0088a402d",
+    "sha256": "380e5bbed3e0a54a67d7f9108f6671e9a61f8709cd8c6107efd8ff84eb6dee82",
     "bytes": 1608,
-    "gzipBytes": 867,
+    "gzipBytes": 870,
     "lines": 23,
     "parseMedianMs": 0.0015000000000000568
   },
@@ -19,10 +19,10 @@
     "totalGzipBytes": 176160,
     "resources": [
       {
-        "url": "https://spcdn.betaoi.cn/releases/2.13.0/compat/early-gate.3bf86a7d0658cf9c.js#sha256=3bf86a7d0658cf9cabbb789f96f19720663dfb32fce963e85a7a97f50e9b4f8e",
+        "url": "https://spcdn.betaoi.cn/releases/2.13.1/compat/early-gate.80b8fb715564d525.js#sha256=80b8fb715564d5259cccc9e64908de60255c3209668355403cbf9daa1f9ccbce",
         "bytes": 2896,
         "gzipBytes": 1464,
-        "sha256": "3bf86a7d0658cf9cabbb789f96f19720663dfb32fce963e85a7a97f50e9b4f8e"
+        "sha256": "80b8fb715564d5259cccc9e64908de60255c3209668355403cbf9daa1f9ccbce"
       },
       {
         "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
@@ -49,10 +49,10 @@
         "sha256": "c4a399dd6f488bc97a3546e3476747b3e714c99c57b9473154c6fb8d259b9381"
       },
       {
-        "url": "https://spcdn.betaoi.cn/releases/2.13.0/compat/runtime.dad6604731c7e837.js#sha256=dad6604731c7e837d932527d78c4f13aa5cfe85d60adbb29ff6ea76d570988e0",
+        "url": "https://spcdn.betaoi.cn/releases/2.13.1/compat/runtime.249d563c103523d8.js#sha256=249d563c103523d836966ff00662774fbd972b21f25f691651ab75d8f1b54dcd",
         "bytes": 87334,
         "gzipBytes": 30761,
-        "sha256": "dad6604731c7e837d932527d78c4f13aa5cfe85d60adbb29ff6ea76d570988e0"
+        "sha256": "249d563c103523d836966ff00662774fbd972b21f25f691651ab75d8f1b54dcd"
       }
     ],
     "measuredOnline": true
