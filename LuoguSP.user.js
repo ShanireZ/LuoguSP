@@ -2452,7 +2452,7 @@
   }
 
   // src/features/restricted-content/document-committer.js
-  function serializeJsonForScript2(value) {
+  function serializeJsonForScript(value) {
     return JSON.stringify(value).replace(/</g, "\\u003C");
   }
   function createRestrictedDocumentCommitter(config) {
