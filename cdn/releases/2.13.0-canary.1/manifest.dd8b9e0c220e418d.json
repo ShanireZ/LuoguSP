@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "release": "2.13.0-canary.1",
+  "loaderApiVersion": 1,
+  "generatedAt": "2026-07-26T06:20:32.993Z",
+  "origins": [
+    "https://cdn.betaoi.cn",
+    "https://cdn.betaoi.cc"
+  ],
+  "compat": {
+    "earlyGate": {
+      "path": "releases/2.13.0-canary.1/compat/early-gate.9a1823ec43b6f09d.js",
+      "bytes": 2905,
+      "sha256": "9a1823ec43b6f09d67d464970358fe11b7393b8c6946fa984f4b093cd5197400",
+      "sri": "sha256-mhgj7EO28J1n1GSXA1j+Ebc5O4xpRvqYT0sJPNUZdAA="
+    },
+    "runtime": {
+      "path": "releases/2.13.0-canary.1/compat/runtime.3924c7aeb41bd937.js",
+      "bytes": 87343,
+      "sha256": "3924c7aeb41bd937b13d3652b754fbc9dfe3c4f38a50238a9c992b47bcb3b99f",
+      "sri": "sha256-OSTHrrQb2TexPTZSt1T7yd/jxPOKUCOKnJkrR7yzuZ8="
+    }
+  },
+  "esm": {
+    "enabled": false,
+    "status": "canary",
+    "entries": {
+      "restricted-content": "releases/2.13.0-canary.1/esm/restricted-content-DD4PKHKP.js",
+      "canary-loader": "releases/2.13.0-canary.1/esm/canary-loader-3ML5HUR5.js",
+      "early-gate-api": "releases/2.13.0-canary.1/esm/early-gate-api-HAJ35GVC.js",
+      "app-core": "releases/2.13.0-canary.1/esm/app-core-OSSMTRES.js",
+      "settings": "releases/2.13.0-canary.1/esm/settings-OOQUXAWM.js",
+      "problem-color": "releases/2.13.0-canary.1/esm/problem-color-WHJFUYKW.js",
+      "chat-shortcut": "releases/2.13.0-canary.1/esm/chat-shortcut-3SB6G7HS.js",
+      "hidden-intro": "releases/2.13.0-canary.1/esm/hidden-intro-E5SZKQXM.js",
+      "ide-batch": "releases/2.13.0-canary.1/esm/ide-batch-JTBEEUH4.js"
+    }
+  },
+  "files": {
+    "releases/2.13.0-canary.1/compat/early-gate.9a1823ec43b6f09d.js": {
+      "path": "releases/2.13.0-canary.1/compat/early-gate.9a1823ec43b6f09d.js",
+      "bytes": 2905,
+      "sha256": "9a1823ec43b6f09d67d464970358fe11b7393b8c6946fa984f4b093cd5197400",
+      "sri": "sha256-mhgj7EO28J1n1GSXA1j+Ebc5O4xpRvqYT0sJPNUZdAA="
+    },
+    "releases/2.13.0-canary.1/compat/runtime.3924c7aeb41bd937.js": {
+      "path": "releases/2.13.0-canary.1/compat/runtime.3924c7aeb41bd937.js",
+      "bytes": 87343,
+      "sha256": "3924c7aeb41bd937b13d3652b754fbc9dfe3c4f38a50238a9c992b47bcb3b99f",
+      "sri": "sha256-OSTHrrQb2TexPTZSt1T7yd/jxPOKUCOKnJkrR7yzuZ8="
+    },
+    "releases/2.13.0-canary.1/esm/restricted-content-DD4PKHKP.js": {
+      "path": "releases/2.13.0-canary.1/esm/restricted-content-DD4PKHKP.js",
+      "bytes": 29010,
+      "sha256": "934aeb2211792d3cb93f70c66e85d9be7ec42cfb56e346b28275268bd0df6e01",
+      "sri": "sha256-k0rrIhF5LTy5P3DGboXZvn7ELPtW40aygnUmi9DfbgE="
+    },
+    "releases/2.13.0-canary.1/esm/canary-loader-3ML5HUR5.js": {
+      "path": "releases/2.13.0-canary.1/esm/canary-loader-3ML5HUR5.js",
+      "bytes": 2677,
+      "sha256": "703a6a9ed2cdbd4af3e4e1e896d1d525ee46e1ca2fee8f1b48e747521bdb6985",
+      "sri": "sha256-cDpqntLNvUrz5OHoltHVJe5G4cov7o8bSOdHUhvbaYU="
+    },
+    "releases/2.13.0-canary.1/esm/early-gate-api-HAJ35GVC.js": {
+      "path": "releases/2.13.0-canary.1/esm/early-gate-api-HAJ35GVC.js",
+      "bytes": 2787,
+      "sha256": "fdb5369424be9b60f12c676241c91724f2d9690d23a4869923fa4dd3105323a5",
+      "sri": "sha256-/bU2lCS+m2DxLGdiQckXJPLZaQ0jpIaZI/pN0xBTI6U="
+    },
+    "releases/2.13.0-canary.1/esm/app-core-OSSMTRES.js": {
+      "path": "releases/2.13.0-canary.1/esm/app-core-OSSMTRES.js",
+      "bytes": 3494,
+      "sha256": "6085adb9db95ccadb5417df0487c9a6a07a85761fabe6644d17b2e989893b16a",
+      "sri": "sha256-YIWtuduVzK21QX3wSHyaageoV2H6vmZE0XsumJiTsWo="
+    },
+    "releases/2.13.0-canary.1/esm/settings-OOQUXAWM.js": {
+      "path": "releases/2.13.0-canary.1/esm/settings-OOQUXAWM.js",
+      "bytes": 6112,
+      "sha256": "78330babc6f45e5f6a31b6a630df9fb17e2e9dfd94992b3ec8e0c2f323f33042",
+      "sri": "sha256-eDMLq8b0Xl9qMbamMN+fsX4unf2UmSs+yODC8yPzMEI="
+    },
+    "releases/2.13.0-canary.1/esm/problem-color-WHJFUYKW.js": {
+      "path": "releases/2.13.0-canary.1/esm/problem-color-WHJFUYKW.js",
+      "bytes": 9381,
+      "sha256": "04c96743030bf811e5167604cc7d560b32d5ac7795b452ee016738f14482a69a",
+      "sri": "sha256-BMlnQwML+BHlFnYEzH1WCzLVrHeVtFLuAWc48USCppo="
+    },
+    "releases/2.13.0-canary.1/esm/chat-shortcut-3SB6G7HS.js": {
+      "path": "releases/2.13.0-canary.1/esm/chat-shortcut-3SB6G7HS.js",
+      "bytes": 2049,
+      "sha256": "1742fab67854c901a23ef0740347831c28d62cccde4b79690dcc4f78250dcf3c",
+      "sri": "sha256-F0L6tnhUyQGiPvB0A0eDHCjWLMzeS3lpDcxPeCUNzzw="
+    },
+    "releases/2.13.0-canary.1/esm/hidden-intro-E5SZKQXM.js": {
+      "path": "releases/2.13.0-canary.1/esm/hidden-intro-E5SZKQXM.js",
+      "bytes": 11547,
+      "sha256": "85ec930a9adabdba706e2dc64194d850c0ad6945cd3b500e6079b4d5f5fdb453",
+      "sri": "sha256-heyTCpravbpwbi3GQZTYUMCtaUXNO1AOYHm01fX9tFM="
+    },
+    "releases/2.13.0-canary.1/esm/ide-batch-JTBEEUH4.js": {
+      "path": "releases/2.13.0-canary.1/esm/ide-batch-JTBEEUH4.js",
+      "bytes": 20052,
+      "sha256": "5203f5e33a53e36e08e7dc42cc9f6475b932fba479e5430f78ad8a2bb273f6ef",
+      "sri": "sha256-UgP14zpT424I59xCzJ9kdbky+6R55UMPeK2KK7Jz9u8="
+    },
+    "releases/2.13.0-canary.1/esm/chunks/chunk-PQ6PWWZS.js": {
+      "path": "releases/2.13.0-canary.1/esm/chunks/chunk-PQ6PWWZS.js",
+      "bytes": 1314,
+      "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
+      "sri": "sha256-qDUQG55TqcNS9yD/+j6jQaFdjsUCi3WOlGmxtXb0A9E="
+    },
+    "releases/2.13.0-canary.1/esm/chunks/chunk-V7FYNATP.js": {
+      "path": "releases/2.13.0-canary.1/esm/chunks/chunk-V7FYNATP.js",
+      "bytes": 342,
+      "sha256": "8cbdb457fff355ba763f8e8606f5a48903a7dba84377787a34a5ff0583c7936f",
+      "sri": "sha256-jL20V//zVbp2P46GBvWkiQOn26hDd3h6NKX/BYPHk28="
+    }
+  }
+}

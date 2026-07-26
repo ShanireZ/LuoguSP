@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "projects": {
+    "edgeone": "luogusp-cdn",
+    "cloudflare": "luogusp-cdn"
+  },
+  "origins": {
+    "primary": "https://spcdn.betaoi.cn",
+    "fallback": "https://spcdn.betaoi.cc"
+  },
+  "cli": {
+    "edgeone": "1.6.11",
+    "wrangler": "4.107.0"
+  }
+}

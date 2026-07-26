@@ -6,25 +6,58 @@ import { build } from "esbuild";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(root, "LuoguSP.user.js");
 const metadataPath = resolve(root, "src/userscript.meta.js");
+const configPath = resolve(root, "config/cdn.json");
 const checkOnly = process.argv.includes("--check");
 
-const metadata = (await readFile(metadataPath, "utf8")).trimEnd();
+const [metadataText, configText] = await Promise.all([
+  readFile(metadataPath, "utf8"),
+  readFile(configPath, "utf8"),
+]);
+const metadata = metadataText.trimEnd();
+const config = JSON.parse(configText);
 if (
   !metadata.startsWith("// ==UserScript==") ||
   !metadata.endsWith("// ==/UserScript==")
 )
   throw new Error("src/userscript.meta.js must contain one userscript header");
 
+const requireUrls = [
+  ...metadata.matchAll(/^\/\/ @require\s+(\S+)$/gm),
+].map((match) => match[1]);
+const primaryOrigin = new URL(config.origins.primary).origin;
+const firstPartyRequires = requireUrls.filter((value) => {
+  const url = new URL(value);
+  return (
+    url.origin === primaryOrigin &&
+    url.pathname.startsWith("/releases/")
+  );
+});
+if (![0, 2].includes(firstPartyRequires.length))
+  throw new Error(
+    "Production metadata must contain zero or two first-party CDN @require entries",
+  );
+if (
+  firstPartyRequires.some(
+    (value) => !/#sha256=[a-f0-9]{64}$/.test(value),
+  )
+)
+  throw new Error("First-party CDN @require entries must pin SHA-256");
+const cdnBacked = firstPartyRequires.length === 2;
+const entryPoint = cdnBacked
+  ? "src/cdn/loader-entry.js"
+  : "src/entry.js";
+
 const result = await build({
   absWorkingDir: root,
-  entryPoints: ["src/entry.js"],
+  entryPoints: [entryPoint],
   outfile: "LuoguSP.user.js",
   bundle: true,
   format: "iife",
   platform: "browser",
   charset: "utf8",
-  legalComments: "inline",
-  treeShaking: false,
+  legalComments: cdnBacked ? "none" : "inline",
+  minify: cdnBacked,
+  treeShaking: cdnBacked,
   banner: { js: metadata },
   metafile: true,
   write: false,
@@ -46,5 +79,5 @@ if (checkOnly) {
   }
 } else {
   await writeFile(outputPath, generated);
-  console.log("Built LuoguSP.user.js from src/entry.js.");
+  console.log(`Built LuoguSP.user.js from ${entryPoint}.`);
 }

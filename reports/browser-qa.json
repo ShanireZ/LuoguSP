@@ -1,38 +1,39 @@
 {
-  "checkedAt": "2026-07-26T12:27:31+08:00",
+  "checkedAt": "2026-07-26T15:31:20+08:00",
   "browser": "Codex in-app Chromium",
-  "artifactSha256": "723a5e966b74260da167abeefe1538ab20151c23c3858fa97d5e28fdc93780ad",
+  "artifactSha256": "ee44b5226850d6efd286537f342f88dd71ab16a8bf03ed7b1e1bc4b0088a402d",
+  "artifactBytes": 1608,
   "injection": {
     "method": "Runtime.evaluate after DOMContentLoaded",
-    "payload": "four pinned @require resources followed by LuoguSP.user.js",
+    "payload": "two pinned first-party compatibility files and four pinned third-party @require resources in production metadata order, followed by LuoguSP.user.js",
     "networkIncluded": false
   },
   "startupMeasurements": [
     {
-      "route": "/",
-      "ms": 18.5
+      "route": "/problem/P1001",
+      "ms": 19.1
     },
     {
       "route": "/problem/list",
-      "ms": 20.3
-    },
-    {
-      "route": "/user/3",
-      "ms": 17.7
+      "ms": 4
     }
   ],
   "checks": {
+    "runtimeMarker": {
+      "apiVersion": 1,
+      "release": "2.13.0"
+    },
+    "earlyGateMarker": {
+      "apiVersion": 1,
+      "release": "2.13.0"
+    },
     "settingsEntryCount": 1,
     "settingsFeatureCount": 5,
     "settingsDefaultsEnabled": true,
-    "problemPid": "P1001",
-    "problemColor": "rgb(254, 76, 97)",
-    "spaRoute": "/user/3 -> /user/3/activity -> /user/3",
-    "spaIntroCardCountOnActivity": 1,
-    "spaIntroCardCountAfterReturn": 0,
-    "spaSettingsEntryCount": 1,
-    "spaStyleCount": 3,
+    "problemListP1001Title": "A+B Problem",
+    "problemListP1001Color": "rgb(52, 152, 219)",
     "restrictedArticle": "9vrutkkt",
+    "restrictedInitialTitle": "安全访问中心 - 洛谷",
     "restrictedArticleTitle": "Luogu Saver Bot选择指北 - 洛谷专栏",
     "restrictedArticleNativeShell": true,
     "restrictedArticleFailureCard": false,
@@ -40,15 +41,16 @@
       "申请更新",
       "国际站原文"
     ],
-    "restrictedArticleCommentLoaded": true
+    "restrictedEarlyGateReleased": true
   },
   "console": {
     "luoguSpErrorCount": 0,
     "siteErrorCount": 0,
-    "siteErrorSummary": "No console errors or warnings were observed in the refreshed baseline and restricted-article passes."
+    "siteWarningCount": 0,
+    "siteErrorSummary": "No console errors or warnings were observed in the production-order problem-list or restricted-article passes."
   },
   "limitations": [
-    "The in-app browser cannot install the userscript extension or inject at document-start; loading-gate first paint remains covered by source tests.",
+    "The in-app browser cannot install the userscript extension. The exact production @require byte sequence and root artifact were injected after DOMContentLoaded; the restricted early gate was activated immediately on the real safety interstitial before the compatibility runtime restored the article.",
     "IDE batch execution and private-message Ctrl+Click require authenticated or route-specific fixtures and were not exercised in this signed-out browser pass."
   ]
 }

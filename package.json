@@ -1,6 +1,6 @@
 {
   "name": "luogusp",
-  "version": "2.12.5",
+  "version": "2.13.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,12 @@
     "qa:prepare": "node scripts/prepare-browser-qa.mjs",
     "benchmark:origins": "node scripts/benchmark-origins.mjs --write-report",
     "analyze:chunks": "node scripts/analyze-cdn-chunks.mjs --write-report",
+    "cdn:build": "node scripts/cdn/build.mjs",
+    "cdn:prepare": "node scripts/cdn/prepare.mjs",
+    "cdn:publish": "node scripts/cdn/publish.mjs",
+    "cdn:stage-userscript": "node scripts/cdn/stage-userscript.mjs",
+    "cdn:verify": "node scripts/cdn/verify.mjs",
+    "cdn:verify-production": "node scripts/cdn/verify-production.mjs",
     "check": "npm run build:check && npm run quality:check && npm test"
   },
   "devDependencies": {
