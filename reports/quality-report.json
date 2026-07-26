@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-07-26T03:43:28.263Z",
+  "generatedAt": "2026-07-26T04:30:42.375Z",
   "artifact": {
-    "sha256": "a9d6ef2acb9bb56f35745b9de5d09bd4665b6bc0e50ee3fab8f670abcab4fff0",
-    "bytes": 164402,
-    "gzipBytes": 40496,
+    "sha256": "723a5e966b74260da167abeefe1538ab20151c23c3858fa97d5e28fdc93780ad",
+    "bytes": 164401,
+    "gzipBytes": 40495,
     "lines": 4029,
-    "parseMedianMs": 0.0015000000000000568
+    "parseMedianMs": 0.0020999999999986585
   },
   "browserQa": {
-    "checkedAt": "2026-07-26T11:40:00+08:00",
-    "artifactSha256": "a9d6ef2acb9bb56f35745b9de5d09bd4665b6bc0e50ee3fab8f670abcab4fff0",
-    "maxStartupMs": 19.2,
+    "checkedAt": "2026-07-26T12:27:31+08:00",
+    "artifactSha256": "723a5e966b74260da167abeefe1538ab20151c23c3858fa97d5e28fdc93780ad",
+    "maxStartupMs": 20.3,
     "luoguSpConsoleErrorCount": 0
   },
   "requires": {
@@ -43,7 +43,7 @@
   },
   "architecture": {
     "createAppLines": 128,
-    "maxFeatureFileLines": 799,
+    "maxFeatureFileLines": 802,
     "coreBrowserGlobalReferences": [],
     "featureDirectories": {
       "chat-shortcut": {
@@ -80,9 +80,9 @@
       },
       "restricted-content": {
         "files": 12,
-        "bytes": 61572,
-        "lines": 1599,
-        "nonBlankLines": 1561,
+        "bytes": 61601,
+        "lines": 1602,
+        "nonBlankLines": 1564,
         "functions": 205,
         "branchPoints": 404
       },
@@ -243,9 +243,9 @@
     },
     {
       "path": "src/features/restricted-content/feature.js",
-      "bytes": 35965,
-      "lines": 799,
-      "nonBlankLines": 782,
+      "bytes": 35994,
+      "lines": 802,
+      "nonBlankLines": 785,
       "functions": 84,
       "branchPoints": 155
     },

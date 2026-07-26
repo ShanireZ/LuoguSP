@@ -1,7 +1,7 @@
 {
-  "checkedAt": "2026-07-26T11:40:00+08:00",
+  "checkedAt": "2026-07-26T12:27:31+08:00",
   "browser": "Codex in-app Chromium",
-  "artifactSha256": "a9d6ef2acb9bb56f35745b9de5d09bd4665b6bc0e50ee3fab8f670abcab4fff0",
+  "artifactSha256": "723a5e966b74260da167abeefe1538ab20151c23c3858fa97d5e28fdc93780ad",
   "injection": {
     "method": "Runtime.evaluate after DOMContentLoaded",
     "payload": "four pinned @require resources followed by LuoguSP.user.js",
@@ -10,15 +10,15 @@
   "startupMeasurements": [
     {
       "route": "/",
-      "ms": 19.2
+      "ms": 18.5
     },
     {
       "route": "/problem/list",
-      "ms": 5.6
+      "ms": 20.3
     },
     {
       "route": "/user/3",
-      "ms": 5.9
+      "ms": 17.7
     }
   ],
   "checks": {
@@ -31,15 +31,24 @@
     "spaIntroCardCountOnActivity": 1,
     "spaIntroCardCountAfterReturn": 0,
     "spaSettingsEntryCount": 1,
-    "spaStyleCount": 3
+    "spaStyleCount": 3,
+    "restrictedArticle": "9vrutkkt",
+    "restrictedArticleTitle": "Luogu Saver Bot选择指北 - 洛谷专栏",
+    "restrictedArticleNativeShell": true,
+    "restrictedArticleFailureCard": false,
+    "restrictedArticleActions": [
+      "申请更新",
+      "国际站原文"
+    ],
+    "restrictedArticleCommentLoaded": true
   },
   "console": {
     "luoguSpErrorCount": 0,
-    "siteErrorCount": 2,
-    "siteErrorSummary": "Luogu reported its expected unauthenticated API error in the signed-out test session."
+    "siteErrorCount": 0,
+    "siteErrorSummary": "No console errors or warnings were observed in the refreshed baseline and restricted-article passes."
   },
   "limitations": [
     "The in-app browser cannot install the userscript extension or inject at document-start; loading-gate first paint remains covered by source tests.",
-    "IDE batch execution, private-message Ctrl+Click, and restricted-document reconstruction require authenticated or route-specific fixtures and were not exercised in this signed-out public-page pass."
+    "IDE batch execution and private-message Ctrl+Click require authenticated or route-specific fixtures and were not exercised in this signed-out browser pass."
   ]
 }
