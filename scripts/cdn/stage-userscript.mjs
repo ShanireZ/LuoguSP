@@ -6,6 +6,7 @@ import {
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { resolveBootstrapOrigin } from "./origin-policy.mjs";
 import { createStagedMetadata } from "./userscript-stage-lib.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -38,7 +39,7 @@ const budget = JSON.parse(budgetText);
 const staged = createStagedMetadata({
   metadata,
   version,
-  primaryOrigin: config.origins.primary,
+  compatibilityOrigin: resolveBootstrapOrigin(config),
   manifest,
   thirdPartyRequireUrls: budget.requires.resources.map(
     (resource) => resource.url,

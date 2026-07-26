@@ -95,14 +95,14 @@ test("release metadata, README badge and update endpoints stay aligned", () => {
   assert.equal(metadata.get("downloadURL"), metadata.get("updateURL"));
 });
 
-test("runtime dependencies pin EdgeOne compatibility files around third-party UI libraries", () => {
+test("runtime dependencies pin bootstrap compatibility files around third-party UI libraries", () => {
   const requires = [
     ...script.matchAll(/^\/\/ @require\s+(\S+)$/gm),
   ].map((match) => match[1]);
   const compatibilityUrl = (file) =>
     `${new URL(
       file.path,
-      `${cdnConfig.origins.primary.replace(/\/+$/, "")}/`,
+      `${cdnConfig.origins.bootstrap.replace(/\/+$/, "")}/`,
     )}#sha256=${file.sha256}`;
   assert.deepEqual(requires, [
     compatibilityUrl(releaseManifest.compat.earlyGate),
@@ -113,7 +113,15 @@ test("runtime dependencies pin EdgeOne compatibility files around third-party UI
   ]);
   assert.equal(Buffer.byteLength(script) <= 5000, true);
   assert.equal(script.includes("/channels/"), false);
-  assert.equal(script.includes(cdnConfig.origins.fallback), false);
+  const nonBootstrapOrigin = [
+    cdnConfig.origins.primary,
+    cdnConfig.origins.fallback,
+  ].find(
+    (origin) =>
+      new URL(origin).origin !==
+      new URL(cdnConfig.origins.bootstrap).origin,
+  );
+  assert.equal(script.includes(nonBootstrapOrigin), false);
 });
 
 test("restricted first paint stays covered until native page anchors are ready", () => {

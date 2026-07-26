@@ -15,13 +15,14 @@ export function createStagedMetadata(options) {
   const {
     metadata,
     version,
-    primaryOrigin,
+    compatibilityOrigin,
     manifest,
     thirdPartyRequireUrls,
   } = options || {};
   if (
     typeof metadata !== "string" ||
     !/^\d+\.\d+\.\d+$/.test(version || "") ||
+    typeof compatibilityOrigin !== "string" ||
     !Array.isArray(thirdPartyRequireUrls) ||
     thirdPartyRequireUrls.length !== 4
   )
@@ -70,10 +71,13 @@ export function createStagedMetadata(options) {
 
   const firstParty = {
     earlyGate: requireUrl(
-      primaryOrigin,
+      compatibilityOrigin,
       manifest.compat.earlyGate,
     ),
-    runtime: requireUrl(primaryOrigin, manifest.compat.runtime),
+    runtime: requireUrl(
+      compatibilityOrigin,
+      manifest.compat.runtime,
+    ),
   };
   const requires = [
     firstParty.earlyGate,

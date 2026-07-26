@@ -5,8 +5,14 @@
     "cloudflare": "luogusp-cdn"
   },
   "origins": {
-    "primary": "https://spcdn.betaoi.cn",
-    "fallback": "https://spcdn.betaoi.cc"
+    "primary": "https://spcdn.betaoi.cc",
+    "fallback": "https://spcdn.betaoi.cn",
+    "bootstrap": "https://spcdn.betaoi.cc"
+  },
+  "verification": {
+    "requiredOriginIds": [
+      "primary"
+    ]
   },
   "cli": {
     "edgeone": "1.6.11",

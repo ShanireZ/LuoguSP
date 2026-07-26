@@ -32,11 +32,11 @@ const manifest = {
   esm: { enabled: false },
 };
 
-test("staged userscript pins EdgeOne compatibility files around third-party requires", () => {
+test("staged userscript pins the bootstrap compatibility files around third-party requires", () => {
   const staged = createStagedMetadata({
     metadata,
     version: "2.13.0",
-    primaryOrigin: "https://spcdn.betaoi.cn",
+    compatibilityOrigin: "https://spcdn.betaoi.cc",
     manifest,
     thirdPartyRequireUrls: thirdParty,
   });
@@ -44,15 +44,15 @@ test("staged userscript pins EdgeOne compatibility files around third-party requ
   assert.equal(staged.requires.length, 6);
   assert.equal(
     staged.requires[0],
-    `https://spcdn.betaoi.cn/releases/2.13.0/compat/early.js#sha256=${sha}`,
+    `https://spcdn.betaoi.cc/releases/2.13.0/compat/early.js#sha256=${sha}`,
   );
   assert.deepEqual(staged.requires.slice(1, 5), thirdParty);
   assert.equal(
     staged.requires[5],
-    `https://spcdn.betaoi.cn/releases/2.13.0/compat/runtime.js#sha256=${sha}`,
+    `https://spcdn.betaoi.cc/releases/2.13.0/compat/runtime.js#sha256=${sha}`,
   );
   assert.equal(staged.metadata.includes("/channels/"), false);
-  assert.equal(staged.metadata.includes("spcdn.betaoi.cc"), false);
+  assert.equal(staged.metadata.includes("spcdn.betaoi.cn"), false);
 });
 
 test("staging refuses a dynamic ESM manifest or changed third-party requires", () => {
@@ -61,7 +61,7 @@ test("staging refuses a dynamic ESM manifest or changed third-party requires", (
       createStagedMetadata({
         metadata,
         version: "2.13.0",
-        primaryOrigin: "https://spcdn.betaoi.cn",
+        compatibilityOrigin: "https://spcdn.betaoi.cc",
         manifest: {
           ...manifest,
           esm: { enabled: true },
@@ -75,7 +75,7 @@ test("staging refuses a dynamic ESM manifest or changed third-party requires", (
       createStagedMetadata({
         metadata: metadata.replace(thirdParty[0], "https://changed.example"),
         version: "2.13.0",
-        primaryOrigin: "https://spcdn.betaoi.cn",
+        compatibilityOrigin: "https://spcdn.betaoi.cc",
         manifest,
         thirdPartyRequireUrls: thirdParty,
       }),
@@ -96,7 +96,7 @@ test("staging replaces an existing compatibility pair for the next stable releas
   const staged = createStagedMetadata({
     metadata: productionMetadata,
     version: "2.13.0",
-    primaryOrigin: "https://spcdn.betaoi.cn",
+    compatibilityOrigin: "https://spcdn.betaoi.cc",
     manifest,
     thirdPartyRequireUrls: thirdParty,
   });

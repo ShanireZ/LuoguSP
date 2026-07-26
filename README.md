@@ -2,7 +2,7 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.13.2](https://img.shields.io/badge/version-2.13.2-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+[![Version: 2.13.4](https://img.shields.io/badge/version-2.13.4-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
 LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信、用户个人页、IDE 模式、受限文章与剪贴板提供实用增强。
 

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resolveBootstrapOrigin } from "./cdn/origin-policy.mjs";
 
 const VERSION_PATTERN = /^\/\/ @version\s+(\S+)$/gm;
 const REQUIRE_PATTERN = /^\/\/ @require\s+(\S+)$/gm;
@@ -88,14 +89,15 @@ export function verifyStagedActivation(options) {
   const requires = [
     ...metadata.matchAll(REQUIRE_PATTERN),
   ].map((match) => match[1]);
+  const bootstrapOrigin = resolveBootstrapOrigin(config);
   const expected = [
     compatibilityUrl(
-      config.origins.primary,
+      bootstrapOrigin,
       manifest.compat.earlyGate,
     ),
     ...thirdPartyRequireUrls,
     compatibilityUrl(
-      config.origins.primary,
+      bootstrapOrigin,
       manifest.compat.runtime,
     ),
   ];
@@ -103,12 +105,21 @@ export function verifyStagedActivation(options) {
     throw new Error(
       "Staged userscript does not pin the verified compatibility runtime",
     );
+  const nonBootstrapOrigins = [
+    config.origins.primary,
+    config.origins.fallback,
+  ].filter(
+    (origin) =>
+      new URL(origin).origin !== new URL(bootstrapOrigin).origin,
+  );
   if (
-    String(artifact).includes(config.origins.fallback) ||
+    nonBootstrapOrigins.some((origin) =>
+      String(artifact).includes(origin),
+    ) ||
     String(artifact).includes("/channels/")
   )
     throw new Error(
-      "Staged userscript must not execute fallback or mutable channel code",
+      "Staged userscript must not execute the non-bootstrap origin or mutable channel code",
     );
   const bytes = Buffer.byteLength(String(artifact));
   if (bytes > 5000)

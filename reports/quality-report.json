@@ -1,21 +1,19 @@
 {
-  "generatedAt": "2026-07-26T13:44:37.506Z",
+  "generatedAt": "2026-07-26T14:13:54.132Z",
   "artifact": {
-    "sha256": "04056ff7421052224dddae81cd1553019286a0b4ec8dcde2494cf4b5460f0127",
+    "sha256": "2c3f91aa54fb3d8453eefe7a4dabd62f8e25f654b7a981fc283889c66b138e55",
     "bytes": 1608,
-    "gzipBytes": 869,
+    "gzipBytes": 864,
     "lines": 23,
-    "parseMedianMs": 0.0015000000000000568
+    "parseMedianMs": 0.0015999999999998238
   },
   "browserQa": {
-    "status": "blocked",
-    "checkedAt": "2026-07-26T21:26:04+08:00",
-    "artifactSha256": "380e5bbed3e0a54a67d7f9108f6671e9a61f8709cd8c6107efd8ff84eb6dee82",
-    "maxStartupMs": 15.8,
+    "status": "passed",
+    "checkedAt": "2026-07-26T21:48:57+08:00",
+    "artifactSha256": "04056ff7421052224dddae81cd1553019286a0b4ec8dcde2494cf4b5460f0127",
+    "maxStartupMs": 21.3,
     "luoguSpConsoleErrorCount": 0,
-    "failures": [
-      "The problem list leaves P1001 at the native default color and does not add data-luogusp-pid."
-    ]
+    "failures": []
   },
   "requires": {
     "count": 6,
@@ -23,10 +21,10 @@
     "totalGzipBytes": 176465,
     "resources": [
       {
-        "url": "https://spcdn.betaoi.cn/releases/2.13.2/compat/early-gate.1c89b2903d361d85.js#sha256=1c89b2903d361d85619681922299914b7ea6822b7c952a72608043c27b741f4c",
+        "url": "https://spcdn.betaoi.cc/releases/2.13.4/compat/early-gate.a0878787fac36ed8.js#sha256=a0878787fac36ed8d3d8ede32ee3251a401d1766adc25e164c3637108eae1342",
         "bytes": 2896,
         "gzipBytes": 1464,
-        "sha256": "1c89b2903d361d85619681922299914b7ea6822b7c952a72608043c27b741f4c"
+        "sha256": "a0878787fac36ed8d3d8ede32ee3251a401d1766adc25e164c3637108eae1342"
       },
       {
         "url": "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
@@ -53,10 +51,10 @@
         "sha256": "c4a399dd6f488bc97a3546e3476747b3e714c99c57b9473154c6fb8d259b9381"
       },
       {
-        "url": "https://spcdn.betaoi.cn/releases/2.13.2/compat/runtime.61241a62869decdd.js#sha256=61241a62869decdd318ecc634671c71496604f3becbdf86ece8a19f6eb350621",
+        "url": "https://spcdn.betaoi.cc/releases/2.13.4/compat/runtime.079aea3485210c27.js#sha256=079aea3485210c27cd42c06390fcc264adcadb4214cdbff60ac9d0cea25eff54",
         "bytes": 88498,
         "gzipBytes": 31066,
-        "sha256": "61241a62869decdd318ecc634671c71496604f3becbdf86ece8a19f6eb350621"
+        "sha256": "079aea3485210c27cd42c06390fcc264adcadb4214cdbff60ac9d0cea25eff54"
       }
     ],
     "measuredOnline": true

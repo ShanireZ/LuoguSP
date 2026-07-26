@@ -50,6 +50,22 @@ const origins = [
   originRecord("primary", primary),
   originRecord("fallback", fallback),
 ];
+const configuredRequiredOriginIds =
+  config.verification?.requiredOriginIds;
+const requiredOriginIds = new Set(
+  Array.isArray(configuredRequiredOriginIds)
+    ? configuredRequiredOriginIds
+    : origins.map((origin) => origin.id),
+);
+if (
+  !requiredOriginIds.size ||
+  [...requiredOriginIds].some(
+    (id) => !origins.some((origin) => origin.id === id),
+  )
+)
+  throw new Error(
+    "verification.requiredOriginIds must name configured origins",
+  );
 const assetUrl = (base, path) => {
   const url = new URL(base);
   url.pathname = `/${String(path).replace(/^\/+/, "")}`;
@@ -57,6 +73,8 @@ const assetUrl = (base, path) => {
 };
 const results = [];
 const remoteBodies = new Map();
+const optionalFailures = [];
+const unavailableOrigins = new Set();
 const writeReport = async (status, failure = null) => {
   const report = {
     checkedAt: new Date().toISOString(),
@@ -67,11 +85,13 @@ const writeReport = async (status, failure = null) => {
     origins: origins.map((origin) => ({
       id: origin.id,
       url: origin.url,
+      required: requiredOriginIds.has(origin.id),
       previewTokenUsed: origin.previewTokenUsed,
     })),
     filesPerOrigin: Object.keys(manifest.files).length + 1,
     byteIdentical: status === "ready",
     failure,
+    optionalFailures,
     results,
   };
   await writeFile(
@@ -98,6 +118,12 @@ for (const origin of origins) {
     try {
       verified = await fetchVerified({
         url,
+        delaysMs: requiredOriginIds.has(origin.id)
+          ? undefined
+          : [0],
+        timeoutMs: requiredOriginIds.has(origin.id)
+          ? undefined
+          : 5000,
         check: (response, body) => {
           const actual = digest(body);
           const contentType =
@@ -142,10 +168,18 @@ for (const origin of origins) {
         ok: false,
         ...failure,
       });
-      await writeReport("blocked", failure);
-      throw new Error(
-        `CDN verification failed for ${origin.id} ${path} after ${failure.attempts} attempt(s): ${JSON.stringify(failure.lastResult)}`,
+      unavailableOrigins.add(origin.id);
+      if (requiredOriginIds.has(origin.id)) {
+        await writeReport("blocked", failure);
+        throw new Error(
+          `CDN verification failed for required ${origin.id} ${path} after ${failure.attempts} attempt(s): ${JSON.stringify(failure.lastResult)}`,
+        );
+      }
+      optionalFailures.push(failure);
+      console.error(
+        `[verify] DEGRADED optional ${origin.id} is unavailable; continuing with required origins`,
       );
+      break;
     }
     const { body, result } = verified;
     results.push(result);
@@ -168,9 +202,24 @@ const localChannel = await readFile(
 );
 for (const origin of origins) {
   const path = "channels/canary.json";
+  if (unavailableOrigins.has(origin.id)) {
+    results.push({
+      origin: origin.id,
+      path,
+      ok: false,
+      skipped: "optional origin unavailable",
+    });
+    continue;
+  }
   try {
     const verified = await fetchVerified({
       url: assetUrl(origin.url, path),
+      delaysMs: requiredOriginIds.has(origin.id)
+        ? undefined
+        : [0],
+      timeoutMs: requiredOriginIds.has(origin.id)
+        ? undefined
+        : 5000,
       check: (response, body) => {
         const cacheControl =
           response.headers.get("cache-control") || "";
@@ -209,14 +258,28 @@ for (const origin of origins) {
       ok: false,
       ...failure,
     });
-    await writeReport("blocked", failure);
-    throw new Error(
-      `Canary channel verification failed for ${origin.id} after ${failure.attempts} attempt(s): ${JSON.stringify(failure.lastResult)}`,
+    if (requiredOriginIds.has(origin.id)) {
+      await writeReport("blocked", failure);
+      throw new Error(
+        `Canary channel verification failed for required ${origin.id} after ${failure.attempts} attempt(s): ${JSON.stringify(failure.lastResult)}`,
+      );
+    }
+    optionalFailures.push(failure);
+    console.error(
+      `[verify] DEGRADED optional ${origin.id} canary is unavailable`,
     );
   }
 }
 
-await writeReport("ready");
-console.log(
-  `Verified ${Object.keys(manifest.files).length + 1} immutable files on both CDN origins.`,
-);
+const finalStatus = optionalFailures.length
+  ? "degraded"
+  : "ready";
+await writeReport(finalStatus);
+if (finalStatus === "ready")
+  console.log(
+    `Verified ${Object.keys(manifest.files).length + 1} immutable files on both CDN origins.`,
+  );
+else
+  console.log(
+    `Verified ${Object.keys(manifest.files).length + 1} immutable files on every required CDN origin; ${optionalFailures.length} optional mirror failure(s) recorded.`,
+  );
