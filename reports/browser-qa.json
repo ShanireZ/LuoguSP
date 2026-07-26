@@ -1,56 +1,74 @@
 {
-  "checkedAt": "2026-07-26T15:31:20+08:00",
-  "browser": "Codex in-app Chromium",
-  "artifactSha256": "ee44b5226850d6efd286537f342f88dd71ab16a8bf03ed7b1e1bc4b0088a402d",
+  "checkedAt": "2026-07-26T21:48:57+08:00",
+  "status": "passed",
+  "browser": "Chromium 150 (in-app browser)",
+  "commit": "uncommitted (base be1665e)",
+  "artifactSha256": "04056ff7421052224dddae81cd1553019286a0b4ec8dcde2494cf4b5460f0127",
   "artifactBytes": 1608,
-  "injection": {
-    "method": "Runtime.evaluate after DOMContentLoaded",
-    "payload": "two pinned first-party compatibility files and four pinned third-party @require resources in production metadata order, followed by LuoguSP.user.js",
+  "runtimeValidation": {
+    "method": "Exact published 2.13.2 compatibility files, unchanged third-party requires, and the promoted userscript evaluated in production @require order on real Luogu pages",
+    "release": "2.13.2",
+    "apiVersion": 1
+  },
+  "startupMeasurement": {
+    "method": "Production-order dependency bytes and LuoguSP.user.js evaluated after page load in a separate Chromium tab",
     "networkIncluded": false
   },
   "startupMeasurements": [
     {
       "route": "/problem/P1001",
-      "ms": 19.1
+      "ms": 5.5
     },
     {
       "route": "/problem/list",
-      "ms": 4
+      "ms": 21.3
+    },
+    {
+      "route": "/article/9vrutkkt",
+      "ms": 9.5
     }
   ],
   "checks": {
     "runtimeMarker": {
       "apiVersion": 1,
-      "release": "2.13.0"
-    },
-    "earlyGateMarker": {
-      "apiVersion": 1,
-      "release": "2.13.0"
+      "release": "2.13.2"
     },
     "settingsEntryCount": 1,
     "settingsFeatureCount": 5,
     "settingsDefaultsEnabled": true,
-    "problemListP1001Title": "A+B Problem",
-    "problemListP1001Color": "rgb(52, 152, 219)",
-    "restrictedArticle": "9vrutkkt",
-    "restrictedInitialTitle": "安全访问中心 - 洛谷",
-    "restrictedArticleTitle": "Luogu Saver Bot选择指北 - 洛谷专栏",
-    "restrictedArticleNativeShell": true,
-    "restrictedArticleFailureCard": false,
-    "restrictedArticleActions": [
-      "申请更新",
-      "国际站原文"
-    ],
-    "restrictedEarlyGateReleased": true
+    "problemPageP1001": {
+      "marked": true,
+      "color": "rgb(254, 76, 97)",
+      "target": "existing /problem/P1001 breadcrumb anchor"
+    },
+    "problemListP1001": {
+      "displayedDifficulty": "入门",
+      "expectedColor": "rgb(254, 76, 97)",
+      "actualColor": "rgb(254, 76, 97)",
+      "fontWeight": "700",
+      "marked": true,
+      "target": "div.pid[title=\"P1001\"]",
+      "identityLink": "https://www.luogu.com.cn/problem/P1001",
+      "visualReview": "P1000-P1007 were visibly colored by difficulty without changing the native table layout."
+    },
+    "restrictedArticle": {
+      "route": "/article/9vrutkkt",
+      "restoredTitle": "Luogu Saver Bot选择指北 - 洛谷专栏",
+      "contentRestored": true,
+      "earlyLoadingGateReleased": true
+    }
   },
+  "failures": [],
   "console": {
     "luoguSpErrorCount": 0,
     "siteErrorCount": 0,
     "siteWarningCount": 0,
-    "siteErrorSummary": "No console errors or warnings were observed in the production-order problem-list or restricted-article passes."
+    "otherExtensionErrorCount": 0,
+    "summary": "No error-level browser console messages were observed during the 2.13.2 problem-list, problem-page, and restricted-article checks."
   },
   "limitations": [
-    "The in-app browser cannot install the userscript extension. The exact production @require byte sequence and root artifact were injected after DOMContentLoaded; the restricted early gate was activated immediately on the real safety interstitial before the compatibility runtime restored the article.",
-    "IDE batch execution and private-message Ctrl+Click require authenticated or route-specific fixtures and were not exercised in this signed-out browser pass."
+    "The unpublished 2.13.2 build was evaluated in the exact production dependency order because the repository update URL cannot expose it to Tampermonkey until the user commits and pushes.",
+    "The IDE batch runner was not sent to the remote compiler, and the chat shortcut was not used to open a private-message contact.",
+    "Startup timing excludes dependency network transfer and measures script evaluation plus synchronous bootstrap only."
   ]
 }

@@ -1,9 +1,9 @@
 {
-  "checkedAt": "2026-07-26T13:04:39.847Z",
+  "checkedAt": "2026-07-26T13:43:56.223Z",
   "status": "ready",
-  "release": "2.13.1",
-  "manifestPath": "releases/2.13.1/manifest.e755aae650439358.json",
-  "manifestSha256": "e755aae6504393589049aa6f4fd2d09b05e1150cb8bbf6fb657346f15b20875d",
+  "release": "2.13.2",
+  "manifestPath": "releases/2.13.2/manifest.3ef22ea0379036c0.json",
+  "manifestSha256": "3ef22ea0379036c0e031aa48e1f3c4f02823ff369d7bd9daca3ce7b1e0ab67da",
   "origins": [
     {
       "id": "primary",
@@ -21,25 +21,55 @@
   "failure": null,
   "results": [
     {
-      "attempt": 1,
+      "attempt": 5,
       "origin": "primary",
-      "path": "releases/2.13.1/manifest.e755aae650439358.json",
+      "path": "releases/2.13.2/manifest.3ef22ea0379036c0.json",
       "status": 200,
-      "bytes": 5350,
-      "sha256": "e755aae6504393589049aa6f4fd2d09b05e1150cb8bbf6fb657346f15b20875d",
+      "bytes": 5351,
+      "sha256": "3ef22ea0379036c0e031aa48e1f3c4f02823ff369d7bd9daca3ce7b1e0ab67da",
       "contentType": "application/json",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
       "ok": true,
-      "attempts": 1
+      "attempts": 5,
+      "previousFailures": [
+        {
+          "attempt": 1,
+          "status": null,
+          "bytes": 0,
+          "ok": false,
+          "error": "fetch failed"
+        },
+        {
+          "attempt": 2,
+          "status": null,
+          "bytes": 0,
+          "ok": false,
+          "error": "fetch failed"
+        },
+        {
+          "attempt": 3,
+          "status": null,
+          "bytes": 0,
+          "ok": false,
+          "error": "fetch failed"
+        },
+        {
+          "attempt": 4,
+          "status": null,
+          "bytes": 0,
+          "ok": false,
+          "error": "fetch failed"
+        }
+      ]
     },
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/compat/early-gate.80b8fb715564d525.js",
+      "path": "releases/2.13.2/compat/early-gate.1c89b2903d361d85.js",
       "status": 200,
       "bytes": 2896,
-      "sha256": "80b8fb715564d5259cccc9e64908de60255c3209668355403cbf9daa1f9ccbce",
+      "sha256": "1c89b2903d361d85619681922299914b7ea6822b7c952a72608043c27b741f4c",
       "contentType": "application/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -49,10 +79,10 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/compat/runtime.249d563c103523d8.js",
+      "path": "releases/2.13.2/compat/runtime.61241a62869decdd.js",
       "status": 200,
-      "bytes": 87334,
-      "sha256": "249d563c103523d836966ff00662774fbd972b21f25f691651ab75d8f1b54dcd",
+      "bytes": 88498,
+      "sha256": "61241a62869decdd318ecc634671c71496604f3becbdf86ece8a19f6eb350621",
       "contentType": "application/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -62,7 +92,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/restricted-content-DD4PKHKP.js",
+      "path": "releases/2.13.2/esm/restricted-content-DD4PKHKP.js",
       "status": 200,
       "bytes": 29010,
       "sha256": "934aeb2211792d3cb93f70c66e85d9be7ec42cfb56e346b28275268bd0df6e01",
@@ -75,7 +105,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/canary-loader-3ML5HUR5.js",
+      "path": "releases/2.13.2/esm/canary-loader-3ML5HUR5.js",
       "status": 200,
       "bytes": 2677,
       "sha256": "703a6a9ed2cdbd4af3e4e1e896d1d525ee46e1ca2fee8f1b48e747521bdb6985",
@@ -88,7 +118,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/early-gate-api-HAJ35GVC.js",
+      "path": "releases/2.13.2/esm/early-gate-api-HAJ35GVC.js",
       "status": 200,
       "bytes": 2787,
       "sha256": "fdb5369424be9b60f12c676241c91724f2d9690d23a4869923fa4dd3105323a5",
@@ -101,7 +131,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/app-core-OSSMTRES.js",
+      "path": "releases/2.13.2/esm/app-core-OSSMTRES.js",
       "status": 200,
       "bytes": 3494,
       "sha256": "6085adb9db95ccadb5417df0487c9a6a07a85761fabe6644d17b2e989893b16a",
@@ -114,7 +144,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/settings-OOQUXAWM.js",
+      "path": "releases/2.13.2/esm/settings-OOQUXAWM.js",
       "status": 200,
       "bytes": 6112,
       "sha256": "78330babc6f45e5f6a31b6a630df9fb17e2e9dfd94992b3ec8e0c2f323f33042",
@@ -127,10 +157,10 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/problem-color-WHJFUYKW.js",
+      "path": "releases/2.13.2/esm/problem-color-YVPQM2AJ.js",
       "status": 200,
-      "bytes": 9381,
-      "sha256": "04c96743030bf811e5167604cc7d560b32d5ac7795b452ee016738f14482a69a",
+      "bytes": 10545,
+      "sha256": "fadf4133ea6ccc585a6796b9c2c6228a9607520084afc061b1d64e30dc97008c",
       "contentType": "application/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -140,7 +170,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/chat-shortcut-3SB6G7HS.js",
+      "path": "releases/2.13.2/esm/chat-shortcut-3SB6G7HS.js",
       "status": 200,
       "bytes": 2049,
       "sha256": "1742fab67854c901a23ef0740347831c28d62cccde4b79690dcc4f78250dcf3c",
@@ -153,7 +183,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/hidden-intro-E5SZKQXM.js",
+      "path": "releases/2.13.2/esm/hidden-intro-E5SZKQXM.js",
       "status": 200,
       "bytes": 11547,
       "sha256": "85ec930a9adabdba706e2dc64194d850c0ad6945cd3b500e6079b4d5f5fdb453",
@@ -166,7 +196,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/ide-batch-JTBEEUH4.js",
+      "path": "releases/2.13.2/esm/ide-batch-JTBEEUH4.js",
       "status": 200,
       "bytes": 20052,
       "sha256": "5203f5e33a53e36e08e7dc42cc9f6475b932fba479e5430f78ad8a2bb273f6ef",
@@ -179,7 +209,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/chunks/chunk-PQ6PWWZS.js",
+      "path": "releases/2.13.2/esm/chunks/chunk-PQ6PWWZS.js",
       "status": 200,
       "bytes": 1314,
       "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
@@ -192,7 +222,7 @@
     {
       "attempt": 1,
       "origin": "primary",
-      "path": "releases/2.13.1/esm/chunks/chunk-V7FYNATP.js",
+      "path": "releases/2.13.2/esm/chunks/chunk-V7FYNATP.js",
       "status": 200,
       "bytes": 342,
       "sha256": "8cbdb457fff355ba763f8e8606f5a48903a7dba84377787a34a5ff0583c7936f",
@@ -205,10 +235,10 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/manifest.e755aae650439358.json",
+      "path": "releases/2.13.2/manifest.3ef22ea0379036c0.json",
       "status": 200,
-      "bytes": 5350,
-      "sha256": "e755aae6504393589049aa6f4fd2d09b05e1150cb8bbf6fb657346f15b20875d",
+      "bytes": 5351,
+      "sha256": "3ef22ea0379036c0e031aa48e1f3c4f02823ff369d7bd9daca3ce7b1e0ab67da",
       "contentType": "application/json",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -218,10 +248,10 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/compat/early-gate.80b8fb715564d525.js",
+      "path": "releases/2.13.2/compat/early-gate.1c89b2903d361d85.js",
       "status": 200,
       "bytes": 2896,
-      "sha256": "80b8fb715564d5259cccc9e64908de60255c3209668355403cbf9daa1f9ccbce",
+      "sha256": "1c89b2903d361d85619681922299914b7ea6822b7c952a72608043c27b741f4c",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -231,10 +261,10 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/compat/runtime.249d563c103523d8.js",
+      "path": "releases/2.13.2/compat/runtime.61241a62869decdd.js",
       "status": 200,
-      "bytes": 87334,
-      "sha256": "249d563c103523d836966ff00662774fbd972b21f25f691651ab75d8f1b54dcd",
+      "bytes": 88498,
+      "sha256": "61241a62869decdd318ecc634671c71496604f3becbdf86ece8a19f6eb350621",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -244,7 +274,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/restricted-content-DD4PKHKP.js",
+      "path": "releases/2.13.2/esm/restricted-content-DD4PKHKP.js",
       "status": 200,
       "bytes": 29010,
       "sha256": "934aeb2211792d3cb93f70c66e85d9be7ec42cfb56e346b28275268bd0df6e01",
@@ -257,7 +287,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/canary-loader-3ML5HUR5.js",
+      "path": "releases/2.13.2/esm/canary-loader-3ML5HUR5.js",
       "status": 200,
       "bytes": 2677,
       "sha256": "703a6a9ed2cdbd4af3e4e1e896d1d525ee46e1ca2fee8f1b48e747521bdb6985",
@@ -270,7 +300,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/early-gate-api-HAJ35GVC.js",
+      "path": "releases/2.13.2/esm/early-gate-api-HAJ35GVC.js",
       "status": 200,
       "bytes": 2787,
       "sha256": "fdb5369424be9b60f12c676241c91724f2d9690d23a4869923fa4dd3105323a5",
@@ -283,7 +313,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/app-core-OSSMTRES.js",
+      "path": "releases/2.13.2/esm/app-core-OSSMTRES.js",
       "status": 200,
       "bytes": 3494,
       "sha256": "6085adb9db95ccadb5417df0487c9a6a07a85761fabe6644d17b2e989893b16a",
@@ -296,7 +326,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/settings-OOQUXAWM.js",
+      "path": "releases/2.13.2/esm/settings-OOQUXAWM.js",
       "status": 200,
       "bytes": 6112,
       "sha256": "78330babc6f45e5f6a31b6a630df9fb17e2e9dfd94992b3ec8e0c2f323f33042",
@@ -309,10 +339,10 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/problem-color-WHJFUYKW.js",
+      "path": "releases/2.13.2/esm/problem-color-YVPQM2AJ.js",
       "status": 200,
-      "bytes": 9381,
-      "sha256": "04c96743030bf811e5167604cc7d560b32d5ac7795b452ee016738f14482a69a",
+      "bytes": 10545,
+      "sha256": "fadf4133ea6ccc585a6796b9c2c6228a9607520084afc061b1d64e30dc97008c",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -322,7 +352,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/chat-shortcut-3SB6G7HS.js",
+      "path": "releases/2.13.2/esm/chat-shortcut-3SB6G7HS.js",
       "status": 200,
       "bytes": 2049,
       "sha256": "1742fab67854c901a23ef0740347831c28d62cccde4b79690dcc4f78250dcf3c",
@@ -335,7 +365,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/hidden-intro-E5SZKQXM.js",
+      "path": "releases/2.13.2/esm/hidden-intro-E5SZKQXM.js",
       "status": 200,
       "bytes": 11547,
       "sha256": "85ec930a9adabdba706e2dc64194d850c0ad6945cd3b500e6079b4d5f5fdb453",
@@ -348,7 +378,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/ide-batch-JTBEEUH4.js",
+      "path": "releases/2.13.2/esm/ide-batch-JTBEEUH4.js",
       "status": 200,
       "bytes": 20052,
       "sha256": "5203f5e33a53e36e08e7dc42cc9f6475b932fba479e5430f78ad8a2bb273f6ef",
@@ -361,7 +391,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/chunks/chunk-PQ6PWWZS.js",
+      "path": "releases/2.13.2/esm/chunks/chunk-PQ6PWWZS.js",
       "status": 200,
       "bytes": 1314,
       "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
@@ -374,7 +404,7 @@
     {
       "attempt": 1,
       "origin": "fallback",
-      "path": "releases/2.13.1/esm/chunks/chunk-V7FYNATP.js",
+      "path": "releases/2.13.2/esm/chunks/chunk-V7FYNATP.js",
       "status": 200,
       "bytes": 342,
       "sha256": "8cbdb457fff355ba763f8e8606f5a48903a7dba84377787a34a5ff0583c7936f",
@@ -390,7 +420,7 @@
       "path": "channels/canary.json",
       "status": 200,
       "bytes": 351,
-      "sha256": "713d80b8be3a39dc70720502ee165c25124b99c1df86d6069aecdcbe5cb96989",
+      "sha256": "909ae451f39b26f6f6d28edf064450a172c1056b6a437954eaa32ef58f8ef12a",
       "contentType": "application/json",
       "cacheControl": "no-cache, no-store, must-revalidate",
       "cors": "*",
@@ -403,7 +433,7 @@
       "path": "channels/canary.json",
       "status": 200,
       "bytes": 351,
-      "sha256": "713d80b8be3a39dc70720502ee165c25124b99c1df86d6069aecdcbe5cb96989",
+      "sha256": "909ae451f39b26f6f6d28edf064450a172c1056b6a437954eaa32ef58f8ef12a",
       "contentType": "application/json",
       "cacheControl": "no-cache, no-store, must-revalidate",
       "cors": "*",

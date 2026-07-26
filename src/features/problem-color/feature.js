@@ -23,6 +23,7 @@ export function createProblemColorFeature({ storage }) {
     DIFFICULTY_COLORS[difficulty] || FALLBACK_COLOR;
   const SELECTORS = {
     voidAnchor: "a[data-v-bade3303][data-v-4842157a]",
+    standalonePid: ".pid[title]",
   };
 
   // ============================================================
@@ -46,11 +47,13 @@ export function createProblemColorFeature({ storage }) {
     'a[href*="/problem/"]',
     'a[href*="?forum="]',
     SELECTORS.voidAnchor,
+    SELECTORS.standalonePid,
   ].join(",");
 
   const problemIdentity = createProblemIdentityResolver({
     getOrigin: () => location.origin,
     voidAnchorSelector: SELECTORS.voidAnchor,
+    standalonePidSelector: SELECTORS.standalonePid,
   });
   const problemAnchorIdentity = (anchor) => problemIdentity.resolve(anchor);
 
@@ -87,7 +90,7 @@ export function createProblemColorFeature({ storage }) {
   const clearProblemColor = (anchor) => {
     const state = appliedProblemColors.get(anchor);
     if (state && state.node && anchor.contains(state.node)) {
-      if (state.kind === "span") {
+      if (state.kind === "span" || state.kind === "standalone") {
         restoreInlineProperty(state.node, "color", state.color);
         restoreInlineProperty(state.node, "font-weight", state.fontWeight);
       } else if (state.kind === "wrapper") {
@@ -171,15 +174,30 @@ export function createProblemColorFeature({ storage }) {
                     .forEach((anchor) => anchors.add(anchor));
               }
             } else if (mutation.type === "characterData") {
-              const span = mutation.target.parentElement;
+              const element = mutation.target.parentElement;
+              if (
+                element &&
+                element.matches &&
+                element.matches(SELECTORS.standalonePid)
+              ) {
+                anchors.add(element);
+                continue;
+              }
               const anchor =
-                span &&
-                span.matches &&
-                span.matches("span.pid") &&
-                span.closest("a[href]");
+                element &&
+                element.matches &&
+                element.matches("span.pid") &&
+                element.closest("a[href]");
               if (anchor) anchors.add(anchor);
             } else if (mutation.type === "attributes") {
               anchors.add(mutation.target);
+              if (
+                mutation.attributeName === "href" &&
+                mutation.target.parentElement
+              )
+                mutation.target.parentElement
+                  .querySelectorAll(SELECTORS.standalonePid)
+                  .forEach((target) => anchors.add(target));
             }
           }
           accept(anchors);
@@ -189,7 +207,7 @@ export function createProblemColorFeature({ storage }) {
           subtree: true,
           characterData: true,
           attributes: true,
-          attributeFilter: ["href"],
+          attributeFilter: ["href", "title"],
         });
         return () => observer.disconnect();
       },
@@ -199,6 +217,22 @@ export function createProblemColorFeature({ storage }) {
       applyColor: (a, pid, color) => {
         // 虚拟列表可能在请求期间复用锚点；Problem Pipeline 已复核身份后才会到这里。
         clearProblemColor(a);
+        if (
+          a.matches(SELECTORS.standalonePid) &&
+          (a.getAttribute("title") || "").trim() === pid &&
+          (a.innerText || a.textContent || "").trim() === pid
+        ) {
+          appliedProblemColors.set(a, {
+            kind: "standalone",
+            node: a,
+            color: captureInlineProperty(a, "color"),
+            fontWeight: captureInlineProperty(a, "font-weight"),
+          });
+          a.style.color = color;
+          a.style.fontWeight = "bold";
+          a.dataset.luoguspPid = pid;
+          return;
+        }
         const span = a.children[0];
         if (
           span &&

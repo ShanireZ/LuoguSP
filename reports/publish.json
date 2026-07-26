@@ -1,12 +1,12 @@
 {
-  "startedAt": "2026-07-26T13:03:48.288Z",
-  "completedAt": "2026-07-26T13:04:48.951Z",
+  "startedAt": "2026-07-26T13:42:25.926Z",
+  "completedAt": "2026-07-26T13:44:37.929Z",
   "status": "ready-for-browser-qa",
-  "release": "2.13.1",
+  "release": "2.13.2",
   "resumed": true,
   "userscript": {
     "bytes": 1608,
-    "sha256": "380e5bbed3e0a54a67d7f9108f6671e9a61f8709cd8c6107efd8ff84eb6dee82",
+    "sha256": "04056ff7421052224dddae81cd1553019286a0b4ec8dcde2494cf4b5460f0127",
     "requires": 6
   },
   "customOrigins": [
