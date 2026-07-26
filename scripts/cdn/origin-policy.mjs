@@ -47,3 +47,16 @@ export function resolveConfiguredOrigins(options) {
   }
   return Object.freeze({ primary, fallback });
 }
+
+export function resolveBootstrapOrigin(config) {
+  const { primary, fallback } = resolveConfiguredOrigins({ config });
+  const bootstrap = configuredOrigin(
+    "bootstrap",
+    config?.origins?.bootstrap,
+  );
+  if (bootstrap !== primary && bootstrap !== fallback)
+    throw new Error(
+      "bootstrap CDN origin must match primary or fallback",
+    );
+  return bootstrap;
+}

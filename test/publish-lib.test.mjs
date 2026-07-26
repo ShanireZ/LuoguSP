@@ -32,14 +32,15 @@ const manifest = {
 };
 const config = {
   origins: {
-    primary: "https://spcdn.betaoi.cn",
-    fallback: "https://spcdn.betaoi.cc",
+    primary: "https://spcdn.betaoi.cc",
+    fallback: "https://spcdn.betaoi.cn",
+    bootstrap: "https://spcdn.betaoi.cc",
   },
 };
 const early =
-  `https://spcdn.betaoi.cn/${manifest.compat.earlyGate.path}#sha256=${sha}`;
+  `https://spcdn.betaoi.cc/${manifest.compat.earlyGate.path}#sha256=${sha}`;
 const runtime =
-  `https://spcdn.betaoi.cn/${manifest.compat.runtime.path}#sha256=${sha}`;
+  `https://spcdn.betaoi.cc/${manifest.compat.runtime.path}#sha256=${sha}`;
 const artifact = `// ==UserScript==
 // @version      3.0.0
 // @require      ${early}
@@ -151,6 +152,6 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
         config,
         thirdPartyRequireUrls: thirdParty,
       }),
-    /must not execute fallback/,
+    /must not execute the non-bootstrap origin/,
   );
 });

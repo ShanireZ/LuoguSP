@@ -1,74 +1,56 @@
 {
-  "checkedAt": "2026-07-26T21:48:57+08:00",
-  "status": "passed",
-  "browser": "Chromium 150 (in-app browser)",
-  "commit": "uncommitted (base be1665e)",
-  "artifactSha256": "04056ff7421052224dddae81cd1553019286a0b4ec8dcde2494cf4b5460f0127",
+  "checkedAt": "2026-07-26T22:14:43+08:00",
+  "status": "blocked",
+  "browser": "Chromium 150 (Edge) with Tampermonkey",
+  "commit": "uncommitted",
+  "artifactSha256": "2c3f91aa54fb3d8453eefe7a4dabd62f8e25f654b7a981fc283889c66b138e55",
   "artifactBytes": 1608,
   "runtimeValidation": {
-    "method": "Exact published 2.13.2 compatibility files, unchanged third-party requires, and the promoted userscript evaluated in production @require order on real Luogu pages",
-    "release": "2.13.2",
-    "apiVersion": 1
+    "method": "Actual Tampermonkey execution on Luogu; 2.13.4 is awaiting local installation",
+    "release": null,
+    "apiVersion": null
   },
   "startupMeasurement": {
-    "method": "Production-order dependency bytes and LuoguSP.user.js evaluated after page load in a separate Chromium tab",
-    "networkIncluded": false
+    "method": "Not accepted until the actual Tampermonkey installation runs 2.13.4",
+    "networkIncluded": true
   },
   "startupMeasurements": [
     {
-      "route": "/problem/P1001",
-      "ms": 5.5
-    },
-    {
-      "route": "/problem/list",
-      "ms": 21.3
-    },
-    {
-      "route": "/article/9vrutkkt",
-      "ms": 9.5
+      "route": "awaiting-tampermonkey-2.13.4",
+      "ms": 0
     }
   ],
   "checks": {
-    "runtimeMarker": {
-      "apiVersion": 1,
-      "release": "2.13.2"
-    },
-    "settingsEntryCount": 1,
-    "settingsFeatureCount": 5,
-    "settingsDefaultsEnabled": true,
-    "problemPageP1001": {
-      "marked": true,
-      "color": "rgb(254, 76, 97)",
-      "target": "existing /problem/P1001 breadcrumb anchor"
-    },
-    "problemListP1001": {
-      "displayedDifficulty": "入门",
-      "expectedColor": "rgb(254, 76, 97)",
-      "actualColor": "rgb(254, 76, 97)",
-      "fontWeight": "700",
-      "marked": true,
-      "target": "div.pid[title=\"P1001\"]",
-      "identityLink": "https://www.luogu.com.cn/problem/P1001",
-      "visualReview": "P1000-P1007 were visibly colored by difficulty without changing the native table layout."
-    },
-    "restrictedArticle": {
-      "route": "/article/9vrutkkt",
-      "restoredTitle": "Luogu Saver Bot选择指北 - 洛谷专栏",
-      "contentRestored": true,
-      "earlyLoadingGateReleased": true
-    }
+    "installedReleaseObserved": "2.13.2",
+    "runtimeMarker": null,
+    "settingsEntryCount": 0,
+    "problemListP1001Marked": false,
+    "publishedRecoveryRelease": "2.13.4",
+    "recoveryBootstrapOrigin": "https://spcdn.betaoi.cc"
   },
-  "failures": [],
+  "failures": [
+    {
+      "id": "tampermonkey-require-load",
+      "route": "/",
+      "summary": "Tampermonkey could not fetch the 2.13.2 EdgeOne early-gate and runtime @require files, so no LuoguSP feature initialized.",
+      "evidence": "The real browser console reported two @require Failed to fetch messages and LuoguSP CDN runtime was not initialized."
+    },
+    {
+      "id": "tampermonkey-2.13.4-not-installed",
+      "route": "/",
+      "summary": "The published 2.13.4 Cloudflare-bootstrap userscript still needs to be installed locally in Tampermonkey before final QA.",
+      "evidence": "The repository update URL cannot expose uncommitted 2.13.4."
+    }
+  ],
   "console": {
-    "luoguSpErrorCount": 0,
+    "luoguSpErrorCount": 1,
     "siteErrorCount": 0,
     "siteWarningCount": 0,
     "otherExtensionErrorCount": 0,
-    "summary": "No error-level browser console messages were observed during the 2.13.2 problem-list, problem-page, and restricted-article checks."
+    "summary": "LuoguSP reported that its CDN runtime was not initialized after both 2.13.2 EdgeOne @require downloads failed."
   },
   "limitations": [
-    "The unpublished 2.13.2 build was evaluated in the exact production dependency order because the repository update URL cannot expose it to Tampermonkey until the user commits and pushes.",
-    "The IDE batch runner was not sent to the remote compiler, and the chat shortcut was not used to open a private-message contact.",
-    "Startup timing excludes dependency network transfer and measures script evaluation plus synchronous bootstrap only."
+    "The successful production-order injection from the prior QA did not exercise Tampermonkey @require loading and is no longer accepted as release evidence.",
+    "Final 2.13.4 QA is blocked only on installing the local promoted userscript into Tampermonkey and refreshing Luogu."
   ]
 }

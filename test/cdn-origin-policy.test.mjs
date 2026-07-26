@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  resolveBootstrapOrigin,
   resolveConfiguredOrigins,
 } from "../scripts/cdn/origin-policy.mjs";
 
@@ -13,8 +14,9 @@ const root = resolve(
 );
 const config = {
   origins: {
-    primary: "https://spcdn.betaoi.cn",
-    fallback: "https://spcdn.betaoi.cc",
+    primary: "https://spcdn.betaoi.cc",
+    fallback: "https://spcdn.betaoi.cn",
+    bootstrap: "https://spcdn.betaoi.cc",
   },
 };
 
@@ -22,8 +24,8 @@ test("CDN tooling accepts only the two configured custom origins", () => {
   assert.deepEqual(
     resolveConfiguredOrigins({ config }),
     {
-      primary: "https://spcdn.betaoi.cn",
-      fallback: "https://spcdn.betaoi.cc",
+      primary: "https://spcdn.betaoi.cc",
+      fallback: "https://spcdn.betaoi.cn",
     },
   );
   assert.throws(
@@ -54,9 +56,36 @@ test("CDN tooling accepts only the two configured custom origins", () => {
     () =>
       resolveConfiguredOrigins({
         config,
-        primaryOverride: "https://spcdn.betaoi.cn/?token=preview",
+        primaryOverride: "https://spcdn.betaoi.cc/?token=preview",
       }),
     /clean HTTPS origin/,
+  );
+});
+
+test("userscript bootstrap uses one configured custom origin", () => {
+  assert.equal(
+    resolveBootstrapOrigin(config),
+    "https://spcdn.betaoi.cc",
+  );
+  assert.throws(
+    () =>
+      resolveBootstrapOrigin({
+        origins: {
+          ...config.origins,
+          bootstrap: "https://other.example.com",
+        },
+      }),
+    /must match primary or fallback/,
+  );
+  assert.throws(
+    () =>
+      resolveBootstrapOrigin({
+        origins: {
+          ...config.origins,
+          bootstrap: "https://example.workers.dev",
+        },
+      }),
+    /platform default domain/,
   );
 });
 

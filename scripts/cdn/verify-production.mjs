@@ -71,6 +71,36 @@ const originRecords = [
     failures.push(`${origin.id} must use a long-lived custom domain`);
   return { ...origin, url: url.origin };
 });
+const configuredRequiredOriginIds =
+  config.verification?.requiredOriginIds;
+const requiredOriginIds = new Set(
+  Array.isArray(configuredRequiredOriginIds)
+    ? configuredRequiredOriginIds
+    : originRecords.map((origin) => origin.id),
+);
+if (
+  !requiredOriginIds.size ||
+  [...requiredOriginIds].some(
+    (id) =>
+      !originRecords.some((origin) => origin.id === id),
+  )
+)
+  failures.push(
+    "verification.requiredOriginIds must name configured origins",
+  );
+const optionalIssues = [];
+let bootstrapOrigin;
+try {
+  bootstrapOrigin = new URL(config.origins.bootstrap).origin;
+  if (
+    !originRecords.some((origin) => origin.url === bootstrapOrigin)
+  )
+    failures.push(
+      "bootstrap must be one of the configured custom origins",
+    );
+} catch (error) {
+  failures.push("bootstrap must be a valid HTTPS origin");
+}
 if (
   new URL(originRecords[0].url).hostname ===
   new URL(originRecords[1].url).hostname
@@ -87,12 +117,12 @@ const compatibilityUrl = (origin, file) =>
   `${new URL(file.path, `${origin}/`)}#sha256=${file.sha256}`;
 const expectedRequires = [
   compatibilityUrl(
-    originRecords[0].url,
+    bootstrapOrigin,
     manifest.compat.earlyGate,
   ),
   ...budget.requires.resources.map((resource) => resource.url),
   compatibilityUrl(
-    originRecords[0].url,
+    bootstrapOrigin,
     manifest.compat.runtime,
   ),
 ];
@@ -103,8 +133,17 @@ if (
   failures.push("staged userscript @require order or hashes differ");
 if (stagedArtifact.includes("/channels/"))
   failures.push("staged userscript must not load a mutable channel");
-if (stagedArtifact.includes(config.origins.fallback))
-  failures.push("staged userscript must not execute both runtimes");
+const nonBootstrapOrigins = originRecords
+  .map((origin) => origin.url)
+  .filter((origin) => origin !== bootstrapOrigin);
+if (
+  nonBootstrapOrigins.some((origin) =>
+    stagedArtifact.includes(origin),
+  )
+)
+  failures.push(
+    "staged userscript must not execute a non-bootstrap runtime",
+  );
 if (Buffer.byteLength(stagedArtifact) > 5000)
   failures.push("staged userscript loader exceeds 5000 bytes");
 
@@ -131,6 +170,12 @@ for (const origin of originRecords) {
     try {
       const verified = await fetchVerified({
         url,
+        delaysMs: requiredOriginIds.has(origin.id)
+          ? undefined
+          : [0],
+        timeoutMs: requiredOriginIds.has(origin.id)
+          ? undefined
+          : 5000,
         check: (response, body) => {
           const actual = digest(body);
           const contentType =
@@ -180,22 +225,33 @@ for (const origin of originRecords) {
         ok: false,
         error: error.message,
       });
-      failures.push(
-        `${origin.id} failed ${path} after ${error.history?.length || 1} attempt(s): ${JSON.stringify(error.lastResult || error.message)}`,
-      );
+      const issue =
+        `${origin.id} failed ${path} after ${error.history?.length || 1} attempt(s): ${JSON.stringify(error.lastResult || error.message)}`;
+      if (requiredOriginIds.has(origin.id))
+        failures.push(issue);
+      else optionalIssues.push(issue);
       originAvailable = false;
     }
   }
 }
 
 const uniqueFailures = [...new Set(failures)];
+const uniqueOptionalIssues = [...new Set(optionalIssues)];
+const status = uniqueFailures.length
+  ? "blocked"
+  : uniqueOptionalIssues.length
+    ? "degraded"
+    : "ready";
 const report = {
   checkedAt: new Date().toISOString(),
-  status: uniqueFailures.length ? "blocked" : "ready",
+  status,
   release: version,
   manifestPath,
   manifestSha256,
-  origins: originRecords,
+  origins: originRecords.map((origin) => ({
+    ...origin,
+    required: requiredOriginIds.has(origin.id),
+  })),
   stagedUserscript: {
     path: `dist/staged/LuoguSP.${version}.user.js`,
     bytes: Buffer.byteLength(stagedArtifact),
@@ -204,6 +260,7 @@ const report = {
   filesPerOrigin: paths.length,
   dynamicEsmEnabled: manifest.esm.enabled,
   failures: uniqueFailures,
+  optionalIssues: uniqueOptionalIssues,
   results,
 };
 await writeFile(
@@ -220,7 +277,12 @@ if (uniqueFailures.length) {
   );
   process.exitCode = 1;
 } else {
-  console.log(
-    `Production CDN gate ready: ${paths.length} immutable files verified on both custom domains.`,
-  );
+  if (uniqueOptionalIssues.length)
+    console.log(
+      `Production CDN gate degraded: required origins verified; ${uniqueOptionalIssues.length} optional mirror issue(s) recorded.`,
+    );
+  else
+    console.log(
+      `Production CDN gate ready: ${paths.length} immutable files verified on both custom domains.`,
+    );
 }

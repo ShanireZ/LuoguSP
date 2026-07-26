@@ -1,17 +1,17 @@
 {
-  "startedAt": "2026-07-26T13:42:25.926Z",
-  "completedAt": "2026-07-26T13:44:37.929Z",
+  "startedAt": "2026-07-26T14:12:36.472Z",
+  "completedAt": "2026-07-26T14:13:54.575Z",
   "status": "ready-for-browser-qa",
-  "release": "2.13.2",
-  "resumed": true,
+  "release": "2.13.4",
+  "resumed": false,
   "userscript": {
     "bytes": 1608,
-    "sha256": "04056ff7421052224dddae81cd1553019286a0b4ec8dcde2494cf4b5460f0127",
+    "sha256": "2c3f91aa54fb3d8453eefe7a4dabd62f8e25f654b7a981fc283889c66b138e55",
     "requires": 6
   },
   "customOrigins": [
-    "https://spcdn.betaoi.cn",
-    "https://spcdn.betaoi.cc"
+    "https://spcdn.betaoi.cc",
+    "https://spcdn.betaoi.cn"
   ],
   "platformDefaultDomainsUsed": false,
   "productionModified": true,
