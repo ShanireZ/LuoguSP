@@ -1,6 +1,9 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createRestrictedDocumentBoot } from "./document-boot.js";
-import { createRestrictedDocumentCommitter } from "./document-committer.js";
+import {
+  createRestrictedDocumentCommitter,
+  serializeJsonForScript,
+} from "./document-committer.js";
 import { createRestrictedPageDetector } from "./page-detector.js";
 import { parseRestrictedPasteScaffold } from "./paste-scaffold.js";
 import { createRestrictedReplyFetchInstaller } from "./reply-fetch-installer.js";

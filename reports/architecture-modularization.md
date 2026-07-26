@@ -60,7 +60,7 @@ npm run check
 
 ## 质量预算
 
-预算定义在 `quality-budget.json`，实测快照位于
+预算定义在 `config/quality-budget.json`，实测快照位于
 `reports/quality-report.json`。
 
 当前主要数据：

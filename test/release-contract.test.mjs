@@ -25,6 +25,10 @@ const root = path.resolve(
 );
 const script = fs.readFileSync(path.join(root, "LuoguSP.user.js"), "utf8");
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+const restrictedFeatureSource = fs.readFileSync(
+  path.join(root, "src/features/restricted-content/feature.js"),
+  "utf8",
+);
 
 const metadata = new Map(
   [...script.matchAll(/^\/\/ @(\S+)\s+(.+)$/gm)].map((match) => [
@@ -88,6 +92,17 @@ test("restricted first paint stays covered until native page anchors are ready",
   assert.match(
     script,
     /document\.addEventListener\("DOMContentLoaded", bootstrap, \{ once: true \}\)/,
+  );
+});
+
+test("restricted article document keeps its JSON serializer dependency explicit", () => {
+  assert.match(
+    restrictedFeatureSource,
+    /import \{\s*createRestrictedDocumentCommitter,\s*serializeJsonForScript,\s*\} from "\.\/document-committer\.js";/,
+  );
+  assert.equal(
+    (restrictedFeatureSource.match(/serializeJsonForScript\(/g) || []).length,
+    2,
   );
 });
 

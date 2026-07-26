@@ -50,7 +50,7 @@ function median(values) {
 const [artifact, metadata, budgetText, browserQaText] = await Promise.all([
   readFile(resolve(root, "LuoguSP.user.js")),
   readFile(resolve(root, "src/userscript.meta.js"), "utf8"),
-  readFile(resolve(root, "quality-budget.json"), "utf8"),
+  readFile(resolve(root, "config/quality-budget.json"), "utf8"),
   readFile(resolve(root, "reports/browser-qa.json"), "utf8"),
 ]);
 const budget = JSON.parse(budgetText);
@@ -241,7 +241,7 @@ if (check) {
     (resource) => resource.url,
   );
   if (JSON.stringify(requireUrls) !== JSON.stringify(expectedUrls))
-    failures.push("@require URLs differ from quality-budget.json");
+    failures.push("@require URLs differ from config/quality-budget.json");
   if (fetchRequires) {
     for (const actual of requireResources) {
       const expected = budget.requires.resources.find(
