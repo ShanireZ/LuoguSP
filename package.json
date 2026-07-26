@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "publish": "node scripts/publish.mjs",
     "build": "node scripts/build.mjs",
     "build:check": "node scripts/build.mjs --check",
     "test": "node --test",
