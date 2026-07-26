@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
   mkdir,
+  readdir,
   readFile,
   rm,
   stat,
@@ -42,7 +43,8 @@ const [
   readFile(qualityReportPath, "utf8"),
   readFile(channelPath, "utf8"),
 ]);
-const version = userscriptVersion(initialMetadata);
+const version = userscriptVersion(initialArtifact);
+const sourceMetadataVersion = userscriptVersion(initialMetadata);
 const releasesRoot = resolve(root, "cdn/releases");
 const releaseDirectory = resolve(releasesRoot, version);
 if (
@@ -72,6 +74,8 @@ if (planOnly) {
     JSON.stringify(
       {
         version,
+        versionSource: "LuoguSP.user.js",
+        sourceMetadataVersion,
         releaseExists,
         wouldPublish: !releaseExists,
         steps,
@@ -154,24 +158,6 @@ try {
   run(["scripts/cdn/build.mjs", "--version", version]);
   beginPhase("stage");
   run(["scripts/cdn/stage-userscript.mjs", "--version", version]);
-  beginPhase("pre-deployment tests");
-  run(["--test"]);
-
-  beginPhase("dual CDN deployment");
-  deploymentStarted = true;
-  run([
-    "scripts/cdn/publish.mjs",
-    "--version",
-    version,
-    "--skip-build",
-  ]);
-  beginPhase("production CDN gate");
-  run([
-    "scripts/cdn/verify-production.mjs",
-    "--version",
-    version,
-  ]);
-
   const stagedPath = resolve(
     root,
     `dist/staged/LuoguSP.${version}.user.js`,
@@ -198,6 +184,34 @@ try {
       (resource) => resource.url,
     ),
   });
+
+  beginPhase("pre-deployment tests");
+  const preDeploymentTests = (
+    await readdir(resolve(root, "test"))
+  )
+    .filter(
+      (name) =>
+        name.endsWith(".test.mjs") &&
+        name !== "release-contract.test.mjs",
+    )
+    .sort()
+    .map((name) => `test/${name}`);
+  run(["--test", ...preDeploymentTests]);
+
+  beginPhase("dual CDN deployment");
+  deploymentStarted = true;
+  run([
+    "scripts/cdn/publish.mjs",
+    "--version",
+    version,
+    "--skip-build",
+  ]);
+  beginPhase("production CDN gate");
+  run([
+    "scripts/cdn/verify-production.mjs",
+    "--version",
+    version,
+  ]);
 
   beginPhase("local production promotion");
   productionModified = true;
