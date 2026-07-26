@@ -86,9 +86,12 @@ if (planOnly) {
   process.exit(0);
 }
 if (releaseExists)
-  throw new Error(
-    `CDN release ${version} already exists. Increase @version before publishing; immutable releases are never overwritten.`,
-  );
+  {
+    const message =
+      `CDN release ${version} already exists. Increase @version before publishing; immutable releases are never overwritten.`;
+    console.error(`[publish] BLOCKED at preflight: ${message}`);
+    throw new Error(message);
+  }
 
 const npmCache = resolve(root, ".npm-cache");
 await mkdir(npmCache, { recursive: true });
@@ -108,11 +111,16 @@ const run = (args) => {
   process.stdout.write(result.stdout || "");
   process.stderr.write(result.stderr || "");
   if (result.error || result.status !== 0)
-    throw new Error(
+    {
+      const error = new Error(
       `node ${args.join(" ")} failed: ${
         result.error?.message || `exit ${result.status}`
       }`,
-    );
+      );
+      error.command = `node ${args.join(" ")}`;
+      error.exitCode = result.status;
+      throw error;
+    }
 };
 const startedAt = new Date().toISOString();
 let phase = "preflight";
@@ -136,16 +144,20 @@ const writeReport = async (report) => {
     "utf8",
   );
 };
+const beginPhase = (value) => {
+  phase = value;
+  console.log(`\n[publish] START ${phase}`);
+};
 
 try {
-  phase = "build";
+  beginPhase("build");
   run(["scripts/cdn/build.mjs", "--version", version]);
-  phase = "stage";
+  beginPhase("stage");
   run(["scripts/cdn/stage-userscript.mjs", "--version", version]);
-  phase = "pre-deployment tests";
+  beginPhase("pre-deployment tests");
   run(["--test"]);
 
-  phase = "dual CDN deployment";
+  beginPhase("dual CDN deployment");
   deploymentStarted = true;
   run([
     "scripts/cdn/publish.mjs",
@@ -153,7 +165,7 @@ try {
     version,
     "--skip-build",
   ]);
-  phase = "production CDN gate";
+  beginPhase("production CDN gate");
   run([
     "scripts/cdn/verify-production.mjs",
     "--version",
@@ -187,7 +199,7 @@ try {
     ),
   });
 
-  phase = "local production promotion";
+  beginPhase("local production promotion");
   productionModified = true;
   await Promise.all([
     writeFile(metadataPath, activation.metadata, "utf8"),
@@ -209,7 +221,7 @@ try {
     ),
   ]);
 
-  phase = "activation verification";
+  beginPhase("activation verification");
   run(["scripts/build.mjs", "--check"]);
   const promotedArtifact = await readFile(artifactPath, "utf8");
   const promoted = verifyStagedActivation({
@@ -268,10 +280,22 @@ try {
     release: version,
     phase,
     error: error.message,
+    command: error.command || null,
+    exitCode: error.exitCode ?? null,
     productionRestored: productionModified,
     deploymentStarted,
     commitPerformed: false,
     pushPerformed: false,
   });
+  console.error(`\n[publish] FAILED at ${phase}`);
+  if (error.command)
+    console.error(`[publish] command: ${error.command}`);
+  if (error.exitCode != null)
+    console.error(`[publish] exit code: ${error.exitCode}`);
+  console.error(`[publish] error: ${error.message}`);
+  console.error(
+    `[publish] production restored: ${productionModified ? "yes" : "not modified"}`,
+  );
+  console.error("[publish] report: reports/publish.json");
   throw error;
 }
