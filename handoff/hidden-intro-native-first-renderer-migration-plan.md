@@ -16,12 +16,14 @@
 - runtime 构建现在固定注入当前 release 的 renderer 描述与两个自定义 origin；`2.13.5-canary.2 --dry-run` 生成 renderer 412,587 B、gzip 126,826 B，runtime 97,594 B，且未写入 release、channel 或生产用户脚本。
 - 已生成独立身份、无自动更新地址的 `LuoguSP QA 2.13.5-canary.2`；canary URL 参数 `?luogusp-qa=native|fallback` 会通过 DOM `<meta id="luogusp-qa-hidden-intro">` 暴露只读状态，其中 `fallback` 仅在 prerelease runtime 强制原生适配失败。
 - `2.13.5-canary.2` 已部署到 Cloudflare 自定义域名 `spcdn.betaoi.cc` 并通过全部不可变文件、字节、SHA-256、MIME、CORS 和缓存头验证；EdgeOne 因本机 token 失效未部署，`spcdn.betaoi.cn` 暂记 degraded。
-- 当前 `2.13.4` canary channel 指向的哈希 manifest 文件名与其实际字节 SHA-256 不一致，导致全量 Node 测试保留一项既有失败；不得改写冻结 release，应由后续新 release 正确生成和推广。
+- 冻结的 `2.13.4` release 中，`early-gate` manifest 声明的哈希文件名与实际字节 SHA-256 不一致；canary channel 已由后续 release 正确生成和推广，因此 `npm test` 不再受影响，但 `quality:check` 仍会如实报告这项不可变历史漂移，不得原地改写 2.13.4。
 - 真实生产 bundle 复核确认当前洛谷为 Vue 3.5.35；`UserShowMain`、Suspense 分支、嵌套 computed 依赖和异步路由组件均已纳入严格遍历。适配器不再依赖匿名结构猜测，也不按压缩变量名或 bundle 哈希命中。
 - `2.13.5-canary.3` 至 `.11` 用于逐步验证 CSP/GM 传输、Vue 应用就绪、异步组件发现、BFCache/SPA 返回和旧用户 DOM 竞态；失败版本均只用于 QA，没有推广到生产用户脚本。
-- `2.13.5-canary.12` 用组件树中的目标用户 UID、唯一 `UserShowMain` 和显示 gate 状态判断可见卡片归属，并在目标组件就绪且旧卡片退出后才挂接；这替代了不可靠的时间确认窗口。
-- `npm test` 在 canary.12 源码上通过 124/124。新增回归覆盖异步 Vue 根、异步路由组件、深层/Suspense VNode、生产形态嵌套 computed、可见卡片用户归属、旧卡退出等待、BFCache persisted pageshow、原生编辑态和 SPA 返回恢复。
-- canary.12 已发布到 `spcdn.betaoi.cc` 并通过 required-origin 生产校验；`spcdn.betaoi.cn` 仍是 optional degraded。QA 用户脚本 SHA-256 为 `95440338AE14BB49509EE28B50230DB772D68C1BAE861AE59EBEA3897E6254D9`，生产 `LuoguSP.user.js` 未修改。
+- `2.13.5-canary.12` 起用组件树中的目标用户 UID、唯一 `UserShowMain` 和显示 gate 状态判断可见卡片归属，并在目标组件就绪且旧卡片退出后才挂接；这替代了不可靠的时间确认窗口。
+- canary.13 已真实执行本人介绍的编辑、保存和原生重渲染：临时追加的 Markdown 成功保存后，243 字符原文被逐字符写回、二次保存并从服务器编辑器重新读回确认完全一致。
+- canary.14-.15 暴露首屏异步覆盖和 page lifecycle 重建 feature 后实例状态丢失；canary.16 将最后路由保存在模块级 `WeakMap<Document, state>`，完整刷新使用新 Document，SPA/BFCache 重建仍能识别同文档旧路由。
+- `npm test` 在 canary.16 源码上通过 126/126。新增回归覆盖异步 Vue 根、异步路由组件、深层/Suspense VNode、生产形态嵌套 computed、首屏原生卡覆盖在途适配、feature 重建后的同文档路由历史、可见卡片用户归属、旧卡退出等待、BFCache persisted pageshow、原生编辑态和 SPA 返回恢复。
+- canary.16 已发布到 `spcdn.betaoi.cc` 并通过 required-origin 生产校验；`spcdn.betaoi.cn` 仍是 optional degraded。QA 用户脚本 SHA-256 为 `2B4BC5F2F313C8E1B4622DC2DD796A4F8DC37871DF89F312601F95E6980F0B20`，生产 `LuoguSP.user.js` 未修改。
 
 ## 交接状态（2026-07-27）
 
@@ -38,16 +40,18 @@
 
 - `watchHiddenIntro()` 已将 `attachNative` 作为第四参数传给 `showHiddenIntro()`；路由改变或 feature dispose 会恢复被强制显示的 computed，并清除 LuoguSP 手工卡。
 - `test/hidden-intro-feature.test.mjs` 已证明：离开用户页恢复、用户 2 → 用户 3 的 SPA 切换先恢复后挂接、feature dispose 恢复并清除卡片、`/user/3` 已有原生介绍时不获取也不重复，以及原生锚点失败时进入一次手工兜底。
-- Tampermonkey canary.12 已在 `/user/2?luogusp-qa=native` 通过：状态为 `native-attached`，只出现一张官方 `l-card`，标题为“个人介绍（仅国际站可见）”，没有 `.luogusp-intro-card`，renderer 加载数为 0。
+- Tampermonkey canary.16 已在 `/user/2?luogusp-qa=native` 通过：只出现一张官方 `l-card`，标题为“个人介绍（仅国际站可见）”，没有 `.luogusp-intro-card`，renderer 加载数为 0。
 - 通过页面菜单进入本人 `/user/116524` 后，状态为 `already-native`，保留一个“编辑”按钮，无手工卡；浏览器返回 `/user/2` 后重新达到 `native-attached`，没有旧卡或重复卡。
-- 原生整条往返路径无 LuoguSP/site warning 或 error、无遮罩残留；页面探针确认 canary.12，全程 renderer 加载数为 0。
+- 本人介绍已真实完成“备份原文 → 写入临时 Markdown → 保存并确认原生渲染 → 写回原文 → 再次保存 → 服务器回读逐字符一致”，没有修改其他个人资料。
+- 原生整条往返路径无 LuoguSP/site warning 或 error、无遮罩残留；页面探针确认 canary.16，全程 renderer 加载数为 0。
 
 ### Phase 4：主路径完成，故障注入浏览器验收待办
 
 - `fallback-intro-controller.js` 负责 introduction 获取、手工卡片所有权、复制按钮、安全失败提示和重试；`feature.js` 已不再读取 `window.marked`、`window.DOMPurify`、`window.katex` 或 `window.hljs`。
 - `renderer-client.js` 只在手工卡挂载后请求 renderer，并消费包内 full/lite 数据 API；`optional-bundle-loader.js` 使用固定描述、两个自定义 origin、SHA-256、Blob ESM import、同页 Promise 单例、AbortSignal 和严格 API 版本拒绝，不使用 `eval` 或 `new Function`。
+- QA/后续正式脚本的 `GM_xmlhttpRequest` 与 `@connect spcdn.betaoi.cc` 是当前跨 CSP、按字节下载并校验 renderer 的必要权限；`@connect spcdn.betaoi.cn` 只服务于既定双源容灾契约。若取消备用源，必须把 `.cn` origin、验证与故障转移测试一起移除，不能只删除 userscript 元数据。
 - 自动化测试覆盖单例、取消、描述/API 不匹配、失败后重试、安全纯文本 UI、lite 降级状态和一次性手工渲染；既有 `fetchVerifiedAsset` 测试继续覆盖主域完整性失败后切备用域。
-- Tampermonkey canary.12 已在 `/user/2?luogusp-qa=fallback` 通过：只出现一张受管手工卡，完整 renderer 通过 `GM_xmlhttpRequest` 从 `https://spcdn.betaoi.cc` 加载，探针为 `fallback-rendered`，同页加载数为 1。
+- Tampermonkey canary.16 已在 `/user/2?luogusp-qa=fallback` 通过：只出现一张受管手工卡，完整 renderer 通过 `GM_xmlhttpRequest` 从 `https://spcdn.betaoi.cc` 加载，探针为 `fallback-rendered`，同页加载数为 1。
 - 从强制兜底页进入本人主页时无手工卡且保留“编辑”；浏览器返回后手工卡恢复，renderer 加载数仍为 1，证明同页单例没有重复下载或初始化。整条路径无 warning/error、无遮罩残留。
 - 原生路径 0 次和兜底路径 1 次的真实浏览器门槛已满足。主域失败切备用域、双域失败后的安全提示/点击重试、full-to-lite 的浏览器故障注入仍未执行；这些分支已有自动化覆盖，但在 Phase 5 删除四条第三方 `@require` 前仍须补真实浏览器证据。
 
@@ -57,15 +61,23 @@
 npm run renderer:test
 npm run renderer:check
 npm test
-node scripts/cdn/build.mjs --version 2.13.5-canary.12
-npm run qa:hidden-intro:stage -- --version 2.13.5-canary.12
-node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.12
+node scripts/cdn/build.mjs --version 2.13.5-canary.16
+npm run qa:hidden-intro:stage -- --version 2.13.5-canary.16
+node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.16
 ```
 
-- `npm test` 当前通过 124/124。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
+- `npm test` 当前通过 126/126。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
 - `npm run quality:check` 还会发现冻结的 2.13.4 `early-gate` manifest 声明 `a087...`、本地不可变文件实际为 `5e06...` 的既有漂移；同样不得原地改写 2.13.4。
-- canary.12 是独立 `LuoguSP QA` 身份，无自动更新地址；它已在真实 Tampermonkey 中运行。Cloudflare release 和 canary channel 已更新，但生产用户脚本仍保持原样。
+- canary.16 是独立 `LuoguSP QA` 身份，无自动更新地址；它已在真实 Tampermonkey 中运行。Cloudflare release 和 canary channel 已更新，但生产用户脚本仍保持原样。
 - 不要在补齐 Phase 4 的故障注入浏览器证据前进入 Phase 5，也不要发布稳定版或删除四条第三方 `@require`。
+
+### CDN retention 后续设计
+
+- 当前本地 `cdn/releases` 有 5 个正式版（约 0.96 MB）和 16 个 canary（约 9.66 MB）；规模远低于 Workers Static Assets 的文件上限，当前主要成本是仓库噪声和部署扫描，而不是平台存储费用。
+- canary 建议保留“最近 3 个已验收成功版本 + 14 天内版本 + channel/pinned/未关闭诊断引用”，清理必须同时满足数量和年龄条件。
+- 正式版不能简单只保留最近 6 个：已安装用户脚本固定引用不可变 release URL。默认应永久保留；只有最低支持版本已抬升、访问日志在 90-180 天窗口内无请求且不属于回滚/安全保护点时，才允许显式清理。
+- 建议先新增只读 `cdn:retention:plan`，输出受保护引用、候选目录、文件数和字节；真正删除另设 `--apply` 和确认参数。本次没有删除任何 release。
+- 中期可把相同 renderer 和公共 chunk 迁移为 SHA-256 内容寻址的共享对象，由 release manifest 引用，减少每个 canary 的逻辑重复；该路径迁移需保持旧 release URL 可用。
 
 ## 1. 结论摘要
 

@@ -73,3 +73,14 @@ test("full markdown renderer falls back to MarkdownLite when Marked fails", () =
     "<p></p><h1>Lite heading</h1><p><strong>safe</strong></p>",
   );
 });
+
+test("full markdown renderer exposes a deterministic QA failure injection", () => {
+  const { renderer } = createRenderer();
+  const result = renderer.renderMarkdown("# Lite heading", {
+    forceFullFailure: true,
+  });
+
+  assert.equal(result.mode, "lite");
+  assert.deepEqual(result.warnings, ["full-render-failed"]);
+  assert.equal(result.html, "<p></p><h1>Lite heading</h1>");
+});

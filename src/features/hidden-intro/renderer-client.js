@@ -21,6 +21,7 @@ function validateRenderResult(result) {
 
 export function createRendererClient(options = {}) {
   const {
+    renderOptions,
     loader = createOptionalBundleLoader({
       bundle: options.bundle,
       origins: options.origins,
@@ -42,7 +43,10 @@ export function createRendererClient(options = {}) {
       if (signal?.aborted) throw cancelledError();
       const loaded = await loader.load({ signal });
       if (signal?.aborted) throw cancelledError();
-      const result = loaded.module.renderMarkdown(String(source ?? ""));
+      const result = loaded.module.renderMarkdown(
+        String(source ?? ""),
+        renderOptions,
+      );
       validateRenderResult(result);
       if (signal?.aborted) throw cancelledError();
       root.innerHTML = result.html;
