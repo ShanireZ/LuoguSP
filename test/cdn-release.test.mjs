@@ -6,25 +6,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   fetchVerifiedAsset,
+  getOptionalBundle,
   importVerifiedModule,
   loadVerifiedManifest,
 } from "../src/cdn/canary-loader.js";
 
-const root = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const channelPath = path.join(root, "cdn/channels/canary.json");
 const channel = JSON.parse(fs.readFileSync(channelPath, "utf8"));
 const manifestPath = path.join(root, "cdn", channel.manifestPath);
 const manifestBody = fs.readFileSync(manifestPath);
 const manifest = JSON.parse(manifestBody);
-const sha256 = (value) =>
-  createHash("sha256").update(value).digest("hex");
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
 test("CDN release manifest pins every compatibility and ESM artifact", () => {
   assert.equal(channel.schemaVersion, 1);
-  assert.equal(manifest.schemaVersion, 1);
+  assert.ok([1, 2].includes(manifest.schemaVersion));
   assert.equal(channel.release, manifest.release);
   assert.equal(sha256(manifestBody), channel.manifestSha256);
   assert.equal(manifest.esm.status, "canary");
@@ -52,13 +49,65 @@ test("CDN release manifest pins every compatibility and ESM artifact", () => {
     assert.equal(typeof manifest.esm.entries[entry], "string", entry);
 
   for (const [relativePath, metadata] of Object.entries(manifest.files)) {
-    const body = fs.readFileSync(
-      path.join(root, "cdn", relativePath),
-    );
+    const body = fs.readFileSync(path.join(root, "cdn", relativePath));
     assert.equal(body.length, metadata.bytes, relativePath);
     assert.equal(sha256(body), metadata.sha256, relativePath);
     assert.match(metadata.sri, /^sha256-[A-Za-z0-9+/]+=*$/);
   }
+});
+
+test("version 2 manifests require a complete optional markdown renderer bundle", async () => {
+  const rendererPath =
+    "releases/test/render/markdown-renderer.0123456789abcdef.js";
+  const rendererFile = {
+    path: rendererPath,
+    bytes: 123,
+    sha256: "a".repeat(64),
+    sri: "sha256-YQ==",
+  };
+  const createManifest = (bundle) => ({
+    schemaVersion: 2,
+    release: "test",
+    esm: { entries: {} },
+    files: { [rendererPath]: rendererFile },
+    optionalBundles: { markdownRenderer: bundle },
+  });
+  const validBundle = {
+    apiVersion: 1,
+    ...rendererFile,
+    gzipBytes: 100,
+    dependencies: {
+      katex: "0.18.1",
+      marked: "18.0.7",
+      dompurify: "3.4.12",
+      "highlight.js": "11.11.1",
+    },
+  };
+  const validBody = Buffer.from(JSON.stringify(createManifest(validBundle)));
+  const result = await loadVerifiedManifest({
+    origins: ["https://primary.example"],
+    path: "manifest.json",
+    sha256: sha256(validBody),
+    fetchImpl: async () => new Response(validBody),
+  });
+  assert.deepEqual(
+    getOptionalBundle(result.manifest, "markdownRenderer"),
+    validBundle,
+  );
+
+  const invalidBody = Buffer.from(
+    JSON.stringify(createManifest({ ...validBundle, gzipBytes: undefined })),
+  );
+  await assert.rejects(
+    () =>
+      loadVerifiedManifest({
+        origins: ["https://primary.example"],
+        path: "manifest.json",
+        sha256: sha256(invalidBody),
+        fetchImpl: async () => new Response(invalidBody),
+      }),
+    { kind: "manifest-invalid" },
+  );
 });
 
 test("Web Analytics stays on the CDN HTML status page only", () => {
@@ -69,10 +118,7 @@ test("Web Analytics stays on the CDN HTML status page only", () => {
   );
   assert.equal((prepareSource.match(new RegExp(token, "g")) || []).length, 1);
   for (const relativePath of Object.keys(manifest.files)) {
-    const body = fs.readFileSync(
-      path.join(root, "cdn", relativePath),
-      "utf8",
-    );
+    const body = fs.readFileSync(path.join(root, "cdn", relativePath), "utf8");
     assert.equal(body.includes(token), false, relativePath);
   }
 });

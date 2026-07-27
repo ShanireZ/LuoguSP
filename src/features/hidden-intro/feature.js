@@ -1,11 +1,20 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { makeCopyButton } from "../../browser/copy-button.js";
+import { createHiddenIntroDiagnostics } from "./diagnostics.js";
+import { renderMarkdownLite } from "./markdown-lite.js";
+import { createNativeIntroAdapter } from "./native-intro-adapter.js";
 import { HIDDEN_INTRO_STYLE } from "./style.js";
 
-export function createHiddenIntroFeature({ storage }) {
+export function createHiddenIntroFeature({ storage, nativeIntroAdapter } = {}) {
   const SELECTORS = {
     userIntroColumn: ".sidebar-container .main",
     nativeIntro: ".introduction",
+  };
+  const diagnostics = createHiddenIntroDiagnostics();
+  let nativeAdapter = nativeIntroAdapter || null;
+  const getNativeAdapter = () => {
+    if (!nativeAdapter) nativeAdapter = createNativeIntroAdapter();
+    return nativeAdapter;
   };
   const injectStyle = () => {
     if (document.getElementById("luogusp-intro-style")) return;
@@ -53,8 +62,7 @@ export function createHiddenIntroFeature({ storage }) {
       const intro = digIntro(await r.json(), uid);
       if (intro != null) return intro;
     } catch (e) {
-      if (!signal || !signal.aborted)
-        console.error("LuoguSP intro fetch:", e);
+      if (!signal || !signal.aborted) console.error("LuoguSP intro fetch:", e);
     }
     return null;
   }
@@ -64,11 +72,11 @@ export function createHiddenIntroFeature({ storage }) {
   function renderMarkdown(md) {
     const mk = window.marked,
       dp = window.DOMPurify;
-    if (!mk || !dp) return renderMarkdownLite(md); // 库未加载 → 回退轻量渲染器（本身 XSS 安全）
     const kx =
       (typeof window !== "undefined" && window.katex) ||
       (typeof katex !== "undefined" && katex) ||
       null;
+    if (!mk || !dp) return renderMarkdownLite(md, { katex: kx }); // 库未加载 → 回退轻量渲染器（本身 XSS 安全）
     const tt = (f, d) => {
       if (!kx) return null;
       try {
@@ -96,7 +104,7 @@ export function createHiddenIntroFeature({ storage }) {
     try {
       html = mk.parse(src, { gfm: true, breaks: true });
     } catch (e) {
-      return renderMarkdownLite(md);
+      return renderMarkdownLite(md, { katex: kx });
     }
     html = dp.sanitize(html, { ADD_ATTR: ["target"] }); // 消毒：剥离 script/on*/javascript: 等
     const mathPattern = new RegExp(`${mathPrefix}(\\d+)%%`, "g");
@@ -106,150 +114,6 @@ export function createHiddenIntroFeature({ storage }) {
       .replace(mathPattern, (_, i) => math[i]); // 回填已单独消毒的 KaTeX
   }
 
-  // 内置轻量 Markdown → HTML（marked 未加载时的回退；XSS 安全：转义 HTML 实体防注入；URL 仅允许 http(s)/相对，挡 javascript:；
-  // 洛谷允许的少量裸 HTML 走白名单消毒：img/a 校验 URL、安全内联标签去所有属性防 on* 注入、其余标签转义成文本）。
-  // 覆盖：段落/换行、ATX+setext 标题、加粗/斜体、删除线、行内与围栏代码、链接、图片、无序/有序列表、引用、分割线、表格、
-  //       KaTeX 公式（$..$ / $$..$$）、白名单裸 HTML。不覆盖：任务列表、表格对齐、裸 URL 自动链接、嵌套列表。
-  function renderMarkdownLite(md) {
-    const esc = (s) =>
-      s.replace(
-        /[&<>"]/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
-      );
-    const url = (u) => (/^(https?:)?\/\//i.test(u) || /^\//.test(u) ? u : "");
-    const codeLanguageClass = (raw) => {
-      const lang = (raw || "").trim().split(/\s+/)[0].toLowerCase();
-      return /^[a-z0-9_+-]+$/.test(lang)
-        ? ` class="language-${esc(lang)}"`
-        : "";
-    };
-    const kx =
-      (typeof window !== "undefined" && window.katex) ||
-      (typeof katex !== "undefined" && katex) ||
-      null;
-    const tex = (f, display) => {
-      if (!kx) return null;
-      try {
-        return kx.renderToString(f, {
-          throwOnError: false,
-          displayMode: display,
-        });
-      } catch (e) {
-        return null;
-      }
-    };
-    const spans = []; // 抽出的「原样片段」（代码/公式/白名单裸 HTML），最后回填
-    let spanPrefix = "@@LGB";
-    while (md.includes(spanPrefix)) spanPrefix += "X";
-    const stash = (html) => `${spanPrefix}${spans.push(html) - 1}@@`;
-    const ga = (t, re) => (t.match(re) || [])[1] || ""; // 取标签属性值
-    const inline = (s) =>
-      s
-        .replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`)
-        .replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (m, a, u) => {
-          const x = url(u);
-          return x ? `<img src="${x}" alt="${a}" style="max-width:100%">` : m;
-        })
-        .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (m, t, u) => {
-          const x = url(u);
-          return x
-            ? `<a href="${x}" target="_blank" rel="noopener noreferrer">${t}</a>`
-            : m;
-        })
-        .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-        .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
-    const cells = (row) =>
-      row
-        .trim()
-        .replace(/^\||\|$/g, "")
-        .split("|")
-        .map((c) => c.trim());
-    const table = (lines) =>
-      `<table><thead><tr>${cells(lines[0])
-        .map((c) => `<th>${inline(c)}</th>`)
-        .join("")}</tr></thead><tbody>${lines
-        .slice(2)
-        .map(
-          (l) =>
-            `<tr>${cells(l)
-              .map((c) => `<td>${inline(c)}</td>`)
-              .join("")}</tr>`,
-        )
-        .join("")}</tbody></table>`;
-    const SAFE =
-      /^(b|strong|i|em|u|s|del|ins|mark|sub|sup|br|hr|code|kbd|small)$/i; // 允许原样的安全内联标签
-    // esc 前抽出原样片段：① 围栏代码 ② 白名单裸 HTML（洛谷允许少量 HTML）③ 数学公式（含 <>&\ 会被 esc 破坏）
-    let src = md
-      .replace(/```([^\n]*)\n?([\s\S]*?)```/g, (_, rawLang, c) => {
-        const cls = codeLanguageClass(rawLang);
-        return stash(
-          `<pre${cls}><code${cls}>${esc(c.replace(/\n$/, ""))}</code></pre>`,
-        );
-      })
-      .replace(/<img\b[^>]*>/gi, (t) => {
-        const x = url(ga(t, /\bsrc\s*=\s*["']?([^"'\s>]+)/i));
-        return x
-          ? stash(
-              `<img src="${esc(x)}" alt="${esc(ga(t, /\balt\s*=\s*["']([^"']*)["']/i))}" style="max-width:100%">`,
-            )
-          : "";
-      })
-      .replace(/<a\b[^>]*>/gi, (t) => {
-        const x = url(ga(t, /\bhref\s*=\s*["']?([^"'\s>]+)/i));
-        return stash(
-          x
-            ? `<a href="${esc(x)}" target="_blank" rel="noopener noreferrer">`
-            : "<span>",
-        );
-      })
-      .replace(/<\/a>/gi, () => stash("</a>"))
-      .replace(/<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, (t, sl, nm) =>
-        SAFE.test(nm) ? stash(`<${sl}${nm.toLowerCase()}>`) : t,
-      ) // 白名单标签去所有属性防 on*；其余留原样→后面 esc 成文本
-      .replace(/\$\$([\s\S]+?)\$\$/g, (m, f) => {
-        const h = tex(f.trim(), true);
-        return h ? stash(h) : m;
-      })
-      .replace(/(?<!\\)\$([^\n$]+?)\$/g, (m, f) => {
-        const h = tex(f, false);
-        return h ? stash(h) : m;
-      });
-    src = esc(src) // 其余内容转义（占位符无 esc 目标字符，存活）
-      .replace(/^([^\n]+)\n=+[ \t]*$/gm, "# $1") // setext h1（文本下一行 ===）
-      .replace(/^([^\n]+)\n-{2,}[ \t]*$/gm, "## $1") // setext h2（文本下一行 ---）
-      .replace(/^(#{1,6}[ \t]+.+)$/gm, "\n\n$1\n\n") // ATX 标题是行级构造，补空行独立成块（否则和正文粘一块被漏）
-      .replace(/^[ \t]*([-*_])\1{2,}[ \t]*$/gm, "\n\n$1$1$1\n\n"); // hr 独立成块
-    const html = src
-      .split(/\n{2,}/)
-      .map((block) => {
-        const b = block.trim();
-        if (new RegExp(`^${spanPrefix}\\d+@@$`).test(b)) return b; // 独占一段的占位（代码块 / 行间公式）
-        const lines = block.split("\n");
-        if (
-          lines.length >= 2 &&
-          /^\s*\|.*\|\s*$/.test(lines[0]) &&
-          /^\s*\|[\s:|-]+\|\s*$/.test(lines[1])
-        )
-          return table(lines);
-        const h = b.match(/^(#{1,6})[ \t]+(.+)$/);
-        if (h && !b.includes("\n"))
-          return `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`;
-        if (/^([-*_])\1{2,}$/.test(b)) return "<hr>";
-        if (lines.every((l) => /^\s*[-*+]\s+/.test(l)))
-          return `<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*+]\s+/, ""))}</li>`).join("")}</ul>`;
-        if (lines.every((l) => /^\s*\d+\.\s+/.test(l)))
-          return `<ol>${lines.map((l) => `<li>${inline(l.replace(/^\s*\d+\.\s+/, ""))}</li>`).join("")}</ol>`;
-        if (lines.every((l) => /^&gt;\s?/.test(l)))
-          return `<blockquote>${inline(lines.map((l) => l.replace(/^&gt;\s?/, "")).join("<br>"))}</blockquote>`; // > 已被 esc 转成 &gt;
-        return `<p>${inline(block).replace(/\n/g, "<br>")}</p>`;
-      })
-      .join("");
-    return html.replace(
-      new RegExp(`${spanPrefix}(\\d+)@@`, "g"),
-      (_, i) => spans[i],
-    ); // 回填占位（inline 公式也在此步）
-  }
   function normalizeCodeLanguageClass(code) {
     const lang = [...code.classList].find((c) => c.startsWith("language-"));
     const pre = code.closest("pre");
@@ -317,7 +181,12 @@ export function createHiddenIntroFeature({ storage }) {
     col.appendChild(card);
   }
   const introWaiters = new Set();
-  async function showHiddenIntro(expectedRoute, lifecycleContext, signal) {
+  async function showHiddenIntro(
+    expectedRoute,
+    lifecycleContext,
+    signal,
+    onNativeAttached,
+  ) {
     const route = expectedRoute || currentUserRoute();
     if (!route.uid || !route.isHome) return;
     const uid = route.uid;
@@ -327,13 +196,43 @@ export function createHiddenIntroFeature({ storage }) {
       return (
         (!signal || !signal.aborted) &&
         (!lifecycleContext || lifecycleContext.isCurrent()) &&
-        current.uid === uid && current.key === routeKey && current.isHome
+        current.uid === uid &&
+        current.key === routeKey &&
+        current.isHome
       );
     };
     document.querySelectorAll(".luogusp-intro-card").forEach((e) => e.remove()); // 清换页残留
     if (document.querySelector(SELECTORS.nativeIntro)) return; // 原生已显示，不重复补
     const intro = await getIntroduction(uid, signal);
     if (!stillCurrent() || !intro || !intro.trim()) return;
+    let nativeResult;
+    try {
+      nativeResult = await getNativeAdapter().attach({
+        uid,
+        introduction: intro,
+        signal,
+      });
+    } catch (error) {
+      nativeResult = {
+        status: "native-unsupported",
+        reason: "adapter-error",
+      };
+      console.debug("LuoguSP hidden-intro native:", nativeResult);
+    }
+    diagnostics.set(nativeResult.status, nativeResult.reason || null);
+    if (!stillCurrent()) {
+      nativeResult.restore?.();
+      return;
+    }
+    if (nativeResult.status === "native-attached") {
+      onNativeAttached?.({ routeKey, restore: nativeResult.restore });
+      return;
+    }
+    if (
+      nativeResult.status === "already-native" ||
+      document.querySelector(SELECTORS.nativeIntro)
+    )
+      return;
     const place = () => {
       if (!stillCurrent()) return true; // 请求期间已换页：停止等待，绝不把旧简介挂到新路由
       if (document.querySelector(".introduction:not(.luogusp-intro-card *)"))
@@ -342,6 +241,7 @@ export function createHiddenIntroFeature({ storage }) {
       const col = document.querySelector(SELECTORS.userIntroColumn); // 只挂内层内容列，绝不回退外层全宽（否则内容顶到最左被裁）
       if (!col) return false;
       renderIntroCard(col, intro);
+      diagnostics.set("fallback-rendered");
       return true;
     };
     if (place()) return;
@@ -374,10 +274,23 @@ export function createHiddenIntroFeature({ storage }) {
   function watchHiddenIntro(lifecycleContext) {
     const controller = new AbortController();
     let requestedRouteKey = "";
+    let nativeAttachment = null;
+    const restoreNativeAttachment = () => {
+      if (!nativeAttachment) return;
+      nativeAttachment.restore?.();
+      nativeAttachment = null;
+    };
+    const attachNative = (attachment) => {
+      restoreNativeAttachment();
+      nativeAttachment = attachment;
+    };
     const check = () => {
       const route = currentUserRoute();
       const uid = route.uid;
+      if (nativeAttachment && nativeAttachment.routeKey !== route.key)
+        restoreNativeAttachment();
       if (!uid || !route.isHome) {
+        restoreNativeAttachment();
         document
           .querySelectorAll(".luogusp-intro-card")
           .forEach((e) => e.remove());
@@ -398,10 +311,12 @@ export function createHiddenIntroFeature({ storage }) {
       }
       if (route.key !== requestedRouteKey) {
         requestedRouteKey = route.key;
-        showHiddenIntro(route, lifecycleContext, controller.signal).catch((e) => {
-          if (!controller.signal.aborted)
-            console.error("LuoguSP intro render:", e);
-        });
+        showHiddenIntro(route, lifecycleContext, controller.signal).catch(
+          (e) => {
+            if (!controller.signal.aborted)
+              console.error("LuoguSP intro render:", e);
+          },
+        );
       }
     };
     check();
@@ -423,6 +338,7 @@ export function createHiddenIntroFeature({ storage }) {
       controller.abort();
       observer.disconnect();
       if (frame !== null) cancelAnimationFrame(frame);
+      restoreNativeAttachment();
       for (const cleanup of [...introWaiters]) cleanup();
       document
         .querySelectorAll(".luogusp-intro-card")
@@ -430,7 +346,7 @@ export function createHiddenIntroFeature({ storage }) {
     };
   }
 
-  return defineConfigurableFeature({
+  const feature = defineConfigurableFeature({
     id: "hidden-intro",
     key: "showIntro",
     label: "个人页显示个人介绍",
@@ -440,4 +356,5 @@ export function createHiddenIntroFeature({ storage }) {
       return watchHiddenIntro(context);
     },
   });
+  return Object.freeze({ ...feature, getDiagnostics: diagnostics.get });
 }

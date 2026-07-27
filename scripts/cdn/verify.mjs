@@ -26,15 +26,10 @@ const { primary, fallback } = resolveConfiguredOrigins({
   primaryOverride,
   fallbackOverride,
 });
-const manifestFile = resolve(
-  root,
-  "cdn",
-  channel.manifestPath,
-);
+const manifestFile = resolve(root, "cdn", channel.manifestPath);
 const manifestBody = await readFile(manifestFile);
 const manifest = JSON.parse(manifestBody);
-const digest = (body) =>
-  createHash("sha256").update(body).digest("hex");
+const digest = (body) => createHash("sha256").update(body).digest("hex");
 if (digest(manifestBody) !== channel.manifestSha256)
   throw new Error("Local manifest does not match canary channel SHA-256");
 
@@ -50,8 +45,7 @@ const origins = [
   originRecord("primary", primary),
   originRecord("fallback", fallback),
 ];
-const configuredRequiredOriginIds =
-  config.verification?.requiredOriginIds;
+const configuredRequiredOriginIds = config.verification?.requiredOriginIds;
 const requiredOriginIds = new Set(
   Array.isArray(configuredRequiredOriginIds)
     ? configuredRequiredOriginIds
@@ -82,6 +76,7 @@ const writeReport = async (status, failure = null) => {
     release: manifest.release,
     manifestPath: channel.manifestPath,
     manifestSha256: channel.manifestSha256,
+    optionalBundles: manifest.optionalBundles || {},
     origins: origins.map((origin) => ({
       id: origin.id,
       url: origin.url,
@@ -100,12 +95,11 @@ const writeReport = async (status, failure = null) => {
     "utf8",
   );
 };
-const retryNotice = (origin, path) =>
-  (failure, delayMs, nextAttempt) => {
-    console.error(
-      `[verify] RETRY ${origin} ${path}: attempt ${failure.attempt} failed (${failure.status ?? failure.error}); waiting ${delayMs}ms before attempt ${nextAttempt}`,
-    );
-  };
+const retryNotice = (origin, path) => (failure, delayMs, nextAttempt) => {
+  console.error(
+    `[verify] RETRY ${origin} ${path}: attempt ${failure.attempt} failed (${failure.status ?? failure.error}); waiting ${delayMs}ms before attempt ${nextAttempt}`,
+  );
+};
 for (const origin of origins) {
   const paths = [channel.manifestPath, ...Object.keys(manifest.files)];
   for (const path of paths) {
@@ -118,18 +112,12 @@ for (const origin of origins) {
     try {
       verified = await fetchVerified({
         url,
-        delaysMs: requiredOriginIds.has(origin.id)
-          ? undefined
-          : [0],
-        timeoutMs: requiredOriginIds.has(origin.id)
-          ? undefined
-          : 5000,
+        delaysMs: requiredOriginIds.has(origin.id) ? undefined : [0],
+        timeoutMs: requiredOriginIds.has(origin.id) ? undefined : 5000,
         check: (response, body) => {
           const actual = digest(body);
-          const contentType =
-            response.headers.get("content-type") || "";
-          const cacheControl =
-            response.headers.get("cache-control") || "";
+          const contentType = response.headers.get("content-type") || "";
+          const cacheControl = response.headers.get("cache-control") || "";
           const cors =
             response.headers.get("access-control-allow-origin") || "";
           return {
@@ -197,9 +185,7 @@ for (const origin of origins) {
   }
 }
 
-const localChannel = await readFile(
-  resolve(root, "cdn/channels/canary.json"),
-);
+const localChannel = await readFile(resolve(root, "cdn/channels/canary.json"));
 for (const origin of origins) {
   const path = "channels/canary.json";
   if (unavailableOrigins.has(origin.id)) {
@@ -214,26 +200,19 @@ for (const origin of origins) {
   try {
     const verified = await fetchVerified({
       url: assetUrl(origin.url, path),
-      delaysMs: requiredOriginIds.has(origin.id)
-        ? undefined
-        : [0],
-      timeoutMs: requiredOriginIds.has(origin.id)
-        ? undefined
-        : 5000,
+      delaysMs: requiredOriginIds.has(origin.id) ? undefined : [0],
+      timeoutMs: requiredOriginIds.has(origin.id) ? undefined : 5000,
       check: (response, body) => {
-        const cacheControl =
-          response.headers.get("cache-control") || "";
+        const cacheControl = response.headers.get("cache-control") || "";
         return {
           origin: origin.id,
           path,
           status: response.status,
           bytes: body.length,
           sha256: digest(body),
-          contentType:
-            response.headers.get("content-type") || "",
+          contentType: response.headers.get("content-type") || "",
           cacheControl,
-          cors:
-            response.headers.get("access-control-allow-origin") || "",
+          cors: response.headers.get("access-control-allow-origin") || "",
           ok:
             response.ok &&
             body.equals(localChannel) &&
@@ -271,9 +250,7 @@ for (const origin of origins) {
   }
 }
 
-const finalStatus = optionalFailures.length
-  ? "degraded"
-  : "ready";
+const finalStatus = optionalFailures.length ? "degraded" : "ready";
 await writeReport(finalStatus);
 if (finalStatus === "ready")
   console.log(

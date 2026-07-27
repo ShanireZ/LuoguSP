@@ -1,0 +1,36 @@
+{
+    "generatedAt": "2026-07-27",
+    "status": "validated-not-published",
+    "baseline": {
+        "katex": "0.16.11",
+        "marked": "4.3.0",
+        "dompurify": "3.0.9",
+        "highlight.js": "11.11.1"
+    },
+    "rendererStack": {
+        "katex": "0.18.1",
+        "marked": "18.0.7",
+        "dompurify": "3.4.12",
+        "highlight.js": "11.11.1"
+    },
+    "licenses": {
+        "katex": "MIT",
+        "marked": "MIT",
+        "dompurify": "MPL-2.0 OR Apache-2.0",
+        "highlight.js": "BSD-3-Clause"
+    },
+    "bundle": {
+        "bytes": 412587,
+        "gzipBytes": 126826,
+        "sha256": "eff67a5460028c9980ddc466dc0bf135e5a0bd37fe90fffd824a46eee14339ed",
+        "sri": "sha256-7/Z6VGACjJmA3cRm3AvxNeWgvTf+kP/9gkpG7uFDOe0="
+    },
+    "verification": {
+        "rendererTests": "passed",
+        "runtimeThirdPartyInputs": 0,
+        "productionDependencyVulnerabilities": 0,
+        "releaseDryRun": "2.13.5-canary.1"
+    },
+    "notPublished": true,
+    "knownBlocker": "The 2.13.4 canary channel's pinned manifest filename and declared SHA-256 are stale relative to the immutable manifest bytes; do not rewrite that release."
+}

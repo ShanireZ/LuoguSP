@@ -1,0 +1,101 @@
+{
+    "schemaVersion": 1,
+    "renderer": "hidden-intro MarkdownLite 2.13.4 baseline",
+    "coverage": [
+        "paragraphs, line breaks, and headings",
+        "strong, emphasis, and deletion",
+        "ordered, unordered, nested, and task-like lists",
+        "tables and alignment markers",
+        "bare URLs, links, and images",
+        "inline and block KaTeX",
+        "fenced code with known and unknown languages",
+        "allowed raw HTML",
+        "script, event handler, javascript URL, SVG, MathML, and clobbering input",
+        "placeholder collisions and long input"
+    ],
+    "cases": [
+        {
+            "id": "blocks-and-inline-formatting",
+            "source": "# Heading\n\nFirst line\nsecond line\n\n**bold** *italic* ~~gone~~",
+            "expectContains": [
+                "<h1>Heading</h1>",
+                "<p>First line<br>second line</p>",
+                "<strong>bold</strong>",
+                "<em>italic</em>",
+                "<del>gone</del>"
+            ]
+        },
+        {
+            "id": "lists-and-table",
+            "source": "- one\n- [x] task\n  - nested\n\n1. first\n2. second\n\n| Left | Right |\n| :--- | ---: |\n| A | B |",
+            "expectContains": [
+                "<ul><li>one</li><li>[x] task</li><li>nested</li></ul>",
+                "<ol><li>first</li><li>second</li></ol>",
+                "<table><thead><tr><th>Left</th><th>Right</th></tr></thead><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+            ]
+        },
+        {
+            "id": "links-images-and-html",
+            "source": "https://example.test\n\n[link](https://example.test/path) ![photo](https://img.example.test/photo.png)\n\n<em data-ignored=\"yes\">safe</em> <span data-ignored=\"yes\">escaped</span>",
+            "expectContains": [
+                "<p>https://example.test</p>",
+                "<a href=\"https://example.test/path\" target=\"_blank\" rel=\"noopener noreferrer\">link</a>",
+                "<img src=\"https://img.example.test/photo.png\" alt=\"photo\" style=\"max-width:100%\">",
+                "<em>safe</em>",
+                "&lt;span"
+            ],
+            "expectNotContains": [
+                "<em data-ignored="
+            ]
+        },
+        {
+            "id": "code-and-katex",
+            "source": "```cpp\nconst x = 1;\n```\n\n```unknown-language\nplain text\n```\n\n$x_1$\n\n$$\\frac{1}{2}$$",
+            "expectContains": [
+                "<pre class=\"language-cpp\"><code class=\"language-cpp\">const x = 1;</code></pre>",
+                "<pre class=\"language-unknown-language\"><code class=\"language-unknown-language\">plain text</code></pre>",
+                "<span class=\"katex\" data-display=\"false\">x_1</span>",
+                "<span class=\"katex\" data-display=\"true\">\\frac{1}{2}</span>"
+            ]
+        },
+        {
+            "id": "unsafe-html-and-urls",
+            "source": "<script>alert(1)</script>\n\n<img src=\"javascript:alert(1)\" onerror=\"alert(2)\">\n\n<a href=\"javascript:alert(3)\" onclick=\"alert(4)\">bad</a>\n\n<svg onload=\"alert(5)\"></svg>\n\n<math><mi>x</mi></math>\n\n<form id=\"attributes\">form</form>",
+            "expectContains": [
+                "&lt;script&gt;alert(1)&lt;/script&gt;",
+                "<span>bad</a>",
+                "&lt;svg",
+                "&lt;math&gt;",
+                "&lt;form"
+            ],
+            "expectNotContains": [
+                "<script",
+                "<img",
+                "href=\"javascript:",
+                "onclick=\"",
+                "<svg",
+                "<math",
+                "<form"
+            ]
+        },
+        {
+            "id": "placeholder-collision",
+            "source": "@@LGB0@@ and %%LGMATH0%%",
+            "expectContains": [
+                "@@LGB0@@ and %%LGMATH0%%"
+            ]
+        },
+        {
+            "id": "long-input",
+            "source": "long-",
+            "repeat": {
+                "value": "x",
+                "count": 32768
+            },
+            "expectContains": [
+                "long-"
+            ],
+            "minimumHtmlLength": 32775
+        }
+    ]
+}
