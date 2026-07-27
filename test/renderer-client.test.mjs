@@ -39,6 +39,38 @@ test("renderer client applies the versioned renderer result and reports lite mod
   assert.equal(highlights, 1);
 });
 
+test("renderer client forwards deterministic QA render options", async () => {
+  const dom = new JSDOM("<!doctype html><body><div id=root></div></body>");
+  let receivedOptions;
+  const client = createRendererClient({
+    renderOptions: Object.freeze({ forceFullFailure: true }),
+    loader: {
+      load: async () => ({
+        origin: "https://primary.example",
+        module: {
+          renderMarkdown(source, options) {
+            receivedOptions = options;
+            return {
+              html: `<p>${source}</p>`,
+              mode: "lite",
+              warnings: ["full-render-failed"],
+            };
+          },
+          enhanceCodeBlocks: () => {},
+        },
+      }),
+      getState: () => ({ status: "loaded" }),
+    },
+  });
+
+  await client.renderInto(
+    dom.window.document.querySelector("#root"),
+    "source",
+  );
+
+  assert.deepEqual(receivedOptions, { forceFullFailure: true });
+});
+
 test("renderer client does not mutate the target after cancellation", async () => {
   const dom = new JSDOM("<!doctype html><body><div id=root>original</div></body>");
   const controller = new AbortController();

@@ -1,10 +1,14 @@
 import { installRestrictedEarlyGate } from "../bootstrap/restricted-early-gate.js";
 import { runLuoguSP } from "../bootstrap/run-app.js";
+import {
+  createQaRendererFetch,
+  createQaRendererOptions,
+  getQaHiddenIntroMode,
+  isQaForcedFallback,
+} from "./qa-hidden-intro.js";
 import { createUserscriptFetch } from "./userscript-fetch.js";
 
-function createQaProbe(release) {
-  if (!String(release).includes("-")) return null;
-  const mode = new URL(location.href).searchParams.get("luogusp-qa");
+function createQaProbe(release, mode) {
   if (!mode) return null;
   const probe = document.createElement("meta");
   probe.id = "luogusp-qa-hidden-intro";
@@ -72,8 +76,14 @@ const runtime = Object.freeze({
   release: __LUOGUSP_CDN_RELEASE__,
   apiVersion: 1,
 });
-const qaProbe = createQaProbe(runtime.release);
+const qaMode = getQaHiddenIntroMode(runtime.release, location.href);
+const qaProbe = createQaProbe(runtime.release, qaMode);
 const userscriptFetch = createUserscriptFetch();
+const rendererFetch = createQaRendererFetch({
+  mode: qaMode,
+  origins: __LUOGUSP_CDN_ORIGINS__,
+  fetchImpl: userscriptFetch.fetchImpl,
+});
 const qaProbeElement = document.querySelector(
   "#luogusp-qa-hidden-intro",
 );
@@ -81,7 +91,7 @@ if (qaProbeElement)
   qaProbeElement.dataset.rendererTransport =
     userscriptFetch.transport;
 const forcedFallbackAdapter =
-  qaProbe?.mode === "fallback"
+  isQaForcedFallback(qaMode)
     ? Object.freeze({
         attach: async () =>
           Object.freeze({
@@ -98,7 +108,8 @@ runLuoguSP(installRestrictedEarlyGate(), {
   hiddenIntroRendererConfig: Object.freeze({
     bundle: __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__,
     origins: __LUOGUSP_CDN_ORIGINS__,
-    fetchImpl: userscriptFetch.fetchImpl,
+    fetchImpl: rendererFetch,
+    renderOptions: createQaRendererOptions(qaMode),
     onEvent: qaProbe?.renderer,
   }),
   hiddenIntroNativeAdapter: forcedFallbackAdapter,

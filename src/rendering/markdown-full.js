@@ -63,7 +63,7 @@ export function createMarkdownFullRenderer(dependencies) {
   };
 
   return Object.freeze({
-    renderMarkdown(source) {
+    renderMarkdown(source, options = {}) {
       const markdown = String(source ?? "");
       const math = [];
       let mathPrefix = "%%LGMATH";
@@ -71,6 +71,8 @@ export function createMarkdownFullRenderer(dependencies) {
       const hold = (html) => `${mathPrefix}${math.push(html) - 1}%%`;
 
       try {
+        if (options.forceFullFailure === true)
+          throw new Error("Full renderer failure was requested");
         const parsed = marked.parse(
           markdown
             .replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
