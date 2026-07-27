@@ -112,6 +112,7 @@ test("optional bundle loader retries after failure and honors AbortSignal", asyn
     urlApi,
   });
   await assert.rejects(() => loader.load(), { kind: "cdn-unavailable" });
+  assert.equal(loader.getState().status, "idle");
   const recovered = await loader.load();
   assert.equal(recovered.module, moduleApi);
   assert.equal(attempt, 2);

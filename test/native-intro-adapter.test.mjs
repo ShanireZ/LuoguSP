@@ -25,6 +25,7 @@ function computed(value, fn, dependencies = []) {
 }
 
 function createFixture({
+  componentRoot = "element",
   duplicateCandidate = false,
   mutateIdentity = false,
   render = true,
@@ -90,8 +91,14 @@ function createFixture({
     subTree: { children: [{ component: targetComponent }] },
   };
   const app = document.querySelector("#app");
-  app.__vue_app__ = { version: "3.5.35" };
-  app._vnode = { component: rootComponent };
+  app.__vue_app__ = {
+    version: "3.5.35",
+    ...(componentRoot === "container"
+      ? { _container: { _vnode: { component: rootComponent } } }
+      : {}),
+  };
+  if (componentRoot === "element")
+    app._vnode = { component: rootComponent };
   return {
     document,
     MutationObserver,
@@ -132,6 +139,22 @@ test("native intro adapter attaches one official card and restores its computed 
     fixture.document.querySelectorAll(".native-intro-card").length,
     0,
   );
+});
+
+test("native intro adapter discovers the official component from the Vue app container", async () => {
+  const fixture = createFixture({ componentRoot: "container" });
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.equal(result.status, "native-attached");
+  assert.equal(
+    fixture.document.querySelectorAll(".native-intro-card").length,
+    1,
+  );
+  assert.equal(result.restore(), true);
 });
 
 test("native intro adapter fails closed for ambiguous candidates", async () => {

@@ -89,6 +89,23 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
       throw new Error("Expected one userscript @description");
     lines[descriptionIndex] =
       `// @description  [QA ${version}] hidden-intro 原生优先与按需 renderer 验收`;
+    replaceSingleMetadataLine(
+      lines,
+      "grant",
+      "GM_xmlhttpRequest",
+    );
+    const grantIndex = lines.findIndex((line) =>
+      /^\/\/ @grant\s+GM_xmlhttpRequest$/.test(line),
+    );
+    if (grantIndex === -1)
+      throw new Error("Expected one userscript @grant");
+    lines.splice(
+      grantIndex,
+      0,
+      "// @sandbox      raw",
+      "// @connect      spcdn.betaoi.cc",
+      "// @connect      spcdn.betaoi.cn",
+    );
   }
 
   const withoutRequires = lines.filter(
