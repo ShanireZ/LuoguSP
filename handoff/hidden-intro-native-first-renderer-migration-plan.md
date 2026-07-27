@@ -22,8 +22,9 @@
 - `2.13.5-canary.12` 起用组件树中的目标用户 UID、唯一 `UserShowMain` 和显示 gate 状态判断可见卡片归属，并在目标组件就绪且旧卡片退出后才挂接；这替代了不可靠的时间确认窗口。
 - canary.13 已真实执行本人介绍的编辑、保存和原生重渲染：临时追加的 Markdown 成功保存后，243 字符原文被逐字符写回、二次保存并从服务器编辑器重新读回确认完全一致。
 - canary.14-.15 暴露首屏异步覆盖和 page lifecycle 重建 feature 后实例状态丢失；canary.16 将最后路由保存在模块级 `WeakMap<Document, state>`，完整刷新使用新 Document，SPA/BFCache 重建仍能识别同文档旧路由。
-- `npm test` 在 canary.16 源码上通过 126/126。新增回归覆盖异步 Vue 根、异步路由组件、深层/Suspense VNode、生产形态嵌套 computed、首屏原生卡覆盖在途适配、feature 重建后的同文档路由历史、可见卡片用户归属、旧卡退出等待、BFCache persisted pageshow、原生编辑态和 SPA 返回恢复。
+- `npm test` 在 canary.17 源码上通过 131/131。除异步 Vue 根、Suspense、生产形态 computed、SPA/BFCache 和原生编辑态等回归外，新增了仅 prerelease 可识别的主源失败、整轮失败后重试和 full 失败转 lite 故障注入测试。
 - canary.16 已发布到 `spcdn.betaoi.cc` 并通过 required-origin 生产校验；`spcdn.betaoi.cn` 仍是 optional degraded。QA 用户脚本 SHA-256 为 `2B4BC5F2F313C8E1B4622DC2DD796A4F8DC37871DF89F312601F95E6980F0B20`，生产 `LuoguSP.user.js` 未修改。
+- canary.17 已发布到 `spcdn.betaoi.cc` 并通过 required-origin 生产校验，加入 `fallback-primary-fail`、`fallback-retry`、`fallback-lite` 三个受限 QA 模式；QA 用户脚本 SHA-256 为 `D52CFC844B5A3486B2838581C46D826684D6CFF57548A2EBBDF72A0E550AE9AC`，等待真实 Tampermonkey 验收。
 
 ## 交接状态（2026-07-27）
 
@@ -51,6 +52,7 @@
 - `renderer-client.js` 只在手工卡挂载后请求 renderer，并消费包内 full/lite 数据 API；`optional-bundle-loader.js` 使用固定描述、两个自定义 origin、SHA-256、Blob ESM import、同页 Promise 单例、AbortSignal 和严格 API 版本拒绝，不使用 `eval` 或 `new Function`。
 - QA/后续正式脚本的 `GM_xmlhttpRequest` 与 `@connect spcdn.betaoi.cc` 是当前跨 CSP、按字节下载并校验 renderer 的必要权限；`@connect spcdn.betaoi.cn` 只服务于既定双源容灾契约。若取消备用源，必须把 `.cn` origin、验证与故障转移测试一起移除，不能只删除 userscript 元数据。
 - 自动化测试覆盖单例、取消、描述/API 不匹配、失败后重试、安全纯文本 UI、lite 降级状态和一次性手工渲染；既有 `fetchVerifiedAsset` 测试继续覆盖主域完整性失败后切备用域。
+- canary.17 的故障注入严格限于带连字符的 prerelease release 和白名单 QA 查询值：`fallback-primary-fail` 只拒绝主源 renderer 请求，`fallback-retry` 只让首轮两个 origin 返回合成 503，`fallback-lite` 只让 full renderer 进入既有 MarkdownLite catch 路径；稳定版和未知查询值均不启用。
 - Tampermonkey canary.16 已在 `/user/2?luogusp-qa=fallback` 通过：只出现一张受管手工卡，完整 renderer 通过 `GM_xmlhttpRequest` 从 `https://spcdn.betaoi.cc` 加载，探针为 `fallback-rendered`，同页加载数为 1。
 - 从强制兜底页进入本人主页时无手工卡且保留“编辑”；浏览器返回后手工卡恢复，renderer 加载数仍为 1，证明同页单例没有重复下载或初始化。整条路径无 warning/error、无遮罩残留。
 - 原生路径 0 次和兜底路径 1 次的真实浏览器门槛已满足。主域失败切备用域、双域失败后的安全提示/点击重试、full-to-lite 的浏览器故障注入仍未执行；这些分支已有自动化覆盖，但在 Phase 5 删除四条第三方 `@require` 前仍须补真实浏览器证据。
@@ -61,19 +63,19 @@
 npm run renderer:test
 npm run renderer:check
 npm test
-node scripts/cdn/build.mjs --version 2.13.5-canary.16
-npm run qa:hidden-intro:stage -- --version 2.13.5-canary.16
-node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.16
+node scripts/cdn/build.mjs --version 2.13.5-canary.17
+npm run qa:hidden-intro:stage -- --version 2.13.5-canary.17
+node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.17
 ```
 
-- `npm test` 当前通过 126/126。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
+- `npm test` 当前通过 131/131。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
 - `npm run quality:check` 还会发现冻结的 2.13.4 `early-gate` manifest 声明 `a087...`、本地不可变文件实际为 `5e06...` 的既有漂移；同样不得原地改写 2.13.4。
-- canary.16 是独立 `LuoguSP QA` 身份，无自动更新地址；它已在真实 Tampermonkey 中运行。Cloudflare release 和 canary channel 已更新，但生产用户脚本仍保持原样。
+- canary.17 是独立 `LuoguSP QA` 身份，无自动更新地址；Cloudflare release 和 canary channel 已更新，等待安装验收，但生产用户脚本仍保持原样。
 - 不要在补齐 Phase 4 的故障注入浏览器证据前进入 Phase 5，也不要发布稳定版或删除四条第三方 `@require`。
 
 ### CDN retention 后续设计
 
-- 当前本地 `cdn/releases` 有 5 个正式版（约 0.96 MB）和 16 个 canary（约 9.66 MB）；规模远低于 Workers Static Assets 的文件上限，当前主要成本是仓库噪声和部署扫描，而不是平台存储费用。
+- 当前本地 `cdn/releases` 有 5 个正式版（约 0.96 MB）和 17 个 canary（约 10.30 MB）；最近一次 Workers 部署扫描 471 个文件，规模远低于 Static Assets 的文件上限，当前主要成本是仓库噪声和部署扫描，而不是平台存储费用。
 - canary 建议保留“最近 3 个已验收成功版本 + 14 天内版本 + channel/pinned/未关闭诊断引用”，清理必须同时满足数量和年龄条件。
 - 正式版不能简单只保留最近 6 个：已安装用户脚本固定引用不可变 release URL。默认应永久保留；只有最低支持版本已抬升、访问日志在 90-180 天窗口内无请求且不属于回滚/安全保护点时，才允许显式清理。
 - 建议先新增只读 `cdn:retention:plan`，输出受保护引用、候选目录、文件数和字节；真正删除另设 `--apply` 和确认参数。本次没有删除任何 release。
