@@ -29,14 +29,19 @@ function collectComponents(vnode) {
   const components = [];
   const seenVNodes = new WeakSet();
   const seenComponents = new WeakSet();
-  const visit = (current, depth = 0) => {
+  const pending = [vnode];
+  const enqueue = (value) => {
+    if (value && typeof value === "object") pending.push(value);
+  };
+  let visited = 0;
+  while (pending.length && visited++ < 20_000) {
+    const current = pending.pop();
     if (
       !current ||
       typeof current !== "object" ||
-      depth > 40 ||
       seenVNodes.has(current)
     )
-      return;
+      continue;
     seenVNodes.add(current);
     const component = current.component;
     if (
@@ -46,16 +51,45 @@ function collectComponents(vnode) {
     ) {
       seenComponents.add(component);
       components.push(component);
-      visit(component.subTree, depth + 1);
+      enqueue(component.subTree);
     }
     if (Array.isArray(current.children))
-      current.children.forEach((child) => visit(child, depth + 1));
+      current.children.forEach(enqueue);
     else if (current.children && typeof current.children === "object")
-      Object.values(current.children).forEach((child) =>
-        visit(child, depth + 1),
-      );
-  };
-  visit(vnode);
+      Object.values(current.children).forEach(enqueue);
+    if (Array.isArray(current.dynamicChildren))
+      current.dynamicChildren.forEach(enqueue);
+    [
+      current.ssContent,
+      current.ssFallback,
+      current.suspense?.activeBranch,
+      current.suspense?.pendingBranch,
+    ].forEach(enqueue);
+  }
+  return components;
+}
+
+function collectDomComponents(root) {
+  const components = new Set();
+  const nodes = [
+    root,
+    ...(typeof root?.querySelectorAll === "function"
+      ? root.querySelectorAll("*")
+      : []),
+  ];
+  for (const node of nodes) {
+    let component = node?.__vueParentComponent;
+    let depth = 0;
+    while (
+      component &&
+      typeof component === "object" &&
+      depth++ < 40 &&
+      !components.has(component)
+    ) {
+      components.add(component);
+      component = component.parent;
+    }
+  }
   return components;
 }
 
@@ -225,6 +259,99 @@ export function createNativeIntroAdapter(options = {}) {
       check();
     });
   };
+  const waitForVueApp = (signal) => {
+    const read = () => document.querySelector("#app")?.__vue_app__;
+    const existing = read();
+    if (existing) return Promise.resolve(existing);
+    if (typeof setTimeoutImpl !== "function")
+      return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const intervalMs = 25;
+      const maxAttempts = Math.max(
+        1,
+        Math.ceil(timeoutMs / intervalMs),
+      );
+      let attempt = 0;
+      let timer = null;
+      const finish = (app) => {
+        if (timer !== null) clearTimeoutImpl(timer);
+        signal?.removeEventListener("abort", onAbort);
+        resolve(app);
+      };
+      const onAbort = () => finish(null);
+      const check = () => {
+        const app = read();
+        if (app) return finish(app);
+        if (signal?.aborted || ++attempt >= maxAttempts)
+          return finish(null);
+        timer = setTimeoutImpl(check, intervalMs);
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      check();
+    });
+  };
+  const readNamedComponent = (app) => {
+    const appRoot = document.querySelector("#app");
+    const componentSet = new Set();
+    for (const component of collectDomComponents(appRoot))
+      componentSet.add(component);
+    for (const vnode of [
+      appRoot?._vnode,
+      app?._container?._vnode,
+      app?._instance?.subTree,
+    ])
+      for (const component of collectComponents(vnode))
+        componentSet.add(component);
+    const allComponents = [...componentSet];
+    const namedComponents = allComponents.filter(
+      (component) => componentName(component) === "UserShowMain",
+    );
+    return Object.freeze({
+      allComponents,
+      namedComponents,
+    });
+  };
+  const waitForNamedComponent = (app, signal) => {
+    if (typeof setTimeoutImpl !== "function")
+      return Promise.resolve(
+        signal?.aborted
+          ? null
+          : {
+              ...readNamedComponent(app),
+              scans: 1,
+            },
+      );
+    return new Promise((resolve) => {
+      const intervalMs = 25;
+      const maxAttempts = Math.max(
+        1,
+        Math.ceil(timeoutMs / intervalMs),
+      );
+      let scans = 0;
+      let timer = null;
+      let latest = null;
+      const finish = (result) => {
+        if (timer !== null) clearTimeoutImpl(timer);
+        signal?.removeEventListener("abort", onAbort);
+        resolve(result);
+      };
+      const onAbort = () => finish(null);
+      const check = () => {
+        if (signal?.aborted) return finish(null);
+        latest = readNamedComponent(app);
+        scans++;
+        if (
+          latest.namedComponents.length === 1 ||
+          latest.namedComponents.length > 1 ||
+          scans >= maxAttempts
+        )
+          return finish({ ...latest, scans });
+        timer = setTimeoutImpl(check, intervalMs);
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      check();
+    });
+  };
   const restoreRecord = (record) => {
     if (!record.active) return true;
     record.active = false;
@@ -253,17 +380,27 @@ export function createNativeIntroAdapter(options = {}) {
   };
   const findCandidate = (component, uid, introduction) => {
     const targetComputeds = new Set();
+    const visitedComputeds = new Set();
+    const visitComputed = (computed, depth = 0) => {
+      if (
+        !isComputedRef(computed) ||
+        depth > 6 ||
+        visitedComputeds.has(computed)
+      )
+        return;
+      visitedComputeds.add(computed);
+      const result = readComputed(computed);
+      if (
+        result.ok &&
+        isTargetUser(result.value, uid, introduction)
+      )
+        targetComputeds.add(computed);
+      for (const link of dependencyLinks(computed))
+        visitComputed(link.dep?.computed, depth + 1);
+    };
     for (const effect of component.scope?.effects || []) {
-      for (const link of linkedValues(effect.deps, "nextDep")) {
-        const computed = link.dep?.computed;
-        const result = readComputed(computed);
-        if (
-          isComputedRef(computed) &&
-          result.ok &&
-          isTargetUser(result.value, uid, introduction)
-        )
-          targetComputeds.add(computed);
-      }
+      for (const link of linkedValues(effect.deps, "nextDep"))
+        visitComputed(link.dep?.computed);
     }
     if (targetComputeds.size !== 1)
       return { reason: "target-user-computed-count" };
@@ -299,28 +436,20 @@ export function createNativeIntroAdapter(options = {}) {
         return Object.freeze({ status: "already-native" });
       if (typeof introduction !== "string" || !introduction.trim())
         return report("native-unsupported", "missing-introduction");
-      const app = document.querySelector("#app")?.__vue_app__;
+      const app = await waitForVueApp(signal);
+      if (!app)
+        return report("native-unsupported", "vue-app-timeout");
       if (!SUPPORTED_VUE_VERSION.test(app?.version || ""))
         return report("native-unsupported", "vue-version");
-      const appRoot = document.querySelector("#app");
-      const componentSet = new Set();
-      for (const vnode of [
-        appRoot?._vnode,
-        app?._container?._vnode,
-        app?._instance?.subTree,
-      ])
-        for (const component of collectComponents(vnode))
-          componentSet.add(component);
-      const allComponents = [...componentSet];
-      const components = allComponents.filter(
-        (component) => componentName(component) === "UserShowMain",
-      );
-      if (components.length !== 1)
+      const componentResult = await waitForNamedComponent(app, signal);
+      if (!componentResult)
+        return report("native-unsupported", "cancelled");
+      if (componentResult.namedComponents.length !== 1)
         return report(
           "native-unsupported",
-          `user-show-main-count:${components.length}/${allComponents.length}`,
+          `user-show-main-count:${componentResult.namedComponents.length}/${componentResult.allComponents.length}/scans:${componentResult.scans}`,
         );
-      const component = components[0];
+      const component = componentResult.namedComponents[0];
       if (component.isUnmounted)
         return report("native-unsupported", "component-unmounted");
       const found = findCandidate(component, uid, introduction);

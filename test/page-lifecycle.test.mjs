@@ -38,7 +38,8 @@ test("Route Adapter wraps history once and restores only owned wrappers", () => 
   assert.equal(history.pushState, wrappedPush);
   history.pushState("one");
   events.get("popstate")();
-  assert.deepEqual([first, second], [2, 2]);
+  events.get("pageshow")({ type: "pageshow", persisted: true });
+  assert.deepEqual([first, second], [3, 3]);
   disposeFirst();
   assert.equal(history.pushState, wrappedPush);
   disposeSecond();
@@ -107,9 +108,9 @@ function fixture() {
   return {
     lifecycle,
     errors,
-    emitRoute(next = routeToken) {
+    emitRoute(next = routeToken, event) {
       routeToken = next;
-      routeListener();
+      routeListener(event);
     },
     flush() {
       const jobs = scheduled.splice(0);
@@ -204,6 +205,25 @@ test("Page Lifecycle ignores no-op history events for the current route", () => 
 
   assert.deepEqual({ mounts, disposes }, { mounts: 1, disposes: 0 });
   assert.equal(fx.lifecycle.getState().mountedCount, 1);
+});
+
+test("Page Lifecycle remounts a restored BFCache document on persisted pageshow", () => {
+  const fx = fixture();
+  let mounts = 0;
+  let disposes = 0;
+  fx.lifecycle.register({
+    id: "feature",
+    mount: () => {
+      mounts++;
+      return () => disposes++;
+    },
+  });
+  fx.lifecycle.start();
+
+  fx.emitRoute("/one", { type: "pageshow", persisted: true });
+  fx.flush();
+
+  assert.deepEqual({ mounts, disposes }, { mounts: 2, disposes: 1 });
 });
 
 test("Page Lifecycle preserves rebuilt-document resources across no-op history events", () => {

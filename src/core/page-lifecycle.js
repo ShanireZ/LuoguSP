@@ -89,11 +89,16 @@ export function createPageLifecycle(config) {
         mountFeatures();
       }) || null;
   };
-  const handleRoute = () => {
+  const handleRoute = (event) => {
     if (!started || disposed || replacing) return;
     const nextRouteToken =
       typeof routeAdapter.token === "function" ? routeAdapter.token() : "";
-    if (nextRouteToken === lastRouteToken) return;
+    const persistedPageRestore =
+      event?.type === "pageshow" && event.persisted === true;
+    if (nextRouteToken === lastRouteToken) {
+      if (persistedPageRestore) remount();
+      return;
+    }
     const routeContext = Object.freeze({
       generation,
       previousRouteToken: lastRouteToken,

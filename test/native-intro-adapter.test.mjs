@@ -26,9 +26,17 @@ function computed(value, fn, dependencies = []) {
 
 function createFixture({
   componentRoot = "element",
+  componentSource = "vnode",
+  deepVnodeDepth = 0,
+  delayedAppMs = 0,
+  delayedComponentMs = 0,
   duplicateCandidate = false,
   mutateIdentity = false,
+  namedComponent = true,
+  nestedUserDependency = false,
   render = true,
+  suspenseRoot = false,
+  timeoutMs = 5,
 } = {}) {
   const dom = new JSDOM('<div id="app"></div>');
   const { document, MutationObserver } = dom.window;
@@ -78,27 +86,62 @@ function createFixture({
     subscriptions.push({ sub: secondGate });
   }
   userComputed.dep.subs = chain(subscriptions, "prevSub");
+  const introText = computed(
+    user.introduction,
+    () => user.introduction,
+    [{ dep: { computed: userComputed }, version: 1 }],
+  );
   const sourceEffect = {
-    deps: { dep: { computed: userComputed } },
+    deps: {
+      dep: {
+        computed: nestedUserDependency ? introText : userComputed,
+      },
+    },
   };
   const targetComponent = {
-    type: { name: "UserShowMain" },
+    type: namedComponent ? { name: "UserShowMain" } : {},
     scope: { effects: [sourceEffect] },
     isUnmounted: false,
   };
+  let targetVNode = { component: targetComponent };
+  for (let depth = 0; depth < deepVnodeDepth; depth++)
+    targetVNode = { children: [targetVNode] };
+  if (suspenseRoot)
+    targetVNode = {
+      ssContent: targetVNode,
+      ssFallback: { children: [] },
+      suspense: { activeBranch: targetVNode },
+    };
   const rootComponent = {
     type: { name: "RootMain" },
-    subTree: { children: [{ component: targetComponent }] },
+    subTree: {
+      children: delayedComponentMs > 0 ? [] : [targetVNode],
+    },
   };
+  if (delayedComponentMs > 0)
+    setTimeout(() => {
+      rootComponent.subTree = { children: [targetVNode] };
+    }, delayedComponentMs);
   const app = document.querySelector("#app");
-  app.__vue_app__ = {
+  const vueApp = {
     version: "3.5.35",
     ...(componentRoot === "container"
       ? { _container: { _vnode: { component: rootComponent } } }
       : {}),
   };
+  if (delayedAppMs > 0)
+    setTimeout(() => {
+      app.__vue_app__ = vueApp;
+    }, delayedAppMs);
+  else app.__vue_app__ = vueApp;
   if (componentRoot === "element")
     app._vnode = { component: rootComponent };
+  if (componentSource === "dom") {
+    delete app._vnode;
+    const anchor = document.createElement("section");
+    anchor.__vueParentComponent = targetComponent;
+    app.append(anchor);
+  }
   return {
     document,
     MutationObserver,
@@ -107,7 +150,7 @@ function createFixture({
     adapter: createNativeIntroAdapter({
       document,
       MutationObserver,
-      timeoutMs: 5,
+      timeoutMs,
       logDiagnostic: () => {},
     }),
   };
@@ -155,6 +198,114 @@ test("native intro adapter discovers the official component from the Vue app con
     1,
   );
   assert.equal(result.restore(), true);
+});
+
+test("native intro adapter rejects an anonymous structural candidate", async () => {
+  const fixture = createFixture({ namedComponent: false });
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.deepEqual(result, {
+    status: "native-unsupported",
+    reason: "user-show-main-count:0/2/scans:1",
+  });
+});
+
+test("native intro adapter discovers the official component from DOM parent instances", async () => {
+  const fixture = createFixture({ componentSource: "dom" });
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.equal(result.status, "native-attached");
+  assert.equal(
+    fixture.document.querySelectorAll(".native-intro-card").length,
+    1,
+  );
+  assert.equal(result.restore(), true);
+});
+
+test("native intro adapter traverses deep and Suspense-backed Vue branches", async () => {
+  const fixture = createFixture({
+    deepVnodeDepth: 60,
+    suspenseRoot: true,
+  });
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.equal(result.status, "native-attached");
+  assert.equal(
+    fixture.document.querySelectorAll(".native-intro-card").length,
+    1,
+  );
+  assert.equal(result.restore(), true);
+});
+
+test("native intro adapter waits for Vue and follows production nested computed dependencies", async () => {
+  const fixture = createFixture({
+    delayedAppMs: 5,
+    nestedUserDependency: true,
+    timeoutMs: 50,
+  });
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.equal(result.status, "native-attached");
+  assert.equal(
+    fixture.document.querySelectorAll(".native-intro-card").length,
+    1,
+  );
+  assert.equal(result.restore(), true);
+});
+
+test("native intro adapter waits for the asynchronously mounted production route component", async () => {
+  const fixture = createFixture({
+    delayedComponentMs: 5,
+    timeoutMs: 50,
+  });
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.equal(result.status, "native-attached");
+  assert.equal(
+    fixture.document.querySelectorAll(".native-intro-card").length,
+    1,
+  );
+  assert.equal(result.restore(), true);
+});
+
+test("native intro adapter fails closed when the Vue app never becomes ready", async () => {
+  const dom = new JSDOM('<div id="app"></div>');
+  const adapter = createNativeIntroAdapter({
+    document: dom.window.document,
+    MutationObserver: dom.window.MutationObserver,
+    timeoutMs: 5,
+    logDiagnostic: () => {},
+  });
+
+  const result = await adapter.attach({
+    uid: "2",
+    introduction: "hidden",
+  });
+
+  assert.deepEqual(result, {
+    status: "native-unsupported",
+    reason: "vue-app-timeout",
+  });
 });
 
 test("native intro adapter fails closed for ambiguous candidates", async () => {
