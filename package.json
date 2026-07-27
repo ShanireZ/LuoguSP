@@ -21,9 +21,19 @@
     "cdn:stage-userscript": "node scripts/cdn/stage-userscript.mjs",
     "cdn:verify": "node scripts/cdn/verify.mjs",
     "cdn:verify-production": "node scripts/cdn/verify-production.mjs",
+    "renderer:build": "node scripts/renderer/build.mjs",
+    "renderer:test": "node --test test/markdown-lite-baseline.test.mjs test/markdown-full.test.mjs test/markdown-renderer-api.test.mjs test/renderer-build.test.mjs",
+    "renderer:check": "node scripts/renderer/check.mjs",
     "check": "npm run build:check && npm run quality:check && npm test"
   },
   "devDependencies": {
-    "esbuild": "0.27.2"
+    "esbuild": "0.27.2",
+    "jsdom": "29.1.1"
+  },
+  "dependencies": {
+    "dompurify": "3.4.12",
+    "highlight.js": "11.11.1",
+    "katex": "0.18.1",
+    "marked": "18.0.7"
   }
 }

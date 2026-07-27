@@ -1,8 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  readFile,
-  writeFile,
-} from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchVerified } from "./verify-lib.mjs";
@@ -20,22 +17,15 @@ const [configText, budgetText, manifestBody, stagedArtifact] =
   await Promise.all([
     readFile(resolve(root, "config/cdn.json"), "utf8"),
     readFile(resolve(root, "config/quality-budget.json"), "utf8"),
-    readFile(
-      resolve(root, `cdn/releases/${version}/manifest.json`),
-    ),
-    readFile(
-      resolve(root, `dist/staged/LuoguSP.${version}.user.js`),
-      "utf8",
-    ),
+    readFile(resolve(root, `cdn/releases/${version}/manifest.json`)),
+    readFile(resolve(root, `dist/staged/LuoguSP.${version}.user.js`), "utf8"),
   ]);
 const config = JSON.parse(configText);
 const budget = JSON.parse(budgetText);
 const manifest = JSON.parse(manifestBody);
-const digest = (body) =>
-  createHash("sha256").update(body).digest("hex");
+const digest = (body) => createHash("sha256").update(body).digest("hex");
 const manifestSha256 = digest(manifestBody);
-const manifestPath =
-  `releases/${version}/manifest.${manifestSha256.slice(0, 16)}.json`;
+const manifestPath = `releases/${version}/manifest.${manifestSha256.slice(0, 16)}.json`;
 const failures = [];
 
 if (manifest.release !== version)
@@ -43,9 +33,7 @@ if (manifest.release !== version)
 if (manifest.esm?.enabled !== false)
   failures.push("dynamic ESM must remain disabled for first production");
 try {
-  const pinnedManifest = await readFile(
-    resolve(root, "cdn", manifestPath),
-  );
+  const pinnedManifest = await readFile(resolve(root, "cdn", manifestPath));
   if (!pinnedManifest.equals(manifestBody))
     failures.push("hashed manifest differs from manifest.json");
 } catch (error) {
@@ -71,8 +59,7 @@ const originRecords = [
     failures.push(`${origin.id} must use a long-lived custom domain`);
   return { ...origin, url: url.origin };
 });
-const configuredRequiredOriginIds =
-  config.verification?.requiredOriginIds;
+const configuredRequiredOriginIds = config.verification?.requiredOriginIds;
 const requiredOriginIds = new Set(
   Array.isArray(configuredRequiredOriginIds)
     ? configuredRequiredOriginIds
@@ -81,23 +68,16 @@ const requiredOriginIds = new Set(
 if (
   !requiredOriginIds.size ||
   [...requiredOriginIds].some(
-    (id) =>
-      !originRecords.some((origin) => origin.id === id),
+    (id) => !originRecords.some((origin) => origin.id === id),
   )
 )
-  failures.push(
-    "verification.requiredOriginIds must name configured origins",
-  );
+  failures.push("verification.requiredOriginIds must name configured origins");
 const optionalIssues = [];
 let bootstrapOrigin;
 try {
   bootstrapOrigin = new URL(config.origins.bootstrap).origin;
-  if (
-    !originRecords.some((origin) => origin.url === bootstrapOrigin)
-  )
-    failures.push(
-      "bootstrap must be one of the configured custom origins",
-    );
+  if (!originRecords.some((origin) => origin.url === bootstrapOrigin))
+    failures.push("bootstrap must be one of the configured custom origins");
 } catch (error) {
   failures.push("bootstrap must be a valid HTTPS origin");
 }
@@ -116,34 +96,19 @@ const stagedRequires = [
 const compatibilityUrl = (origin, file) =>
   `${new URL(file.path, `${origin}/`)}#sha256=${file.sha256}`;
 const expectedRequires = [
-  compatibilityUrl(
-    bootstrapOrigin,
-    manifest.compat.earlyGate,
-  ),
+  compatibilityUrl(bootstrapOrigin, manifest.compat.earlyGate),
   ...budget.requires.resources.map((resource) => resource.url),
-  compatibilityUrl(
-    bootstrapOrigin,
-    manifest.compat.runtime,
-  ),
+  compatibilityUrl(bootstrapOrigin, manifest.compat.runtime),
 ];
-if (
-  JSON.stringify(stagedRequires) !==
-  JSON.stringify(expectedRequires)
-)
+if (JSON.stringify(stagedRequires) !== JSON.stringify(expectedRequires))
   failures.push("staged userscript @require order or hashes differ");
 if (stagedArtifact.includes("/channels/"))
   failures.push("staged userscript must not load a mutable channel");
 const nonBootstrapOrigins = originRecords
   .map((origin) => origin.url)
   .filter((origin) => origin !== bootstrapOrigin);
-if (
-  nonBootstrapOrigins.some((origin) =>
-    stagedArtifact.includes(origin),
-  )
-)
-  failures.push(
-    "staged userscript must not execute a non-bootstrap runtime",
-  );
+if (nonBootstrapOrigins.some((origin) => stagedArtifact.includes(origin)))
+  failures.push("staged userscript must not execute a non-bootstrap runtime");
 if (Buffer.byteLength(stagedArtifact) > 5000)
   failures.push("staged userscript loader exceeds 5000 bytes");
 
@@ -164,24 +129,16 @@ for (const origin of originRecords) {
     }
     const url = new URL(path, `${origin.url}/`);
     const expected =
-      path === manifestPath
-        ? manifestSha256
-        : manifest.files[path].sha256;
+      path === manifestPath ? manifestSha256 : manifest.files[path].sha256;
     try {
       const verified = await fetchVerified({
         url,
-        delaysMs: requiredOriginIds.has(origin.id)
-          ? undefined
-          : [0],
-        timeoutMs: requiredOriginIds.has(origin.id)
-          ? undefined
-          : 5000,
+        delaysMs: requiredOriginIds.has(origin.id) ? undefined : [0],
+        timeoutMs: requiredOriginIds.has(origin.id) ? undefined : 5000,
         check: (response, body) => {
           const actual = digest(body);
-          const contentType =
-            response.headers.get("content-type") || "";
-          const cacheControl =
-            response.headers.get("cache-control") || "";
+          const contentType = response.headers.get("content-type") || "";
+          const cacheControl = response.headers.get("cache-control") || "";
           const cors =
             response.headers.get("access-control-allow-origin") || "";
           return {
@@ -225,10 +182,8 @@ for (const origin of originRecords) {
         ok: false,
         error: error.message,
       });
-      const issue =
-        `${origin.id} failed ${path} after ${error.history?.length || 1} attempt(s): ${JSON.stringify(error.lastResult || error.message)}`;
-      if (requiredOriginIds.has(origin.id))
-        failures.push(issue);
+      const issue = `${origin.id} failed ${path} after ${error.history?.length || 1} attempt(s): ${JSON.stringify(error.lastResult || error.message)}`;
+      if (requiredOriginIds.has(origin.id)) failures.push(issue);
       else optionalIssues.push(issue);
       originAvailable = false;
     }
@@ -259,6 +214,7 @@ const report = {
   },
   filesPerOrigin: paths.length,
   dynamicEsmEnabled: manifest.esm.enabled,
+  optionalBundles: manifest.optionalBundles || {},
   failures: uniqueFailures,
   optionalIssues: uniqueOptionalIssues,
   results,
@@ -272,9 +228,9 @@ if (uniqueFailures.length) {
   console.error(
     `Production CDN gate blocked with ${uniqueFailures.length} failure(s).`,
   );
-  uniqueFailures.slice(0, 8).forEach((failure) =>
-    console.error(`- ${failure}`),
-  );
+  uniqueFailures
+    .slice(0, 8)
+    .forEach((failure) => console.error(`- ${failure}`));
   process.exitCode = 1;
 } else {
   if (uniqueOptionalIssues.length)
