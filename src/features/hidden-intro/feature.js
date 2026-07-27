@@ -10,7 +10,6 @@ export function createHiddenIntroFeature({
   fallbackIntroController,
   rendererConfig,
   onDiagnostic,
-  nativeConfirmationMs = 800,
 } = {}) {
   const SELECTORS = {
     userIntroColumn: ".sidebar-container .main",
@@ -80,11 +79,6 @@ export function createHiddenIntroFeature({
     };
     const fallback = getFallbackController();
     fallback.removeCards();
-    if (nativeVisible()) {
-      diagnostics.set("already-native");
-      return;
-    }
-
     const introduction = await fallback.getIntroduction(uid, signal);
     if (!stillCurrent() || !introduction?.trim()) return;
     let nativeResult;
@@ -110,11 +104,12 @@ export function createHiddenIntroFeature({
       onNativeAttached?.({ routeKey, restore: nativeResult.restore });
       return;
     }
-    if (nativeResult.status === "already-native" || nativeVisible()) return;
+    if (nativeResult.status === "already-native") return;
 
     const place = () => {
       if (!stillCurrent()) return true;
-      if (nativeVisible() || fallback.hasCard()) return true;
+      if (fallback.hasCard()) return true;
+      if (nativeVisible()) return false;
       const column = document.querySelector(SELECTORS.userIntroColumn);
       if (!column) return false;
       const mounted = fallback.mount({
@@ -150,21 +145,6 @@ export function createHiddenIntroFeature({
     const fallback = getFallbackController();
     let requestedRouteKey = "";
     let nativeAttachment = null;
-    let nativeConfirmation = null;
-    const clearNativeConfirmation = () => {
-      if (!nativeConfirmation) return;
-      clearTimeout(nativeConfirmation.timer);
-      nativeConfirmation = null;
-    };
-    const confirmNativeRoute = (routeKey) => {
-      clearNativeConfirmation();
-      nativeConfirmation = {
-        routeKey,
-        timer: setTimeout(() => {
-          nativeConfirmation = null;
-        }, nativeConfirmationMs),
-      };
-    };
     const restoreNativeAttachment = () => {
       if (!nativeAttachment) return;
       nativeAttachment.restore?.();
@@ -176,15 +156,9 @@ export function createHiddenIntroFeature({
     };
     const check = () => {
       const route = currentUserRoute();
-      if (
-        nativeConfirmation &&
-        nativeConfirmation.routeKey !== route.key
-      )
-        clearNativeConfirmation();
       if (nativeAttachment && nativeAttachment.routeKey !== route.key)
         restoreNativeAttachment();
       if (!route.uid || !route.isHome) {
-        clearNativeConfirmation();
         restoreNativeAttachment();
         fallback.removeCards();
         requestedRouteKey = "";
@@ -192,18 +166,18 @@ export function createHiddenIntroFeature({
       }
       if (nativeVisible()) {
         fallback.removeCards();
-        if (!nativeAttachment) diagnostics.set("already-native");
+        if (nativeAttachment) {
+          requestedRouteKey = route.key;
+          return;
+        }
         if (
-          !nativeAttachment &&
-          requestedRouteKey !== route.key
-        )
-          confirmNativeRoute(route.key);
-        requestedRouteKey = route.key;
-        return;
-      }
-      if (nativeConfirmation?.routeKey === route.key) {
-        clearNativeConfirmation();
-        requestedRouteKey = "";
+          requestedRouteKey !== route.key &&
+          getNativeAdapter().isVisibleForUser?.({ uid: route.uid })
+        ) {
+          diagnostics.set("already-native");
+          requestedRouteKey = route.key;
+          return;
+        }
       }
       if (fallback.hasCard()) {
         requestedRouteKey = route.key;
@@ -237,7 +211,6 @@ export function createHiddenIntroFeature({
     return () => {
       controller.abort();
       observer.disconnect();
-      clearNativeConfirmation();
       if (frame !== null) cancelAnimationFrame(frame);
       restoreNativeAttachment();
       for (const cleanup of [...introWaiters]) cleanup();

@@ -31,6 +31,7 @@ function createFixture({
   delayedAppMs = 0,
   delayedComponentMs = 0,
   duplicateCandidate = false,
+  initiallyVisible = false,
   mutateIdentity = false,
   namedComponent = true,
   nestedUserDependency = false,
@@ -47,6 +48,7 @@ function createFixture({
   };
   const userComputed = computed(user, () => user);
   const currentUser = computed(null, () => null);
+  let targetComponent = null;
   const ownPage = computed(false, () => false, [
     { dep: { computed: userComputed }, version: 1 },
     { dep: { key: "uid" }, version: 1 },
@@ -62,9 +64,10 @@ function createFixture({
     card.className = "l-card native-intro-card";
     card.innerHTML =
       '<div class="introduction"><div class="lfe-marked">native</div></div>';
+    if (targetComponent) card.__vueParentComponent = targetComponent;
     document.body.append(card);
   };
-  const displayGate = computed(false, () => false, [
+  const displayGate = computed(initiallyVisible, () => initiallyVisible, [
     { dep: { computed: ownPage }, version: 1 },
     { dep: { computed: userComputed }, version: 1 },
     { dep: { key: "isAdmin" }, version: 0 },
@@ -98,11 +101,12 @@ function createFixture({
       },
     },
   };
-  const targetComponent = {
+  targetComponent = {
     type: namedComponent ? { name: "UserShowMain" } : {},
     scope: { effects: [sourceEffect] },
     isUnmounted: false,
   };
+  renderCard(initiallyVisible);
   let targetVNode = { component: targetComponent };
   for (let depth = 0; depth < deepVnodeDepth; depth++)
     targetVNode = { children: [targetVNode] };
@@ -182,6 +186,52 @@ test("native intro adapter attaches one official card and restores its computed 
     fixture.document.querySelectorAll(".native-intro-card").length,
     0,
   );
+});
+
+test("native intro adapter recognizes a visible card owned by the current user", async () => {
+  const fixture = createFixture({ initiallyVisible: true });
+
+  assert.equal(fixture.adapter.isVisibleForUser({ uid: "2" }), true);
+  assert.equal(fixture.adapter.isVisibleForUser({ uid: "3" }), false);
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.deepEqual(result, { status: "already-native" });
+  assert.equal(
+    fixture.document.querySelectorAll(".native-intro-card").length,
+    1,
+  );
+  assert.equal(fixture.displayGate._value, true);
+});
+
+test("native intro adapter waits for a stale card before attaching the target user", async () => {
+  const fixture = createFixture({ timeoutMs: 50 });
+  const stale = fixture.document.createElement("div");
+  stale.className = "l-card native-intro-card";
+  stale.innerHTML =
+    '<div class="introduction"><div class="lfe-marked">stale</div></div>';
+  fixture.document.body.append(stale);
+  setTimeout(() => stale.remove(), 5);
+
+  const result = await fixture.adapter.attach({
+    uid: "2",
+    introduction: fixture.user.introduction,
+  });
+
+  assert.equal(result.status, "native-attached");
+  assert.equal(
+    fixture.document.querySelectorAll(".native-intro-card").length,
+    1,
+  );
+  assert.equal(
+    fixture.document.querySelector(".native-intro-card .lfe-marked")
+      ?.textContent,
+    "native",
+  );
+  assert.equal(result.restore(), true);
 });
 
 test("native intro adapter discovers the official component from the Vue app container", async () => {

@@ -250,6 +250,7 @@ test("an already visible native introduction is not duplicated or fetched", asyn
     const feature = createHiddenIntroFeature({
       storage,
       nativeIntroAdapter: {
+        isVisibleForUser: () => true,
         attach: async () => {
           attached++;
           return { status: "native-attached" };
@@ -299,8 +300,8 @@ test("a stale native introduction disappearing during route settlement retries t
     const fallback = createFallbackStub();
     const feature = createHiddenIntroFeature({
       storage,
-      nativeConfirmationMs: 50,
       nativeIntroAdapter: {
+        isVisibleForUser: () => false,
         attach: async () => ({
           status: "native-unsupported",
           reason: "qa-forced-fallback",
@@ -345,8 +346,8 @@ test("a confirmed native introduction can enter edit mode without fallback", asy
     });
     const feature = createHiddenIntroFeature({
       storage,
-      nativeConfirmationMs: 10,
       nativeIntroAdapter: {
+        isVisibleForUser: () => true,
         attach: async () => ({ status: "native-attached" }),
       },
       fallbackIntroController: {
