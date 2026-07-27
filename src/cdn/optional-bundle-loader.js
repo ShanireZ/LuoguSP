@@ -51,13 +51,22 @@ export function createOptionalBundleLoader(options = {}) {
     importer = (url) => import(url),
     urlApi = globalThis.URL,
     BlobImpl = globalThis.Blob,
+    onEvent = () => {},
   } = options;
   let loaded = null;
   let pending = null;
+  const emit = (event) => {
+    try {
+      onEvent(Object.freeze(event));
+    } catch (error) {
+      // QA/diagnostic observers must never change loader behavior.
+    }
+  };
 
   const execute = async (signal) => {
     validateOptions(bundle, origins, expectedApiVersion);
     if (signal?.aborted) throw cancelledError();
+    emit({ type: "request-start", path: bundle.path });
     const asset = await fetchVerifiedAsset({
       origins,
       path: bundle.path,
@@ -82,6 +91,11 @@ export function createOptionalBundleLoader(options = {}) {
       const module = await importer(objectUrl);
       if (signal?.aborted) throw cancelledError();
       validateModule(module, expectedApiVersion);
+      emit({
+        type: "loaded",
+        origin: asset.origin,
+        path: bundle.path,
+      });
       return Object.freeze({
         module,
         origin: asset.origin,
@@ -114,8 +128,15 @@ export function createOptionalBundleLoader(options = {}) {
             pending = null;
           }
         },
-        () => {
-          if (pending === request) pending = null;
+        (error) => {
+          if (pending === request) {
+            pending = null;
+            emit({
+              type: "load-failed",
+              kind: error?.kind || "unknown",
+              path: bundle?.path || null,
+            });
+          }
         },
       );
     }

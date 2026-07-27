@@ -1,5 +1,8 @@
 const REQUIRE_PATTERN = /^\/\/ @require\s+(\S+)$/;
-const VERSION_PATTERN = /^\/\/ @version\s+\S+$/;
+const VERSION_LINE_PATTERN = /^\/\/ @version\s+\S+$/;
+const STABLE_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
+const CANARY_VERSION_PATTERN =
+  /^\d+\.\d+\.\d+-canary\.[0-9A-Za-z.-]+$/;
 
 function requireUrl(origin, file) {
   if (
@@ -11,7 +14,17 @@ function requireUrl(origin, file) {
   return `${new URL(file.path, `${origin.replace(/\/+$/, "")}/`)}#sha256=${file.sha256}`;
 }
 
-export function createStagedMetadata(options) {
+function replaceSingleMetadataLine(lines, name, value) {
+  const pattern = new RegExp(`^// @${name}\\s+`);
+  const indexes = lines
+    .map((line, index) => (pattern.test(line) ? index : -1))
+    .filter((index) => index !== -1);
+  if (indexes.length !== 1)
+    throw new Error(`Expected exactly one userscript @${name}`);
+  lines[indexes[0]] = `// @${name.padEnd(12)} ${value}`;
+}
+
+function createMetadata(options, { versionPattern, qaIdentity }) {
   const {
     metadata,
     version,
@@ -21,7 +34,7 @@ export function createStagedMetadata(options) {
   } = options || {};
   if (
     typeof metadata !== "string" ||
-    !/^\d+\.\d+\.\d+$/.test(version || "") ||
+    !versionPattern.test(version || "") ||
     typeof compatibilityOrigin !== "string" ||
     !Array.isArray(thirdPartyRequireUrls) ||
     thirdPartyRequireUrls.length !== 4
@@ -54,14 +67,35 @@ export function createStagedMetadata(options) {
     );
 
   const versionIndexes = lines
-    .map((line, index) => (VERSION_PATTERN.test(line) ? index : -1))
+    .map((line, index) =>
+      VERSION_LINE_PATTERN.test(line) ? index : -1,
+    )
     .filter((index) => index !== -1);
   if (versionIndexes.length !== 1)
     throw new Error("Expected exactly one userscript @version");
   lines[versionIndexes[0]] = `// @version      ${version}`;
 
+  if (qaIdentity) {
+    replaceSingleMetadataLine(lines, "name", "LuoguSP QA");
+    replaceSingleMetadataLine(
+      lines,
+      "namespace",
+      "https://github.com/ShanireZ/LuoguSP/qa",
+    );
+    const descriptionIndex = lines.findIndex((line) =>
+      /^\/\/ @description\s+/.test(line),
+    );
+    if (descriptionIndex === -1)
+      throw new Error("Expected one userscript @description");
+    lines[descriptionIndex] =
+      `// @description  [QA ${version}] hidden-intro 原生优先与按需 renderer 验收`;
+  }
+
   const withoutRequires = lines.filter(
-    (line) => !REQUIRE_PATTERN.test(line),
+    (line) =>
+      !REQUIRE_PATTERN.test(line) &&
+      (!qaIdentity ||
+        !/^\/\/ @(?:updateURL|downloadURL)\s+/.test(line)),
   );
   const runAtIndex = withoutRequires.findIndex((line) =>
     /^\/\/ @run-at\s+document-start$/.test(line),
@@ -93,5 +127,19 @@ export function createStagedMetadata(options) {
       firstParty.runtime,
     ]),
     firstParty: Object.freeze(firstParty),
+  });
+}
+
+export function createStagedMetadata(options) {
+  return createMetadata(options, {
+    versionPattern: STABLE_VERSION_PATTERN,
+    qaIdentity: false,
+  });
+}
+
+export function createQaStagedMetadata(options) {
+  return createMetadata(options, {
+    versionPattern: CANARY_VERSION_PATTERN,
+    qaIdentity: true,
   });
 }

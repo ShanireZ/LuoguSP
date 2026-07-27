@@ -9,7 +9,7 @@ const statuses = new Set([
   "fallback-unavailable",
 ]);
 
-export function createHiddenIntroDiagnostics() {
+export function createHiddenIntroDiagnostics(onChange = null) {
   let current = Object.freeze({ status: "idle", reason: null });
   return Object.freeze({
     set(status, reason = null) {
@@ -18,6 +18,11 @@ export function createHiddenIntroDiagnostics() {
           `Unknown hidden-intro diagnostic status: ${status}`,
         );
       current = Object.freeze({ status, reason });
+      try {
+        onChange?.(current);
+      } catch (error) {
+        console.debug("LuoguSP hidden-intro diagnostics:", error);
+      }
     },
     get() {
       return current;

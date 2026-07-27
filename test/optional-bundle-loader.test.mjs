@@ -25,6 +25,7 @@ const urlApi = Object.freeze({
 test("optional bundle loader verifies once and shares the in-page request", async () => {
   let fetches = 0;
   let imports = 0;
+  const events = [];
   const loader = createOptionalBundleLoader({
     bundle,
     origins: ["https://primary.example"],
@@ -38,6 +39,7 @@ test("optional bundle loader verifies once and shares the in-page request", asyn
       return moduleApi;
     },
     urlApi,
+    onEvent: (event) => events.push(event),
   });
 
   const [first, second] = await Promise.all([loader.load(), loader.load()]);
@@ -51,6 +53,17 @@ test("optional bundle loader verifies once and shares the in-page request", asyn
     status: "loaded",
     origin: "https://primary.example",
   });
+  assert.deepEqual(events, [
+    {
+      type: "request-start",
+      path: bundle.path,
+    },
+    {
+      type: "loaded",
+      origin: "https://primary.example",
+      path: bundle.path,
+    },
+  ]);
 });
 
 test("optional bundle loader rejects descriptor and loaded API mismatches", async () => {

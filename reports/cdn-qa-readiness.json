@@ -1,0 +1,379 @@
+{
+  "checkedAt": "2026-07-27T06:49:54.027Z",
+  "status": "degraded",
+  "release": "2.13.5-canary.2",
+  "manifestPath": "releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json",
+  "manifestSha256": "bcb3696abd612badb6b57b57feb890c5f98b14e194754a0a3bd46d5d3bb26c97",
+  "origins": [
+    {
+      "id": "primary",
+      "url": "https://spcdn.betaoi.cc",
+      "required": true
+    },
+    {
+      "id": "fallback",
+      "url": "https://spcdn.betaoi.cn",
+      "required": false
+    }
+  ],
+  "stagedUserscript": {
+    "path": "dist/qa/LuoguSP-QA.2.13.5-canary.2.user.js",
+    "bytes": 1382,
+    "requires": 6
+  },
+  "filesPerOrigin": 16,
+  "dynamicEsmEnabled": false,
+  "optionalBundles": {
+    "markdownRenderer": {
+      "apiVersion": 1,
+      "path": "releases/2.13.5-canary.2/render/markdown-renderer.eff67a5460028c99.js",
+      "bytes": 412587,
+      "gzipBytes": 126826,
+      "sha256": "eff67a5460028c9980ddc466dc0bf135e5a0bd37fe90fffd824a46eee14339ed",
+      "sri": "sha256-7/Z6VGACjJmA3cRm3AvxNeWgvTf+kP/9gkpG7uFDOe0=",
+      "dependencies": {
+        "katex": "0.18.1",
+        "marked": "18.0.7",
+        "dompurify": "3.4.12",
+        "highlight.js": "11.11.1"
+      }
+    }
+  },
+  "failures": [],
+  "optionalIssues": [
+    "fallback failed releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json after 1 attempt(s): {\"attempt\":1,\"origin\":\"fallback\",\"path\":\"releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json\",\"status\":200,\"bytes\":387,\"sha256\":\"e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300\",\"contentType\":\"text/html\",\"cacheControl\":\"public, max-age=31536000, immutable\",\"cors\":\"*\",\"ok\":false}"
+  ],
+  "results": [
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json",
+      "status": 200,
+      "bytes": 6876,
+      "sha256": "bcb3696abd612badb6b57b57feb890c5f98b14e194754a0a3bd46d5d3bb26c97",
+      "contentType": "application/json",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/compat/early-gate.417fba764b09dd75.js",
+      "status": 200,
+      "bytes": 2905,
+      "sha256": "417fba764b09dd759ed1bde47b8cc62f85243196454e646f889b4d77d721957d",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/compat/runtime.87a495adbbddb038.js",
+      "status": 200,
+      "bytes": 99113,
+      "sha256": "87a495adbbddb038652d7d00b244f4486aaff1d2d6f921ac5c1d22fff6e4711d",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/render/markdown-renderer.eff67a5460028c99.js",
+      "status": 200,
+      "bytes": 412587,
+      "sha256": "eff67a5460028c9980ddc466dc0bf135e5a0bd37fe90fffd824a46eee14339ed",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/restricted-content-DD4PKHKP.js",
+      "status": 200,
+      "bytes": 29010,
+      "sha256": "934aeb2211792d3cb93f70c66e85d9be7ec42cfb56e346b28275268bd0df6e01",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/canary-loader-TRCU7VXL.js",
+      "status": 200,
+      "bytes": 173,
+      "sha256": "c16f3e5a6555a601f5074ff2e4c9201596d234b34c8514eb660d3a570f0169f7",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/early-gate-api-HAJ35GVC.js",
+      "status": 200,
+      "bytes": 2787,
+      "sha256": "fdb5369424be9b60f12c676241c91724f2d9690d23a4869923fa4dd3105323a5",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/app-core-OSSMTRES.js",
+      "status": 200,
+      "bytes": 3494,
+      "sha256": "6085adb9db95ccadb5417df0487c9a6a07a85761fabe6644d17b2e989893b16a",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/settings-OOQUXAWM.js",
+      "status": 200,
+      "bytes": 6112,
+      "sha256": "78330babc6f45e5f6a31b6a630df9fb17e2e9dfd94992b3ec8e0c2f323f33042",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/problem-color-YVPQM2AJ.js",
+      "status": 200,
+      "bytes": 10545,
+      "sha256": "fadf4133ea6ccc585a6796b9c2c6228a9607520084afc061b1d64e30dc97008c",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/chat-shortcut-3SB6G7HS.js",
+      "status": 200,
+      "bytes": 2049,
+      "sha256": "1742fab67854c901a23ef0740347831c28d62cccde4b79690dcc4f78250dcf3c",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/hidden-intro-23FCNS7O.js",
+      "status": 200,
+      "bytes": 18889,
+      "sha256": "5368d18207c0452f57301ca5b5eb53bc4515af05ea1f28936b006cb2f974dd9a",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/chunks/chunk-ST7WQRUA.js",
+      "status": 200,
+      "bytes": 3638,
+      "sha256": "3e2423e2ef47f972a72c8012f0d86e3d4df55658e45527d0b858f59b132a589f",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/ide-batch-JTBEEUH4.js",
+      "status": 200,
+      "bytes": 20052,
+      "sha256": "5203f5e33a53e36e08e7dc42cc9f6475b932fba479e5430f78ad8a2bb273f6ef",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/chunks/chunk-PQ6PWWZS.js",
+      "status": 200,
+      "bytes": 1314,
+      "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "attempt": 1,
+      "origin": "primary",
+      "path": "releases/2.13.5-canary.2/esm/chunks/chunk-V7FYNATP.js",
+      "status": 200,
+      "bytes": 342,
+      "sha256": "8cbdb457fff355ba763f8e8606f5a48903a7dba84377787a34a5ff0583c7936f",
+      "contentType": "text/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "cors": "*",
+      "ok": true,
+      "attempts": 1
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json",
+      "attempts": 1,
+      "attemptHistory": [
+        {
+          "attempt": 1,
+          "origin": "fallback",
+          "path": "releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json",
+          "status": 200,
+          "bytes": 387,
+          "sha256": "e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300",
+          "contentType": "text/html",
+          "cacheControl": "public, max-age=31536000, immutable",
+          "cors": "*",
+          "ok": false
+        }
+      ],
+      "lastResult": {
+        "attempt": 1,
+        "origin": "fallback",
+        "path": "releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json",
+        "status": 200,
+        "bytes": 387,
+        "sha256": "e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300",
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "cors": "*",
+        "ok": false
+      },
+      "ok": false,
+      "error": "verification failed after 1 attempts; last={\"attempt\":1,\"origin\":\"fallback\",\"path\":\"releases/2.13.5-canary.2/manifest.bcb3696abd612bad.json\",\"status\":200,\"bytes\":387,\"sha256\":\"e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300\",\"contentType\":\"text/html\",\"cacheControl\":\"public, max-age=31536000, immutable\",\"cors\":\"*\",\"ok\":false}"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/compat/early-gate.417fba764b09dd75.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/compat/runtime.87a495adbbddb038.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/render/markdown-renderer.eff67a5460028c99.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/restricted-content-DD4PKHKP.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/canary-loader-TRCU7VXL.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/early-gate-api-HAJ35GVC.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/app-core-OSSMTRES.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/settings-OOQUXAWM.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/problem-color-YVPQM2AJ.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/chat-shortcut-3SB6G7HS.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/hidden-intro-23FCNS7O.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/chunks/chunk-ST7WQRUA.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/ide-batch-JTBEEUH4.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/chunks/chunk-PQ6PWWZS.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    },
+    {
+      "origin": "fallback",
+      "path": "releases/2.13.5-canary.2/esm/chunks/chunk-V7FYNATP.js",
+      "ok": false,
+      "skipped": "origin unavailable"
+    }
+  ]
+}

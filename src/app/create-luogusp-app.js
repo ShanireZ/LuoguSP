@@ -63,7 +63,9 @@ export function createLuoguSPApp(options = {}) {
   const chatShortcutFeature = createChatShortcutFeature({ storage });
   const hiddenIntroFeature = createHiddenIntroFeature({
     storage,
+    nativeIntroAdapter: options.hiddenIntroNativeAdapter,
     rendererConfig: options.hiddenIntroRendererConfig,
+    onDiagnostic: options.hiddenIntroDiagnosticReporter,
   });
   const ideBatchFeature = createIdeBatchFeature({
     storage,

@@ -10,15 +10,26 @@ const argument = (name) => {
   return index === -1 ? null : process.argv[index + 1];
 };
 const version = argument("--version");
-if (!/^\d+\.\d+\.\d+$/.test(version || ""))
-  throw new Error("Pass a stable release version with --version");
+const qaMode = process.argv.includes("--qa");
+const versionPattern = qaMode
+  ? /^\d+\.\d+\.\d+-canary\.[0-9A-Za-z.-]+$/
+  : /^\d+\.\d+\.\d+$/;
+if (!versionPattern.test(version || ""))
+  throw new Error(
+    qaMode
+      ? "Pass a canary release version with --version"
+      : "Pass a stable release version with --version",
+  );
+const stagedRelativePath = qaMode
+  ? `dist/qa/LuoguSP-QA.${version}.user.js`
+  : `dist/staged/LuoguSP.${version}.user.js`;
 
 const [configText, budgetText, manifestBody, stagedArtifact] =
   await Promise.all([
     readFile(resolve(root, "config/cdn.json"), "utf8"),
     readFile(resolve(root, "config/quality-budget.json"), "utf8"),
     readFile(resolve(root, `cdn/releases/${version}/manifest.json`)),
-    readFile(resolve(root, `dist/staged/LuoguSP.${version}.user.js`), "utf8"),
+    readFile(resolve(root, stagedRelativePath), "utf8"),
   ]);
 const config = JSON.parse(configText);
 const budget = JSON.parse(budgetText);
@@ -208,7 +219,7 @@ const report = {
     required: requiredOriginIds.has(origin.id),
   })),
   stagedUserscript: {
-    path: `dist/staged/LuoguSP.${version}.user.js`,
+    path: stagedRelativePath,
     bytes: Buffer.byteLength(stagedArtifact),
     requires: stagedRequires.length,
   },
@@ -220,7 +231,12 @@ const report = {
   results,
 };
 await writeFile(
-  resolve(root, "reports/cdn-production-readiness.json"),
+  resolve(
+    root,
+    qaMode
+      ? "reports/cdn-qa-readiness.json"
+      : "reports/cdn-production-readiness.json",
+  ),
   `${JSON.stringify(report, null, 2)}\n`,
   "utf8",
 );
