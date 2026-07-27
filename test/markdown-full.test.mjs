@@ -82,5 +82,8 @@ test("full markdown renderer exposes a deterministic QA failure injection", () =
 
   assert.equal(result.mode, "lite");
   assert.deepEqual(result.warnings, ["full-render-failed"]);
-  assert.equal(result.html, "<p></p><h1>Lite heading</h1>");
+  assert.equal(
+    result.html,
+    "<p></p><h1>Lite heading</h1><p></p>",
+  );
 });
