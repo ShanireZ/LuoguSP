@@ -23,10 +23,10 @@ export function createBrowserRouteAdapter(config) {
   const wrappers = {};
   const wrapperStates = {};
   let installed = false;
-  const notify = () => {
+  const notify = (event) => {
     for (const listener of [...listeners]) {
       try {
-        listener();
+        listener(event);
       } catch (error) {
         logError(error);
       }
@@ -50,6 +50,7 @@ export function createBrowserRouteAdapter(config) {
     }
     eventTarget.addEventListener("popstate", notify);
     eventTarget.addEventListener("hashchange", notify);
+    eventTarget.addEventListener("pageshow", notify);
   };
   const uninstall = () => {
     if (!installed || listeners.size) return;
@@ -64,6 +65,7 @@ export function createBrowserRouteAdapter(config) {
     }
     eventTarget.removeEventListener("popstate", notify);
     eventTarget.removeEventListener("hashchange", notify);
+    eventTarget.removeEventListener("pageshow", notify);
   };
   return Object.freeze({
     token: () => getToken(),

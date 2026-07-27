@@ -282,3 +282,92 @@ test("an already visible native introduction is not duplicated or fetched", asyn
     restoreDom();
   }
 });
+
+test("a stale native introduction disappearing during route settlement retries the current user", async () => {
+  const restoreDom = installDom();
+  try {
+    const stale = document.createElement("div");
+    stale.className = "introduction";
+    stale.innerHTML = '<div class="lfe-marked">previous user</div>';
+    document.body.append(stale);
+    let fetched = 0;
+    const storage = Object.freeze({
+      get: () => true,
+      set: () => {},
+      has: () => true,
+    });
+    const fallback = createFallbackStub();
+    const feature = createHiddenIntroFeature({
+      storage,
+      nativeConfirmationMs: 50,
+      nativeIntroAdapter: {
+        attach: async () => ({
+          status: "native-unsupported",
+          reason: "qa-forced-fallback",
+        }),
+      },
+      fallbackIntroController: {
+        ...fallback,
+        getIntroduction: async (uid) => {
+          fetched++;
+          return `intro-${uid}`;
+        },
+      },
+    });
+    const dispose = feature.mount({ isCurrent: () => true });
+
+    stale.remove();
+    document.body.append(document.createElement("span"));
+    await waitFor(
+      () => !!document.querySelector(".luogusp-intro-card"),
+      "current user was not retried after stale native intro disappeared",
+    );
+
+    assert.equal(fetched, 1);
+    dispose();
+  } finally {
+    restoreDom();
+  }
+});
+
+test("a confirmed native introduction can enter edit mode without fallback", async () => {
+  const restoreDom = installDom("https://www.luogu.com.cn/user/3");
+  try {
+    const native = document.createElement("div");
+    native.className = "introduction";
+    native.innerHTML = '<div class="lfe-marked">current user</div>';
+    document.body.append(native);
+    let fetched = 0;
+    const storage = Object.freeze({
+      get: () => true,
+      set: () => {},
+      has: () => true,
+    });
+    const feature = createHiddenIntroFeature({
+      storage,
+      nativeConfirmationMs: 10,
+      nativeIntroAdapter: {
+        attach: async () => ({ status: "native-attached" }),
+      },
+      fallbackIntroController: {
+        ...createFallbackStub(),
+        getIntroduction: async () => {
+          fetched++;
+          return "unexpected";
+        },
+      },
+    });
+    const dispose = feature.mount({ isCurrent: () => true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    native.remove();
+    document.body.append(document.createElement("span"));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.equal(fetched, 0);
+    assert.equal(document.querySelector(".luogusp-intro-card"), null);
+    dispose();
+  } finally {
+    restoreDom();
+  }
+});
