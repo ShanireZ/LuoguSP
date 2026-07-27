@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createStagedMetadata } from "../scripts/cdn/userscript-stage-lib.mjs";
+import {
+  createQaStagedMetadata,
+  createStagedMetadata,
+} from "../scripts/cdn/userscript-stage-lib.mjs";
 
 const thirdParty = [
   "https://third.example/katex.js",
@@ -106,4 +109,55 @@ test("staging replaces an existing compatibility pair for the next stable releas
     false,
   );
   assert.deepEqual(staged.requires.slice(1, 5), thirdParty);
+});
+
+test("QA staging uses a separate identity and cannot auto-update production", () => {
+  const qaVersion = "2.13.5-canary.2";
+  const qaMetadata = `// ==UserScript==
+// @name         LuoguSP
+// @namespace    https://github.com/ShanireZ/LuoguSP
+// @version      2.13.4
+// @description  production
+// @updateURL     https://example.test/update
+// @downloadURL   https://example.test/download
+// @grant        none
+${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
+// @run-at       document-start
+// ==/UserScript==
+`;
+  const qaManifest = {
+    ...manifest,
+    release: qaVersion,
+    compat: {
+      earlyGate: {
+        path: `releases/${qaVersion}/compat/early.js`,
+        sha256: sha,
+      },
+      runtime: {
+        path: `releases/${qaVersion}/compat/runtime.js`,
+        sha256: sha,
+      },
+    },
+  };
+
+  const staged = createQaStagedMetadata({
+    metadata: qaMetadata,
+    version: qaVersion,
+    compatibilityOrigin: "https://spcdn.betaoi.cc",
+    manifest: qaManifest,
+    thirdPartyRequireUrls: thirdParty,
+  });
+
+  assert.match(staged.metadata, /^\/\/ @name\s+LuoguSP QA$/m);
+  assert.match(
+    staged.metadata,
+    /^\/\/ @namespace\s+https:\/\/github\.com\/ShanireZ\/LuoguSP\/qa$/m,
+  );
+  assert.match(
+    staged.metadata,
+    /^\/\/ @version\s+2\.13\.5-canary\.2$/m,
+  );
+  assert.equal(staged.metadata.includes("@updateURL"), false);
+  assert.equal(staged.metadata.includes("@downloadURL"), false);
+  assert.equal(staged.requires.length, 6);
 });

@@ -9,12 +9,13 @@ export function createHiddenIntroFeature({
   nativeIntroAdapter,
   fallbackIntroController,
   rendererConfig,
+  onDiagnostic,
 } = {}) {
   const SELECTORS = {
     userIntroColumn: ".sidebar-container .main",
     nativeIntro: ".introduction:not(.luogusp-intro-card *)",
   };
-  const diagnostics = createHiddenIntroDiagnostics();
+  const diagnostics = createHiddenIntroDiagnostics(onDiagnostic);
   let nativeAdapter = nativeIntroAdapter || null;
   let fallbackController = fallbackIntroController || null;
   const introWaiters = new Set();

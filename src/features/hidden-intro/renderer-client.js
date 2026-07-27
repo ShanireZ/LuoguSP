@@ -31,6 +31,7 @@ export function createRendererClient(options = {}) {
       importer: options.importer,
       urlApi: options.urlApi,
       BlobImpl: options.BlobImpl,
+      onEvent: options.onEvent,
     }),
   } = options;
 

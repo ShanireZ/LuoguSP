@@ -13,6 +13,8 @@
     "quality:requires": "node scripts/quality.mjs --check --fetch-requires",
     "quality:report": "node scripts/quality.mjs --fetch-requires --write-report",
     "qa:prepare": "node scripts/prepare-browser-qa.mjs",
+    "qa:hidden-intro:stage": "node scripts/qa/stage-hidden-intro.mjs",
+    "qa:hidden-intro:verify": "node scripts/cdn/verify-production.mjs --qa",
     "benchmark:origins": "node scripts/benchmark-origins.mjs --write-report",
     "analyze:chunks": "node scripts/analyze-cdn-chunks.mjs --write-report",
     "cdn:build": "node scripts/cdn/build.mjs",
