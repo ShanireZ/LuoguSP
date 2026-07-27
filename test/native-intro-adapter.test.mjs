@@ -27,6 +27,7 @@ function computed(value, fn, dependencies = []) {
 function createFixture({
   componentRoot = "element",
   componentSource = "vnode",
+  currentUserSameUid = false,
   deepVnodeDepth = 0,
   delayedAppMs = 0,
   delayedComponentMs = 0,
@@ -36,6 +37,7 @@ function createFixture({
   namedComponent = true,
   nestedUserDependency = false,
   render = true,
+  shortCircuitVisible = false,
   suspenseRoot = false,
   timeoutMs = 5,
 } = {}) {
@@ -47,7 +49,11 @@ function createFixture({
     introduction: "![profile](https://example.test/profile.png)",
   };
   const userComputed = computed(user, () => user);
-  const currentUser = computed(null, () => null);
+  const currentUserValue = currentUserSameUid ? { uid: 2 } : null;
+  const currentUser = computed(
+    currentUserValue,
+    () => currentUserValue,
+  );
   let targetComponent = null;
   const ownPage = computed(false, () => false, [
     { dep: { computed: userComputed }, version: 1 },
@@ -67,11 +73,17 @@ function createFixture({
     if (targetComponent) card.__vueParentComponent = targetComponent;
     document.body.append(card);
   };
-  const displayGate = computed(initiallyVisible, () => initiallyVisible, [
-    { dep: { computed: ownPage }, version: 1 },
-    { dep: { computed: userComputed }, version: 1 },
-    { dep: { key: "isAdmin" }, version: 0 },
-  ]);
+  const displayGate = computed(
+    initiallyVisible,
+    () => initiallyVisible,
+    shortCircuitVisible
+      ? [{ dep: { computed: ownPage }, version: 1 }]
+      : [
+          { dep: { computed: ownPage }, version: 1 },
+          { dep: { computed: userComputed }, version: 1 },
+          { dep: { key: "isAdmin" }, version: 0 },
+        ],
+  );
   displayGate.dep.subs = { sub: renderEffect };
   displayGate.dep.trigger = () => {
     if (mutateIdentity) user.isAdmin = true;
@@ -189,7 +201,11 @@ test("native intro adapter attaches one official card and restores its computed 
 });
 
 test("native intro adapter recognizes a visible card owned by the current user", async () => {
-  const fixture = createFixture({ initiallyVisible: true });
+  const fixture = createFixture({
+    currentUserSameUid: true,
+    initiallyVisible: true,
+    shortCircuitVisible: true,
+  });
 
   assert.equal(fixture.adapter.isVisibleForUser({ uid: "2" }), true);
   assert.equal(fixture.adapter.isVisibleForUser({ uid: "3" }), false);
@@ -214,6 +230,7 @@ test("native intro adapter waits for a stale card before attaching the target us
   stale.innerHTML =
     '<div class="introduction"><div class="lfe-marked">stale</div></div>';
   fixture.document.body.append(stale);
+  assert.equal(fixture.adapter.isVisibleForUser({ uid: "2" }), false);
   setTimeout(() => stale.remove(), 5);
 
   const result = await fixture.adapter.attach({

@@ -1,6 +1,6 @@
 # hidden-intro 原生优先与按需渲染包迁移计划
 
-> 状态：Phase 0 已完成；Phase 1-4 的源代码、自动化测试和本地 dry-run 已完成，尚未发布；Phase 3-4 仍待真实 Tampermonkey 浏览器验收；Phase 5-7 未实施。
+> 状态：Phase 0-3 已完成；Phase 4 的源代码、自动化测试、主 CDN 发布和真实 Tampermonkey 主路径验收已完成，故障注入浏览器验收仍待补齐；Phase 5-7 未实施。
 > 编写日期：2026-07-26  
 > 当前基线：LuoguSP 2.13.4  
 > 目标：`hidden-intro` 采用“洛谷原生组件优先、LuoguSP 现有手工方案兜底”，同时升级并迁移四个第三方 `@require` 为 LuoguSP CDN 上的独立按需渲染包。
@@ -17,6 +17,11 @@
 - 已生成独立身份、无自动更新地址的 `LuoguSP QA 2.13.5-canary.2`；canary URL 参数 `?luogusp-qa=native|fallback` 会通过 DOM `<meta id="luogusp-qa-hidden-intro">` 暴露只读状态，其中 `fallback` 仅在 prerelease runtime 强制原生适配失败。
 - `2.13.5-canary.2` 已部署到 Cloudflare 自定义域名 `spcdn.betaoi.cc` 并通过全部不可变文件、字节、SHA-256、MIME、CORS 和缓存头验证；EdgeOne 因本机 token 失效未部署，`spcdn.betaoi.cn` 暂记 degraded。
 - 当前 `2.13.4` canary channel 指向的哈希 manifest 文件名与其实际字节 SHA-256 不一致，导致全量 Node 测试保留一项既有失败；不得改写冻结 release，应由后续新 release 正确生成和推广。
+- 真实生产 bundle 复核确认当前洛谷为 Vue 3.5.35；`UserShowMain`、Suspense 分支、嵌套 computed 依赖和异步路由组件均已纳入严格遍历。适配器不再依赖匿名结构猜测，也不按压缩变量名或 bundle 哈希命中。
+- `2.13.5-canary.3` 至 `.11` 用于逐步验证 CSP/GM 传输、Vue 应用就绪、异步组件发现、BFCache/SPA 返回和旧用户 DOM 竞态；失败版本均只用于 QA，没有推广到生产用户脚本。
+- `2.13.5-canary.12` 用组件树中的目标用户 UID、唯一 `UserShowMain` 和显示 gate 状态判断可见卡片归属，并在目标组件就绪且旧卡片退出后才挂接；这替代了不可靠的时间确认窗口。
+- `npm test` 在 canary.12 源码上通过 124/124。新增回归覆盖异步 Vue 根、异步路由组件、深层/Suspense VNode、生产形态嵌套 computed、可见卡片用户归属、旧卡退出等待、BFCache persisted pageshow、原生编辑态和 SPA 返回恢复。
+- canary.12 已发布到 `spcdn.betaoi.cc` 并通过 required-origin 生产校验；`spcdn.betaoi.cn` 仍是 optional degraded。QA 用户脚本 SHA-256 为 `95440338AE14BB49509EE28B50230DB772D68C1BAE861AE59EBEA3897E6254D9`，生产 `LuoguSP.user.js` 未修改。
 
 ## 交接状态（2026-07-27）
 
@@ -29,32 +34,38 @@
 - `test/native-intro-adapter.test.mjs` 覆盖：成功挂接并恢复、多个候选拒绝、身份字段变化后恢复并拒绝。最近一次命令 `node --test test/native-intro-adapter.test.mjs test/release-contract.test.mjs` 已通过。
 - 真实浏览器探索曾在 `/user/2` 上确认 Vue `3.5.35`、`UserShowMain` 和官方卡片生成路径可用；这只是开发探针证据，尚不是 Phase 7 所要求的 Tampermonkey QA 工件。
 
-### Phase 3：源代码与自动化验证完成，真实浏览器验收待办
+### Phase 3：完成
 
 - `watchHiddenIntro()` 已将 `attachNative` 作为第四参数传给 `showHiddenIntro()`；路由改变或 feature dispose 会恢复被强制显示的 computed，并清除 LuoguSP 手工卡。
 - `test/hidden-intro-feature.test.mjs` 已证明：离开用户页恢复、用户 2 → 用户 3 的 SPA 切换先恢复后挂接、feature dispose 恢复并清除卡片、`/user/3` 已有原生介绍时不获取也不重复，以及原生锚点失败时进入一次手工兜底。
-- 仍缺真实 Tampermonkey 验收：`/user/2` 官方卡、本人主页编辑保存、真实路由往返和身份字段观测。完成这些浏览器证据前，不把 Phase 3 标为发布验收完成。
+- Tampermonkey canary.12 已在 `/user/2?luogusp-qa=native` 通过：状态为 `native-attached`，只出现一张官方 `l-card`，标题为“个人介绍（仅国际站可见）”，没有 `.luogusp-intro-card`，renderer 加载数为 0。
+- 通过页面菜单进入本人 `/user/116524` 后，状态为 `already-native`，保留一个“编辑”按钮，无手工卡；浏览器返回 `/user/2` 后重新达到 `native-attached`，没有旧卡或重复卡。
+- 原生整条往返路径无 LuoguSP/site warning 或 error、无遮罩残留；页面探针确认 canary.12，全程 renderer 加载数为 0。
 
-### Phase 4：源代码与自动化验证完成，真实网络面板验收待办
+### Phase 4：主路径完成，故障注入浏览器验收待办
 
 - `fallback-intro-controller.js` 负责 introduction 获取、手工卡片所有权、复制按钮、安全失败提示和重试；`feature.js` 已不再读取 `window.marked`、`window.DOMPurify`、`window.katex` 或 `window.hljs`。
 - `renderer-client.js` 只在手工卡挂载后请求 renderer，并消费包内 full/lite 数据 API；`optional-bundle-loader.js` 使用固定描述、两个自定义 origin、SHA-256、Blob ESM import、同页 Promise 单例、AbortSignal 和严格 API 版本拒绝，不使用 `eval` 或 `new Function`。
 - 自动化测试覆盖单例、取消、描述/API 不匹配、失败后重试、安全纯文本 UI、lite 降级状态和一次性手工渲染；既有 `fetchVerifiedAsset` 测试继续覆盖主域完整性失败后切备用域。
-- 仍缺真实 Network 验收：原生路径 renderer 请求为 0、兜底路径为 1、主域失败切备用域、双域失败后点击重试恢复。Phase 5 删除四条第三方 `@require` 前必须完成这些浏览器证据。
+- Tampermonkey canary.12 已在 `/user/2?luogusp-qa=fallback` 通过：只出现一张受管手工卡，完整 renderer 通过 `GM_xmlhttpRequest` 从 `https://spcdn.betaoi.cc` 加载，探针为 `fallback-rendered`，同页加载数为 1。
+- 从强制兜底页进入本人主页时无手工卡且保留“编辑”；浏览器返回后手工卡恢复，renderer 加载数仍为 1，证明同页单例没有重复下载或初始化。整条路径无 warning/error、无遮罩残留。
+- 原生路径 0 次和兜底路径 1 次的真实浏览器门槛已满足。主域失败切备用域、双域失败后的安全提示/点击重试、full-to-lite 的浏览器故障注入仍未执行；这些分支已有自动化覆盖，但在 Phase 5 删除四条第三方 `@require` 前仍须补真实浏览器证据。
 
 ### 当前验证与已知阻断
 
 ```powershell
 npm run renderer:test
 npm run renderer:check
-node --test test/native-intro-adapter.test.mjs test/hidden-intro-feature.test.mjs test/fallback-intro-controller.test.mjs test/renderer-client.test.mjs test/optional-bundle-loader.test.mjs test/release-contract.test.mjs
-node scripts/cdn/build.mjs --version 2.13.5-canary.2 --dry-run
+npm test
+node scripts/cdn/build.mjs --version 2.13.5-canary.12
+npm run qa:hidden-intro:stage -- --version 2.13.5-canary.12
+node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.12
 ```
 
-- `npm test` 的既有单项失败来自 `cdn/channels/canary.json` 声明的 `dffb...` 与 2.13.4 immutable manifest 实际 SHA-256 `9cd4...` 不一致；不要重写 2.13.4 release 来掩盖该问题。
+- `npm test` 当前通过 124/124。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
 - `npm run quality:check` 还会发现冻结的 2.13.4 `early-gate` manifest 声明 `a087...`、本地不可变文件实际为 `5e06...` 的既有漂移；同样不得原地改写 2.13.4。
-- Chrome 开发探测访问 `/user/2` 时运行的仍是已安装 2.13.4，页面显示旧手工卡；由于本次 source 尚未发布或安装，该结果不能作为 Phase 3-4 新链路的浏览器验收证据。
-- 不要在 Phase 5 前删除四条第三方 `@require`，也不要声称浏览器 QA 通过；本次没有生成新 release、更新 channel、修改生产用户脚本或执行 CDN 部署。
+- canary.12 是独立 `LuoguSP QA` 身份，无自动更新地址；它已在真实 Tampermonkey 中运行。Cloudflare release 和 canary channel 已更新，但生产用户脚本仍保持原样。
+- 不要在补齐 Phase 4 的故障注入浏览器证据前进入 Phase 5，也不要发布稳定版或删除四条第三方 `@require`。
 
 ## 1. 结论摘要
 

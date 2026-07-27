@@ -1,6 +1,6 @@
 {
-  "publishedAt": "2026-07-27T08:22:24.207Z",
-  "release": "2.13.5-canary.11",
+  "publishedAt": "2026-07-27T08:42:46.788Z",
+  "release": "2.13.5-canary.13",
   "target": "cloudflare",
   "projects": {
     "edgeone": "luogusp-cdn",
