@@ -106,7 +106,9 @@ function isTargetUser(value, uid, introduction) {
     value &&
     typeof value === "object" &&
     String(value.uid) === String(uid) &&
-    (introduction === undefined || value.introduction === introduction)
+    (introduction === undefined
+      ? typeof value.introduction === "string"
+      : value.introduction === introduction)
   );
 }
 
@@ -399,7 +401,11 @@ export function createNativeIntroAdapter(options = {}) {
         hasRenderEffectSubscriber(candidate);
       if (isCandidate) candidates.add(candidate);
     }
-    if (candidates.size !== 1) return { reason: "candidate-count" };
+    if (candidates.size !== 1)
+      return {
+        reason: "candidate-count",
+        candidateCount: candidates.size,
+      };
     const candidate = [...candidates][0];
     return {
       candidate,
@@ -465,14 +471,40 @@ export function createNativeIntroAdapter(options = {}) {
     );
     return matches.length === 1;
   };
+  const visibleAppMatchesUser = (uid) => {
+    if (nativeCards().length !== 1) return false;
+    const app = document.querySelector("#app")?.__vue_app__;
+    if (!SUPPORTED_VUE_VERSION.test(app?.version || "")) return false;
+    const matches = readNamedComponent(app).namedComponents
+      .map((component) => ({
+        component,
+        targets: findTargetComputeds(component, uid),
+      }))
+      .filter(({ targets }) => targets.size === 1);
+    if (matches.length !== 1) return false;
+    const found = findCandidate(matches[0].component, uid);
+    if (found.candidate) return found.currentValue === true;
+    return (
+      found.reason === "candidate-count" &&
+      found.candidateCount === 0
+    );
+  };
 
   return Object.freeze({
     isVisibleForUser({ uid } = {}) {
-      return !!uid && visibleCardMatchesUser(uid);
+      return (
+        !!uid &&
+        (visibleCardMatchesUser(uid) || visibleAppMatchesUser(uid))
+      );
     },
     async attach({ uid, introduction, signal } = {}) {
       if (typeof introduction !== "string" || !introduction.trim())
         return report("native-unsupported", "missing-introduction");
+      if (
+        visibleCardMatchesUser(uid) ||
+        visibleAppMatchesUser(uid)
+      )
+        return Object.freeze({ status: "already-native" });
       const app = await waitForVueApp(signal);
       if (!app)
         return report("native-unsupported", "vue-app-timeout");
