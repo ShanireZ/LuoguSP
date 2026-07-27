@@ -106,7 +106,7 @@ function isTargetUser(value, uid, introduction) {
     value &&
     typeof value === "object" &&
     String(value.uid) === String(uid) &&
-    value.introduction === introduction
+    (introduction === undefined || value.introduction === introduction)
   );
 }
 
@@ -150,6 +150,33 @@ function hasRenderEffectSubscriber(computed) {
       typeof subscriber.scheduler === "function"
     );
   });
+}
+
+function findTargetComputeds(component, uid, introduction) {
+  const targetComputeds = new Set();
+  const visitedComputeds = new Set();
+  const visitComputed = (computed, depth = 0) => {
+    if (
+      !isComputedRef(computed) ||
+      depth > 6 ||
+      visitedComputeds.has(computed)
+    )
+      return;
+    visitedComputeds.add(computed);
+    const result = readComputed(computed);
+    if (
+      result.ok &&
+      isTargetUser(result.value, uid, introduction)
+    )
+      targetComputeds.add(computed);
+    for (const link of dependencyLinks(computed))
+      visitComputed(link.dep?.computed, depth + 1);
+  };
+  for (const effect of component.scope?.effects || []) {
+    for (const link of linkedValues(effect.deps, "nextDep"))
+      visitComputed(link.dep?.computed);
+  }
+  return targetComputeds;
 }
 
 function snapshotUserValues(computed, targetUser) {
@@ -227,7 +254,11 @@ export function createNativeIntroAdapter(options = {}) {
       logDiagnostic({ status, reason });
     return Object.freeze({ status, reason });
   };
-  const waitForCardCount = (expectedCount, signal) => {
+  const waitForCardCount = (
+    expectedCount,
+    signal,
+    { allowHigher = false } = {},
+  ) => {
     const currentCount = nativeCards().length;
     if (currentCount === expectedCount)
       return Promise.resolve(Object.freeze({ kind: "matched" }));
@@ -246,7 +277,8 @@ export function createNativeIntroAdapter(options = {}) {
       const check = () => {
         const count = nativeCards().length;
         if (count === expectedCount) finish("matched");
-        else if (count > expectedCount) finish("invalid-count");
+        else if (!allowHigher && count > expectedCount)
+          finish("invalid-count");
       };
       observer = new MutationObserverImpl(check);
       observer.observe(document.documentElement || document, {
@@ -311,47 +343,6 @@ export function createNativeIntroAdapter(options = {}) {
       namedComponents,
     });
   };
-  const waitForNamedComponent = (app, signal) => {
-    if (typeof setTimeoutImpl !== "function")
-      return Promise.resolve(
-        signal?.aborted
-          ? null
-          : {
-              ...readNamedComponent(app),
-              scans: 1,
-            },
-      );
-    return new Promise((resolve) => {
-      const intervalMs = 25;
-      const maxAttempts = Math.max(
-        1,
-        Math.ceil(timeoutMs / intervalMs),
-      );
-      let scans = 0;
-      let timer = null;
-      let latest = null;
-      const finish = (result) => {
-        if (timer !== null) clearTimeoutImpl(timer);
-        signal?.removeEventListener("abort", onAbort);
-        resolve(result);
-      };
-      const onAbort = () => finish(null);
-      const check = () => {
-        if (signal?.aborted) return finish(null);
-        latest = readNamedComponent(app);
-        scans++;
-        if (
-          latest.namedComponents.length === 1 ||
-          latest.namedComponents.length > 1 ||
-          scans >= maxAttempts
-        )
-          return finish({ ...latest, scans });
-        timer = setTimeoutImpl(check, intervalMs);
-      };
-      signal?.addEventListener("abort", onAbort, { once: true });
-      check();
-    });
-  };
   const restoreRecord = (record) => {
     if (!record.active) return true;
     record.active = false;
@@ -379,29 +370,11 @@ export function createNativeIntroAdapter(options = {}) {
     }
   };
   const findCandidate = (component, uid, introduction) => {
-    const targetComputeds = new Set();
-    const visitedComputeds = new Set();
-    const visitComputed = (computed, depth = 0) => {
-      if (
-        !isComputedRef(computed) ||
-        depth > 6 ||
-        visitedComputeds.has(computed)
-      )
-        return;
-      visitedComputeds.add(computed);
-      const result = readComputed(computed);
-      if (
-        result.ok &&
-        isTargetUser(result.value, uid, introduction)
-      )
-        targetComputeds.add(computed);
-      for (const link of dependencyLinks(computed))
-        visitComputed(link.dep?.computed, depth + 1);
-    };
-    for (const effect of component.scope?.effects || []) {
-      for (const link of linkedValues(effect.deps, "nextDep"))
-        visitComputed(link.dep?.computed);
-    }
+    const targetComputeds = findTargetComputeds(
+      component,
+      uid,
+      introduction,
+    );
     if (targetComputeds.size !== 1)
       return { reason: "target-user-computed-count" };
     const [targetComputed] = targetComputeds;
@@ -414,7 +387,7 @@ export function createNativeIntroAdapter(options = {}) {
       const isCandidate =
         isComputedRef(candidate) &&
         result.ok &&
-        result.value === false &&
+        typeof result.value === "boolean" &&
         isWritableOwnProperty(candidate, "fn") &&
         isWritableOwnProperty(candidate, "_value") &&
         typeof candidate.dep?.trigger === "function" &&
@@ -427,13 +400,77 @@ export function createNativeIntroAdapter(options = {}) {
       if (isCandidate) candidates.add(candidate);
     }
     if (candidates.size !== 1) return { reason: "candidate-count" };
-    return { candidate: [...candidates][0], targetUser };
+    const candidate = [...candidates][0];
+    return {
+      candidate,
+      currentValue: readComputed(candidate).value,
+      targetUser,
+    };
+  };
+  const waitForTargetComponent = (app, uid, introduction, signal) => {
+    const read = () => {
+      const componentResult = readNamedComponent(app);
+      const matches = componentResult.namedComponents
+        .map((component) => ({
+          component,
+          found: findCandidate(component, uid, introduction),
+        }))
+        .filter(
+          ({ found }) =>
+            found.reason !== "target-user-computed-count",
+        );
+      return { ...componentResult, matches };
+    };
+    if (typeof setTimeoutImpl !== "function")
+      return Promise.resolve(
+        signal?.aborted ? null : { ...read(), scans: 1 },
+      );
+    return new Promise((resolve) => {
+      const intervalMs = 25;
+      const maxAttempts = Math.max(
+        1,
+        Math.ceil(timeoutMs / intervalMs),
+      );
+      let scans = 0;
+      let timer = null;
+      let latest = null;
+      const finish = (result) => {
+        if (timer !== null) clearTimeoutImpl(timer);
+        signal?.removeEventListener("abort", onAbort);
+        resolve(result);
+      };
+      const onAbort = () => finish(null);
+      const check = () => {
+        if (signal?.aborted) return finish(null);
+        latest = read();
+        scans++;
+        if (latest.matches.length === 1 || scans >= maxAttempts)
+          return finish({ ...latest, scans });
+        timer = setTimeoutImpl(check, intervalMs);
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      check();
+    });
+  };
+  const visibleCardMatchesUser = (uid) => {
+    const cards = nativeCards();
+    if (cards.length !== 1) return false;
+    const components = collectDomComponents(
+      cards[0].closest(".l-card") || cards[0],
+    );
+    const matches = [...components].filter(
+      (component) =>
+        componentName(component) === "UserShowMain" &&
+        findTargetComputeds(component, uid).size === 1,
+    );
+    return matches.length === 1;
   };
 
   return Object.freeze({
+    isVisibleForUser({ uid } = {}) {
+      return !!uid && visibleCardMatchesUser(uid);
+    },
     async attach({ uid, introduction, signal } = {}) {
-      if (nativeCards().length)
-        return Object.freeze({ status: "already-native" });
       if (typeof introduction !== "string" || !introduction.trim())
         return report("native-unsupported", "missing-introduction");
       const app = await waitForVueApp(signal);
@@ -441,19 +478,46 @@ export function createNativeIntroAdapter(options = {}) {
         return report("native-unsupported", "vue-app-timeout");
       if (!SUPPORTED_VUE_VERSION.test(app?.version || ""))
         return report("native-unsupported", "vue-version");
-      const componentResult = await waitForNamedComponent(app, signal);
+      const componentResult = await waitForTargetComponent(
+        app,
+        uid,
+        introduction,
+        signal,
+      );
       if (!componentResult)
         return report("native-unsupported", "cancelled");
-      if (componentResult.namedComponents.length !== 1)
+      if (!componentResult.namedComponents.length)
         return report(
           "native-unsupported",
-          `user-show-main-count:${componentResult.namedComponents.length}/${componentResult.allComponents.length}/scans:${componentResult.scans}`,
+          `user-show-main-count:0/${componentResult.allComponents.length}/scans:${componentResult.scans}`,
         );
-      const component = componentResult.namedComponents[0];
+      if (componentResult.matches.length !== 1)
+        return report(
+          "native-unsupported",
+          `target-user-component-count:${componentResult.matches.length}/${componentResult.namedComponents.length}/${componentResult.allComponents.length}/scans:${componentResult.scans}`,
+        );
+      const { component, found } = componentResult.matches[0];
       if (component.isUnmounted)
         return report("native-unsupported", "component-unmounted");
-      const found = findCandidate(component, uid, introduction);
       if (!found.candidate) return report("native-unsupported", found.reason);
+      if (found.currentValue === true) {
+        const waitResult = await waitForCardCount(1, signal);
+        return waitResult.kind === "matched"
+          ? Object.freeze({ status: "already-native" })
+          : report("native-unsupported", waitResult.kind);
+      }
+      if (nativeCards().length) {
+        const staleResult = await waitForCardCount(0, signal, {
+          allowHigher: true,
+        });
+        if (staleResult.kind !== "matched")
+          return report(
+            staleResult.kind === "timeout"
+              ? "native-timeout"
+              : "native-unsupported",
+            `stale-card-${staleResult.kind}`,
+          );
+      }
       const existing = records.get(found.candidate);
       if (existing?.active)
         return Object.freeze({
