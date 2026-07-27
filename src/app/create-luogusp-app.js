@@ -61,7 +61,10 @@ export function createLuoguSPApp(options = {}) {
 
   const problemColorFeature = createProblemColorFeature({ storage });
   const chatShortcutFeature = createChatShortcutFeature({ storage });
-  const hiddenIntroFeature = createHiddenIntroFeature({ storage });
+  const hiddenIntroFeature = createHiddenIntroFeature({
+    storage,
+    rendererConfig: options.hiddenIntroRendererConfig,
+  });
   const ideBatchFeature = createIdeBatchFeature({
     storage,
     idePreparationAdapter: options.idePreparationAdapter,

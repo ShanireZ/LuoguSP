@@ -1,6 +1,6 @@
 # hidden-intro 原生优先与按需渲染包迁移计划
 
-> 状态：Phase 0 已完成；Phase 1-2 的源代码、测试和本地 dry-run 已完成，尚未发布；Phase 3 已有原生适配器和初步接入，但尚未达到退出条件；Phase 4-7 未实施。
+> 状态：Phase 0 已完成；Phase 1-4 的源代码、自动化测试和本地 dry-run 已完成，尚未发布；Phase 3-4 仍待真实 Tampermonkey 浏览器验收；Phase 5-7 未实施。
 > 编写日期：2026-07-26  
 > 当前基线：LuoguSP 2.13.4  
 > 目标：`hidden-intro` 采用“洛谷原生组件优先、LuoguSP 现有手工方案兜底”，同时升级并迁移四个第三方 `@require` 为 LuoguSP CDN 上的独立按需渲染包。
@@ -11,43 +11,48 @@
 - Phase 1：已建立版本化独立 renderer API、显式 Highlight.js 语言集、可重复 bundle 构建、release manifest schema v2 和 `optionalBundles.markdownRenderer` 描述；`renderer:check` 已确认四库不会进入启动 runtime。
 - Phase 2：renderer stack 已锁定为 KaTeX 0.18.1、Marked 18.0.7、DOMPurify 3.4.12、Highlight.js 11.11.1；完整/轻量/XSS 回归通过，`npm audit --omit=dev` 为零漏洞。
 - 2026-07-27 的 `2.13.5-canary.1 --dry-run` 生成 renderer 为 412,587 B、gzip 126,826 B，且未写入 release、channel 或生产用户脚本。
+- Phase 3：已修复 `onNativeAttached` 生命周期接线，并增加 feature 级路由离开、SPA 用户切换、dispose、原生已显示不重复和识别锚点失败转兜底测试；原生 computed 的 restore 现在由 feature disposer 持有并执行。
+- Phase 4：已拆出 `fallback-intro-controller.js`、`renderer-client.js` 和 `src/cdn/optional-bundle-loader.js`；renderer 仅在手工兜底挂载时下载，按固定 release 描述执行双域名尝试、SHA-256 校验、同页 Promise 复用、AbortSignal、API 版本校验、full-to-lite 和安全纯文本重试。
+- runtime 构建现在固定注入当前 release 的 renderer 描述与两个自定义 origin；`2.13.5-canary.2 --dry-run` 生成 renderer 412,587 B、gzip 126,826 B，runtime 97,594 B，且未写入 release、channel 或生产用户脚本。
 - 当前 `2.13.4` canary channel 指向的哈希 manifest 文件名与其实际字节 SHA-256 不一致，导致全量 Node 测试保留一项既有失败；不得改写冻结 release，应由后续新 release 正确生成和推广。
 
 ## 交接状态（2026-07-27）
 
 ### 已完成且可复用
 
-- Phase 0-2 的 renderer 基线、独立 bundle、manifest v2、依赖升级和报告均保留在当前工作区；生产用户脚本及其六条启动期 `@require` 尚未切换。
+- Phase 0-4 的 renderer 基线、独立 bundle、manifest v2、原生优先生命周期和按需手工兜底均保留在当前工作区；生产用户脚本及其六条启动期 `@require` 尚未切换。
 - `src/features/hidden-intro/native-intro-adapter.js` 已实现严格的 Vue 3.5.x 原生适配器：只在恰有一个 `UserShowMain`、目标用户 introduction、唯一 false 显示 computed、身份依赖和渲染订阅者同时满足时才挂接；使用 `WeakMap` 保存原函数，并在失败、超时或身份快照变化时恢复。
 - `src/features/hidden-intro/diagnostics.js` 已提供 `already-native`、`native-attached`、`native-unsupported`、`native-timeout` 及三种 fallback 状态；`createHiddenIntroFeature()` 以 `getDiagnostics()` 暴露只读测试入口，未向页面全局暴露 Vue 实例或第三方库。
 - `feature.js` 已在获取 introduction 后、手工卡片之前调用原生适配器；原生失败会继续走现有手工路径，不会修改 `user.isAdmin`、当前用户 UID 或站点身份数据。
 - `test/native-intro-adapter.test.mjs` 覆盖：成功挂接并恢复、多个候选拒绝、身份字段变化后恢复并拒绝。最近一次命令 `node --test test/native-intro-adapter.test.mjs test/release-contract.test.mjs` 已通过。
 - 真实浏览器探索曾在 `/user/2` 上确认 Vue `3.5.35`、`UserShowMain` 和官方卡片生成路径可用；这只是开发探针证据，尚不是 Phase 7 所要求的 Tampermonkey QA 工件。
 
-### Phase 3：必须先修复的生命周期缺口
+### Phase 3：源代码与自动化验证完成，真实浏览器验收待办
 
-- 当前 `watchHiddenIntro()` 调用 `showHiddenIntro(route, lifecycleContext, controller.signal)` 时遗漏了第四个 `onNativeAttached` 参数。
-- 因此 `showHiddenIntro()` 虽然在 `native-attached` 时可以返回 `restore`，但不会调用内部的 `attachNative()` 保存它；SPA 离开用户页、功能关闭和 feature disposer 都无法保证恢复被强制显示的 computed。
-- 下一位 agent 应先将 `attachNative` 作为第四参数传入，并新增 feature 级测试，证明路由离开、SPA 用户切换与 feature dispose 都会调用 restore、移除官方介绍卡且不会遗留手工卡片。完成该修复前，Phase 3 不可标记完成。
-- 仍缺少正式验收：`/user/3` 原生可见时不重复、本人主页编辑保存不受影响、破坏任一锚点时落到手工路径，以及真实 Tampermonkey 的路由往返验证。
+- `watchHiddenIntro()` 已将 `attachNative` 作为第四参数传给 `showHiddenIntro()`；路由改变或 feature dispose 会恢复被强制显示的 computed，并清除 LuoguSP 手工卡。
+- `test/hidden-intro-feature.test.mjs` 已证明：离开用户页恢复、用户 2 → 用户 3 的 SPA 切换先恢复后挂接、feature dispose 恢复并清除卡片、`/user/3` 已有原生介绍时不获取也不重复，以及原生锚点失败时进入一次手工兜底。
+- 仍缺真实 Tampermonkey 验收：`/user/2` 官方卡、本人主页编辑保存、真实路由往返和身份字段观测。完成这些浏览器证据前，不把 Phase 3 标为发布验收完成。
 
-### Phase 4：尚未开始
+### Phase 4：源代码与自动化验证完成，真实网络面板验收待办
 
-- 仍未创建 `fallback-intro-controller.js`、`renderer-client.js` 和 `src/cdn/optional-bundle-loader.js`；当前 `feature.js` 的手工路径仍直接读取 `window.marked`、`window.DOMPurify`、`window.katex` 和 `window.hljs`。
-- Phase 1-2 已提供可复用前置条件：`src/rendering/markdown-renderer-entry.js`、版本化 API、`manifest.optionalBundles.markdownRenderer`、`fetchVerifiedAsset()` 及 v1/v2 manifest 读取兼容。
-- 接手顺序应为：先修复并完成 Phase 3 生命周期验证；再将手工介绍获取/挂载抽为 fallback controller；最后实现按 release 固定描述下载、SHA-256 校验、同页 Promise 单例、AbortSignal、API 版本拒绝、full-to-lite 和安全纯文本重试的 renderer client。不得在此之前删除四条第三方 `@require`。
+- `fallback-intro-controller.js` 负责 introduction 获取、手工卡片所有权、复制按钮、安全失败提示和重试；`feature.js` 已不再读取 `window.marked`、`window.DOMPurify`、`window.katex` 或 `window.hljs`。
+- `renderer-client.js` 只在手工卡挂载后请求 renderer，并消费包内 full/lite 数据 API；`optional-bundle-loader.js` 使用固定描述、两个自定义 origin、SHA-256、Blob ESM import、同页 Promise 单例、AbortSignal 和严格 API 版本拒绝，不使用 `eval` 或 `new Function`。
+- 自动化测试覆盖单例、取消、描述/API 不匹配、失败后重试、安全纯文本 UI、lite 降级状态和一次性手工渲染；既有 `fetchVerifiedAsset` 测试继续覆盖主域完整性失败后切备用域。
+- 仍缺真实 Network 验收：原生路径 renderer 请求为 0、兜底路径为 1、主域失败切备用域、双域失败后点击重试恢复。Phase 5 删除四条第三方 `@require` 前必须完成这些浏览器证据。
 
 ### 当前验证与已知阻断
 
 ```powershell
 npm run renderer:test
 npm run renderer:check
-node --test test/native-intro-adapter.test.mjs test/release-contract.test.mjs
-node scripts/cdn/build.mjs --version 2.13.5-canary.1 --dry-run
+node --test test/native-intro-adapter.test.mjs test/hidden-intro-feature.test.mjs test/fallback-intro-controller.test.mjs test/renderer-client.test.mjs test/optional-bundle-loader.test.mjs test/release-contract.test.mjs
+node scripts/cdn/build.mjs --version 2.13.5-canary.2 --dry-run
 ```
 
 - `npm test` 的既有单项失败来自 `cdn/channels/canary.json` 声明的 `dffb...` 与 2.13.4 immutable manifest 实际 SHA-256 `9cd4...` 不一致；不要重写 2.13.4 release 来掩盖该问题。
-- 不要在 Phase 4-5 完成前运行正式发布或声称浏览器 QA 通过；本次没有生成新 release、更新 channel、修改生产用户脚本或执行 CDN 部署。
+- `npm run quality:check` 还会发现冻结的 2.13.4 `early-gate` manifest 声明 `a087...`、本地不可变文件实际为 `5e06...` 的既有漂移；同样不得原地改写 2.13.4。
+- Chrome 开发探测访问 `/user/2` 时运行的仍是已安装 2.13.4，页面显示旧手工卡；由于本次 source 尚未发布或安装，该结果不能作为 Phase 3-4 新链路的浏览器验收证据。
+- 不要在 Phase 5 前删除四条第三方 `@require`，也不要声称浏览器 QA 通过；本次没有生成新 release、更新 channel、修改生产用户脚本或执行 CDN 部署。
 
 ## 1. 结论摘要
 

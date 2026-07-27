@@ -82,7 +82,7 @@ const fileRecord = (path, body) =>
     sri: sri(body),
   });
 
-async function buildCompat(entryPoint, prefix) {
+async function buildCompat(entryPoint, prefix, define = {}) {
   const result = await build({
     absWorkingDir: root,
     entryPoints: [entryPoint],
@@ -96,6 +96,7 @@ async function buildCompat(entryPoint, prefix) {
     write: false,
     define: {
       __LUOGUSP_CDN_RELEASE__: JSON.stringify(version),
+      ...define,
     },
   });
   if (result.outputFiles?.length !== 1)
@@ -108,12 +109,6 @@ async function buildCompat(entryPoint, prefix) {
   }
   return fileRecord(`releases/${version}/${relativePath}`, body);
 }
-
-const compatEarlyGate = await buildCompat(
-  "src/cdn/early-gate-entry.js",
-  "early-gate",
-);
-const compatRuntime = await buildCompat("src/cdn/runtime-entry.js", "runtime");
 
 for (const [name, dependencyVersion] of Object.entries(
   rendererStackDependencies,
@@ -145,6 +140,23 @@ const markdownRendererBundle = Object.freeze({
   sri: markdownRendererFile.sri,
   dependencies: rendererStackDependencies,
 });
+const compatEarlyGate = await buildCompat(
+  "src/cdn/early-gate-entry.js",
+  "early-gate",
+);
+const compatRuntime = await buildCompat(
+  "src/cdn/runtime-entry.js",
+  "runtime",
+  {
+    __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__: JSON.stringify(
+      markdownRendererBundle,
+    ),
+    __LUOGUSP_CDN_ORIGINS__: JSON.stringify([
+      config.origins.primary,
+      config.origins.fallback,
+    ]),
+  },
+);
 
 const esmEntryPoints = {
   "canary-loader": "src/cdn/canary-loader.js",
