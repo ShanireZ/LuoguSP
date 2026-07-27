@@ -4,6 +4,8 @@ import { createFallbackIntroController } from "./fallback-intro-controller.js";
 import { createNativeIntroAdapter } from "./native-intro-adapter.js";
 import { HIDDEN_INTRO_STYLE } from "./style.js";
 
+const documentRouteStates = new WeakMap();
+
 export function createHiddenIntroFeature({
   storage,
   nativeIntroAdapter,
@@ -62,6 +64,7 @@ export function createHiddenIntroFeature({
     lifecycleContext,
     signal,
     onNativeAttached,
+    trustExistingNative = false,
   ) {
     const route = expectedRoute || currentUserRoute();
     if (!route.uid || !route.isHome) return;
@@ -81,6 +84,10 @@ export function createHiddenIntroFeature({
     fallback.removeCards();
     const introduction = await fallback.getIntroduction(uid, signal);
     if (!stillCurrent() || !introduction?.trim()) return;
+    if (trustExistingNative && nativeVisible()) {
+      diagnostics.set("already-native");
+      return;
+    }
     let nativeResult;
     try {
       nativeResult = await getNativeAdapter().attach({
@@ -95,11 +102,20 @@ export function createHiddenIntroFeature({
       };
       console.debug("LuoguSP hidden-intro native:", nativeResult);
     }
-    diagnostics.set(nativeResult.status, nativeResult.reason || null);
     if (!stillCurrent()) {
       nativeResult.restore?.();
       return;
     }
+    if (
+      trustExistingNative &&
+      nativeResult.status !== "native-attached" &&
+      nativeVisible()
+    ) {
+      nativeResult.restore?.();
+      diagnostics.set("already-native");
+      return;
+    }
+    diagnostics.set(nativeResult.status, nativeResult.reason || null);
     if (nativeResult.status === "native-attached") {
       onNativeAttached?.({ routeKey, restore: nativeResult.restore });
       return;
@@ -145,6 +161,11 @@ export function createHiddenIntroFeature({
     const fallback = getFallbackController();
     let requestedRouteKey = "";
     let nativeAttachment = null;
+    let routeState = documentRouteStates.get(document);
+    if (!routeState) {
+      routeState = { lastRouteKey: null, transitioned: false };
+      documentRouteStates.set(document, routeState);
+    }
     const restoreNativeAttachment = () => {
       if (!nativeAttachment) return;
       nativeAttachment.restore?.();
@@ -156,6 +177,12 @@ export function createHiddenIntroFeature({
     };
     const check = () => {
       const route = currentUserRoute();
+      if (
+        routeState.lastRouteKey !== null &&
+        routeState.lastRouteKey !== route.key
+      )
+        routeState.transitioned = true;
+      routeState.lastRouteKey = route.key;
       if (nativeAttachment && nativeAttachment.routeKey !== route.key)
         restoreNativeAttachment();
       if (!route.uid || !route.isHome) {
@@ -166,6 +193,11 @@ export function createHiddenIntroFeature({
       }
       if (nativeVisible()) {
         fallback.removeCards();
+        if (!routeState.transitioned) {
+          diagnostics.set("already-native");
+          requestedRouteKey = route.key;
+          return;
+        }
         if (nativeAttachment) {
           requestedRouteKey = route.key;
           return;
@@ -190,6 +222,7 @@ export function createHiddenIntroFeature({
           lifecycleContext,
           controller.signal,
           attachNative,
+          !routeState.transitioned,
         ).catch((error) => {
           if (!controller.signal.aborted)
             console.error("LuoguSP intro render:", error);

@@ -250,7 +250,7 @@ test("an already visible native introduction is not duplicated or fetched", asyn
     const feature = createHiddenIntroFeature({
       storage,
       nativeIntroAdapter: {
-        isVisibleForUser: () => true,
+        isVisibleForUser: () => false,
         attach: async () => {
           attached++;
           return { status: "native-attached" };
@@ -284,8 +284,63 @@ test("an already visible native introduction is not duplicated or fetched", asyn
   }
 });
 
+test("a native introduction appearing during first paint wins over an in-flight adapter", async () => {
+  const restoreDom = installDom("https://www.luogu.com.cn/user/3");
+  try {
+    let attached = 0;
+    let fallbackMounted = 0;
+    const storage = Object.freeze({
+      get: () => true,
+      set: () => {},
+      has: () => true,
+    });
+    const feature = createHiddenIntroFeature({
+      storage,
+      nativeIntroAdapter: {
+        isVisibleForUser: () => false,
+        attach: async () => {
+          attached++;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return {
+            status: "native-unsupported",
+            reason: "candidate-count",
+          };
+        },
+      },
+      fallbackIntroController: {
+        ...createFallbackStub(),
+        mount: () => {
+          fallbackMounted++;
+          throw new Error("fallback must not mount");
+        },
+      },
+    });
+    const dispose = feature.mount({ isCurrent: () => true });
+
+    setTimeout(() => {
+      const native = document.createElement("div");
+      native.className = "introduction";
+      native.innerHTML =
+        '<div class="lfe-marked">first paint</div>';
+      document.body.append(native);
+    }, 5);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.deepEqual(feature.getDiagnostics(), {
+      status: "already-native",
+      reason: null,
+    });
+    assert.equal(attached, 1);
+    assert.equal(fallbackMounted, 0);
+    assert.equal(document.querySelectorAll(".introduction").length, 1);
+    dispose();
+  } finally {
+    restoreDom();
+  }
+});
+
 test("a stale native introduction disappearing during route settlement retries the current user", async () => {
-  const restoreDom = installDom();
+  const restoreDom = installDom("https://www.luogu.com.cn/user/3");
   try {
     const stale = document.createElement("div");
     stale.className = "introduction";
@@ -317,6 +372,9 @@ test("a stale native introduction disappearing during route settlement retries t
     });
     const dispose = feature.mount({ isCurrent: () => true });
 
+    history.pushState({}, "", "/user/2");
+    document.body.append(document.createElement("span"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     stale.remove();
     document.body.append(document.createElement("span"));
     await waitFor(
@@ -326,6 +384,58 @@ test("a stale native introduction disappearing during route settlement retries t
 
     assert.equal(fetched, 1);
     dispose();
+  } finally {
+    restoreDom();
+  }
+});
+
+test("a remounted feature keeps same-document route history", async () => {
+  const restoreDom = installDom("https://www.luogu.com.cn/user/3");
+  try {
+    const stale = document.createElement("div");
+    stale.className = "introduction";
+    stale.innerHTML = '<div class="lfe-marked">previous user</div>';
+    document.body.append(stale);
+    let fetched = 0;
+    const storage = Object.freeze({
+      get: () => true,
+      set: () => {},
+      has: () => true,
+    });
+    const fallback = createFallbackStub();
+    const feature = createHiddenIntroFeature({
+      storage,
+      nativeIntroAdapter: {
+        isVisibleForUser: () => false,
+        attach: async () => ({
+          status: "native-unsupported",
+          reason: "qa-forced-fallback",
+        }),
+      },
+      fallbackIntroController: {
+        ...fallback,
+        getIntroduction: async (uid) => {
+          fetched++;
+          return `intro-${uid}`;
+        },
+      },
+    });
+    const firstDispose = feature.mount({ isCurrent: () => true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    firstDispose();
+
+    history.pushState({}, "", "/user/2");
+    const secondDispose = feature.mount({ isCurrent: () => true });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    stale.remove();
+    document.body.append(document.createElement("span"));
+    await waitFor(
+      () => !!document.querySelector(".luogusp-intro-card"),
+      "remounted feature trusted a stale card from the prior route",
+    );
+
+    assert.equal(fetched, 1);
+    secondDispose();
   } finally {
     restoreDom();
   }
