@@ -1,5 +1,6 @@
 import { installRestrictedEarlyGate } from "../bootstrap/restricted-early-gate.js";
 import { runLuoguSP } from "../bootstrap/run-app.js";
+import { createUserscriptFetch } from "./userscript-fetch.js";
 
 function createQaProbe(release) {
   if (!String(release).includes("-")) return null;
@@ -16,6 +17,12 @@ function createQaProbe(release) {
     rendererLoads: "0",
     rendererStatus: "idle",
     rendererOrigin: "",
+    nativeStatus: "idle",
+    nativeReason: "",
+    fallbackStatus: "idle",
+    fallbackReason: "",
+    rendererDetail: "",
+    rendererTransport: "",
   });
   const attach = () => {
     if (!probe.isConnected)
@@ -29,6 +36,17 @@ function createQaProbe(release) {
     diagnostic(details) {
       probe.dataset.status = details.status;
       probe.dataset.reason = details.reason || "";
+      if (
+        details.status.startsWith("native-") ||
+        details.status === "already-native"
+      ) {
+        probe.dataset.nativeStatus = details.status;
+        probe.dataset.nativeReason = details.reason || "";
+      }
+      if (details.status.startsWith("fallback-")) {
+        probe.dataset.fallbackStatus = details.status;
+        probe.dataset.fallbackReason = details.reason || "";
+      }
     },
     renderer(event) {
       probe.dataset.rendererStatus = event.type;
@@ -38,6 +56,14 @@ function createQaProbe(release) {
         );
       if (event.origin) probe.dataset.rendererOrigin = event.origin;
       if (event.kind) probe.dataset.rendererFailure = event.kind;
+      if (event.message || event.failures?.length)
+        probe.dataset.rendererDetail = [
+          event.message || "",
+          ...(event.failures || []),
+        ]
+          .filter(Boolean)
+          .join(" | ")
+          .slice(0, 2000);
     },
   });
 }
@@ -47,6 +73,13 @@ const runtime = Object.freeze({
   apiVersion: 1,
 });
 const qaProbe = createQaProbe(runtime.release);
+const userscriptFetch = createUserscriptFetch();
+const qaProbeElement = document.querySelector(
+  "#luogusp-qa-hidden-intro",
+);
+if (qaProbeElement)
+  qaProbeElement.dataset.rendererTransport =
+    userscriptFetch.transport;
 const forcedFallbackAdapter =
   qaProbe?.mode === "fallback"
     ? Object.freeze({
@@ -65,6 +98,7 @@ runLuoguSP(installRestrictedEarlyGate(), {
   hiddenIntroRendererConfig: Object.freeze({
     bundle: __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__,
     origins: __LUOGUSP_CDN_ORIGINS__,
+    fetchImpl: userscriptFetch.fetchImpl,
     onEvent: qaProbe?.renderer,
   }),
   hiddenIntroNativeAdapter: forcedFallbackAdapter,

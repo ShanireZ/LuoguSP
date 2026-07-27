@@ -302,11 +302,24 @@ export function createNativeIntroAdapter(options = {}) {
       const app = document.querySelector("#app")?.__vue_app__;
       if (!SUPPORTED_VUE_VERSION.test(app?.version || ""))
         return report("native-unsupported", "vue-version");
-      const components = collectComponents(
-        document.querySelector("#app")?._vnode,
-      ).filter((component) => componentName(component) === "UserShowMain");
+      const appRoot = document.querySelector("#app");
+      const componentSet = new Set();
+      for (const vnode of [
+        appRoot?._vnode,
+        app?._container?._vnode,
+        app?._instance?.subTree,
+      ])
+        for (const component of collectComponents(vnode))
+          componentSet.add(component);
+      const allComponents = [...componentSet];
+      const components = allComponents.filter(
+        (component) => componentName(component) === "UserShowMain",
+      );
       if (components.length !== 1)
-        return report("native-unsupported", "user-show-main-count");
+        return report(
+          "native-unsupported",
+          `user-show-main-count:${components.length}/${allComponents.length}`,
+        );
       const component = components[0];
       if (component.isUnmounted)
         return report("native-unsupported", "component-unmounted");

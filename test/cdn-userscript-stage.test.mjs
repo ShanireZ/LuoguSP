@@ -159,5 +159,18 @@ ${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
   );
   assert.equal(staged.metadata.includes("@updateURL"), false);
   assert.equal(staged.metadata.includes("@downloadURL"), false);
+  assert.match(staged.metadata, /^\/\/ @sandbox\s+raw$/m);
+  assert.match(
+    staged.metadata,
+    /^\/\/ @grant\s+GM_xmlhttpRequest$/m,
+  );
+  assert.match(
+    staged.metadata,
+    /^\/\/ @connect\s+spcdn\.betaoi\.cc$/m,
+  );
+  assert.match(
+    staged.metadata,
+    /^\/\/ @connect\s+spcdn\.betaoi\.cn$/m,
+  );
   assert.equal(staged.requires.length, 6);
 });

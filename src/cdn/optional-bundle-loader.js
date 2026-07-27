@@ -134,6 +134,10 @@ export function createOptionalBundleLoader(options = {}) {
             emit({
               type: "load-failed",
               kind: error?.kind || "unknown",
+              message: error?.message || String(error),
+              failures: Array.isArray(error?.failures)
+                ? [...error.failures]
+                : [],
               path: bundle?.path || null,
             });
           }
