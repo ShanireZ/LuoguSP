@@ -75,7 +75,6 @@ export function verifyStagedActivation(options) {
     version,
     manifest,
     config,
-    thirdPartyRequireUrls,
   } = options || {};
   const metadata = userscriptMetadata(artifact);
   if (userscriptVersion(metadata) !== version)
@@ -85,6 +84,21 @@ export function verifyStagedActivation(options) {
     manifest?.esm?.enabled !== false
   )
     throw new Error("Staged userscript manifest is not production-ready");
+  const renderer = manifest.optionalBundles?.markdownRenderer;
+  const rendererFile =
+    renderer?.path && manifest.files?.[renderer.path];
+  if (
+    !renderer ||
+    !rendererFile ||
+    renderer.apiVersion !== 1 ||
+    renderer.path !== rendererFile.path ||
+    renderer.bytes !== rendererFile.bytes ||
+    renderer.sha256 !== rendererFile.sha256 ||
+    renderer.sri !== rendererFile.sri
+  )
+    throw new Error(
+      "Staged userscript manifest does not pin a complete optional renderer",
+    );
 
   const requires = [
     ...metadata.matchAll(REQUIRE_PATTERN),
@@ -95,7 +109,6 @@ export function verifyStagedActivation(options) {
       bootstrapOrigin,
       manifest.compat.earlyGate,
     ),
-    ...thirdPartyRequireUrls,
     compatibilityUrl(
       bootstrapOrigin,
       manifest.compat.runtime,

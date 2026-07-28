@@ -1,6 +1,6 @@
 # hidden-intro 原生优先与按需渲染包迁移计划
 
-> 状态：Phase 0-4 已完成；CDN 已收敛为 Cloudflare Workers 单源，Phase 5-7 未实施。
+> 状态：Phase 0-4 已完成；Phase 5 已生成并部署双 `@require` canary，等待真实浏览器验收；Phase 6 发布流程已实现，等待 Phase 5 验收后执行稳定版发布；Phase 7 未实施。
 > 编写日期：2026-07-26  
 > 当前基线：LuoguSP 2.13.4  
 > 目标：`hidden-intro` 采用“洛谷原生组件优先、LuoguSP 现有手工方案兜底”，同时升级并迁移四个第三方 `@require` 为 LuoguSP CDN 上的独立按需渲染包。
@@ -26,6 +26,8 @@
 - canary.16 已发布到 `spcdn.betaoi.cc` 并通过生产校验。QA 用户脚本 SHA-256 为 `2B4BC5F2F313C8E1B4622DC2DD796A4F8DC37871DF89F312601F95E6980F0B20`，生产 `LuoguSP.user.js` 未修改。
 - canary.17 已发布到 `spcdn.betaoi.cc` 并通过生产校验，加入 `fallback-retry`、`fallback-lite` 两个受限 QA 模式；QA 用户脚本 SHA-256 为 `D52CFC844B5A3486B2838581C46D826684D6CFF57548A2EBBDF72A0E550AE9AC`，真实 Tampermonkey 验收已完成。
 - canary.18 将构建、channel、manifest、运行时加载、发布和远端校验收敛为 Cloudflare Workers 单源：channel schema v2 与 manifest schema v3 都绑定 `https://spcdn.betaoi.cc`，仓库不再保留其他 CDN 的项目配置、部署目录或发布脚本。Cloudflare 逐文件门禁、131/131 单元测试与真实 Tampermonkey 验收均已通过；QA 用户脚本 SHA-256 为 `0AC27FD051F95AC545E36C893B16A110FC9113421EDE16191C58B8780943963C`。
+- canary.19 原子移除四个第三方启动 `@require`，QA 产物只保留 early-gate 与 runtime 两个带 SHA-256 的第一方 `@require`，并保留 `@sandbox raw`、`@connect spcdn.betaoi.cc`、`GM_xmlhttpRequest` 供按需 renderer 使用。Cloudflare 16 个不可变文件与双 `@require` 生产形态门禁均通过；QA 用户脚本 SHA-256 为 `B510CD3F8311A99B8C958051E9346C0CBB2B03E19FB0D1A4C45FED3BD9968195`，等待真实 Tampermonkey 验收。
+- Phase 6 的 `npm run publish -- --version <stable>` 已改为显式目标版本，并在 build 后单独执行 renderer 合同测试；成功报告记录 renderer 描述与部署 origin，失败报告记录 phase、command、exitCode、renderer、已部署 origin、生产恢复状态和 resume 资格。稳定版发布须等待 canary.19 浏览器验收。
 
 ## 交接状态（2026-07-27）
 

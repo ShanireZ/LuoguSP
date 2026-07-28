@@ -29,6 +29,32 @@ export function createQaRendererOptions(mode) {
     : undefined;
 }
 
+export function updateQaRendererProbeDataset(dataset, event) {
+  dataset.rendererStatus = event.type;
+  if (event.type === "request-start") {
+    dataset.rendererLoads = String(
+      Number(dataset.rendererLoads || "0") + 1,
+    );
+    dataset.rendererOrigin = "";
+    dataset.rendererFailure = "";
+    dataset.rendererDetail = "";
+  }
+  if (event.origin) dataset.rendererOrigin = event.origin;
+  if (event.kind) dataset.rendererFailure = event.kind;
+  if (event.message || event.failures?.length)
+    dataset.rendererDetail = [
+      event.message || "",
+      ...(event.failures || []),
+    ]
+      .filter(Boolean)
+      .join(" | ")
+      .slice(0, 2000);
+  if (event.type === "loaded") {
+    dataset.rendererFailure = "";
+    dataset.rendererDetail = "";
+  }
+}
+
 export function createQaRendererFetch({
   mode,
   origin,

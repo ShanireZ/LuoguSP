@@ -28,15 +28,13 @@ const stagedRelativePath = qaMode
   ? `dist/qa/LuoguSP-QA.${version}.user.js`
   : `dist/staged/LuoguSP.${version}.user.js`;
 
-const [configText, budgetText, manifestBody, stagedArtifact] =
+const [configText, manifestBody, stagedArtifact] =
   await Promise.all([
     readFile(resolve(root, "config/cdn.json"), "utf8"),
-    readFile(resolve(root, "config/quality-budget.json"), "utf8"),
     readFile(resolve(root, `cdn/releases/${version}/manifest.json`)),
     readFile(resolve(root, stagedRelativePath), "utf8"),
   ]);
 const config = JSON.parse(configText);
-const budget = JSON.parse(budgetText);
 const manifest = JSON.parse(manifestBody);
 const digest = (body) =>
   createHash("sha256").update(body).digest("hex");
@@ -82,7 +80,6 @@ const compatibilityUrl = (file) =>
   `${new URL(file.path, `${bootstrapOrigin}/`)}#sha256=${file.sha256}`;
 const expectedRequires = [
   compatibilityUrl(manifest.compat.earlyGate),
-  ...budget.requires.resources.map((resource) => resource.url),
   compatibilityUrl(manifest.compat.runtime),
 ];
 if (JSON.stringify(stagedRequires) !== JSON.stringify(expectedRequires))
@@ -91,6 +88,19 @@ if (stagedArtifact.includes("/channels/"))
   failures.push("staged userscript must not load a mutable channel");
 if (Buffer.byteLength(stagedArtifact) > 5000)
   failures.push("staged userscript loader exceeds 5000 bytes");
+const optionalRenderer = manifest.optionalBundles?.markdownRenderer;
+const optionalRendererFile =
+  optionalRenderer?.path && manifest.files?.[optionalRenderer.path];
+if (
+  !optionalRenderer ||
+  !optionalRendererFile ||
+  optionalRenderer.apiVersion !== 1 ||
+  optionalRenderer.path !== optionalRendererFile.path ||
+  optionalRenderer.bytes !== optionalRendererFile.bytes ||
+  optionalRenderer.sha256 !== optionalRendererFile.sha256 ||
+  optionalRenderer.sri !== optionalRendererFile.sri
+)
+  failures.push("manifest does not pin a complete optional renderer");
 
 const paths = [manifestPath, ...Object.keys(manifest.files)];
 const results = [];

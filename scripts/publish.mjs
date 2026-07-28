@@ -19,6 +19,11 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const planOnly = process.argv.includes("--plan");
+const argument = (name) => {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? null : process.argv[index + 1];
+};
+const requestedVersion = argument("--version");
 const metadataPath = resolve(root, "src/userscript.meta.js");
 const artifactPath = resolve(root, "LuoguSP.user.js");
 const packagePath = resolve(root, "package.json");
@@ -44,6 +49,7 @@ const [
   initialQualityReport,
   initialChannel,
   previousReport,
+  initialConfigText,
 ] = await Promise.all([
   readFile(metadataPath, "utf8"),
   readFile(artifactPath, "utf8"),
@@ -53,9 +59,48 @@ const [
   readFile(qualityReportPath, "utf8"),
   readFile(channelPath, "utf8"),
   readJsonIfPresent(reportPath),
+  readFile(resolve(root, "config/cdn.json"), "utf8"),
 ]);
-const version = userscriptVersion(initialArtifact);
+const currentVersion = userscriptVersion(initialArtifact);
 const sourceMetadataVersion = userscriptVersion(initialMetadata);
+const version = requestedVersion;
+if (!/^\d+\.\d+\.\d+$/.test(version || ""))
+  throw new Error(
+    "Pass the new stable release with --version, for example 2.13.5",
+  );
+const versionParts = (value) =>
+  value.split(".").map((part) => Number(part));
+const compareVersions = (left, right) => {
+  const a = versionParts(left);
+  const b = versionParts(right);
+  for (let index = 0; index < 3; index++) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return 0;
+};
+const initialPackageVersion = JSON.parse(initialPackage).version;
+const initialPackageLockVersion =
+  JSON.parse(initialPackageLock).version;
+const initialReadmeVersion =
+  initialReadme.match(
+    /\[!\[Version: (\d+\.\d+\.\d+)\]\(/,
+  )?.[1];
+if (
+  ![
+    sourceMetadataVersion,
+    initialPackageVersion,
+    initialPackageLockVersion,
+    initialReadmeVersion,
+  ].every((value) => value === currentVersion)
+)
+  throw new Error(
+    "Preflight version drift: userscript, source metadata, package, lockfile, and README must agree",
+  );
+if (compareVersions(version, currentVersion) <= 0)
+  throw new Error(
+    `Target version ${version} must be newer than current production ${currentVersion}`,
+  );
+const initialConfig = JSON.parse(initialConfigText);
 const releasesRoot = resolve(root, "cdn/releases");
 const releaseDirectory = resolve(releasesRoot, version);
 if (
@@ -77,18 +122,21 @@ const steps = [
   resumeMode
     ? "verify existing immutable CDN release against current source"
     : "build immutable CDN release",
+  "run renderer contract tests",
   "stage pinned userscript",
   "run pre-deployment tests",
   "deploy Cloudflare Workers",
   "verify the configured Cloudflare custom origin",
   "promote staged userscript locally",
   "verify activation and structural quality",
+  "leave release pending real-browser QA",
 ];
 if (planOnly) {
   console.log(
     JSON.stringify(
       {
         version,
+        currentVersion,
         versionSource: "LuoguSP.user.js",
         sourceMetadataVersion,
         releaseExists,
@@ -146,6 +194,7 @@ const startedAt = new Date().toISOString();
 let phase = "preflight";
 let deploymentStarted = false;
 let productionModified = false;
+let rendererReport = null;
 const restoreProduction = async () => {
   await Promise.all([
     writeFile(metadataPath, initialMetadata, "utf8"),
@@ -181,13 +230,32 @@ try {
     version,
     ...(resumeMode ? ["--verify-existing"] : []),
   ]);
+  const builtManifest = JSON.parse(
+    await readFile(
+      resolve(releaseDirectory, "manifest.json"),
+      "utf8",
+    ),
+  );
+  rendererReport =
+    builtManifest.optionalBundles?.markdownRenderer || null;
+
+  beginPhase("renderer contract tests");
+  run([
+    "--test",
+    "test/markdown-lite-baseline.test.mjs",
+    "test/markdown-full.test.mjs",
+    "test/markdown-renderer-api.test.mjs",
+    "test/renderer-build.test.mjs",
+  ]);
+  run(["scripts/renderer/check.mjs"]);
+
   beginPhase("stage");
   run(["scripts/cdn/stage-userscript.mjs", "--version", version]);
   const stagedPath = resolve(
     root,
     `dist/staged/LuoguSP.${version}.user.js`,
   );
-  const [stagedArtifact, manifestText, configText, budgetText] =
+  const [stagedArtifact, manifestText, configText] =
     await Promise.all([
       readFile(stagedPath, "utf8"),
       readFile(
@@ -195,19 +263,14 @@ try {
         "utf8",
       ),
       readFile(resolve(root, "config/cdn.json"), "utf8"),
-      readFile(resolve(root, "config/quality-budget.json"), "utf8"),
     ]);
   const manifest = JSON.parse(manifestText);
   const config = JSON.parse(configText);
-  const budget = JSON.parse(budgetText);
   const activation = verifyStagedActivation({
     artifact: stagedArtifact,
     version,
     manifest,
     config,
-    thirdPartyRequireUrls: budget.requires.resources.map(
-      (resource) => resource.url,
-    ),
   });
 
   beginPhase("pre-deployment tests");
@@ -268,9 +331,6 @@ try {
     version,
     manifest,
     config,
-    thirdPartyRequireUrls: budget.requires.resources.map(
-      (resource) => resource.url,
-    ),
   });
   if (promoted.sha256 !== activation.sha256)
     throw new Error("Promoted userscript differs from staged artifact");
@@ -294,7 +354,9 @@ try {
       sha256: promoted.sha256,
       requires: promoted.requires.length,
     },
+    renderer: rendererReport,
     customOrigin: config.origins.primary,
+    deployedOrigins: [config.origins.primary],
     platformDefaultDomainsUsed: false,
     productionModified: true,
     commitPerformed: false,
@@ -302,9 +364,23 @@ try {
     browserQaRequiredBeforeCommit: true,
   });
   console.log(
-    `Publish ${version} succeeded. Local userscript now pins the verified runtime; run real-browser QA before commit and push.`,
+    `Publish ${version} succeeded. Local userscript now pins two verified first-party startup files; run real-browser QA before commit and push.`,
   );
 } catch (error) {
+  if (!rendererReport) {
+    try {
+      const failedManifest = JSON.parse(
+        await readFile(
+          resolve(releaseDirectory, "manifest.json"),
+          "utf8",
+        ),
+      );
+      rendererReport =
+        failedManifest.optionalBundles?.markdownRenderer || null;
+    } catch {
+      rendererReport = null;
+    }
+  }
   if (productionModified) await restoreProduction();
   if (!resumeMode && !deploymentStarted) {
     await rm(releaseDirectory, { recursive: true, force: true });
@@ -319,9 +395,14 @@ try {
     error: error.message,
     command: error.command || null,
     exitCode: error.exitCode ?? null,
+    renderer: rendererReport,
+    deployedOrigins: deploymentStarted || resumeMode
+      ? [initialConfig.origins.primary]
+      : [],
     productionRestored: productionModified,
     deploymentStarted: deploymentStarted || resumeMode,
     resumed: resumeMode,
+    resumeAllowed: deploymentStarted || resumeMode,
     commitPerformed: false,
     pushPerformed: false,
   });

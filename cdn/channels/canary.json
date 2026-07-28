@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "channel": "canary",
-  "release": "2.13.5-canary.18",
-  "manifestPath": "releases/2.13.5-canary.18/manifest.8ee658b606aca692.json",
-  "manifestSha256": "8ee658b606aca692d0925d427349e105e17824466a19493a414bdf3d7ec07134",
+  "release": "2.13.5-canary.20",
+  "manifestPath": "releases/2.13.5-canary.20/manifest.4fc0a4f2642eb136.json",
+  "manifestSha256": "4fc0a4f2642eb1364091edcd461c73feae0ce0ee3e14151e01ea1d7006563499",
   "origin": "https://spcdn.betaoi.cc",
-  "updatedAt": "2026-07-28T00:29:28.148Z"
+  "updatedAt": "2026-07-28T01:29:39.032Z"
 }
