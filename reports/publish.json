@@ -1,15 +1,32 @@
 {
-  "startedAt": "2026-07-26T14:12:36.472Z",
-  "completedAt": "2026-07-26T14:13:54.575Z",
+  "startedAt": "2026-07-28T01:40:33.240Z",
+  "completedAt": "2026-07-28T01:41:18.278Z",
   "status": "ready-for-browser-qa",
-  "release": "2.13.4",
+  "release": "2.13.5",
   "resumed": false,
   "userscript": {
-    "bytes": 1608,
-    "sha256": "2c3f91aa54fb3d8453eefe7a4dabd62f8e25f654b7a981fc283889c66b138e55",
-    "requires": 6
+    "bytes": 1343,
+    "sha256": "28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f",
+    "requires": 2
+  },
+  "renderer": {
+    "apiVersion": 1,
+    "path": "releases/2.13.5/render/markdown-renderer.1772ec569df81ec8.js",
+    "bytes": 412674,
+    "gzipBytes": 126845,
+    "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
+    "sri": "sha256-F3LsVp34Hsj+A+/mYV6DK9lEFf+SgUb/kARpjqmy9XQ=",
+    "dependencies": {
+      "katex": "0.18.1",
+      "marked": "18.0.7",
+      "dompurify": "3.4.12",
+      "highlight.js": "11.11.1"
+    }
   },
   "customOrigin": "https://spcdn.betaoi.cc",
+  "deployedOrigins": [
+    "https://spcdn.betaoi.cc"
+  ],
   "platformDefaultDomainsUsed": false,
   "productionModified": true,
   "commitPerformed": false,

@@ -1,6 +1,6 @@
 # hidden-intro 原生优先与按需渲染包迁移计划
 
-> 状态：Phase 0-4 已完成；Phase 5 已生成并部署双 `@require` canary，等待真实浏览器验收；Phase 6 发布流程已实现，等待 Phase 5 验收后执行稳定版发布；Phase 7 未实施。
+> 状态：Phase 0-6 已完成；稳定版 2.13.5 已部署并提升到本地生产用户脚本，发布状态为 `ready-for-browser-qa`；Phase 7 未实施。
 > 编写日期：2026-07-26  
 > 当前基线：LuoguSP 2.13.4  
 > 目标：`hidden-intro` 采用“洛谷原生组件优先、LuoguSP 现有手工方案兜底”，同时升级并迁移四个第三方 `@require` 为 LuoguSP CDN 上的独立按需渲染包。
@@ -26,8 +26,10 @@
 - canary.16 已发布到 `spcdn.betaoi.cc` 并通过生产校验。QA 用户脚本 SHA-256 为 `2B4BC5F2F313C8E1B4622DC2DD796A4F8DC37871DF89F312601F95E6980F0B20`，生产 `LuoguSP.user.js` 未修改。
 - canary.17 已发布到 `spcdn.betaoi.cc` 并通过生产校验，加入 `fallback-retry`、`fallback-lite` 两个受限 QA 模式；QA 用户脚本 SHA-256 为 `D52CFC844B5A3486B2838581C46D826684D6CFF57548A2EBBDF72A0E550AE9AC`，真实 Tampermonkey 验收已完成。
 - canary.18 将构建、channel、manifest、运行时加载、发布和远端校验收敛为 Cloudflare Workers 单源：channel schema v2 与 manifest schema v3 都绑定 `https://spcdn.betaoi.cc`，仓库不再保留其他 CDN 的项目配置、部署目录或发布脚本。Cloudflare 逐文件门禁、131/131 单元测试与真实 Tampermonkey 验收均已通过；QA 用户脚本 SHA-256 为 `0AC27FD051F95AC545E36C893B16A110FC9113421EDE16191C58B8780943963C`。
-- canary.19 原子移除四个第三方启动 `@require`，QA 产物只保留 early-gate 与 runtime 两个带 SHA-256 的第一方 `@require`，并保留 `@sandbox raw`、`@connect spcdn.betaoi.cc`、`GM_xmlhttpRequest` 供按需 renderer 使用。Cloudflare 16 个不可变文件与双 `@require` 生产形态门禁均通过；QA 用户脚本 SHA-256 为 `B510CD3F8311A99B8C958051E9346C0CBB2B03E19FB0D1A4C45FED3BD9968195`，等待真实 Tampermonkey 验收。
-- Phase 6 的 `npm run publish -- --version <stable>` 已改为显式目标版本，并在 build 后单独执行 renderer 合同测试；成功报告记录 renderer 描述与部署 origin，失败报告记录 phase、command、exitCode、renderer、已部署 origin、生产恢复状态和 resume 资格。稳定版发布须等待 canary.19 浏览器验收。
+- canary.19 原子移除四个第三方启动 `@require`，QA 产物只保留 early-gate 与 runtime 两个带 SHA-256 的第一方 `@require`，并保留 `@sandbox raw`、`@connect spcdn.betaoi.cc`、`GM_xmlhttpRequest` 供按需 renderer 使用。四条真实浏览器路径的渲染与危险节点检查均通过，但 `fallback-retry` 成功后 QA 探针仍残留首次 503 的失败详情，因此未直接推广稳定版。
+- canary.20 在请求重试开始和 renderer 成功加载时原子清空旧失败诊断，并新增状态转换回归；132/132 单元测试、Cloudflare 16 个不可变文件与双 `@require` 生产形态门禁均通过。QA 用户脚本 SHA-256 为 `B71951DB7D66FFB22266A309134522E4C9349F23E9FE45B23C804DB3DEDBF745`；真实 Tampermonkey 的 native、fallback、fallback-retry、fallback-lite 四条路径全部通过，危险节点为 0，页面全局没有四个 renderer 库，重试恢复后旧失败诊断已清空。
+- Phase 5 已完成：生产元数据和稳定用户脚本只保留 early-gate、runtime 两个带 SHA-256 的第一方 `@require`，完整 renderer 只在手工兜底路径通过 `GM_xmlhttpRequest` 按需加载。
+- Phase 6 已完成：`npm run publish -- --version 2.13.5` 已执行 renderer 合同测试、发布前测试、Cloudflare Workers 部署、16 文件生产门禁、本地提升、质量预算与 132/132 最终测试。`reports/publish.json` 状态为 `ready-for-browser-qa`，生产脚本 SHA-256 为 `28066EDF19183B42387755F5FEDBEF93A382274402278941B7CEC3323FC5487F`，未 commit、未 push。
 
 ## 交接状态（2026-07-27）
 
@@ -70,22 +72,22 @@
 npm run renderer:test
 npm run renderer:check
 npm test
-node scripts/cdn/build.mjs --version 2.13.5-canary.18
-npm run qa:hidden-intro:stage -- --version 2.13.5-canary.18
-node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.18
+node scripts/cdn/build.mjs --version 2.13.5-canary.20
+npm run qa:hidden-intro:stage -- --version 2.13.5-canary.20
+node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.20
 ```
 
-- `npm test` 当前通过 131/131。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
+- `npm test` 当前通过 132/132。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
 - `npm run quality:check` 还会发现冻结的 2.13.4 `early-gate` manifest 声明 `a087...`、本地不可变文件实际为 `5e06...` 的既有漂移；同样不得原地改写 2.13.4。
-- canary.17 是独立 `LuoguSP QA` 身份，无自动更新地址；Cloudflare release、canary channel 和真实浏览器验收均已更新，但生产用户脚本仍保持原样。
-- canary.18 已通过 Cloudflare 单源发布、远端校验和真实浏览器复核；canary.17 已在验收后从本地与 Cloudflare 删除，生产用户脚本仍保持原样。
-- 不要在新的 Cloudflare 单源 canary 完成真实浏览器验收前进入 Phase 5，也不要发布稳定版或删除四条第三方 `@require`。
+- canary.20 是独立 `LuoguSP QA` 身份，无自动更新地址；Cloudflare release、canary channel 和真实浏览器门禁均已更新。
+- canary.18 和 canary.19 已按 retention 策略从本地与 Cloudflare 删除；主域复核均为 404，当前仅保留 canary.20。
+- 稳定版 2.13.5 已发布到 Cloudflare 并提升到本地生产用户脚本；Phase 7 真实浏览器 QA 完成前不得 commit 或 push。
 
 ### CDN retention 后续设计
 
 - 2026-07-28 用户确认新策略：正式版暂时全部保留；canary 只保留当前测试版本，之前版本全部清除。
-- 本地和 `spcdn.betaoi.cc` 已清除 canary.1-.17；当前仅保留 canary.18，Cloudflare Workers 部署扫描文件为 121 个。
-- 已逐一验证主域上 5 个正式版和 canary.18 的 `manifest.json` 返回 200，canary.1-.17 返回 404。被删除内容仍可从 Git 历史恢复。
+- 本地和 `spcdn.betaoi.cc` 已清除 canary.1-.19；当前仅保留 canary.20。
+- 已逐一验证主域上正式版 2.13.0-2.13.5 和 canary.20 的 `manifest.json` 返回 200，canary.18-.19 返回 404。被删除内容仍可从 Git 历史恢复。
 - 2026-07-28 用户决定移除第二 CDN 的部署、设计和脚本；其线上项目由用户手工清理。此后仓库只通过 Cloudflare Workers 发布 `spcdn.betaoi.cc`。
 - 后续每次发布新 canary 时，应在验收和 channel 切换完成后删除上一 canary，再重新部署；不得在新 canary 尚未通过 Cloudflare 生产校验前提前删除当前测试版本。
 - 中期可把相同 renderer 和公共 chunk 迁移为 SHA-256 内容寻址的共享对象，由 release manifest 引用，减少每个 canary 的逻辑重复；该路径迁移需保持旧 release URL 可用。
