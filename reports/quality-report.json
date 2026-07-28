@@ -1,21 +1,19 @@
 {
-  "generatedAt": "2026-07-28T01:41:15.899Z",
+  "generatedAt": "2026-07-28T02:22:44.476Z",
   "artifact": {
     "sha256": "28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f",
     "bytes": 1343,
     "gzipBytes": 801,
     "lines": 21,
-    "parseMedianMs": 0.0020999999999986585
+    "parseMedianMs": 0.0031999999999996476
   },
   "browserQa": {
-    "status": "pending",
-    "checkedAt": "2026-07-28T08:56:07+08:00",
-    "artifactSha256": "eda0b28a1e6922fd321b12f6ff4ede4ea37990a91fe386448553bdafcbb8b794",
-    "maxStartupMs": 0,
+    "status": "passed",
+    "checkedAt": "2026-07-28T10:21:07+08:00",
+    "artifactSha256": "28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f",
+    "maxStartupMs": 4.1,
     "luoguSpConsoleErrorCount": 0,
-    "failures": [
-      "The production browser QA report has not yet been refreshed after the Cloudflare-only CDN migration."
-    ]
+    "failures": []
   },
   "startupRequires": {
     "count": 2,

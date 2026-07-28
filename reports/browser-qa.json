@@ -1,45 +1,162 @@
 {
-  "checkedAt": "2026-07-28T08:56:07+08:00",
-  "status": "pending",
-  "browser": "Chromium with Tampermonkey",
-  "commit": "uncommitted",
-  "artifactSha256": "eda0b28a1e6922fd321b12f6ff4ede4ea37990a91fe386448553bdafcbb8b794",
-  "artifactBytes": 1630,
+  "checkedAt": "2026-07-28T10:21:07+08:00",
+  "status": "passed",
+  "browser": "Google Chrome with Tampermonkey",
+  "commit": "09f37bb266faa66f6ab6d1c7a5a397adfe456ba1",
+  "artifactSha256": "28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f",
+  "artifactBytes": 1343,
   "runtimeValidation": {
-    "method": "Production browser QA must be refreshed after the CDN architecture converges on Cloudflare Workers",
-    "release": "2.13.4",
-    "apiVersion": 1
+    "method": "Stable 2.13.5 installed and enabled in Tampermonkey; real Luogu routes exercised against the two pinned Cloudflare Workers startup files",
+    "release": "2.13.5",
+    "apiVersion": 1,
+    "cdnOrigin": "https://spcdn.betaoi.cc"
   },
   "startupMeasurement": {
-    "method": "Pending a fresh production userscript run",
-    "networkIncluded": true
+    "method": "Exact published 2.13.5 early-gate and runtime bytes, followed by LuoguSP.user.js, evaluated in production @require order after DOMContentLoaded in isolated Google Chrome pages",
+    "networkIncluded": false,
+    "purpose": "Auxiliary synchronous-bootstrap budget measurement; final functional evidence comes from the installed Tampermonkey userscript"
   },
   "startupMeasurements": [
     {
-      "route": "pending-cloudflare-only-production-qa",
-      "ms": 0
+      "route": "/problem/P1001",
+      "ms": 3.1
+    },
+    {
+      "route": "/problem/list",
+      "ms": 2.6
+    },
+    {
+      "route": "/user/2",
+      "ms": 4.1
     }
   ],
   "checks": {
     "configuredCdnOrigin": "https://spcdn.betaoi.cc",
-    "productionUserscriptChangedByMigration": false
-  },
-  "failures": [
-    {
-      "id": "production-browser-qa-refresh-required",
-      "route": "/",
-      "summary": "The production browser QA report has not yet been refreshed after the Cloudflare-only CDN migration.",
-      "evidence": "Phase 4 canary browser validation is recorded separately and must not be presented as production 2.13.4 evidence."
+    "startupRequireCount": 2,
+    "productionUserscriptChangedByMigration": true,
+    "publicHiddenIntroUser2": {
+      "route": "/user/2",
+      "officialIntroCards": 1,
+      "manualIntroCards": 0,
+      "settingsEntries": 1,
+      "pageRendererGlobalsExposed": 0,
+      "status": "passed"
+    },
+    "nativeVisibleIntroUser3": {
+      "route": "/user/3",
+      "officialIntroCards": 1,
+      "manualIntroCards": 0,
+      "status": "passed"
+    },
+    "ownProfile": {
+      "route": "/user/116524",
+      "officialIntroCards": 1,
+      "editButtons": 1,
+      "manualIntroCards": 0,
+      "settingsEntries": 1,
+      "status": "passed"
+    },
+    "spaLifecycle": {
+      "path": "/user/116524 -> /user/116524/activity -> /user/566954 -> back",
+      "staleIntroCards": 0,
+      "duplicateIntroCards": 0,
+      "settingsEntryCountAfterReturn": 1,
+      "status": "passed"
+    },
+    "settingsToggle": {
+      "setting": "个人页显示个人介绍",
+      "disabledStatePersisted": true,
+      "introAbsentWhileDisabled": true,
+      "enabledStateRestored": true,
+      "introPresentAfterRestore": true,
+      "status": "passed"
+    },
+    "problemList": {
+      "route": "/problem/list",
+      "sampleSize": 12,
+      "p1001Color": "rgb(254, 76, 97)",
+      "p1001FontWeight": "700",
+      "status": "passed"
+    },
+    "ide": {
+      "route": "/problem/P1001#ide",
+      "batchButtonLabel": "一键测试",
+      "batchButtonCount": 1,
+      "remoteRunTriggered": false,
+      "status": "passed"
+    },
+    "chat": {
+      "route": "/chat",
+      "mainPresent": true,
+      "profileLinksPresent": true,
+      "shortcutTriggered": false,
+      "status": "passed"
+    },
+    "restrictedArticle": {
+      "route": "/article/8ue6cccv",
+      "restoredTitle": "我的新闻纸 - 洛谷专栏",
+      "officialShellPresent": true,
+      "commentTextareaCount": 1,
+      "updateButtonCount": 1,
+      "internationalSourceButtonCount": 1,
+      "status": "passed"
+    },
+    "restrictedPaste": {
+      "route": "/paste/w73o7p95",
+      "officialShellPresent": true,
+      "updateButtonCount": 1,
+      "internationalSourceButtonCount": 1,
+      "status": "passed"
     }
-  ],
+  },
+  "hiddenIntro": {
+    "nativePath": {
+      "release": "2.13.5",
+      "status": "passed",
+      "rendererRequests": 0,
+      "officialIntroCards": 1,
+      "manualIntroCards": 0,
+      "isAdminUnchanged": true
+    },
+    "fallbackPath": {
+      "release": "2.13.5-canary.20",
+      "status": "passed",
+      "rendererRequests": 1,
+      "rendererOrigin": "https://spcdn.betaoi.cc",
+      "rendererTransport": "gm-xhr",
+      "renderMode": "full",
+      "dangerousNodeCount": 0
+    },
+    "retryPath": {
+      "release": "2.13.5-canary.20",
+      "status": "passed",
+      "rendererRequestsBeforeRetry": 1,
+      "rendererRequestsAfterRetry": 2,
+      "finalRenderMode": "full",
+      "staleFailureDetailAfterRecovery": false,
+      "duplicateIntroCards": 0
+    },
+    "litePath": {
+      "release": "2.13.5-canary.20",
+      "status": "passed",
+      "rendererRequests": 1,
+      "renderMode": "lite",
+      "failureKind": "full-render-failed",
+      "dangerousNodeCount": 0
+    }
+  },
+  "failures": [],
   "console": {
     "luoguSpErrorCount": 0,
     "siteErrorCount": 0,
     "siteWarningCount": 0,
-    "otherExtensionErrorCount": 0,
-    "summary": "No production console result is claimed until the QA refresh is run."
+    "otherExtensionErrorCount": 1,
+    "summary": "No LuoguSP, Luogu-site, or spcdn.betaoi.cc warning/error was observed. One message-port error came from an unrelated Chrome extension content script during the broader session; the final stable-profile check was clean."
   },
   "limitations": [
-    "This report intentionally preserves the production QA gate without carrying forward obsolete multi-provider evidence."
+    "Stable releases intentionally disable prerelease QA fault modes. Fallback, retry, and MarkdownLite browser evidence therefore uses canary.20, which has the same Cloudflare-only architecture and renderer bytes as stable 2.13.5.",
+    "A permanently failing renderer was not separately injected in the stable build. The real-browser first-failure safe UI and retry path passed, while persistent-failure behavior remains covered by the automated fallback controller contract.",
+    "The IDE batch runner was not sent to the remote compiler, and the private-message Ctrl+Click shortcut was not triggered.",
+    "Startup timing excludes dependency network transfer and measures exact production bytes through synchronous bootstrap only; it is auxiliary to the real Tampermonkey functional run."
   ]
 }
