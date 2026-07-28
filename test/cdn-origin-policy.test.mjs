@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   resolveBootstrapOrigin,
-  resolveConfiguredOrigins,
+  resolveConfiguredOrigin,
 } from "../scripts/cdn/origin-policy.mjs";
 
 const root = resolve(
@@ -15,48 +15,36 @@ const root = resolve(
 const config = {
   origins: {
     primary: "https://spcdn.betaoi.cc",
-    fallback: "https://spcdn.betaoi.cn",
     bootstrap: "https://spcdn.betaoi.cc",
   },
 };
 
-test("CDN tooling accepts only the two configured custom origins", () => {
-  assert.deepEqual(
-    resolveConfiguredOrigins({ config }),
-    {
-      primary: "https://spcdn.betaoi.cc",
-      fallback: "https://spcdn.betaoi.cn",
-    },
+test("CDN tooling accepts only the configured Cloudflare custom origin", () => {
+  assert.equal(
+    resolveConfiguredOrigin({ config }),
+    "https://spcdn.betaoi.cc",
   );
   assert.throws(
     () =>
-      resolveConfiguredOrigins({
+      resolveConfiguredOrigin({
         config,
-        primaryOverride: "https://example.edgeone.cool",
+        originOverride: "https://example.workers.dev",
       }),
     /platform default domain/,
   );
   assert.throws(
     () =>
-      resolveConfiguredOrigins({
+      resolveConfiguredOrigin({
         config,
-        fallbackOverride: "https://example.workers.dev",
-      }),
-    /platform default domain/,
-  );
-  assert.throws(
-    () =>
-      resolveConfiguredOrigins({
-        config,
-        primaryOverride: "https://other.example.com",
+        originOverride: "https://other.example.com",
       }),
     /must match config\/cdn\.json/,
   );
   assert.throws(
     () =>
-      resolveConfiguredOrigins({
+      resolveConfiguredOrigin({
         config,
-        primaryOverride: "https://spcdn.betaoi.cc/?token=preview",
+        originOverride: "https://spcdn.betaoi.cc/?token=preview",
       }),
     /clean HTTPS origin/,
   );
@@ -75,7 +63,7 @@ test("userscript bootstrap uses one configured custom origin", () => {
           bootstrap: "https://other.example.com",
         },
       }),
-    /must match primary or fallback/,
+    /must match primary/,
   );
   assert.throws(
     () =>
@@ -90,6 +78,22 @@ test("userscript bootstrap uses one configured custom origin", () => {
 });
 
 test("Cloudflare deployment keeps the workers.dev default domain disabled", async () => {
+  const repositoryConfig = JSON.parse(
+    await readFile(resolve(root, "config/cdn.json"), "utf8"),
+  );
+  assert.deepEqual(Object.keys(repositoryConfig.projects), [
+    "cloudflare",
+  ]);
+  assert.deepEqual(Object.keys(repositoryConfig.origins), [
+    "primary",
+    "bootstrap",
+  ]);
+  assert.deepEqual(Object.keys(repositoryConfig.cli), ["wrangler"]);
+  assert.deepEqual(
+    (await readdir(resolve(root, "deploy"))).sort(),
+    ["cloudflare"],
+  );
+
   const wrangler = JSON.parse(
     await readFile(
       resolve(root, "deploy/cloudflare/wrangler.jsonc"),

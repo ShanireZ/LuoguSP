@@ -1,6 +1,5 @@
 const PLATFORM_DEFAULT_SUFFIXES = Object.freeze([
   ".workers.dev",
-  ".edgeone.cool",
 ]);
 
 function configuredOrigin(id, value) {
@@ -21,42 +20,28 @@ function configuredOrigin(id, value) {
   return url.origin;
 }
 
-export function resolveConfiguredOrigins(options) {
-  const { config, primaryOverride, fallbackOverride } = options || {};
+export function resolveConfiguredOrigin(options) {
+  const { config, originOverride } = options || {};
   const primary = configuredOrigin(
     "primary",
     config?.origins?.primary,
   );
-  const fallback = configuredOrigin(
-    "fallback",
-    config?.origins?.fallback,
-  );
-  if (new URL(primary).hostname === new URL(fallback).hostname)
-    throw new Error("CDN origins must use different custom domains");
-
-  for (const [id, override, expected] of [
-    ["primary", primaryOverride, primary],
-    ["fallback", fallbackOverride, fallback],
-  ]) {
-    if (override == null) continue;
-    const actual = configuredOrigin(id, override);
-    if (actual !== expected)
-      throw new Error(
-        `${id} override must match config/cdn.json; platform preview and default origins are disabled`,
-      );
-  }
-  return Object.freeze({ primary, fallback });
+  if (originOverride == null) return primary;
+  const actual = configuredOrigin("origin", originOverride);
+  if (actual !== primary)
+    throw new Error(
+      "origin override must match config/cdn.json; platform preview and default origins are disabled",
+    );
+  return primary;
 }
 
 export function resolveBootstrapOrigin(config) {
-  const { primary, fallback } = resolveConfiguredOrigins({ config });
+  const primary = resolveConfiguredOrigin({ config });
   const bootstrap = configuredOrigin(
     "bootstrap",
     config?.origins?.bootstrap,
   );
-  if (bootstrap !== primary && bootstrap !== fallback)
-    throw new Error(
-      "bootstrap CDN origin must match primary or fallback",
-    );
+  if (bootstrap !== primary)
+    throw new Error("bootstrap CDN origin must match primary");
   return bootstrap;
 }

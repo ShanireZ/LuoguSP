@@ -4,14 +4,14 @@ function cancelledError(message = "Optional bundle load was cancelled") {
   return Object.assign(new Error(message), { kind: "cancelled" });
 }
 
-function validateOptions(bundle, origins, expectedApiVersion) {
+function validateOptions(bundle, origin, expectedApiVersion) {
   if (
     !bundle ||
     typeof bundle.path !== "string" ||
     !/^[a-f0-9]{64}$/.test(String(bundle.sha256)) ||
     !Number.isInteger(bundle.apiVersion) ||
-    !Array.isArray(origins) ||
-    !origins.length ||
+    typeof origin !== "string" ||
+    !origin ||
     !Number.isInteger(expectedApiVersion)
   )
     throw new TypeError("Invalid optional bundle configuration");
@@ -44,7 +44,7 @@ function validateModule(module, expectedApiVersion) {
 export function createOptionalBundleLoader(options = {}) {
   const {
     bundle,
-    origins,
+    origin,
     expectedApiVersion,
     fetchImpl,
     timeoutMs,
@@ -64,11 +64,11 @@ export function createOptionalBundleLoader(options = {}) {
   };
 
   const execute = async (signal) => {
-    validateOptions(bundle, origins, expectedApiVersion);
+    validateOptions(bundle, origin, expectedApiVersion);
     if (signal?.aborted) throw cancelledError();
     emit({ type: "request-start", path: bundle.path });
     const asset = await fetchVerifiedAsset({
-      origins,
+      origin,
       path: bundle.path,
       sha256: bundle.sha256,
       signal,

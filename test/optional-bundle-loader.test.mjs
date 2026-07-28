@@ -28,7 +28,7 @@ test("optional bundle loader verifies once and shares the in-page request", asyn
   const events = [];
   const loader = createOptionalBundleLoader({
     bundle,
-    origins: ["https://primary.example"],
+    origin: "https://primary.example",
     expectedApiVersion: 1,
     fetchImpl: async () => {
       fetches++;
@@ -70,7 +70,7 @@ test("optional bundle loader rejects descriptor and loaded API mismatches", asyn
   let fetches = 0;
   const descriptorMismatch = createOptionalBundleLoader({
     bundle: { ...bundle, apiVersion: 2 },
-    origins: ["https://primary.example"],
+    origin: "https://primary.example",
     expectedApiVersion: 1,
     fetchImpl: async () => {
       fetches++;
@@ -86,7 +86,7 @@ test("optional bundle loader rejects descriptor and loaded API mismatches", asyn
 
   const moduleMismatch = createOptionalBundleLoader({
     bundle,
-    origins: ["https://primary.example"],
+    origin: "https://primary.example",
     expectedApiVersion: 1,
     fetchImpl: async () => new Response(body),
     importer: async () => ({ ...moduleApi, apiVersion: 2 }),
@@ -101,7 +101,7 @@ test("optional bundle loader retries after failure and honors AbortSignal", asyn
   let attempt = 0;
   const loader = createOptionalBundleLoader({
     bundle,
-    origins: ["https://primary.example"],
+    origin: "https://primary.example",
     expectedApiVersion: 1,
     fetchImpl: async () => {
       attempt++;

@@ -79,8 +79,8 @@ const steps = [
     : "build immutable CDN release",
   "stage pinned userscript",
   "run pre-deployment tests",
-  "deploy EdgeOne and Cloudflare",
-  "verify both configured custom origins",
+  "deploy Cloudflare Workers",
+  "verify the configured Cloudflare custom origin",
   "promote staged userscript locally",
   "verify activation and structural quality",
 ];
@@ -223,7 +223,7 @@ try {
     .map((name) => `test/${name}`);
   run(["--test", ...preDeploymentTests]);
 
-  beginPhase("dual CDN deployment");
+  beginPhase("Cloudflare Workers deployment");
   deploymentStarted = true;
   run([
     "scripts/cdn/publish.mjs",
@@ -294,10 +294,7 @@ try {
       sha256: promoted.sha256,
       requires: promoted.requires.length,
     },
-    customOrigins: [
-      config.origins.primary,
-      config.origins.fallback,
-    ],
+    customOrigin: config.origins.primary,
     platformDefaultDomainsUsed: false,
     productionModified: true,
     commitPerformed: false,

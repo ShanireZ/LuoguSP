@@ -105,21 +105,11 @@ export function verifyStagedActivation(options) {
     throw new Error(
       "Staged userscript does not pin the verified compatibility runtime",
     );
-  const nonBootstrapOrigins = [
-    config.origins.primary,
-    config.origins.fallback,
-  ].filter(
-    (origin) =>
-      new URL(origin).origin !== new URL(bootstrapOrigin).origin,
-  );
   if (
-    nonBootstrapOrigins.some((origin) =>
-      String(artifact).includes(origin),
-    ) ||
     String(artifact).includes("/channels/")
   )
     throw new Error(
-      "Staged userscript must not execute the non-bootstrap origin or mutable channel code",
+      "Staged userscript must not execute mutable channel code",
     );
   const bytes = Buffer.byteLength(String(artifact));
   if (bytes > 5000)

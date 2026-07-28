@@ -24,7 +24,7 @@ export function createRendererClient(options = {}) {
     renderOptions,
     loader = createOptionalBundleLoader({
       bundle: options.bundle,
-      origins: options.origins,
+      origin: options.origin,
       expectedApiVersion:
         options.expectedApiVersion || MARKDOWN_RENDERER_API_VERSION,
       fetchImpl: options.fetchImpl,

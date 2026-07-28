@@ -21,10 +21,6 @@ await cp(resolve(root, "cdn/releases"), resolve(output, "releases"), {
 await cp(resolve(root, "cdn/channels"), resolve(output, "channels"), {
   recursive: true,
 });
-await cp(
-  resolve(root, "deploy/edgeone/edgeone.json"),
-  resolve(output, "edgeone.json"),
-);
 const channel = JSON.parse(
   await readFile(resolve(root, "cdn/channels/canary.json"), "utf8"),
 );

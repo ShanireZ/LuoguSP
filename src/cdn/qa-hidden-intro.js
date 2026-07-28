@@ -1,7 +1,6 @@
 const QA_MODES = new Set([
   "native",
   "fallback",
-  "fallback-primary-fail",
   "fallback-retry",
   "fallback-lite",
 ]);
@@ -32,21 +31,16 @@ export function createQaRendererOptions(mode) {
 
 export function createQaRendererFetch({
   mode,
-  origins,
+  origin,
   fetchImpl,
 } = {}) {
   if (typeof fetchImpl !== "function")
     throw new TypeError("QA renderer fetch requires a fetch implementation");
-  if (
-    !["fallback-primary-fail", "fallback-retry"].includes(mode)
-  )
+  if (mode !== "fallback-retry")
     return fetchImpl;
 
-  const configuredOrigins = Array.isArray(origins)
-    ? origins.map((origin) => new URL(origin).origin)
-    : [];
-  let retryFailuresRemaining =
-    mode === "fallback-retry" ? configuredOrigins.length : 0;
+  const configuredOrigin = new URL(origin).origin;
+  let failFirstRequest = true;
 
   return async (url, init) => {
     let parsed;
@@ -55,20 +49,13 @@ export function createQaRendererFetch({
     } catch (error) {
       return fetchImpl(url, init);
     }
-    const originIndex = configuredOrigins.indexOf(parsed.origin);
+    const isConfiguredOrigin = parsed.origin === configuredOrigin;
     const isRenderer =
-      originIndex !== -1 && RENDERER_PATH_PATTERN.test(parsed.pathname);
-    const failPrimary =
-      mode === "fallback-primary-fail" &&
-      isRenderer &&
-      originIndex === 0;
-    const failRetryCycle =
-      mode === "fallback-retry" &&
-      isRenderer &&
-      retryFailuresRemaining > 0;
-    if (!failPrimary && !failRetryCycle)
+      isConfiguredOrigin &&
+      RENDERER_PATH_PATTERN.test(parsed.pathname);
+    if (!isRenderer || !failFirstRequest)
       return fetchImpl(url, init);
-    if (failRetryCycle) retryFailuresRemaining--;
+    failFirstRequest = false;
     return Object.freeze({
       ok: false,
       status: 503,

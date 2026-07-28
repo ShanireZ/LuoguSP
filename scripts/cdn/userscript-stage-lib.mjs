@@ -104,7 +104,6 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
       0,
       "// @sandbox      raw",
       "// @connect      spcdn.betaoi.cc",
-      "// @connect      spcdn.betaoi.cn",
     );
   }
 
