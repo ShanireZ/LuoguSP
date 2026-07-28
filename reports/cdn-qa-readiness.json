@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-07-27T09:14:25.202Z",
+  "checkedAt": "2026-07-28T00:10:25.170Z",
   "status": "degraded",
   "release": "2.13.5-canary.17",
   "manifestPath": "releases/2.13.5-canary.17/manifest.b3ce462ad92dda09.json",
@@ -41,7 +41,7 @@
   },
   "failures": [],
   "optionalIssues": [
-    "fallback failed releases/2.13.5-canary.17/manifest.b3ce462ad92dda09.json after 1 attempt(s): {\"attempt\":1,\"status\":null,\"bytes\":0,\"ok\":false,\"error\":\"The operation was aborted due to timeout\"}"
+    "fallback failed releases/2.13.5-canary.17/manifest.b3ce462ad92dda09.json after 1 attempt(s): {\"attempt\":1,\"origin\":\"fallback\",\"path\":\"releases/2.13.5-canary.17/manifest.b3ce462ad92dda09.json\",\"status\":200,\"bytes\":387,\"sha256\":\"e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300\",\"contentType\":\"text/html\",\"cacheControl\":\"public, max-age=31536000, immutable\",\"cors\":\"*\",\"ok\":false}"
   ],
   "results": [
     {
@@ -259,21 +259,31 @@
       "attemptHistory": [
         {
           "attempt": 1,
-          "status": null,
-          "bytes": 0,
-          "ok": false,
-          "error": "The operation was aborted due to timeout"
+          "origin": "fallback",
+          "path": "releases/2.13.5-canary.17/manifest.b3ce462ad92dda09.json",
+          "status": 200,
+          "bytes": 387,
+          "sha256": "e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300",
+          "contentType": "text/html",
+          "cacheControl": "public, max-age=31536000, immutable",
+          "cors": "*",
+          "ok": false
         }
       ],
       "lastResult": {
         "attempt": 1,
-        "status": null,
-        "bytes": 0,
-        "ok": false,
-        "error": "The operation was aborted due to timeout"
+        "origin": "fallback",
+        "path": "releases/2.13.5-canary.17/manifest.b3ce462ad92dda09.json",
+        "status": 200,
+        "bytes": 387,
+        "sha256": "e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300",
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=31536000, immutable",
+        "cors": "*",
+        "ok": false
       },
       "ok": false,
-      "error": "verification failed after 1 attempts; last={\"attempt\":1,\"status\":null,\"bytes\":0,\"ok\":false,\"error\":\"The operation was aborted due to timeout\"}"
+      "error": "verification failed after 1 attempts; last={\"attempt\":1,\"origin\":\"fallback\",\"path\":\"releases/2.13.5-canary.17/manifest.b3ce462ad92dda09.json\",\"status\":200,\"bytes\":387,\"sha256\":\"e466138f30462c84f7b4e01abd40274aa75d17b404761c8e1718f4c643654300\",\"contentType\":\"text/html\",\"cacheControl\":\"public, max-age=31536000, immutable\",\"cors\":\"*\",\"ok\":false}"
     },
     {
       "origin": "fallback",
