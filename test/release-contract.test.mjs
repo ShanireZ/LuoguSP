@@ -113,15 +113,10 @@ test("runtime dependencies pin bootstrap compatibility files around third-party 
   ]);
   assert.equal(Buffer.byteLength(script) <= 5000, true);
   assert.equal(script.includes("/channels/"), false);
-  const nonBootstrapOrigin = [
-    cdnConfig.origins.primary,
-    cdnConfig.origins.fallback,
-  ].find(
-    (origin) =>
-      new URL(origin).origin !==
-      new URL(cdnConfig.origins.bootstrap).origin,
+  assert.equal(
+    new URL(cdnConfig.origins.primary).origin,
+    new URL(cdnConfig.origins.bootstrap).origin,
   );
-  assert.equal(script.includes(nonBootstrapOrigin), false);
 });
 
 test("restricted first paint stays covered until native page anchors are ready", () => {

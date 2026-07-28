@@ -55,7 +55,10 @@ test("staged userscript pins the bootstrap compatibility files around third-part
     `https://spcdn.betaoi.cc/releases/2.13.0/compat/runtime.js#sha256=${sha}`,
   );
   assert.equal(staged.metadata.includes("/channels/"), false);
-  assert.equal(staged.metadata.includes("spcdn.betaoi.cn"), false);
+  assert.equal(
+    [...staged.metadata.matchAll(/^\/\/ @connect\s+/gm)].length,
+    0,
+  );
 });
 
 test("staging refuses a dynamic ESM manifest or changed third-party requires", () => {
@@ -168,9 +171,11 @@ ${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
     staged.metadata,
     /^\/\/ @connect\s+spcdn\.betaoi\.cc$/m,
   );
-  assert.match(
-    staged.metadata,
-    /^\/\/ @connect\s+spcdn\.betaoi\.cn$/m,
+  assert.equal(
+    [...staged.metadata.matchAll(/^\/\/ @connect\s+(\S+)$/gm)]
+      .map((match) => match[1])
+      .join(","),
+    "spcdn.betaoi.cc",
   );
   assert.equal(staged.requires.length, 6);
 });

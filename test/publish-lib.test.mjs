@@ -33,7 +33,6 @@ const manifest = {
 const config = {
   origins: {
     primary: "https://spcdn.betaoi.cc",
-    fallback: "https://spcdn.betaoi.cn",
     bootstrap: "https://spcdn.betaoi.cc",
   },
 };
@@ -145,13 +144,13 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
       verifyStagedActivation({
         artifact: artifact.replace(
           "(()=>{})();",
-          `console.log("${config.origins.fallback}")`,
+          'import("/channels/canary.json")',
         ),
         version: "3.0.0",
         manifest,
         config,
         thirdPartyRequireUrls: thirdParty,
       }),
-    /must not execute the non-bootstrap origin/,
+    /must not execute mutable channel code/,
   );
 });

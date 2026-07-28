@@ -9,10 +9,7 @@
     "sha256": "2c3f91aa54fb3d8453eefe7a4dabd62f8e25f654b7a981fc283889c66b138e55",
     "requires": 6
   },
-  "customOrigins": [
-    "https://spcdn.betaoi.cc",
-    "https://spcdn.betaoi.cn"
-  ],
+  "customOrigin": "https://spcdn.betaoi.cc",
   "platformDefaultDomainsUsed": false,
   "productionModified": true,
   "commitPerformed": false,

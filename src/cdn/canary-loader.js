@@ -4,6 +4,22 @@ function joinUrl(origin, path) {
   return `${String(origin).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
 }
 
+function canonicalOrigin(value) {
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    )
+      return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 function abortError(message) {
   return Object.assign(new Error(message), { kind: "cancelled" });
 }
@@ -48,13 +64,18 @@ function isMarkdownRendererBundle(bundle, manifest) {
 
 function isReleaseManifest(manifest) {
   if (
-    ![1, 2].includes(manifest?.schemaVersion) ||
+    ![1, 2, 3].includes(manifest?.schemaVersion) ||
     typeof manifest.release !== "string" ||
     !manifest.esm?.entries ||
     !manifest.files
   )
     return false;
   if (manifest.schemaVersion === 1) return true;
+  if (
+    manifest.schemaVersion === 3 &&
+    canonicalOrigin(manifest.origin) !== manifest.origin
+  )
+    return false;
   return isMarkdownRendererBundle(
     manifest.optionalBundles?.markdownRenderer,
     manifest,
@@ -62,7 +83,11 @@ function isReleaseManifest(manifest) {
 }
 
 export function getOptionalBundle(manifest, name) {
-  if (!isReleaseManifest(manifest) || manifest.schemaVersion !== 2) return null;
+  if (
+    !isReleaseManifest(manifest) ||
+    ![2, 3].includes(manifest.schemaVersion)
+  )
+    return null;
   return manifest.optionalBundles[name] || null;
 }
 
@@ -77,58 +102,59 @@ export async function sha256Hex(value, cryptoApi = globalThis.crypto) {
 
 export async function fetchVerifiedAsset(options) {
   const {
-    origins,
+    origin,
     path,
     sha256,
     signal,
     fetchImpl = fetch,
     timeoutMs = 8000,
   } = options || {};
+  const normalizedOrigin = canonicalOrigin(origin);
   if (
-    !Array.isArray(origins) ||
-    !origins.length ||
+    !normalizedOrigin ||
     typeof path !== "string" ||
     !path ||
     !/^[a-f0-9]{64}$/.test(String(sha256))
   )
     throw new TypeError("Invalid verified asset request");
 
-  const failures = [];
-  for (const origin of origins) {
+  if (signal?.aborted) throw abortError("CDN load was cancelled");
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal.reason);
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
+  const url = joinUrl(normalizedOrigin, path);
+  try {
+    const response = await fetchImpl(url, {
+      cache: "no-store",
+      credentials: "omit",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const actual = await sha256Hex(bytes);
+    if (actual !== sha256) throw new Error(`SHA-256 mismatch: ${actual}`);
+    return Object.freeze({
+      bytes,
+      origin: normalizedOrigin,
+      url,
+      contentType: response.headers.get("content-type") || "",
+    });
+  } catch (error) {
     if (signal?.aborted) throw abortError("CDN load was cancelled");
-    const controller = new AbortController();
-    const onAbort = () => controller.abort(signal.reason);
-    if (signal) signal.addEventListener("abort", onAbort, { once: true });
-    const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
-    const url = joinUrl(origin, path);
-    try {
-      const response = await fetchImpl(url, {
-        cache: "no-store",
-        credentials: "omit",
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      const actual = await sha256Hex(bytes);
-      if (actual !== sha256) throw new Error(`SHA-256 mismatch: ${actual}`);
-      return Object.freeze({
-        bytes,
-        origin,
-        url,
-        contentType: response.headers.get("content-type") || "",
-      });
-    } catch (error) {
-      if (signal?.aborted) throw abortError("CDN load was cancelled");
-      failures.push(`${url}: ${error?.message || error}`);
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-    }
+    throw Object.assign(
+      new Error(
+        `CDN asset failed for ${path}: ${error?.message || error}`,
+      ),
+      {
+        kind: "cdn-unavailable",
+        failure: `${url}: ${error?.message || error}`,
+      },
+    );
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
   }
-  throw Object.assign(
-    new Error(`All CDN origins failed for ${path}: ${failures.join(" | ")}`),
-    { kind: "cdn-unavailable", failures },
-  );
 }
 
 export async function loadVerifiedManifest(options) {
@@ -146,6 +172,14 @@ export async function loadVerifiedManifest(options) {
     throw Object.assign(new Error("CDN manifest schema is invalid"), {
       kind: "manifest-invalid",
     });
+  if (
+    manifest.schemaVersion === 3 &&
+    manifest.origin !== asset.origin
+  )
+    throw Object.assign(
+      new Error("CDN manifest origin does not match its transport origin"),
+      { kind: "manifest-invalid" },
+    );
   return Object.freeze({ manifest, origin: asset.origin, url: asset.url });
 }
 
@@ -153,7 +187,7 @@ export async function importVerifiedModule(options) {
   const {
     manifest,
     entry,
-    origins,
+    origin,
     signal,
     fetchImpl,
     timeoutMs,
@@ -164,7 +198,7 @@ export async function importVerifiedModule(options) {
   const file = path && manifest.files?.[path];
   if (!file) throw new TypeError(`Unknown CDN module entry: ${entry}`);
   const asset = await fetchVerifiedAsset({
-    origins,
+    origin,
     path,
     sha256: file.sha256,
     signal,

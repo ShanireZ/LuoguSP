@@ -1,56 +1,45 @@
 {
-  "checkedAt": "2026-07-26T22:14:43+08:00",
-  "status": "blocked",
-  "browser": "Chromium 150 (Edge) with Tampermonkey",
+  "checkedAt": "2026-07-28T08:56:07+08:00",
+  "status": "pending",
+  "browser": "Chromium with Tampermonkey",
   "commit": "uncommitted",
-  "artifactSha256": "2c3f91aa54fb3d8453eefe7a4dabd62f8e25f654b7a981fc283889c66b138e55",
-  "artifactBytes": 1608,
+  "artifactSha256": "eda0b28a1e6922fd321b12f6ff4ede4ea37990a91fe386448553bdafcbb8b794",
+  "artifactBytes": 1630,
   "runtimeValidation": {
-    "method": "Actual Tampermonkey execution on Luogu; 2.13.4 is awaiting local installation",
-    "release": null,
-    "apiVersion": null
+    "method": "Production browser QA must be refreshed after the CDN architecture converges on Cloudflare Workers",
+    "release": "2.13.4",
+    "apiVersion": 1
   },
   "startupMeasurement": {
-    "method": "Not accepted until the actual Tampermonkey installation runs 2.13.4",
+    "method": "Pending a fresh production userscript run",
     "networkIncluded": true
   },
   "startupMeasurements": [
     {
-      "route": "awaiting-tampermonkey-2.13.4",
+      "route": "pending-cloudflare-only-production-qa",
       "ms": 0
     }
   ],
   "checks": {
-    "installedReleaseObserved": "2.13.2",
-    "runtimeMarker": null,
-    "settingsEntryCount": 0,
-    "problemListP1001Marked": false,
-    "publishedRecoveryRelease": "2.13.4",
-    "recoveryBootstrapOrigin": "https://spcdn.betaoi.cc"
+    "configuredCdnOrigin": "https://spcdn.betaoi.cc",
+    "productionUserscriptChangedByMigration": false
   },
   "failures": [
     {
-      "id": "tampermonkey-require-load",
+      "id": "production-browser-qa-refresh-required",
       "route": "/",
-      "summary": "Tampermonkey could not fetch the 2.13.2 EdgeOne early-gate and runtime @require files, so no LuoguSP feature initialized.",
-      "evidence": "The real browser console reported two @require Failed to fetch messages and LuoguSP CDN runtime was not initialized."
-    },
-    {
-      "id": "tampermonkey-2.13.4-not-installed",
-      "route": "/",
-      "summary": "The published 2.13.4 Cloudflare-bootstrap userscript still needs to be installed locally in Tampermonkey before final QA.",
-      "evidence": "The repository update URL cannot expose uncommitted 2.13.4."
+      "summary": "The production browser QA report has not yet been refreshed after the Cloudflare-only CDN migration.",
+      "evidence": "Phase 4 canary browser validation is recorded separately and must not be presented as production 2.13.4 evidence."
     }
   ],
   "console": {
-    "luoguSpErrorCount": 1,
+    "luoguSpErrorCount": 0,
     "siteErrorCount": 0,
     "siteWarningCount": 0,
     "otherExtensionErrorCount": 0,
-    "summary": "LuoguSP reported that its CDN runtime was not initialized after both 2.13.2 EdgeOne @require downloads failed."
+    "summary": "No production console result is claimed until the QA refresh is run."
   },
   "limitations": [
-    "The successful production-order injection from the prior QA did not exercise Tampermonkey @require loading and is no longer accepted as release evidence.",
-    "Final 2.13.4 QA is blocked only on installing the local promoted userscript into Tampermonkey and refreshing Luogu."
+    "This report intentionally preserves the production QA gate without carrying forward obsolete multi-provider evidence."
   ]
 }

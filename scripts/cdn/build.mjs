@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import {
   MARKDOWN_RENDERER_API_VERSION,
   rendererStackDependencies,
 } from "../../src/rendering/renderer-dependencies.js";
+import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const releasesRoot = resolve(root, "cdn/releases");
@@ -19,6 +20,7 @@ const [configText, packageJsonText] = await Promise.all([
 ]);
 const config = JSON.parse(configText);
 const packageJson = JSON.parse(packageJsonText);
+const cdnOrigin = resolveConfiguredOrigin({ config });
 const normalizePath = (value) => value.split(sep).join("/");
 const argument = (name) => {
   const index = process.argv.indexOf(name);
@@ -151,10 +153,9 @@ const compatRuntime = await buildCompat(
     __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__: JSON.stringify(
       markdownRendererBundle,
     ),
-    __LUOGUSP_CDN_ORIGINS__: JSON.stringify([
-      config.origins.primary,
-      config.origins.fallback,
-    ]),
+    __LUOGUSP_CDN_ORIGIN__: JSON.stringify(
+      cdnOrigin,
+    ),
   },
 );
 
@@ -234,11 +235,11 @@ const existingManifest = existingManifestBody
   ? JSON.parse(existingManifestBody)
   : null;
 const manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   release: version,
   loaderApiVersion: 1,
   generatedAt: existingManifest?.generatedAt || new Date().toISOString(),
-  origins: [config.origins.primary, config.origins.fallback],
+  origin: cdnOrigin,
   compat: {
     earlyGate: compatEarlyGate,
     runtime: compatRuntime,
@@ -310,12 +311,12 @@ if (!dryRun) {
 }
 
 const channel = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   channel: "canary",
   release: version,
   manifestPath,
   manifestSha256,
-  origins: manifest.origins,
+  origin: manifest.origin,
   updatedAt: new Date().toISOString(),
 };
 if (!dryRun)
@@ -325,11 +326,6 @@ if (!dryRun)
     "utf8",
   );
 
-if (!dryRun)
-  await cp(
-    resolve(root, "deploy/edgeone/edgeone.json"),
-    resolve(root, "cdn/edgeone.json"),
-  );
 console.log(
   JSON.stringify(
     {

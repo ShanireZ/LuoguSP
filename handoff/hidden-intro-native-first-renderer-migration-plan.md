@@ -1,6 +1,6 @@
 # hidden-intro 原生优先与按需渲染包迁移计划
 
-> 状态：Phase 0-3 已完成；Phase 4 的源代码、自动化测试、主路径、失败后重试和 full-to-lite 真实浏览器验收已完成，备用镜像完整性仍待决策；Phase 5-7 未实施。
+> 状态：Phase 0-4 已完成；CDN 已收敛为 Cloudflare Workers 单源，Phase 5-7 未实施。
 > 编写日期：2026-07-26  
 > 当前基线：LuoguSP 2.13.4  
 > 目标：`hidden-intro` 采用“洛谷原生组件优先、LuoguSP 现有手工方案兜底”，同时升级并迁移四个第三方 `@require` 为 LuoguSP CDN 上的独立按需渲染包。
@@ -12,19 +12,20 @@
 - Phase 2：renderer stack 已锁定为 KaTeX 0.18.1、Marked 18.0.7、DOMPurify 3.4.12、Highlight.js 11.11.1；完整/轻量/XSS 回归通过，`npm audit --omit=dev` 为零漏洞。
 - 2026-07-27 的 `2.13.5-canary.1 --dry-run` 生成 renderer 为 412,587 B、gzip 126,826 B，且未写入 release、channel 或生产用户脚本。
 - Phase 3：已修复 `onNativeAttached` 生命周期接线，并增加 feature 级路由离开、SPA 用户切换、dispose、原生已显示不重复和识别锚点失败转兜底测试；原生 computed 的 restore 现在由 feature disposer 持有并执行。
-- Phase 4：已拆出 `fallback-intro-controller.js`、`renderer-client.js` 和 `src/cdn/optional-bundle-loader.js`；renderer 仅在手工兜底挂载时下载，按固定 release 描述执行双域名尝试、SHA-256 校验、同页 Promise 复用、AbortSignal、API 版本校验、full-to-lite 和安全纯文本重试。
-- runtime 构建现在固定注入当前 release 的 renderer 描述与两个自定义 origin；`2.13.5-canary.2 --dry-run` 生成 renderer 412,587 B、gzip 126,826 B，runtime 97,594 B，且未写入 release、channel 或生产用户脚本。
+- Phase 4：已拆出 `fallback-intro-controller.js`、`renderer-client.js` 和 `src/cdn/optional-bundle-loader.js`；renderer 仅在手工兜底挂载时下载，按固定 release 描述从 Cloudflare 自定义域请求并执行 SHA-256 校验、同页 Promise 复用、AbortSignal、API 版本校验、full-to-lite 和安全纯文本重试。
+- runtime 构建固定注入当前 release 的 renderer 描述与唯一 Cloudflare 自定义 origin；`2.13.5-canary.2 --dry-run` 生成 renderer 412,587 B、gzip 126,826 B，runtime 97,594 B，且未写入 release、channel 或生产用户脚本。
 - 已生成独立身份、无自动更新地址的 `LuoguSP QA 2.13.5-canary.2`；canary URL 参数 `?luogusp-qa=native|fallback` 会通过 DOM `<meta id="luogusp-qa-hidden-intro">` 暴露只读状态，其中 `fallback` 仅在 prerelease runtime 强制原生适配失败。
-- `2.13.5-canary.2` 已部署到 Cloudflare 自定义域名 `spcdn.betaoi.cc` 并通过全部不可变文件、字节、SHA-256、MIME、CORS 和缓存头验证；EdgeOne 因本机 token 失效未部署，`spcdn.betaoi.cn` 暂记 degraded。
+- `2.13.5-canary.2` 已部署到 Cloudflare 自定义域名 `spcdn.betaoi.cc` 并通过全部不可变文件、字节、SHA-256、MIME、CORS 和缓存头验证。
 - 冻结的 `2.13.4` release 中，`early-gate` manifest 声明的哈希文件名与实际字节 SHA-256 不一致；canary channel 已由后续 release 正确生成和推广，因此 `npm test` 不再受影响，但 `quality:check` 仍会如实报告这项不可变历史漂移，不得原地改写 2.13.4。
 - 真实生产 bundle 复核确认当前洛谷为 Vue 3.5.35；`UserShowMain`、Suspense 分支、嵌套 computed 依赖和异步路由组件均已纳入严格遍历。适配器不再依赖匿名结构猜测，也不按压缩变量名或 bundle 哈希命中。
 - `2.13.5-canary.3` 至 `.11` 用于逐步验证 CSP/GM 传输、Vue 应用就绪、异步组件发现、BFCache/SPA 返回和旧用户 DOM 竞态；失败版本均只用于 QA，没有推广到生产用户脚本。
 - `2.13.5-canary.12` 起用组件树中的目标用户 UID、唯一 `UserShowMain` 和显示 gate 状态判断可见卡片归属，并在目标组件就绪且旧卡片退出后才挂接；这替代了不可靠的时间确认窗口。
 - canary.13 已真实执行本人介绍的编辑、保存和原生重渲染：临时追加的 Markdown 成功保存后，243 字符原文被逐字符写回、二次保存并从服务器编辑器重新读回确认完全一致。
 - canary.14-.15 暴露首屏异步覆盖和 page lifecycle 重建 feature 后实例状态丢失；canary.16 将最后路由保存在模块级 `WeakMap<Document, state>`，完整刷新使用新 Document，SPA/BFCache 重建仍能识别同文档旧路由。
-- `npm test` 在 canary.17 源码上通过 131/131。除异步 Vue 根、Suspense、生产形态 computed、SPA/BFCache 和原生编辑态等回归外，新增了仅 prerelease 可识别的主源失败、整轮失败后重试和 full 失败转 lite 故障注入测试。
-- canary.16 已发布到 `spcdn.betaoi.cc` 并通过 required-origin 生产校验；`spcdn.betaoi.cn` 仍是 optional degraded。QA 用户脚本 SHA-256 为 `2B4BC5F2F313C8E1B4622DC2DD796A4F8DC37871DF89F312601F95E6980F0B20`，生产 `LuoguSP.user.js` 未修改。
-- canary.17 已发布到 `spcdn.betaoi.cc` 并通过 required-origin 生产校验，加入 `fallback-primary-fail`、`fallback-retry`、`fallback-lite` 三个受限 QA 模式；QA 用户脚本 SHA-256 为 `D52CFC844B5A3486B2838581C46D826684D6CFF57548A2EBBDF72A0E550AE9AC`，真实 Tampermonkey 验收已完成。
+- `npm test` 在 canary.17 源码上通过 131/131。除异步 Vue 根、Suspense、生产形态 computed、SPA/BFCache 和原生编辑态等回归外，新增了仅 prerelease 可识别的单次请求失败后重试和 full 失败转 lite 故障注入测试。
+- canary.16 已发布到 `spcdn.betaoi.cc` 并通过生产校验。QA 用户脚本 SHA-256 为 `2B4BC5F2F313C8E1B4622DC2DD796A4F8DC37871DF89F312601F95E6980F0B20`，生产 `LuoguSP.user.js` 未修改。
+- canary.17 已发布到 `spcdn.betaoi.cc` 并通过生产校验，加入 `fallback-retry`、`fallback-lite` 两个受限 QA 模式；QA 用户脚本 SHA-256 为 `D52CFC844B5A3486B2838581C46D826684D6CFF57548A2EBBDF72A0E550AE9AC`，真实 Tampermonkey 验收已完成。
+- canary.18 将构建、channel、manifest、运行时加载、发布和远端校验收敛为 Cloudflare Workers 单源：channel schema v2 与 manifest schema v3 都绑定 `https://spcdn.betaoi.cc`，仓库不再保留其他 CDN 的项目配置、部署目录或发布脚本。Cloudflare 逐文件门禁、131/131 单元测试与真实 Tampermonkey 验收均已通过；QA 用户脚本 SHA-256 为 `0AC27FD051F95AC545E36C893B16A110FC9113421EDE16191C58B8780943963C`。
 
 ## 交接状态（2026-07-27）
 
@@ -46,20 +47,20 @@
 - 本人介绍已真实完成“备份原文 → 写入临时 Markdown → 保存并确认原生渲染 → 写回原文 → 再次保存 → 服务器回读逐字符一致”，没有修改其他个人资料。
 - 原生整条往返路径无 LuoguSP/site warning 或 error、无遮罩残留；页面探针确认 canary.16，全程 renderer 加载数为 0。
 
-### Phase 4：代码与可控故障路径完成，备用镜像待决策
+### Phase 4：完成
 
 - `fallback-intro-controller.js` 负责 introduction 获取、手工卡片所有权、复制按钮、安全失败提示和重试；`feature.js` 已不再读取 `window.marked`、`window.DOMPurify`、`window.katex` 或 `window.hljs`。
-- `renderer-client.js` 只在手工卡挂载后请求 renderer，并消费包内 full/lite 数据 API；`optional-bundle-loader.js` 使用固定描述、两个自定义 origin、SHA-256、Blob ESM import、同页 Promise 单例、AbortSignal 和严格 API 版本拒绝，不使用 `eval` 或 `new Function`。
-- QA/后续正式脚本的 `GM_xmlhttpRequest` 与 `@connect spcdn.betaoi.cc` 是当前跨 CSP、按字节下载并校验 renderer 的必要权限；`@connect spcdn.betaoi.cn` 只服务于既定双源容灾契约。若取消备用源，必须把 `.cn` origin、验证与故障转移测试一起移除，不能只删除 userscript 元数据。
-- 自动化测试覆盖单例、取消、描述/API 不匹配、失败后重试、安全纯文本 UI、lite 降级状态和一次性手工渲染；既有 `fetchVerifiedAsset` 测试继续覆盖主域完整性失败后切备用域。
-- canary.17 的故障注入严格限于带连字符的 prerelease release 和白名单 QA 查询值：`fallback-primary-fail` 只拒绝主源 renderer 请求，`fallback-retry` 只让首轮两个 origin 返回合成 503，`fallback-lite` 只让 full renderer 进入既有 MarkdownLite catch 路径；稳定版和未知查询值均不启用。
-- `fallback-retry` 真实验收通过：首轮两个 origin 都返回注入的 503 时只出现一张安全提示卡，点击“重试渲染”后从 `spcdn.betaoi.cc` 恢复，renderer 加载数从 1 变为 2，没有重复卡或 warning/error。
+- `renderer-client.js` 只在手工卡挂载后请求 renderer，并消费包内 full/lite 数据 API；`optional-bundle-loader.js` 使用固定描述、唯一 Cloudflare 自定义 origin、SHA-256、Blob ESM import、同页 Promise 单例、AbortSignal 和严格 API 版本拒绝，不使用 `eval` 或 `new Function`。
+- QA/后续正式脚本的 `GM_xmlhttpRequest` 与 `@connect spcdn.betaoi.cc` 是跨洛谷 CSP、按字节下载并校验 renderer 的必要权限；不再声明其他 CDN 域名。
+- 自动化测试覆盖单例、取消、描述/API 不匹配、完整性拒绝、失败后重试、安全纯文本 UI、lite 降级状态和一次性手工渲染；单源请求失败不会执行未经校验的字节。
+- canary.17 的故障注入严格限于带连字符的 prerelease release 和白名单 QA 查询值：`fallback-retry` 让首个 Cloudflare renderer 请求返回合成 503，`fallback-lite` 只让 full renderer 进入既有 MarkdownLite catch 路径；稳定版和未知查询值均不启用。
+- `fallback-retry` 真实验收通过：首个请求返回注入的 503 时只出现一张安全提示卡，点击“重试渲染”后从 `spcdn.betaoi.cc` 恢复，renderer 加载数从 1 变为 2，没有重复卡或 warning/error。
 - `fallback-lite` 真实验收通过：full renderer 注入失败后得到 `fallback-lite/full-render-failed`，通过 `GM_xmlhttpRequest` 从主源加载一次，输出 MarkdownLite 安全结构且没有可执行节点。
 - canary.17 的 `native` 复核通过：一张官方原生卡、零手工卡、renderer 加载数 0，标题仍为“个人介绍（仅国际站可见）”，无 warning/error。
-- `fallback-primary-fail` 证明 loader 会按顺序请求备用域，但 `spcdn.betaoi.cn` 返回的字节 SHA-256 与 canary.17 manifest 不一致；加载器正确拒绝不可信字节并显示安全重试界面。是否修复 `.cn` 或删除备用域契约必须在 Phase 5 前明确。
+- canary.18 单源复核通过：`native` 为官方卡 1、手工卡 0、renderer 0；正常 `fallback` 从 `https://spcdn.betaoi.cc` 以 `gm-xhr` 加载 1 次；`fallback-retry` 首次合成 503 后显示一张安全重试卡，点击后第二次请求恢复；`fallback-lite` 进入 `full-render-failed` 的 MarkdownLite 路径。四条路径危险节点均为 0，控制台 warning/error 均为 0。
 - Tampermonkey canary.16 已在 `/user/2?luogusp-qa=fallback` 通过：只出现一张受管手工卡，完整 renderer 通过 `GM_xmlhttpRequest` 从 `https://spcdn.betaoi.cc` 加载，探针为 `fallback-rendered`，同页加载数为 1。
 - 从强制兜底页进入本人主页时无手工卡且保留“编辑”；浏览器返回后手工卡恢复，renderer 加载数仍为 1，证明同页单例没有重复下载或初始化。整条路径无 warning/error、无遮罩残留。
-- 原生路径 0 次、正常兜底 1 次、双域失败后重试和 full-to-lite 的真实浏览器门槛均已满足。唯一未满足的是“主域失败后从 `.cn` 成功取得同一不可变字节”；原因已定位为备用镜像内容完整性漂移，不是 loader 控制流。
+- 原生路径 0 次、正常兜底 1 次、Cloudflare 请求失败后的安全提示/重试和 full-to-lite 的真实浏览器门槛均已满足。
 
 ### 当前验证与已知阻断
 
@@ -67,23 +68,24 @@
 npm run renderer:test
 npm run renderer:check
 npm test
-node scripts/cdn/build.mjs --version 2.13.5-canary.17
-npm run qa:hidden-intro:stage -- --version 2.13.5-canary.17
-node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.17
+node scripts/cdn/build.mjs --version 2.13.5-canary.18
+npm run qa:hidden-intro:stage -- --version 2.13.5-canary.18
+node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.18
 ```
 
 - `npm test` 当前通过 131/131。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
 - `npm run quality:check` 还会发现冻结的 2.13.4 `early-gate` manifest 声明 `a087...`、本地不可变文件实际为 `5e06...` 的既有漂移；同样不得原地改写 2.13.4。
 - canary.17 是独立 `LuoguSP QA` 身份，无自动更新地址；Cloudflare release、canary channel 和真实浏览器验收均已更新，但生产用户脚本仍保持原样。
-- 不要在决定“修复 `.cn` 镜像并保留双源”或“移除 `.cn` 及其 `@connect`/origin/验证契约”前进入 Phase 5，也不要发布稳定版或删除四条第三方 `@require`。
+- canary.18 已通过 Cloudflare 单源发布、远端校验和真实浏览器复核；canary.17 已在验收后从本地与 Cloudflare 删除，生产用户脚本仍保持原样。
+- 不要在新的 Cloudflare 单源 canary 完成真实浏览器验收前进入 Phase 5，也不要发布稳定版或删除四条第三方 `@require`。
 
 ### CDN retention 后续设计
 
 - 2026-07-28 用户确认新策略：正式版暂时全部保留；canary 只保留当前测试版本，之前版本全部清除。
-- 本地和 `spcdn.betaoi.cc` 已执行该策略：保留 5 个正式版与 `2.13.5-canary.17`，删除其余 16 个 canary release（270 个受 Git 管理文件）；重新部署后 Workers 扫描文件由 471 降至 122。
-- 已逐一验证主域上 5 个正式版和 canary.17 的 `manifest.json` 返回 200，16 个旧 canary 路径返回 404。被删除内容仍可从 Git 历史恢复。
-- `spcdn.betaoi.cn` 尚未完成清理：canary.1 仍返回真实 JSON，canary.2-.17 的路径均被 EdgeOne 387 字节 HTML 回退页伪装为 HTTP 200；这也是 canary.17 renderer 完整性验证失败的来源。2026-07-28 用当前 122 文件重新部署 EdgeOne 时被 `Invalid EDGEONE_PAGES_API_TOKEN` 阻断，必须更新登录凭据或移除该备用域契约。
-- 后续每次发布新 canary 时，应在验收和 channel 切换完成后删除上一 canary，再重新部署；不得在新 canary 尚未通过 required-origin 校验前提前删除当前测试版本。
+- 本地和 `spcdn.betaoi.cc` 已清除 canary.1-.17；当前仅保留 canary.18，Cloudflare Workers 部署扫描文件为 121 个。
+- 已逐一验证主域上 5 个正式版和 canary.18 的 `manifest.json` 返回 200，canary.1-.17 返回 404。被删除内容仍可从 Git 历史恢复。
+- 2026-07-28 用户决定移除第二 CDN 的部署、设计和脚本；其线上项目由用户手工清理。此后仓库只通过 Cloudflare Workers 发布 `spcdn.betaoi.cc`。
+- 后续每次发布新 canary 时，应在验收和 channel 切换完成后删除上一 canary，再重新部署；不得在新 canary 尚未通过 Cloudflare 生产校验前提前删除当前测试版本。
 - 中期可把相同 renderer 和公共 chunk 迁移为 SHA-256 内容寻址的共享对象，由 release manifest 引用，减少每个 canary 的逻辑重复；该路径迁移需保持旧 release URL 可用。
 
 ## 1. 结论摘要
@@ -188,7 +190,7 @@ src/rendering/
 └─ code-highlight.js           # Highlight.js 与语言注册
 
 src/cdn/
-└─ optional-bundle-loader.js   # 双域名下载、SHA-256 校验、单例和超时
+└─ optional-bundle-loader.js   # Cloudflare 下载、SHA-256 校验、单例和超时
 ```
 
 `src/rendering/*` 不得被 `runtime-entry.js` 静态导入，否则 esbuild 会把四个库重新打进启动 runtime，失去按需加载意义。
@@ -268,20 +270,15 @@ export function enhanceCodeBlocks(root, options) {
 
 优先复用现有 `fetchVerifiedAsset` 思路：
 
-1. 按 `config/cdn.json` 中配置的自定义域名顺序请求同一不可变文件；
+1. 从 `config/cdn.json` 中唯一 Cloudflare 自定义域请求不可变文件；
 2. `credentials: "omit"`；
 3. 对响应字节计算 SHA-256；
 4. 只有与 release manifest 完全一致才允许执行；
-5. 主域失败或内容不一致时尝试另一自定义域名；
-6. 禁止访问 `workers.dev` 和 EdgeOne 默认域名；
+5. 响应失败或内容不一致时拒绝执行并进入安全重试界面；
+6. 禁止访问 `workers.dev` 默认域名；
 7. 缓存一次成功的加载 Promise，同一页面只下载和初始化一次。
 
-当前生产配置是：
-
-- Cloudflare 自定义域名 `spcdn.betaoi.cc`：primary、bootstrap、required；
-- EdgeOne 自定义域名 `spcdn.betaoi.cn`：fallback、optional。
-
-本次迁移沿用仓库现状，不顺带切换主备顺序。若后续要恢复 EdgeOne 国内优先，应作为独立变更，先通过连续可用性、Tampermonkey 跨域加载和字节一致性验证，再调整 `config/cdn.json`。
+当前及后续唯一生产 CDN 是 Cloudflare Workers 自定义域名 `spcdn.betaoi.cc`，同时承担 primary、bootstrap 和 required origin。
 
 执行方式需要在实施第一阶段做浏览器探针后定稿：
 
@@ -409,7 +406,7 @@ export function enhanceCodeBlocks(root, options) {
 - 把 MarkdownLite 从 `hidden-intro/feature.js` 迁入渲染包源码。
 - 构建 `markdown-renderer.<hash>.js`。
 - 在 manifest 中加入 `optionalBundles.markdownRenderer`。
-- 更新 CDN 本地校验、双域名校验和发布报告。
+- 更新 CDN 本地校验、Cloudflare 生产校验和发布报告。
 - 增加 `npm run renderer:build`、`renderer:test`、`renderer:check`。
 - 生产 `@require` 暂时不变，避免“升级依赖”和“切加载方式”同时发生。
 
@@ -490,8 +487,7 @@ export function enhanceCodeBlocks(root, options) {
 
 - 原生成功时 Network 中没有 renderer 请求；
 - 原生失败时仅请求一次 renderer；
-- 主 CDN 失败时能按配置尝试另一个自定义域名；
-- 双域名都失败时页面不崩溃、不空白、不执行不可信 HTML；
+- Cloudflare 请求失败时页面不崩溃、不空白、不执行不可信 HTML；
 - 恢复网络后可手动重试。
 
 ### Phase 5：原子移除四个第三方 `@require`
@@ -551,14 +547,13 @@ export function enhanceCodeBlocks(root, options) {
    - 生成仅含两个第一方 `@require` 的用户脚本。
 5. pre-deployment tests
    - 全部 Node 测试和 release contract。
-6. dual CDN deployment
-   - 仍只使用已配置的两个自定义域名；
+6. Cloudflare Workers deployment
+   - 只使用已配置的 `spcdn.betaoi.cc` 自定义域名；
    - 不访问平台默认域名。
 7. production CDN gate
    - manifest、runtime、renderer 字节一致；
    - SHA-256、MIME、CORS、immutable 缓存头正确；
-   - required origin 失败则阻断；
-   - optional origin 失败则明确记录 degraded。
+   - Cloudflare origin 失败则阻断。
 8. local promotion
    - 只有上述步骤全部通过才更新本地生产脚本。
 9. structural quality
@@ -589,9 +584,9 @@ export function enhanceCodeBlocks(root, options) {
 | `/user/3` 原生可见简介                   | 不重复生成卡片；renderer 请求为 0             |
 | 本人主页                                 | 保持洛谷原生编辑和保存能力，不被适配器破坏    |
 | 人为禁用原生识别                         | 手工卡片出现；renderer 只加载一次             |
-| 主 CDN renderer 请求失败                 | 尝试另一配置自定义域名                        |
+| Cloudflare renderer 首次请求失败          | 安全提示；点击重试后恢复                       |
 | renderer 完整模式主动抛错                | 包内 MarkdownLite 接管                        |
-| renderer 双域名均失败                    | 安全提示，可重试，无未消毒 HTML               |
+| renderer 请求持续失败                    | 安全提示，可重试，无未消毒 HTML               |
 | 用户页 A -> activity -> 用户页 B -> 返回 | 无旧简介、重复卡片、重复下载                  |
 | 关闭再开启“个人页显示个人介绍”           | 原生计算恢复、重新挂接正确                    |
 | 受限 article                             | 官方文章壳、Markdown、评论、扩展按钮保持正常  |
@@ -659,7 +654,7 @@ export function enhanceCodeBlocks(root, options) {
 3. 合法 Markdown 夹具；
 4. XSS 和 URL 安全夹具；
 5. 包体变化报告；
-6. CDN manifest 和双域名一致性；
+6. CDN manifest 与 Cloudflare 远端字节一致；
 7. hidden-intro 原生路径零下载；
 8. fallback 完整模式；
 9. fallback MarkdownLite；
@@ -688,18 +683,18 @@ export function enhanceCodeBlocks(root, options) {
 - route dispose 恢复；
 - renderer loader 单例；
 - AbortSignal；
-- 主域失败、备用域成功；
+- Cloudflare 请求失败；
 - SHA-256 不匹配；
 - API 版本不匹配；
 - full -> lite 降级；
-- 双域失败安全结果。
+- 失败后安全提示和重试结果。
 
 ### 7.2 构建与发布测试
 
 - renderer 未被打进 compat runtime；
 - runtime 不出现四库大段签名或全局对象依赖；
 - manifest 记录依赖版本、bytes、gzip、SHA-256 和 SRI；
-- 两个 origin 文件逐字节一致；
+- Cloudflare 远端文件与 manifest 逐字节一致；
 - 默认平台域名未使用；
 - immutable release 不可覆盖；
 - resume 模式重新构建得到相同字节。
@@ -770,7 +765,7 @@ export function enhanceCodeBlocks(root, options) {
 - article/paste 继续由洛谷原生前端渲染；
 - 用户脚本只剩两个第一方 `@require`；
 - 原生路径不下载 renderer；
-- CDN 文件只经 `spcdn.betaoi.cc` 和 `spcdn.betaoi.cn` 自定义域名发布、校验；
+- CDN 文件只经 Cloudflare Workers 的 `spcdn.betaoi.cc` 自定义域名发布、校验；
 - `npm run publish` 能构建、上传、验证、切换本地 runtime，并清楚报告失败阶段；
 - 真实 Tampermonkey QA 通过；
 - `npm run check` 通过；

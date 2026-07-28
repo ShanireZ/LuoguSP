@@ -81,7 +81,7 @@ const qaProbe = createQaProbe(runtime.release, qaMode);
 const userscriptFetch = createUserscriptFetch();
 const rendererFetch = createQaRendererFetch({
   mode: qaMode,
-  origins: __LUOGUSP_CDN_ORIGINS__,
+  origin: __LUOGUSP_CDN_ORIGIN__,
   fetchImpl: userscriptFetch.fetchImpl,
 });
 const qaProbeElement = document.querySelector(
@@ -107,7 +107,7 @@ Object.defineProperty(globalThis, "__LUOGUSP_CDN_RUNTIME__", {
 runLuoguSP(installRestrictedEarlyGate(), {
   hiddenIntroRendererConfig: Object.freeze({
     bundle: __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__,
-    origins: __LUOGUSP_CDN_ORIGINS__,
+    origin: __LUOGUSP_CDN_ORIGIN__,
     fetchImpl: rendererFetch,
     renderOptions: createQaRendererOptions(qaMode),
     onEvent: qaProbe?.renderer,

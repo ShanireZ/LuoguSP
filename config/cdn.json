@@ -1,21 +1,13 @@
 {
   "schemaVersion": 1,
   "projects": {
-    "edgeone": "luogusp-cdn",
     "cloudflare": "luogusp-cdn"
   },
   "origins": {
     "primary": "https://spcdn.betaoi.cc",
-    "fallback": "https://spcdn.betaoi.cn",
     "bootstrap": "https://spcdn.betaoi.cc"
   },
-  "verification": {
-    "requiredOriginIds": [
-      "primary"
-    ]
-  },
   "cli": {
-    "edgeone": "1.6.11",
     "wrangler": "4.107.0"
   }
 }
