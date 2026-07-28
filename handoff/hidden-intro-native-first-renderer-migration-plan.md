@@ -1,8 +1,8 @@
 # hidden-intro 原生优先与按需渲染包迁移计划
 
-> 状态：Phase 0-6 已完成；稳定版 2.13.5 已部署并提升到本地生产用户脚本，发布状态为 `ready-for-browser-qa`；Phase 7 未实施。
-> 编写日期：2026-07-26  
-> 当前基线：LuoguSP 2.13.4  
+> 状态：Phase 0-7 已完成；稳定版 2.13.5 已部署、提升并通过真实 Tampermonkey 浏览器验收；`reports/browser-qa.json` 状态为 `passed`。
+> 编写日期：2026-07-26
+> 当前基线：LuoguSP 2.13.5
 > 目标：`hidden-intro` 采用“洛谷原生组件优先、LuoguSP 现有手工方案兜底”，同时升级并迁移四个第三方 `@require` 为 LuoguSP CDN 上的独立按需渲染包。
 
 ## 实施记录（2026-07-27）
@@ -16,7 +16,7 @@
 - runtime 构建固定注入当前 release 的 renderer 描述与唯一 Cloudflare 自定义 origin；`2.13.5-canary.2 --dry-run` 生成 renderer 412,587 B、gzip 126,826 B，runtime 97,594 B，且未写入 release、channel 或生产用户脚本。
 - 已生成独立身份、无自动更新地址的 `LuoguSP QA 2.13.5-canary.2`；canary URL 参数 `?luogusp-qa=native|fallback` 会通过 DOM `<meta id="luogusp-qa-hidden-intro">` 暴露只读状态，其中 `fallback` 仅在 prerelease runtime 强制原生适配失败。
 - `2.13.5-canary.2` 已部署到 Cloudflare 自定义域名 `spcdn.betaoi.cc` 并通过全部不可变文件、字节、SHA-256、MIME、CORS 和缓存头验证。
-- 冻结的 `2.13.4` release 中，`early-gate` manifest 声明的哈希文件名与实际字节 SHA-256 不一致；canary channel 已由后续 release 正确生成和推广，因此 `npm test` 不再受影响，但 `quality:check` 仍会如实报告这项不可变历史漂移，不得原地改写 2.13.4。
+- 冻结的 `2.13.4` release 中，`early-gate` manifest 声明的哈希文件名与实际字节 SHA-256 不一致；该历史 release 不得原地改写。当前 2.13.5 的 channel、manifest 与生产字节已经一致，`npm test`、`quality:check` 和远端 `quality:requires` 均不再受该历史漂移阻断。
 - 真实生产 bundle 复核确认当前洛谷为 Vue 3.5.35；`UserShowMain`、Suspense 分支、嵌套 computed 依赖和异步路由组件均已纳入严格遍历。适配器不再依赖匿名结构猜测，也不按压缩变量名或 bundle 哈希命中。
 - `2.13.5-canary.3` 至 `.11` 用于逐步验证 CSP/GM 传输、Vue 应用就绪、异步组件发现、BFCache/SPA 返回和旧用户 DOM 竞态；失败版本均只用于 QA，没有推广到生产用户脚本。
 - `2.13.5-canary.12` 起用组件树中的目标用户 UID、唯一 `UserShowMain` 和显示 gate 状态判断可见卡片归属，并在目标组件就绪且旧卡片退出后才挂接；这替代了不可靠的时间确认窗口。
@@ -29,18 +29,20 @@
 - canary.19 原子移除四个第三方启动 `@require`，QA 产物只保留 early-gate 与 runtime 两个带 SHA-256 的第一方 `@require`，并保留 `@sandbox raw`、`@connect spcdn.betaoi.cc`、`GM_xmlhttpRequest` 供按需 renderer 使用。四条真实浏览器路径的渲染与危险节点检查均通过，但 `fallback-retry` 成功后 QA 探针仍残留首次 503 的失败详情，因此未直接推广稳定版。
 - canary.20 在请求重试开始和 renderer 成功加载时原子清空旧失败诊断，并新增状态转换回归；132/132 单元测试、Cloudflare 16 个不可变文件与双 `@require` 生产形态门禁均通过。QA 用户脚本 SHA-256 为 `B71951DB7D66FFB22266A309134522E4C9349F23E9FE45B23C804DB3DEDBF745`；真实 Tampermonkey 的 native、fallback、fallback-retry、fallback-lite 四条路径全部通过，危险节点为 0，页面全局没有四个 renderer 库，重试恢复后旧失败诊断已清空。
 - Phase 5 已完成：生产元数据和稳定用户脚本只保留 early-gate、runtime 两个带 SHA-256 的第一方 `@require`，完整 renderer 只在手工兜底路径通过 `GM_xmlhttpRequest` 按需加载。
-- Phase 6 已完成：`npm run publish -- --version 2.13.5` 已执行 renderer 合同测试、发布前测试、Cloudflare Workers 部署、16 文件生产门禁、本地提升、质量预算与 132/132 最终测试。`reports/publish.json` 状态为 `ready-for-browser-qa`，生产脚本 SHA-256 为 `28066EDF19183B42387755F5FEDBEF93A382274402278941B7CEC3323FC5487F`，未 commit、未 push。
+- Phase 6 已完成：`npm run publish -- --version 2.13.5` 已执行 renderer 合同测试、发布前测试、Cloudflare Workers 部署、16 文件生产门禁、本地提升、质量预算与 132/132 最终测试。`reports/publish.json` 保留发布阶段的 `ready-for-browser-qa` 状态，生产脚本 SHA-256 为 `28066EDF19183B42387755F5FEDBEF93A382274402278941B7CEC3323FC5487F`。
+- Phase 7 已完成：稳定版 2.13.5 在 Google Chrome + Tampermonkey 中完成用户页原生介绍、本人编辑入口、SPA 往返、设置关闭/恢复、题库、IDE、私信、受限文章与剪贴板验收；canary.20 完成 fallback、首次失败重试和 MarkdownLite 故障路径。LuoguSP、洛谷站点与 `spcdn.betaoi.cc` warning/error 均为 0。
+- 稳定版生产字节在独立 Chrome 页按两个 `@require` 和用户脚本的生产顺序执行，三条同步启动样本为 3.1 ms、2.6 ms、4.1 ms，低于 50 ms 质量预算；该计时仅作性能辅助证据，功能结论来自真实 Tampermonkey 安装。
 
 ## 交接状态（2026-07-27）
 
 ### 已完成且可复用
 
-- Phase 0-4 的 renderer 基线、独立 bundle、manifest v2、原生优先生命周期和按需手工兜底均保留在当前工作区；生产用户脚本及其六条启动期 `@require` 尚未切换。
+- Phase 0-7 的 renderer 基线、独立 bundle、manifest v3、原生优先生命周期、按需手工兜底、双第一方启动 `@require` 和真实浏览器证据均已落地。
 - `src/features/hidden-intro/native-intro-adapter.js` 已实现严格的 Vue 3.5.x 原生适配器：只在恰有一个 `UserShowMain`、目标用户 introduction、唯一 false 显示 computed、身份依赖和渲染订阅者同时满足时才挂接；使用 `WeakMap` 保存原函数，并在失败、超时或身份快照变化时恢复。
 - `src/features/hidden-intro/diagnostics.js` 已提供 `already-native`、`native-attached`、`native-unsupported`、`native-timeout` 及三种 fallback 状态；`createHiddenIntroFeature()` 以 `getDiagnostics()` 暴露只读测试入口，未向页面全局暴露 Vue 实例或第三方库。
 - `feature.js` 已在获取 introduction 后、手工卡片之前调用原生适配器；原生失败会继续走现有手工路径，不会修改 `user.isAdmin`、当前用户 UID 或站点身份数据。
 - `test/native-intro-adapter.test.mjs` 覆盖：成功挂接并恢复、多个候选拒绝、身份字段变化后恢复并拒绝。最近一次命令 `node --test test/native-intro-adapter.test.mjs test/release-contract.test.mjs` 已通过。
-- 真实浏览器探索曾在 `/user/2` 上确认 Vue `3.5.35`、`UserShowMain` 和官方卡片生成路径可用；这只是开发探针证据，尚不是 Phase 7 所要求的 Tampermonkey QA 工件。
+- 真实浏览器验收已在 `/user/2`、`/user/3` 和本人主页确认 Vue `UserShowMain` 官方卡片路径可用；正式证据已写入 `reports/browser-qa.json`。
 
 ### Phase 3：完成
 
@@ -66,7 +68,7 @@
 - 从强制兜底页进入本人主页时无手工卡且保留“编辑”；浏览器返回后手工卡恢复，renderer 加载数仍为 1，证明同页单例没有重复下载或初始化。整条路径无 warning/error、无遮罩残留。
 - 原生路径 0 次、正常兜底 1 次、Cloudflare 请求失败后的安全提示/重试和 full-to-lite 的真实浏览器门槛均已满足。
 
-### 当前验证与已知阻断
+### 当前验证与收口状态
 
 ```powershell
 npm run renderer:test
@@ -78,10 +80,9 @@ node scripts/cdn/verify-production.mjs --qa --version 2.13.5-canary.20
 ```
 
 - `npm test` 当前通过 132/132。canary channel 已由新 release 正确生成和推广，不再触发旧 canary 指针的哈希失败。
-- `npm run quality:check` 还会发现冻结的 2.13.4 `early-gate` manifest 声明 `a087...`、本地不可变文件实际为 `5e06...` 的既有漂移；同样不得原地改写 2.13.4。
 - canary.20 是独立 `LuoguSP QA` 身份，无自动更新地址；Cloudflare release、canary channel 和真实浏览器门禁均已更新。
 - canary.18 和 canary.19 已按 retention 策略从本地与 Cloudflare 删除；主域复核均为 404，当前仅保留 canary.20。
-- 稳定版 2.13.5 已发布到 Cloudflare 并提升到本地生产用户脚本；Phase 7 真实浏览器 QA 完成前不得 commit 或 push。
+- 稳定版 2.13.5 已发布到 Cloudflare 并提升到生产用户脚本。用户已将发布提交 `09f37bb266faa66f6ab6d1c7a5a397adfe456ba1` 推送到 `origin/main`；最终浏览器报告和本计划的收口修改在该提交之后产生，需另行提交后才会进入远端。
 
 ### CDN retention 后续设计
 
@@ -596,6 +597,15 @@ export function enhanceCodeBlocks(root, options) {
 | 受限 article                             | 官方文章壳、Markdown、评论、扩展按钮保持正常  |
 | 受限 paste                               | 官方剪贴板壳和扩展按钮保持正常                |
 | 题库、IDE、私信、设置                    | 无功能回归                                    |
+
+#### Phase 7 实施结果（2026-07-28）
+
+- 稳定版 2.13.5：`/user/2` 与 `/user/3` 各只有一张官方介绍卡、零手工卡；本人页保留一个“编辑”按钮。A → activity → B → 返回的 SPA 路径没有旧卡、重复卡或重复设置入口。
+- “个人页显示个人介绍”已真实关闭、保存并复核不显示，再重新开启、保存并复核恢复；最终用户设置保持开启。
+- `/problem/list` 的抽样题号颜色与字重正确；P1001 IDE 出现唯一“一键测试”按钮；`/chat`、受限 article 和受限 paste 的官方壳与扩展入口均正常。验收没有触发远端编译，也没有实际触发私信 Ctrl+Click。
+- canary.20：native 为 renderer 0 次；fallback 为 Cloudflare `gm-xhr` 1 次/full；fallback-retry 为 1 次失败后点击重试、累计 2 次并恢复 full，旧失败诊断清空；fallback-lite 为 1 次/lite。四条路径均无危险节点。
+- 控制台中 LuoguSP、洛谷站点和 `spcdn.betaoi.cc` warning/error 均为 0。完整会话只出现过一个来自其他 Chrome 扩展 content script 的 message-port 错误，最终稳定版复核页为全零。
+- `reports/browser-qa.json` 已绑定当前生产脚本 SHA-256 `28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f`，状态为 `passed`。
 
 #### Markdown 效果验收
 
