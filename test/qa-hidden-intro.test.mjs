@@ -5,6 +5,7 @@ import {
   createQaRendererOptions,
   getQaHiddenIntroMode,
   isQaForcedFallback,
+  updateQaRendererProbeDataset,
 } from "../src/cdn/qa-hidden-intro.js";
 
 const origin = "https://primary.example";
@@ -64,4 +65,53 @@ test("retry mode fails the first renderer request and then recovers", async () =
     200,
   );
   assert.equal(realFetches, 1);
+});
+
+test("renderer probe clears stale failure diagnostics after retry recovery", () => {
+  const dataset = {
+    rendererStatus: "idle",
+    rendererLoads: "0",
+    rendererOrigin: "",
+    rendererFailure: "",
+    rendererDetail: "",
+  };
+
+  updateQaRendererProbeDataset(dataset, {
+    type: "request-start",
+  });
+  updateQaRendererProbeDataset(dataset, {
+    type: "load-failed",
+    kind: "cdn-unavailable",
+    message: "HTTP 503",
+  });
+  assert.deepEqual(dataset, {
+    rendererStatus: "load-failed",
+    rendererLoads: "1",
+    rendererOrigin: "",
+    rendererFailure: "cdn-unavailable",
+    rendererDetail: "HTTP 503",
+  });
+
+  updateQaRendererProbeDataset(dataset, {
+    type: "request-start",
+  });
+  assert.deepEqual(dataset, {
+    rendererStatus: "request-start",
+    rendererLoads: "2",
+    rendererOrigin: "",
+    rendererFailure: "",
+    rendererDetail: "",
+  });
+
+  updateQaRendererProbeDataset(dataset, {
+    type: "loaded",
+    origin: "https://primary.example",
+  });
+  assert.deepEqual(dataset, {
+    rendererStatus: "loaded",
+    rendererLoads: "2",
+    rendererOrigin: "https://primary.example",
+    rendererFailure: "",
+    rendererDetail: "",
+  });
 });

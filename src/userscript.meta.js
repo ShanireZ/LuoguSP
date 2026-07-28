@@ -10,12 +10,10 @@
 // @supportURL    https://github.com/ShanireZ/LuoguSP/issues
 // @updateURL     https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js
 // @downloadURL   https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js
-// @grant        none
+// @sandbox      raw
+// @connect      spcdn.betaoi.cc
+// @grant        GM_xmlhttpRequest
 // @require      https://spcdn.betaoi.cc/releases/2.13.4/compat/early-gate.a0878787fac36ed8.js#sha256=a0878787fac36ed8d3d8ede32ee3251a401d1766adc25e164c3637108eae1342
-// @require      https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
-// @require      https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js
-// @require      https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js
-// @require      https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js
 // @require      https://spcdn.betaoi.cc/releases/2.13.4/compat/runtime.079aea3485210c27.js#sha256=079aea3485210c27cd42c06390fcc264adcadb4214cdbff60ac9d0cea25eff54
 // @run-at       document-start
 // ==/UserScript==

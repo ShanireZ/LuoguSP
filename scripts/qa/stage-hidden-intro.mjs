@@ -22,24 +22,19 @@ if (
 )
   throw new Error("Refusing to read outside cdn/releases");
 
-const [metadata, manifestText, configText, budgetText] =
+const [metadata, manifestText, configText] =
   await Promise.all([
     readFile(resolve(root, "src/userscript.meta.js"), "utf8"),
     readFile(resolve(releaseDirectory, "manifest.json"), "utf8"),
     readFile(resolve(root, "config/cdn.json"), "utf8"),
-    readFile(resolve(root, "config/quality-budget.json"), "utf8"),
   ]);
 const manifest = JSON.parse(manifestText);
 const config = JSON.parse(configText);
-const budget = JSON.parse(budgetText);
 const staged = createQaStagedMetadata({
   metadata,
   version,
   compatibilityOrigin: resolveBootstrapOrigin(config),
   manifest,
-  thirdPartyRequireUrls: budget.requires.resources.map(
-    (resource) => resource.url,
-  ),
 });
 
 const result = await build({

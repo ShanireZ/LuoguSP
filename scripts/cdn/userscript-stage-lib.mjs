@@ -30,14 +30,11 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
     version,
     compatibilityOrigin,
     manifest,
-    thirdPartyRequireUrls,
   } = options || {};
   if (
     typeof metadata !== "string" ||
     !versionPattern.test(version || "") ||
-    typeof compatibilityOrigin !== "string" ||
-    !Array.isArray(thirdPartyRequireUrls) ||
-    thirdPartyRequireUrls.length !== 4
+    typeof compatibilityOrigin !== "string"
   )
     throw new TypeError("Invalid staged userscript metadata input");
   if (
@@ -52,18 +49,13 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
   const currentRequires = lines
     .map((line) => line.match(REQUIRE_PATTERN)?.[1])
     .filter(Boolean);
-  const hasOnlyThirdParty =
-    JSON.stringify(currentRequires) ===
-    JSON.stringify(thirdPartyRequireUrls);
   const hasPinnedCompatibilityPair =
-    currentRequires.length === thirdPartyRequireUrls.length + 2 &&
-    JSON.stringify(currentRequires.slice(1, -1)) ===
-      JSON.stringify(thirdPartyRequireUrls) &&
+    currentRequires.length === 2 &&
     /#sha256=[a-f0-9]{64}$/.test(currentRequires[0]) &&
-    /#sha256=[a-f0-9]{64}$/.test(currentRequires.at(-1));
-  if (!hasOnlyThirdParty && !hasPinnedCompatibilityPair)
+    /#sha256=[a-f0-9]{64}$/.test(currentRequires[1]);
+  if (!hasPinnedCompatibilityPair)
     throw new Error(
-      "Production metadata no longer contains the expected third-party @require entries and optional compatibility pair",
+      "Production metadata must contain exactly two SHA-256-pinned compatibility @require entries",
     );
 
   const versionIndexes = lines
@@ -89,25 +81,29 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
       throw new Error("Expected one userscript @description");
     lines[descriptionIndex] =
       `// @description  [QA ${version}] hidden-intro 原生优先与按需 renderer 验收`;
-    replaceSingleMetadataLine(
-      lines,
-      "grant",
-      "GM_xmlhttpRequest",
-    );
-    const grantIndex = lines.findIndex((line) =>
-      /^\/\/ @grant\s+GM_xmlhttpRequest$/.test(line),
-    );
-    if (grantIndex === -1)
-      throw new Error("Expected one userscript @grant");
-    lines.splice(
-      grantIndex,
-      0,
-      "// @sandbox      raw",
-      "// @connect      spcdn.betaoi.cc",
-    );
   }
 
-  const withoutRequires = lines.filter(
+  replaceSingleMetadataLine(
+    lines,
+    "grant",
+    "GM_xmlhttpRequest",
+  );
+  const permissionLines = lines.filter(
+    (line) => !/^\/\/ @(?:sandbox|connect)\s+/.test(line),
+  );
+  const grantIndex = permissionLines.findIndex((line) =>
+    /^\/\/ @grant\s+GM_xmlhttpRequest$/.test(line),
+  );
+  if (grantIndex === -1)
+    throw new Error("Expected one userscript @grant");
+  permissionLines.splice(
+    grantIndex,
+    0,
+    "// @sandbox      raw",
+    "// @connect      spcdn.betaoi.cc",
+  );
+
+  const withoutRequires = permissionLines.filter(
     (line) =>
       !REQUIRE_PATTERN.test(line) &&
       (!qaIdentity ||
@@ -131,7 +127,6 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
   };
   const requires = [
     firstParty.earlyGate,
-    ...thirdPartyRequireUrls,
     firstParty.runtime,
   ].map((url) => `// @require      ${url}`);
   withoutRequires.splice(runAtIndex, 0, ...requires);
@@ -139,7 +134,6 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
     metadata: `${withoutRequires.join("\n")}\n`,
     requires: Object.freeze([
       firstParty.earlyGate,
-      ...thirdPartyRequireUrls,
       firstParty.runtime,
     ]),
     firstParty: Object.freeze(firstParty),

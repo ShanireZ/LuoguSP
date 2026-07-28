@@ -5,21 +5,21 @@ import {
   createStagedMetadata,
 } from "../scripts/cdn/userscript-stage-lib.mjs";
 
-const thirdParty = [
-  "https://third.example/katex.js",
-  "https://third.example/marked.js",
-  "https://third.example/purify.js",
-  "https://third.example/highlight.js",
-];
+const sha = "a".repeat(64);
+const oldSha = "b".repeat(64);
 const metadata = `// ==UserScript==
 // @name         LuoguSP
+// @namespace    https://github.com/ShanireZ/LuoguSP
 // @version      2.12.5
+// @description  production
+// @updateURL     https://example.test/update
+// @downloadURL   https://example.test/download
 // @grant        none
-${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
+// @require      https://old.example/early.js#sha256=${oldSha}
+// @require      https://old.example/runtime.js#sha256=${oldSha}
 // @run-at       document-start
 // ==/UserScript==
 `;
-const sha = "a".repeat(64);
 const manifest = {
   release: "2.13.0",
   compat: {
@@ -35,33 +35,33 @@ const manifest = {
   esm: { enabled: false },
 };
 
-test("staged userscript pins the bootstrap compatibility files around third-party requires", () => {
+test("stable staging atomically emits only two pinned first-party requires", () => {
   const staged = createStagedMetadata({
     metadata,
     version: "2.13.0",
     compatibilityOrigin: "https://spcdn.betaoi.cc",
     manifest,
-    thirdPartyRequireUrls: thirdParty,
   });
   assert.match(staged.metadata, /^\/\/ @version\s+2\.13\.0$/m);
-  assert.equal(staged.requires.length, 6);
-  assert.equal(
-    staged.requires[0],
+  assert.deepEqual(staged.requires, [
     `https://spcdn.betaoi.cc/releases/2.13.0/compat/early.js#sha256=${sha}`,
-  );
-  assert.deepEqual(staged.requires.slice(1, 5), thirdParty);
-  assert.equal(
-    staged.requires[5],
     `https://spcdn.betaoi.cc/releases/2.13.0/compat/runtime.js#sha256=${sha}`,
+  ]);
+  assert.equal(staged.metadata.includes("https://old.example/"), false);
+  assert.equal(staged.metadata.includes("cdn.jsdelivr.net"), false);
+  assert.match(staged.metadata, /^\/\/ @sandbox\s+raw$/m);
+  assert.match(
+    staged.metadata,
+    /^\/\/ @connect\s+spcdn\.betaoi\.cc$/m,
+  );
+  assert.match(
+    staged.metadata,
+    /^\/\/ @grant\s+GM_xmlhttpRequest$/m,
   );
   assert.equal(staged.metadata.includes("/channels/"), false);
-  assert.equal(
-    [...staged.metadata.matchAll(/^\/\/ @connect\s+/gm)].length,
-    0,
-  );
 });
 
-test("staging refuses a dynamic ESM manifest or changed third-party requires", () => {
+test("staging refuses dynamic ESM and any non-atomic require set", () => {
   assert.throws(
     () =>
       createStagedMetadata({
@@ -72,62 +72,51 @@ test("staging refuses a dynamic ESM manifest or changed third-party requires", (
           ...manifest,
           esm: { enabled: true },
         },
-        thirdPartyRequireUrls: thirdParty,
       }),
     /manifest is not ready/,
   );
   assert.throws(
     () =>
       createStagedMetadata({
-        metadata: metadata.replace(thirdParty[0], "https://changed.example"),
+        metadata: metadata.replace(
+          "// @run-at",
+          "// @require      https://third.example/library.js\n// @run-at",
+        ),
         version: "2.13.0",
         compatibilityOrigin: "https://spcdn.betaoi.cc",
         manifest,
-        thirdPartyRequireUrls: thirdParty,
       }),
-    /expected third-party/,
+    /exactly two/,
   );
 });
 
-test("staging replaces an existing compatibility pair for the next stable release", () => {
-  const oldSha = "b".repeat(64);
-  const productionMetadata = metadata.replace(
-    thirdParty.map((url) => `// @require      ${url}`).join("\n"),
-    [
-      `// @require      https://old.example/early.js#sha256=${oldSha}`,
-      ...thirdParty.map((url) => `// @require      ${url}`),
-      `// @require      https://old.example/runtime.js#sha256=${oldSha}`,
-    ].join("\n"),
-  );
+test("staging is idempotent for an existing permission and compatibility pair", () => {
+  const alreadyMigrated = metadata
+    .replace("// @grant        none", [
+      "// @sandbox      raw",
+      "// @connect      stale.example",
+      "// @grant        GM_xmlhttpRequest",
+    ].join("\n"));
   const staged = createStagedMetadata({
-    metadata: productionMetadata,
+    metadata: alreadyMigrated,
     version: "2.13.0",
     compatibilityOrigin: "https://spcdn.betaoi.cc",
     manifest,
-    thirdPartyRequireUrls: thirdParty,
   });
-  assert.equal(staged.requires.length, 6);
+  assert.equal(staged.requires.length, 2);
   assert.equal(
-    staged.metadata.includes("https://old.example/"),
-    false,
+    [...staged.metadata.matchAll(/^\/\/ @sandbox\s+/gm)].length,
+    1,
   );
-  assert.deepEqual(staged.requires.slice(1, 5), thirdParty);
+  assert.equal(
+    [...staged.metadata.matchAll(/^\/\/ @connect\s+/gm)].length,
+    1,
+  );
+  assert.equal(staged.metadata.includes("stale.example"), false);
 });
 
-test("QA staging uses a separate identity and cannot auto-update production", () => {
-  const qaVersion = "2.13.5-canary.2";
-  const qaMetadata = `// ==UserScript==
-// @name         LuoguSP
-// @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.13.4
-// @description  production
-// @updateURL     https://example.test/update
-// @downloadURL   https://example.test/download
-// @grant        none
-${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
-// @run-at       document-start
-// ==/UserScript==
-`;
+test("QA staging keeps separate identity and the same two-require contract", () => {
+  const qaVersion = "2.13.5-canary.19";
   const qaManifest = {
     ...manifest,
     release: qaVersion,
@@ -142,13 +131,11 @@ ${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
       },
     },
   };
-
   const staged = createQaStagedMetadata({
-    metadata: qaMetadata,
+    metadata,
     version: qaVersion,
     compatibilityOrigin: "https://spcdn.betaoi.cc",
     manifest: qaManifest,
-    thirdPartyRequireUrls: thirdParty,
   });
 
   assert.match(staged.metadata, /^\/\/ @name\s+LuoguSP QA$/m);
@@ -158,7 +145,7 @@ ${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
   );
   assert.match(
     staged.metadata,
-    /^\/\/ @version\s+2\.13\.5-canary\.2$/m,
+    /^\/\/ @version\s+2\.13\.5-canary\.19$/m,
   );
   assert.equal(staged.metadata.includes("@updateURL"), false);
   assert.equal(staged.metadata.includes("@downloadURL"), false);
@@ -171,11 +158,5 @@ ${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
     staged.metadata,
     /^\/\/ @connect\s+spcdn\.betaoi\.cc$/m,
   );
-  assert.equal(
-    [...staged.metadata.matchAll(/^\/\/ @connect\s+(\S+)$/gm)]
-      .map((match) => match[1])
-      .join(","),
-    "spcdn.betaoi.cc",
-  );
-  assert.equal(staged.requires.length, 6);
+  assert.equal(staged.requires.length, 2);
 });

@@ -5,6 +5,7 @@ import {
   createQaRendererOptions,
   getQaHiddenIntroMode,
   isQaForcedFallback,
+  updateQaRendererProbeDataset,
 } from "./qa-hidden-intro.js";
 import { createUserscriptFetch } from "./userscript-fetch.js";
 
@@ -25,6 +26,7 @@ function createQaProbe(release, mode) {
     nativeReason: "",
     fallbackStatus: "idle",
     fallbackReason: "",
+    rendererFailure: "",
     rendererDetail: "",
     rendererTransport: "",
   });
@@ -53,21 +55,7 @@ function createQaProbe(release, mode) {
       }
     },
     renderer(event) {
-      probe.dataset.rendererStatus = event.type;
-      if (event.type === "request-start")
-        probe.dataset.rendererLoads = String(
-          Number(probe.dataset.rendererLoads || "0") + 1,
-        );
-      if (event.origin) probe.dataset.rendererOrigin = event.origin;
-      if (event.kind) probe.dataset.rendererFailure = event.kind;
-      if (event.message || event.failures?.length)
-        probe.dataset.rendererDetail = [
-          event.message || "",
-          ...(event.failures || []),
-        ]
-          .filter(Boolean)
-          .join(" | ")
-          .slice(0, 2000);
+      updateQaRendererProbeDataset(probe.dataset, event);
     },
   });
 }

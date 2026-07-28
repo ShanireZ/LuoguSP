@@ -10,12 +10,14 @@ import {
 } from "../scripts/publish-lib.mjs";
 
 const sha = "a".repeat(64);
-const thirdParty = [
-  "https://third.example/1.js",
-  "https://third.example/2.js",
-  "https://third.example/3.js",
-  "https://third.example/4.js",
-];
+const rendererPath =
+  "releases/3.0.0/render/markdown-renderer.aaaaaaaaaaaaaaaa.js";
+const rendererFile = {
+  path: rendererPath,
+  bytes: 123,
+  sha256: sha,
+  sri: "sha256-YQ==",
+};
 const manifest = {
   release: "3.0.0",
   compat: {
@@ -27,6 +29,16 @@ const manifest = {
       path: "releases/3.0.0/compat/runtime.js",
       sha256: sha,
     },
+  },
+  optionalBundles: {
+    markdownRenderer: {
+      apiVersion: 1,
+      ...rendererFile,
+      gzipBytes: 100,
+    },
+  },
+  files: {
+    [rendererPath]: rendererFile,
   },
   esm: { enabled: false },
 };
@@ -43,7 +55,6 @@ const runtime =
 const artifact = `// ==UserScript==
 // @version      3.0.0
 // @require      ${early}
-${thirdParty.map((url) => `// @require      ${url}`).join("\n")}
 // @require      ${runtime}
 // ==/UserScript==
 (()=>{})();
@@ -123,9 +134,8 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
     version: "3.0.0",
     manifest,
     config,
-    thirdPartyRequireUrls: thirdParty,
   });
-  assert.equal(result.requires.length, 6);
+  assert.equal(result.requires.length, 2);
   assert.equal(result.requires[0], early);
   assert.equal(result.requires.at(-1), runtime);
   assert.throws(
@@ -135,7 +145,6 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
         version: "3.0.0",
         manifest,
         config,
-        thirdPartyRequireUrls: thirdParty,
       }),
     /does not pin/,
   );
@@ -149,8 +158,20 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
         version: "3.0.0",
         manifest,
         config,
-        thirdPartyRequireUrls: thirdParty,
       }),
     /must not execute mutable channel code/,
+  );
+  assert.throws(
+    () =>
+      verifyStagedActivation({
+        artifact,
+        version: "3.0.0",
+        manifest: {
+          ...manifest,
+          optionalBundles: {},
+        },
+        config,
+      }),
+    /complete optional renderer/,
   );
 });

@@ -124,91 +124,119 @@ for (const file of files.filter((item) => item.path.startsWith("src/core/"))) {
 const requireUrls = [
   ...metadata.matchAll(/^\/\/ @require\s+(\S+)$/gm),
 ].map((match) => match[1]);
-const thirdPartyResources = budget.requires.resources;
-let expectedRequireResources = thirdPartyResources;
-const firstPartyRequires = requireUrls.filter((value) => {
-  const url = new URL(value);
-  return (
-    url.origin === new URL(cdnConfig.origins.primary).origin &&
-    url.pathname.startsWith("/releases/")
-  );
-});
-if (firstPartyRequires.length) {
-  const metadataVersion =
-    metadata.match(/^\/\/ @version\s+(\S+)$/m)?.[1];
-  if (!/^\d+\.\d+\.\d+$/.test(metadataVersion || ""))
-    throw new Error("CDN-backed metadata must use a stable version");
-  const manifest = JSON.parse(
-    await readFile(
-      resolve(
-        root,
-        `cdn/releases/${metadataVersion}/manifest.json`,
-      ),
-      "utf8",
+const metadataVersion =
+  metadata.match(/^\/\/ @version\s+(\S+)$/m)?.[1];
+if (!/^\d+\.\d+\.\d+$/.test(metadataVersion || ""))
+  throw new Error("CDN-backed metadata must use a stable version");
+const manifest = JSON.parse(
+  await readFile(
+    resolve(
+      root,
+      `cdn/releases/${metadataVersion}/manifest.json`,
     ),
-  );
+    "utf8",
+  ),
+);
+if (
+  manifest.release !== metadataVersion ||
+  manifest.esm?.enabled !== false
+)
+  throw new Error("Production CDN manifest is not stable");
+const primaryOrigin =
+  new URL(cdnConfig.origins.primary).origin;
+const localResource = async (file, { integrityFragment = true } = {}) => {
+  const body = await readFile(resolve(root, "cdn", file.path));
+  const sha256 = createHash("sha256").update(body).digest("hex");
   if (
-    manifest.release !== metadataVersion ||
-    manifest.esm?.enabled !== false
+    body.length !== file.bytes ||
+    sha256 !== file.sha256
   )
-    throw new Error("Production CDN manifest is not stable");
-  const localResource = async (file) => {
-    const body = await readFile(resolve(root, "cdn", file.path));
-    const sha256 = createHash("sha256").update(body).digest("hex");
-    if (sha256 !== file.sha256)
-      throw new Error(`Local CDN artifact hash drift: ${file.path}`);
-    return {
-      url:
-        `${new URL(
-          file.path,
-          `${cdnConfig.origins.primary.replace(/\/+$/, "")}/`,
-        )}#sha256=${file.sha256}`,
-      bytes: body.length,
-      gzipBytes: gzipSync(body, { level: 9 }).length,
-      sha256,
-    };
+    throw new Error(`Local CDN artifact hash drift: ${file.path}`);
+  const url = new URL(
+    file.path,
+    `${primaryOrigin.replace(/\/+$/, "")}/`,
+  ).toString();
+  return {
+    url: integrityFragment
+      ? `${url}#sha256=${file.sha256}`
+      : url,
+    bytes: body.length,
+    gzipBytes: gzipSync(body, { level: 9 }).length,
+    sha256,
   };
-  expectedRequireResources = [
-    await localResource(manifest.compat.earlyGate),
-    ...thirdPartyResources,
-    await localResource(manifest.compat.runtime),
-  ];
-}
-const expectedRequireUrls = expectedRequireResources.map(
+};
+const expectedStartupResources = [
+  await localResource(manifest.compat.earlyGate),
+  await localResource(manifest.compat.runtime),
+];
+const expectedRequireUrls = expectedStartupResources.map(
   (resource) => resource.url,
 );
-let requireResources = expectedRequireResources;
-if (fetchRequires) {
-  const fetchRequire = async (url) => {
-    let lastError = null;
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      try {
-        const response = await fetch(url, {
-          signal: AbortSignal.timeout(15000),
-        });
-        const body = Buffer.from(await response.arrayBuffer());
-        if (!response.ok) {
-          lastError = new Error(
-            `Unable to fetch @require ${response.status}: ${url}`,
-          );
-          if (response.status < 500 || attempt === 5)
-            throw lastError;
-          continue;
-        }
-        return body;
-      } catch (error) {
-        lastError = error;
-        if (attempt < 5)
-          await new Promise((resolveDelay) =>
-            setTimeout(resolveDelay, attempt * 250),
-          );
+const rendererDescriptor =
+  manifest.optionalBundles?.markdownRenderer;
+const rendererFile =
+  rendererDescriptor?.path &&
+  manifest.files?.[rendererDescriptor.path];
+if (
+  !rendererDescriptor ||
+  !rendererFile ||
+  rendererDescriptor.apiVersion !== 1 ||
+  rendererDescriptor.path !== rendererFile.path ||
+  rendererDescriptor.bytes !== rendererFile.bytes ||
+  rendererDescriptor.sha256 !== rendererFile.sha256 ||
+  rendererDescriptor.sri !== rendererFile.sri
+)
+  throw new Error(
+    "Production manifest does not pin a complete optional renderer",
+  );
+const expectedOptionalRenderer = {
+  ...(await localResource(rendererFile, {
+    integrityFragment: false,
+  })),
+  apiVersion: rendererDescriptor.apiVersion,
+  declaredGzipBytes: rendererDescriptor.gzipBytes,
+  dependencies: rendererDescriptor.dependencies,
+};
+if (
+  expectedOptionalRenderer.gzipBytes !==
+  expectedOptionalRenderer.declaredGzipBytes
+)
+  throw new Error("Optional renderer gzip size drift");
+
+const fetchResource = async (url) => {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(15000),
+      });
+      const body = Buffer.from(await response.arrayBuffer());
+      if (!response.ok) {
+        lastError = new Error(
+          `Unable to fetch CDN resource ${response.status}: ${url}`,
+        );
+        if (response.status < 500 || attempt === 5)
+          throw lastError;
+        continue;
       }
+      return body;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 5)
+        await new Promise((resolveDelay) =>
+          setTimeout(resolveDelay, attempt * 250),
+        );
     }
-    throw lastError;
-  };
-  requireResources = await Promise.all(
+  }
+  throw lastError;
+};
+
+let startupResources = expectedStartupResources;
+let optionalRenderer = expectedOptionalRenderer;
+if (fetchRequires) {
+  startupResources = await Promise.all(
     requireUrls.map(async (url) => {
-      const body = await fetchRequire(url);
+      const body = await fetchResource(url);
       return {
         url,
         bytes: body.length,
@@ -217,6 +245,17 @@ if (fetchRequires) {
       };
     }),
   );
+  const rendererBody = await fetchResource(
+    expectedOptionalRenderer.url,
+  );
+  optionalRenderer = {
+    ...expectedOptionalRenderer,
+    bytes: rendererBody.length,
+    gzipBytes: gzipSync(rendererBody, { level: 9 }).length,
+    sha256: createHash("sha256")
+      .update(rendererBody)
+      .digest("hex"),
+  };
 }
 
 const report = {
@@ -242,17 +281,21 @@ const report = {
         )
       : [],
   },
-  requires: {
+  startupRequires: {
     count: requireUrls.length,
-    totalBytes: requireResources.reduce(
+    totalBytes: startupResources.reduce(
       (total, resource) => total + resource.bytes,
       0,
     ),
-    totalGzipBytes: requireResources.reduce(
+    totalGzipBytes: startupResources.reduce(
       (total, resource) => total + resource.gzipBytes,
       0,
     ),
-    resources: requireResources,
+    resources: startupResources,
+    measuredOnline: fetchRequires,
+  },
+  optionalRenderer: {
+    ...optionalRenderer,
     measuredOnline: fetchRequires,
   },
   architecture: {
@@ -346,9 +389,44 @@ if (check) {
     failures.push(
       "@require URLs differ from the pinned production manifest",
     );
+  if (
+    report.startupRequires.count !==
+    budget.startupRequires.count
+  )
+    failures.push(
+      `startup @require count ${report.startupRequires.count} != ${budget.startupRequires.count}`,
+    );
+  if (
+    report.startupRequires.totalBytes >
+    budget.startupRequires.maxTotalBytes
+  )
+    failures.push(
+      `startup @require bytes ${report.startupRequires.totalBytes} > ${budget.startupRequires.maxTotalBytes}`,
+    );
+  if (
+    report.startupRequires.totalGzipBytes >
+    budget.startupRequires.maxTotalGzipBytes
+  )
+    failures.push(
+      `startup @require gzip bytes ${report.startupRequires.totalGzipBytes} > ${budget.startupRequires.maxTotalGzipBytes}`,
+    );
+  if (
+    report.optionalRenderer.bytes >
+    budget.optionalRenderer.maxBytes
+  )
+    failures.push(
+      `optional renderer bytes ${report.optionalRenderer.bytes} > ${budget.optionalRenderer.maxBytes}`,
+    );
+  if (
+    report.optionalRenderer.gzipBytes >
+    budget.optionalRenderer.maxGzipBytes
+  )
+    failures.push(
+      `optional renderer gzip bytes ${report.optionalRenderer.gzipBytes} > ${budget.optionalRenderer.maxGzipBytes}`,
+    );
   if (fetchRequires) {
-    for (const actual of requireResources) {
-      const expected = expectedRequireResources.find(
+    for (const actual of startupResources) {
+      const expected = expectedStartupResources.find(
         (resource) => resource.url === actual.url,
       );
       if (
@@ -359,6 +437,16 @@ if (check) {
       )
         failures.push(`@require size drift: ${actual.url}`);
     }
+    if (
+      optionalRenderer.bytes !== expectedOptionalRenderer.bytes ||
+      optionalRenderer.gzipBytes !==
+        expectedOptionalRenderer.gzipBytes ||
+      optionalRenderer.sha256 !==
+        expectedOptionalRenderer.sha256
+    )
+      failures.push(
+        `optional renderer drift: ${optionalRenderer.url}`,
+      );
   }
   if (failures.length) {
     failures.forEach((failure) => console.error(`quality gate: ${failure}`));
@@ -371,6 +459,6 @@ if (check) {
 if (!check) console.log(JSON.stringify(report, null, 2));
 else {
   console.log(
-    `artifact=${report.artifact.bytes}B gzip=${report.artifact.gzipBytes}B parse-median=${report.artifact.parseMedianMs.toFixed(3)}ms browser-startup-max=${skipBrowserQa ? "deferred" : `${report.browserQa.maxStartupMs.toFixed(3)}ms`} create-app=${report.architecture.createAppLines} lines requires=${report.requires.count}/${report.requires.totalBytes}B`,
+    `artifact=${report.artifact.bytes}B gzip=${report.artifact.gzipBytes}B parse-median=${report.artifact.parseMedianMs.toFixed(3)}ms browser-startup-max=${skipBrowserQa ? "deferred" : `${report.browserQa.maxStartupMs.toFixed(3)}ms`} create-app=${report.architecture.createAppLines} lines startup-requires=${report.startupRequires.count}/${report.startupRequires.totalBytes}B optional-renderer=${report.optionalRenderer.bytes}B`,
   );
 }

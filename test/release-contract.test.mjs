@@ -78,7 +78,16 @@ test("release metadata, README badge and update endpoints stay aligned", () => {
     ),
   );
   assert.equal(metadata.get("match"), "https://www.luogu.com.cn/*");
-  assert.equal(metadata.get("grant"), "none");
+  assert.equal(
+    metadata.get("grant"),
+    releaseVersion === "2.13.4"
+      ? "none"
+      : "GM_xmlhttpRequest",
+  );
+  if (releaseVersion !== "2.13.4") {
+    assert.equal(metadata.get("sandbox"), "raw");
+    assert.equal(metadata.get("connect"), "spcdn.betaoi.cc");
+  }
   assert.equal(metadata.get("run-at"), "document-start");
   assert.equal(
     metadata.get("homepageURL"),
@@ -95,7 +104,7 @@ test("release metadata, README badge and update endpoints stay aligned", () => {
   assert.equal(metadata.get("downloadURL"), metadata.get("updateURL"));
 });
 
-test("runtime dependencies pin bootstrap compatibility files around third-party UI libraries", () => {
+test("runtime dependencies migrate atomically to two first-party compatibility files", () => {
   const requires = [
     ...script.matchAll(/^\/\/ @require\s+(\S+)$/gm),
   ].map((match) => match[1]);
@@ -104,13 +113,37 @@ test("runtime dependencies pin bootstrap compatibility files around third-party 
       file.path,
       `${cdnConfig.origins.bootstrap.replace(/\/+$/, "")}/`,
     )}#sha256=${file.sha256}`;
-  assert.deepEqual(requires, [
+  const expectedPair = [
     compatibilityUrl(releaseManifest.compat.earlyGate),
-    ...qualityBudget.requires.resources.map(
-      (resource) => resource.url,
-    ),
     compatibilityUrl(releaseManifest.compat.runtime),
-  ]);
+  ];
+  if (releaseVersion === "2.13.4") {
+    assert.equal(requires.length, 6);
+    assert.equal(requires[0], expectedPair[0]);
+    assert.equal(requires.at(-1), expectedPair[1]);
+  } else {
+    assert.deepEqual(requires, expectedPair);
+    const renderer =
+      releaseManifest.optionalBundles?.markdownRenderer;
+    const rendererFile =
+      renderer?.path && releaseManifest.files?.[renderer.path];
+    assert.equal(renderer?.apiVersion, 1);
+    assert.deepEqual(rendererFile, {
+      path: renderer.path,
+      bytes: renderer.bytes,
+      sha256: renderer.sha256,
+      sri: renderer.sri,
+    });
+    assert.equal(
+      renderer.bytes <= qualityBudget.optionalRenderer.maxBytes,
+      true,
+    );
+    assert.equal(
+      renderer.gzipBytes <=
+        qualityBudget.optionalRenderer.maxGzipBytes,
+      true,
+    );
+  }
   assert.equal(Buffer.byteLength(script) <= 5000, true);
   assert.equal(script.includes("/channels/"), false);
   assert.equal(
