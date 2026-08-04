@@ -118,16 +118,19 @@ test("version 2 manifests require a complete optional markdown renderer bundle",
   );
 });
 
-test("Web Analytics stays on the CDN HTML status page only", () => {
-  const token = "c113fb69d7e84d38a645c5160f6f1bda";
+test("CDN HTML relies on Cloudflare automatic Web Analytics injection", () => {
   const prepareSource = fs.readFileSync(
     path.join(root, "scripts/cdn/prepare.mjs"),
     "utf8",
   );
-  assert.equal((prepareSource.match(new RegExp(token, "g")) || []).length, 1);
+  assert.equal(prepareSource.includes("static.cloudflareinsights.com"), false);
   for (const relativePath of Object.keys(manifest.files)) {
     const body = fs.readFileSync(path.join(root, "cdn", relativePath), "utf8");
-    assert.equal(body.includes(token), false, relativePath);
+    assert.equal(
+      body.includes("static.cloudflareinsights.com"),
+      false,
+      relativePath,
+    );
   }
 });
 

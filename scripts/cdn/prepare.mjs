@@ -1,10 +1,4 @@
-import {
-  cp,
-  mkdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,7 +20,7 @@ const channel = JSON.parse(
 );
 await writeFile(
   resolve(output, "index.html"),
-  `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>LuoguSP CDN</title></head><body><h1>LuoguSP CDN</h1><p>Canary release: ${channel.release}</p><!-- Cloudflare Web Analytics --><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "c113fb69d7e84d38a645c5160f6f1bda"}'></script><!-- End Cloudflare Web Analytics --></body></html>\n`,
+  `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>LuoguSP CDN</title></head><body><h1>LuoguSP CDN</h1><p>Canary release: ${channel.release}</p></body></html>\n`,
   "utf8",
 );
 console.log(`Prepared ${output}`);
