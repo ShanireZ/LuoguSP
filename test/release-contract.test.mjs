@@ -99,7 +99,7 @@ test("release metadata, README badge and update endpoints stay aligned", () => {
   );
   assert.equal(
     metadata.get("updateURL"),
-    "https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js",
+    "https://cnb.cool/Round1/LuoguSP/-/git/raw/main/LuoguSP.user.js",
   );
   assert.equal(metadata.get("downloadURL"), metadata.get("updateURL"));
 });

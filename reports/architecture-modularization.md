@@ -99,7 +99,7 @@ IDE 和受限内容仍是主要复杂度来源。它们已经脱离装配入口�
 - `@grant none`。
 - `@run-at document-start`。
 - GitHub homepage/support URL。
-- Gitee update/download URL。
+- CNB update/download URL。
 - 四个固定版本 `@require`。
 - 五个设置 key 与默认开启语义。
 

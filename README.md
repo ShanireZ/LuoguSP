@@ -2,11 +2,11 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.13.5](https://img.shields.io/badge/version-2.13.5-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+[![Version: 2.13.6](https://img.shields.io/badge/version-2.13.6-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
 LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信、用户个人页、IDE 模式、受限文章与剪贴板提供实用增强。
 
-项目仓库：[GitHub](https://github.com/ShanireZ/LuoguSP)（主仓库）／[Gitee](https://gitee.com/shanire/LuoguSP)（境内镜像）
+项目仓库：[GitHub](https://github.com/ShanireZ/LuoguSP)（主仓库）／[CNB](https://cnb.cool/Round1/LuoguSP)（辅助镜像）
 
 ## 功能
 
@@ -21,7 +21,7 @@ LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信�
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/)。
 2. 打开脚本 Raw 地址，Tampermonkey 会自动识别脚本，确认安装即可：
-   - [Gitee Raw（境内推荐）](https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js)
+   - [CNB Raw（境内推荐）](https://cnb.cool/Round1/LuoguSP/-/git/raw/main/LuoguSP.user.js)
    - [GitHub Raw](https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js)
 
 也可以使用以下方式安装：

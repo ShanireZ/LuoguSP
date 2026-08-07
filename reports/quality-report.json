@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-07-28T02:22:44.476Z",
+  "generatedAt": "2026-08-07T14:55:29.888Z",
   "artifact": {
-    "sha256": "28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f",
-    "bytes": 1343,
-    "gzipBytes": 801,
+    "sha256": "91da8ecda1064c1c81a180699babcd5ac1f871f713c33098149ea0397755c147",
+    "bytes": 1351,
+    "gzipBytes": 809,
     "lines": 21,
-    "parseMedianMs": 0.0031999999999996476
+    "parseMedianMs": 0.0015000000000000568
   },
   "browserQa": {
     "status": "passed",
-    "checkedAt": "2026-07-28T10:21:07+08:00",
-    "artifactSha256": "28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f",
+    "checkedAt": "2026-08-07T22:54:37+08:00",
+    "artifactSha256": "91da8ecda1064c1c81a180699babcd5ac1f871f713c33098149ea0397755c147",
     "maxStartupMs": 4.1,
     "luoguSpConsoleErrorCount": 0,
     "failures": []
@@ -21,22 +21,22 @@
     "totalGzipBytes": 38303,
     "resources": [
       {
-        "url": "https://spcdn.betaoi.cc/releases/2.13.5/compat/early-gate.532cc8089a2d1a74.js#sha256=532cc8089a2d1a74d89ec07279b0508e01b5d4a14f48bbbe6b3c8c8f6b650d72",
+        "url": "https://spcdn.betaoi.cc/releases/2.13.6/compat/early-gate.2dd1be00c1170602.js#sha256=2dd1be00c1170602e715425ba167794999194010764775018199a23d6cade7e0",
         "bytes": 2896,
         "gzipBytes": 1464,
-        "sha256": "532cc8089a2d1a74d89ec07279b0508e01b5d4a14f48bbbe6b3c8c8f6b650d72"
+        "sha256": "2dd1be00c1170602e715425ba167794999194010764775018199a23d6cade7e0"
       },
       {
-        "url": "https://spcdn.betaoi.cc/releases/2.13.5/compat/runtime.66b5552c371b625c.js#sha256=66b5552c371b625cb77c491333cc0e13007df6f0967e90bdc971472c48802500",
+        "url": "https://spcdn.betaoi.cc/releases/2.13.6/compat/runtime.0d14e575d779f48e.js#sha256=0d14e575d779f48e6e782700f1210c1f877b183c727b780364150fbdd8f26446",
         "bytes": 105831,
         "gzipBytes": 36839,
-        "sha256": "66b5552c371b625cb77c491333cc0e13007df6f0967e90bdc971472c48802500"
+        "sha256": "0d14e575d779f48e6e782700f1210c1f877b183c727b780364150fbdd8f26446"
       }
     ],
     "measuredOnline": true
   },
   "optionalRenderer": {
-    "url": "https://spcdn.betaoi.cc/releases/2.13.5/render/markdown-renderer.1772ec569df81ec8.js",
+    "url": "https://spcdn.betaoi.cc/releases/2.13.6/render/markdown-renderer.1772ec569df81ec8.js",
     "bytes": 412674,
     "gzipBytes": 126845,
     "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
@@ -57,7 +57,7 @@
     "featureDirectories": {
       "chat-shortcut": {
         "files": 1,
-        "bytes": 4572,
+        "bytes": 4448,
         "lines": 125,
         "nonBlankLines": 119,
         "functions": 17,
@@ -65,7 +65,7 @@
       },
       "hidden-intro": {
         "files": 7,
-        "bytes": 45356,
+        "bytes": 46188,
         "lines": 1328,
         "nonBlankLines": 1272,
         "functions": 149,
@@ -73,7 +73,7 @@
       },
       "ide-batch": {
         "files": 3,
-        "bytes": 39023,
+        "bytes": 37962,
         "lines": 1064,
         "nonBlankLines": 1038,
         "functions": 131,
@@ -81,7 +81,7 @@
       },
       "problem-color": {
         "files": 3,
-        "bytes": 21347,
+        "bytes": 20753,
         "lines": 597,
         "nonBlankLines": 578,
         "functions": 71,
@@ -89,7 +89,7 @@
       },
       "restricted-content": {
         "files": 12,
-        "bytes": 63191,
+        "bytes": 61601,
         "lines": 1602,
         "nonBlankLines": 1564,
         "functions": 205,
@@ -97,7 +97,7 @@
       },
       "settings": {
         "files": 2,
-        "bytes": 10142,
+        "bytes": 9915,
         "lines": 229,
         "nonBlankLines": 215,
         "functions": 24,
@@ -108,7 +108,7 @@
   "sourceFiles": [
     {
       "path": "src/app/create-luogusp-app.js",
-      "bytes": 4373,
+      "bytes": 4379,
       "lines": 133,
       "nonBlankLines": 123,
       "functions": 23,
@@ -116,7 +116,7 @@
     },
     {
       "path": "src/app/feature-descriptor.js",
-      "bytes": 556,
+      "bytes": 533,
       "lines": 24,
       "nonBlankLines": 23,
       "functions": 4,
@@ -124,7 +124,7 @@
     },
     {
       "path": "src/bootstrap/restricted-early-gate.js",
-      "bytes": 3799,
+      "bytes": 3702,
       "lines": 98,
       "nonBlankLines": 93,
       "functions": 11,
@@ -132,7 +132,7 @@
     },
     {
       "path": "src/bootstrap/run-app.js",
-      "bytes": 531,
+      "bytes": 538,
       "lines": 21,
       "nonBlankLines": 19,
       "functions": 2,
@@ -140,7 +140,7 @@
     },
     {
       "path": "src/browser/copy-button.js",
-      "bytes": 1781,
+      "bytes": 1736,
       "lines": 46,
       "nonBlankLines": 43,
       "functions": 4,
@@ -148,7 +148,7 @@
     },
     {
       "path": "src/cdn/app-core.js",
-      "bytes": 220,
+      "bytes": 217,
       "lines": 4,
       "nonBlankLines": 3,
       "functions": 0,
@@ -156,7 +156,7 @@
     },
     {
       "path": "src/cdn/canary-loader.js",
-      "bytes": 6730,
+      "bytes": 6827,
       "lines": 233,
       "nonBlankLines": 220,
       "functions": 16,
@@ -164,7 +164,7 @@
     },
     {
       "path": "src/cdn/early-gate-entry.js",
-      "bytes": 305,
+      "bytes": 295,
       "lines": 11,
       "nonBlankLines": 9,
       "functions": 0,
@@ -172,7 +172,7 @@
     },
     {
       "path": "src/cdn/loader-entry.js",
-      "bytes": 207,
+      "bytes": 201,
       "lines": 7,
       "nonBlankLines": 5,
       "functions": 0,
@@ -180,7 +180,7 @@
     },
     {
       "path": "src/cdn/optional-bundle-loader.js",
-      "bytes": 4427,
+      "bytes": 4585,
       "lines": 159,
       "nonBlankLines": 151,
       "functions": 17,
@@ -188,7 +188,7 @@
     },
     {
       "path": "src/cdn/qa-hidden-intro.js",
-      "bytes": 2422,
+      "bytes": 2514,
       "lines": 93,
       "nonBlankLines": 84,
       "functions": 9,
@@ -196,7 +196,7 @@
     },
     {
       "path": "src/cdn/runtime-entry.js",
-      "bytes": 3177,
+      "bytes": 3282,
       "lines": 106,
       "nonBlankLines": 103,
       "functions": 3,
@@ -204,7 +204,7 @@
     },
     {
       "path": "src/cdn/userscript-fetch.js",
-      "bytes": 3095,
+      "bytes": 3198,
       "lines": 104,
       "nonBlankLines": 99,
       "functions": 12,
@@ -212,7 +212,7 @@
     },
     {
       "path": "src/core/browser-route-adapter.js",
-      "bytes": 2767,
+      "bytes": 2782,
       "lines": 87,
       "nonBlankLines": 85,
       "functions": 16,
@@ -220,7 +220,7 @@
     },
     {
       "path": "src/core/get-request-scheduler.js",
-      "bytes": 4832,
+      "bytes": 4676,
       "lines": 157,
       "nonBlankLines": 153,
       "functions": 24,
@@ -228,7 +228,7 @@
     },
     {
       "path": "src/core/page-lifecycle.js",
-      "bytes": 6158,
+      "bytes": 6168,
       "lines": 211,
       "nonBlankLines": 208,
       "functions": 31,
@@ -236,7 +236,7 @@
     },
     {
       "path": "src/entry.js",
-      "bytes": 183,
+      "bytes": 179,
       "lines": 5,
       "nonBlankLines": 3,
       "functions": 0,
@@ -244,7 +244,7 @@
     },
     {
       "path": "src/features/chat-shortcut/feature.js",
-      "bytes": 4572,
+      "bytes": 4448,
       "lines": 125,
       "nonBlankLines": 119,
       "functions": 17,
@@ -252,7 +252,7 @@
     },
     {
       "path": "src/features/hidden-intro/diagnostics.js",
-      "bytes": 787,
+      "bytes": 796,
       "lines": 32,
       "nonBlankLines": 30,
       "functions": 1,
@@ -260,7 +260,7 @@
     },
     {
       "path": "src/features/hidden-intro/fallback-intro-controller.js",
-      "bytes": 6252,
+      "bytes": 6438,
       "lines": 187,
       "nonBlankLines": 173,
       "functions": 20,
@@ -268,7 +268,7 @@
     },
     {
       "path": "src/features/hidden-intro/feature.js",
-      "bytes": 8012,
+      "bytes": 8277,
       "lines": 266,
       "nonBlankLines": 254,
       "functions": 21,
@@ -284,7 +284,7 @@
     },
     {
       "path": "src/features/hidden-intro/native-intro-adapter.js",
-      "bytes": 19395,
+      "bytes": 19728,
       "lines": 605,
       "nonBlankLines": 584,
       "functions": 69,
@@ -292,7 +292,7 @@
     },
     {
       "path": "src/features/hidden-intro/renderer-client.js",
-      "bytes": 2090,
+      "bytes": 2157,
       "lines": 68,
       "nonBlankLines": 63,
       "functions": 5,
@@ -300,7 +300,7 @@
     },
     {
       "path": "src/features/hidden-intro/style.js",
-      "bytes": 3261,
+      "bytes": 3233,
       "lines": 29,
       "nonBlankLines": 28,
       "functions": 0,
@@ -308,7 +308,7 @@
     },
     {
       "path": "src/features/ide-batch/feature.js",
-      "bytes": 28989,
+      "bytes": 28196,
       "lines": 794,
       "nonBlankLines": 774,
       "functions": 94,
@@ -316,7 +316,7 @@
     },
     {
       "path": "src/features/ide-batch/runner.js",
-      "bytes": 7283,
+      "bytes": 7046,
       "lines": 238,
       "nonBlankLines": 233,
       "functions": 37,
@@ -324,7 +324,7 @@
     },
     {
       "path": "src/features/ide-batch/style.js",
-      "bytes": 2751,
+      "bytes": 2720,
       "lines": 32,
       "nonBlankLines": 31,
       "functions": 0,
@@ -332,7 +332,7 @@
     },
     {
       "path": "src/features/problem-color/feature.js",
-      "bytes": 10631,
+      "bytes": 10344,
       "lines": 288,
       "nonBlankLines": 279,
       "functions": 35,
@@ -340,7 +340,7 @@
     },
     {
       "path": "src/features/problem-color/identity.js",
-      "bytes": 3698,
+      "bytes": 3582,
       "lines": 117,
       "nonBlankLines": 112,
       "functions": 8,
@@ -348,7 +348,7 @@
     },
     {
       "path": "src/features/problem-color/pipeline.js",
-      "bytes": 7018,
+      "bytes": 6827,
       "lines": 192,
       "nonBlankLines": 187,
       "functions": 28,
@@ -356,7 +356,7 @@
     },
     {
       "path": "src/features/restricted-content/document-boot.js",
-      "bytes": 5410,
+      "bytes": 5261,
       "lines": 150,
       "nonBlankLines": 148,
       "functions": 29,
@@ -364,7 +364,7 @@
     },
     {
       "path": "src/features/restricted-content/document-committer.js",
-      "bytes": 2077,
+      "bytes": 2020,
       "lines": 58,
       "nonBlankLines": 56,
       "functions": 10,
@@ -372,7 +372,7 @@
     },
     {
       "path": "src/features/restricted-content/feature.js",
-      "bytes": 36795,
+      "bytes": 35994,
       "lines": 802,
       "nonBlankLines": 785,
       "functions": 84,
@@ -380,7 +380,7 @@
     },
     {
       "path": "src/features/restricted-content/loading-gate.js",
-      "bytes": 1152,
+      "bytes": 1116,
       "lines": 37,
       "nonBlankLines": 35,
       "functions": 9,
@@ -388,7 +388,7 @@
     },
     {
       "path": "src/features/restricted-content/page-detector.js",
-      "bytes": 1008,
+      "bytes": 976,
       "lines": 33,
       "nonBlankLines": 32,
       "functions": 6,
@@ -396,7 +396,7 @@
     },
     {
       "path": "src/features/restricted-content/paste-scaffold.js",
-      "bytes": 1314,
+      "bytes": 1269,
       "lines": 46,
       "nonBlankLines": 45,
       "functions": 2,
@@ -404,7 +404,7 @@
     },
     {
       "path": "src/features/restricted-content/reply-fetch-adapter.js",
-      "bytes": 2012,
+      "bytes": 1949,
       "lines": 64,
       "nonBlankLines": 62,
       "functions": 7,
@@ -412,7 +412,7 @@
     },
     {
       "path": "src/features/restricted-content/reply-fetch-installer.js",
-      "bytes": 1674,
+      "bytes": 1622,
       "lines": 53,
       "nonBlankLines": 51,
       "functions": 8,
@@ -420,7 +420,7 @@
     },
     {
       "path": "src/features/restricted-content/saver-protocol.js",
-      "bytes": 1378,
+      "bytes": 1334,
       "lines": 45,
       "nonBlankLines": 44,
       "functions": 5,
@@ -428,7 +428,7 @@
     },
     {
       "path": "src/features/restricted-content/saver-transport.js",
-      "bytes": 2739,
+      "bytes": 2659,
       "lines": 81,
       "nonBlankLines": 78,
       "functions": 11,
@@ -436,7 +436,7 @@
     },
     {
       "path": "src/features/restricted-content/saver-workflow.js",
-      "bytes": 7201,
+      "bytes": 6983,
       "lines": 219,
       "nonBlankLines": 215,
       "functions": 31,
@@ -444,7 +444,7 @@
     },
     {
       "path": "src/features/restricted-content/url-policy.js",
-      "bytes": 431,
+      "bytes": 418,
       "lines": 14,
       "nonBlankLines": 13,
       "functions": 3,
@@ -452,7 +452,7 @@
     },
     {
       "path": "src/features/settings/feature.js",
-      "bytes": 8740,
+      "bytes": 8530,
       "lines": 211,
       "nonBlankLines": 198,
       "functions": 24,
@@ -460,7 +460,7 @@
     },
     {
       "path": "src/features/settings/style.js",
-      "bytes": 1402,
+      "bytes": 1385,
       "lines": 18,
       "nonBlankLines": 17,
       "functions": 0,
@@ -476,7 +476,7 @@
     },
     {
       "path": "src/rendering/markdown-full.js",
-      "bytes": 3392,
+      "bytes": 3399,
       "lines": 103,
       "nonBlankLines": 96,
       "functions": 16,
@@ -516,7 +516,7 @@
     },
     {
       "path": "src/userscript.meta.js",
-      "bytes": 1172,
+      "bytes": 1180,
       "lines": 20,
       "nonBlankLines": 19,
       "functions": 0,
