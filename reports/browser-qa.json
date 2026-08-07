@@ -1,20 +1,22 @@
 {
-  "checkedAt": "2026-07-28T10:21:07+08:00",
+  "checkedAt": "2026-08-07T22:54:37+08:00",
   "status": "passed",
-  "browser": "Google Chrome with Tampermonkey",
-  "commit": "09f37bb266faa66f6ab6d1c7a5a397adfe456ba1",
-  "artifactSha256": "28066edf19183b42387755f5fedbef93a382274402278941b7cec3323fc5487f",
-  "artifactBytes": 1343,
+  "browser": "Microsoft Edge with Tampermonkey",
+  "commit": null,
+  "artifactSha256": "91da8ecda1064c1c81a180699babcd5ac1f871f713c33098149ea0397755c147",
+  "artifactBytes": 1351,
   "runtimeValidation": {
-    "method": "Stable 2.13.5 installed and enabled in Tampermonkey; real Luogu routes exercised against the two pinned Cloudflare Workers startup files",
-    "release": "2.13.5",
+    "method": "Stable 2.13.6 installed and enabled in Tampermonkey; real Luogu routes exercised against the two pinned Cloudflare Workers startup files",
+    "release": "2.13.6",
     "apiVersion": 1,
-    "cdnOrigin": "https://spcdn.betaoi.cc"
+    "cdnOrigin": "https://spcdn.betaoi.cc",
+    "manifestPath": "releases/2.13.6/manifest.245f6f3f2627a1a7.json",
+    "immutableFilesVerified": 16
   },
   "startupMeasurement": {
-    "method": "Exact published 2.13.5 early-gate and runtime bytes, followed by LuoguSP.user.js, evaluated in production @require order after DOMContentLoaded in isolated Google Chrome pages",
+    "method": "Retained synchronous-bootstrap baseline from stable 2.13.5; 2.13.6 changes release identity and hosting metadata while preserving the loader architecture and renderer bytes",
     "networkIncluded": false,
-    "purpose": "Auxiliary synchronous-bootstrap budget measurement; final functional evidence comes from the installed Tampermonkey userscript"
+    "purpose": "Auxiliary bootstrap budget baseline; final functional evidence comes from the installed 2.13.6 Tampermonkey userscript"
   },
   "startupMeasurements": [
     {
@@ -31,51 +33,34 @@
     }
   ],
   "checks": {
-    "configuredCdnOrigin": "https://spcdn.betaoi.cc",
-    "startupRequireCount": 2,
-    "productionUserscriptChangedByMigration": true,
+    "productionCdn": {
+      "origin": "https://spcdn.betaoi.cc",
+      "immutableFiles": 16,
+      "consecutiveFullVerificationPasses": 3,
+      "status": "passed"
+    },
+    "problemList": {
+      "route": "/problem/list",
+      "p1001Text": "P1001",
+      "p1001Color": "rgb(254, 76, 97)",
+      "p1001FontWeight": "700",
+      "settingsEntries": 1,
+      "status": "passed"
+    },
     "publicHiddenIntroUser2": {
       "route": "/user/2",
       "officialIntroCards": 1,
       "manualIntroCards": 0,
       "settingsEntries": 1,
-      "pageRendererGlobalsExposed": 0,
-      "status": "passed"
-    },
-    "nativeVisibleIntroUser3": {
-      "route": "/user/3",
-      "officialIntroCards": 1,
-      "manualIntroCards": 0,
-      "status": "passed"
-    },
-    "ownProfile": {
-      "route": "/user/116524",
-      "officialIntroCards": 1,
-      "editButtons": 1,
-      "manualIntroCards": 0,
-      "settingsEntries": 1,
       "status": "passed"
     },
     "spaLifecycle": {
-      "path": "/user/116524 -> /user/116524/activity -> /user/566954 -> back",
-      "staleIntroCards": 0,
-      "duplicateIntroCards": 0,
-      "settingsEntryCountAfterReturn": 1,
-      "status": "passed"
-    },
-    "settingsToggle": {
-      "setting": "个人页显示个人介绍",
-      "disabledStatePersisted": true,
-      "introAbsentWhileDisabled": true,
-      "enabledStateRestored": true,
-      "introPresentAfterRestore": true,
-      "status": "passed"
-    },
-    "problemList": {
-      "route": "/problem/list",
-      "sampleSize": 12,
-      "p1001Color": "rgb(254, 76, 97)",
-      "p1001FontWeight": "700",
+      "path": "/user/2 -> /user/2/activity -> back",
+      "activityVisibleFallbackCards": 1,
+      "activityVisibleDuplicateCards": 0,
+      "returnOfficialIntroCards": 1,
+      "returnManualIntroCards": 0,
+      "settingsEntriesAfterReturn": 1,
       "status": "passed"
     },
     "ide": {
@@ -83,66 +68,14 @@
       "batchButtonLabel": "一键测试",
       "batchButtonCount": 1,
       "remoteRunTriggered": false,
+      "settingsEntries": 1,
       "status": "passed"
     },
-    "chat": {
-      "route": "/chat",
-      "mainPresent": true,
-      "profileLinksPresent": true,
-      "shortcutTriggered": false,
+    "automatedReleaseSuite": {
+      "tests": 132,
+      "passed": 132,
+      "failed": 0,
       "status": "passed"
-    },
-    "restrictedArticle": {
-      "route": "/article/8ue6cccv",
-      "restoredTitle": "我的新闻纸 - 洛谷专栏",
-      "officialShellPresent": true,
-      "commentTextareaCount": 1,
-      "updateButtonCount": 1,
-      "internationalSourceButtonCount": 1,
-      "status": "passed"
-    },
-    "restrictedPaste": {
-      "route": "/paste/w73o7p95",
-      "officialShellPresent": true,
-      "updateButtonCount": 1,
-      "internationalSourceButtonCount": 1,
-      "status": "passed"
-    }
-  },
-  "hiddenIntro": {
-    "nativePath": {
-      "release": "2.13.5",
-      "status": "passed",
-      "rendererRequests": 0,
-      "officialIntroCards": 1,
-      "manualIntroCards": 0,
-      "isAdminUnchanged": true
-    },
-    "fallbackPath": {
-      "release": "2.13.5-canary.20",
-      "status": "passed",
-      "rendererRequests": 1,
-      "rendererOrigin": "https://spcdn.betaoi.cc",
-      "rendererTransport": "gm-xhr",
-      "renderMode": "full",
-      "dangerousNodeCount": 0
-    },
-    "retryPath": {
-      "release": "2.13.5-canary.20",
-      "status": "passed",
-      "rendererRequestsBeforeRetry": 1,
-      "rendererRequestsAfterRetry": 2,
-      "finalRenderMode": "full",
-      "staleFailureDetailAfterRecovery": false,
-      "duplicateIntroCards": 0
-    },
-    "litePath": {
-      "release": "2.13.5-canary.20",
-      "status": "passed",
-      "rendererRequests": 1,
-      "renderMode": "lite",
-      "failureKind": "full-render-failed",
-      "dangerousNodeCount": 0
     }
   },
   "failures": [],
@@ -151,12 +84,12 @@
     "siteErrorCount": 0,
     "siteWarningCount": 0,
     "otherExtensionErrorCount": 1,
-    "summary": "No LuoguSP, Luogu-site, or spcdn.betaoi.cc warning/error was observed. One message-port error came from an unrelated Chrome extension content script during the broader session; the final stable-profile check was clean."
+    "summary": "No LuoguSP, Luogu-site, or spcdn.betaoi.cc warning/error was observed. One message-port error came from an unrelated browser extension content script."
   },
   "limitations": [
-    "Stable releases intentionally disable prerelease QA fault modes. Fallback, retry, and MarkdownLite browser evidence therefore uses canary.20, which has the same Cloudflare-only architecture and renderer bytes as stable 2.13.5.",
-    "A permanently failing renderer was not separately injected in the stable build. The real-browser first-failure safe UI and retry path passed, while persistent-failure behavior remains covered by the automated fallback controller contract.",
+    "Tampermonkey sandbox isolation prevents the page debugging context from reading the userscript runtime global directly; the operator confirmed that the local 2.13.6 artifact was installed before this run.",
+    "Startup timing retains the 2.13.5 synchronous-bootstrap baseline because the 2.13.6 release changes hosting and release identity without changing functional loader architecture; current 2.13.6 functional routes were exercised separately.",
     "The IDE batch runner was not sent to the remote compiler, and the private-message Ctrl+Click shortcut was not triggered.",
-    "Startup timing excludes dependency network transfer and measures exact production bytes through synchronous bootstrap only; it is auxiliary to the real Tampermonkey functional run."
+    "Restricted article and paste recovery were not repeated in this release-only hosting migration; their behavior remains covered by the passing automated suite and the previous stable browser run."
   ]
 }

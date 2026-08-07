@@ -20,8 +20,8 @@ const remoteCommit = execFileSync(
 
 const targets = [
   {
-    id: "gitee-raw-main",
-    url: "https://gitee.com/shanire/LuoguSP/raw/main/LuoguSP.user.js",
+    id: "cnb-raw-main",
+    url: "https://cnb.cool/Round1/LuoguSP/-/git/raw/main/LuoguSP.user.js",
     mutability: "branch",
   },
   {
