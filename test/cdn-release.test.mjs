@@ -14,6 +14,9 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const channelPath = path.join(root, "cdn/channels/canary.json");
 const channel = JSON.parse(fs.readFileSync(channelPath, "utf8"));
+const cdnConfig = JSON.parse(
+  fs.readFileSync(path.join(root, "config/cdn.json"), "utf8"),
+);
 const manifestPath = path.join(root, "cdn", channel.manifestPath);
 const manifestBody = fs.readFileSync(manifestPath);
 const manifest = JSON.parse(manifestBody);
@@ -25,11 +28,18 @@ test("CDN release manifest pins every compatibility and ESM artifact", () => {
   assert.equal(channel.release, manifest.release);
   assert.equal(sha256(manifestBody), channel.manifestSha256);
   if (channel.schemaVersion === 2) {
-    assert.equal(channel.origin, "https://spcdn.betaoi.cc");
+    assert.equal(channel.origin, manifest.origin);
+    assert.equal(
+      [
+        cdnConfig.origins.primary,
+        ...cdnConfig.origins.legacy,
+      ].includes(channel.origin),
+      true,
+    );
     assert.equal(channel.origins, undefined);
   }
   if (manifest.schemaVersion === 3) {
-    assert.equal(manifest.origin, "https://spcdn.betaoi.cc");
+    assert.equal(typeof manifest.origin, "string");
     assert.equal(manifest.origins, undefined);
   }
   assert.equal(manifest.esm.status, "canary");

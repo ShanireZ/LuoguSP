@@ -1,3 +1,38 @@
+const LEGACY_HOSTNAME = "spcdn.betaoi.cc";
+const FIRST_NEW_ORIGIN_RELEASE = Object.freeze([2, 13, 7]);
+
+function releaseVersion(pathname) {
+  const match = pathname.match(
+    /^\/releases\/(\d+)\.(\d+)\.(\d+)(?:-[^/]+)?(?:\/|$)/,
+  );
+  return match
+    ? match.slice(1).map((part) => Number(part))
+    : null;
+}
+
+function compareVersion(left, right) {
+  for (let index = 0; index < 3; index++) {
+    if (left[index] !== right[index])
+      return left[index] - right[index];
+  }
+  return 0;
+}
+
+function isAllowedLegacyPath(pathname) {
+  const version = releaseVersion(pathname);
+  return (
+    version !== null &&
+    compareVersion(version, FIRST_NEW_ORIGIN_RELEASE) < 0
+  );
+}
+
+function requestHostname(request) {
+  return (
+    request.headers.get("host")?.split(":", 1)[0] ||
+    new URL(request.url).hostname
+  );
+}
+
 function withCdnHeaders(request, response) {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
@@ -37,6 +72,18 @@ export default {
         status: 405,
         headers: { Allow: "GET, HEAD, OPTIONS" },
       });
+    const url = new URL(request.url);
+    if (
+      requestHostname(request) === LEGACY_HOSTNAME &&
+      !isAllowedLegacyPath(url.pathname)
+    )
+      return withCdnHeaders(
+        request,
+        new Response(
+          request.method === "HEAD" ? null : "Not Found",
+          { status: 404 },
+        ),
+      );
     return withCdnHeaders(request, await env.ASSETS.fetch(request));
   },
 };

@@ -53,17 +53,14 @@ const [
   metadata,
   budgetText,
   browserQaText,
-  cdnConfigText,
 ] = await Promise.all([
   readFile(resolve(root, "LuoguSP.user.js")),
   readFile(resolve(root, "src/userscript.meta.js"), "utf8"),
   readFile(resolve(root, "config/quality-budget.json"), "utf8"),
   readFile(resolve(root, "reports/browser-qa.json"), "utf8"),
-  readFile(resolve(root, "config/cdn.json"), "utf8"),
 ]);
 const budget = JSON.parse(budgetText);
 const browserQa = JSON.parse(browserQaText);
-const cdnConfig = JSON.parse(cdnConfigText);
 const artifactText = artifact.toString("utf8");
 const artifactSha256 = createHash("sha256").update(artifact).digest("hex");
 const parseSamples = [];
@@ -142,8 +139,7 @@ if (
   manifest.esm?.enabled !== false
 )
   throw new Error("Production CDN manifest is not stable");
-const primaryOrigin =
-  new URL(cdnConfig.origins.primary).origin;
+const releaseOrigin = new URL(manifest.origin).origin;
 const localResource = async (file, { integrityFragment = true } = {}) => {
   const body = await readFile(resolve(root, "cdn", file.path));
   const sha256 = createHash("sha256").update(body).digest("hex");
@@ -154,7 +150,7 @@ const localResource = async (file, { integrityFragment = true } = {}) => {
     throw new Error(`Local CDN artifact hash drift: ${file.path}`);
   const url = new URL(
     file.path,
-    `${primaryOrigin.replace(/\/+$/, "")}/`,
+    `${releaseOrigin.replace(/\/+$/, "")}/`,
   ).toString();
   return {
     url: integrityFragment

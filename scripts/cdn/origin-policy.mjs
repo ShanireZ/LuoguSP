@@ -45,3 +45,25 @@ export function resolveBootstrapOrigin(config) {
     throw new Error("bootstrap CDN origin must match primary");
   return bootstrap;
 }
+
+export function resolveLegacyOrigins(config) {
+  const primary = resolveConfiguredOrigin({ config });
+  const values = config?.origins?.legacy;
+  if (!Array.isArray(values))
+    throw new Error("legacy CDN origins must be an array");
+  const origins = values.map((value, index) =>
+    configuredOrigin(`legacy[${index}]`, value),
+  );
+  if (new Set(origins).size !== origins.length)
+    throw new Error("legacy CDN origins must be unique");
+  if (origins.includes(primary))
+    throw new Error("legacy CDN origins must differ from primary");
+  return Object.freeze(origins);
+}
+
+export function resolveSupportedOrigins(config) {
+  return Object.freeze([
+    resolveConfiguredOrigin({ config }),
+    ...resolveLegacyOrigins(config),
+  ]);
+}

@@ -39,20 +39,20 @@ test("stable staging atomically emits only two pinned first-party requires", () 
   const staged = createStagedMetadata({
     metadata,
     version: "2.13.0",
-    compatibilityOrigin: "https://spcdn.betaoi.cc",
+    compatibilityOrigin: "https://luogusp.round1.cc",
     manifest,
   });
   assert.match(staged.metadata, /^\/\/ @version\s+2\.13\.0$/m);
   assert.deepEqual(staged.requires, [
-    `https://spcdn.betaoi.cc/releases/2.13.0/compat/early.js#sha256=${sha}`,
-    `https://spcdn.betaoi.cc/releases/2.13.0/compat/runtime.js#sha256=${sha}`,
+    `https://luogusp.round1.cc/releases/2.13.0/compat/early.js#sha256=${sha}`,
+    `https://luogusp.round1.cc/releases/2.13.0/compat/runtime.js#sha256=${sha}`,
   ]);
   assert.equal(staged.metadata.includes("https://old.example/"), false);
   assert.equal(staged.metadata.includes("cdn.jsdelivr.net"), false);
   assert.match(staged.metadata, /^\/\/ @sandbox\s+raw$/m);
   assert.match(
     staged.metadata,
-    /^\/\/ @connect\s+spcdn\.betaoi\.cc$/m,
+    /^\/\/ @connect\s+luogusp\.round1\.cc$/m,
   );
   assert.match(
     staged.metadata,
@@ -67,7 +67,7 @@ test("staging refuses dynamic ESM and any non-atomic require set", () => {
       createStagedMetadata({
         metadata,
         version: "2.13.0",
-        compatibilityOrigin: "https://spcdn.betaoi.cc",
+        compatibilityOrigin: "https://luogusp.round1.cc",
         manifest: {
           ...manifest,
           esm: { enabled: true },
@@ -83,7 +83,7 @@ test("staging refuses dynamic ESM and any non-atomic require set", () => {
           "// @require      https://third.example/library.js\n// @run-at",
         ),
         version: "2.13.0",
-        compatibilityOrigin: "https://spcdn.betaoi.cc",
+        compatibilityOrigin: "https://luogusp.round1.cc",
         manifest,
       }),
     /exactly two/,
@@ -100,7 +100,7 @@ test("staging is idempotent for an existing permission and compatibility pair", 
   const staged = createStagedMetadata({
     metadata: alreadyMigrated,
     version: "2.13.0",
-    compatibilityOrigin: "https://spcdn.betaoi.cc",
+    compatibilityOrigin: "https://luogusp.round1.cc",
     manifest,
   });
   assert.equal(staged.requires.length, 2);
@@ -134,7 +134,7 @@ test("QA staging keeps separate identity and the same two-require contract", () 
   const staged = createQaStagedMetadata({
     metadata,
     version: qaVersion,
-    compatibilityOrigin: "https://spcdn.betaoi.cc",
+    compatibilityOrigin: "https://luogusp.round1.cc",
     manifest: qaManifest,
   });
 
@@ -156,7 +156,7 @@ test("QA staging keeps separate identity and the same two-require contract", () 
   );
   assert.match(
     staged.metadata,
-    /^\/\/ @connect\s+spcdn\.betaoi\.cc$/m,
+    /^\/\/ @connect\s+luogusp\.round1\.cc$/m,
   );
   assert.equal(staged.requires.length, 2);
 });

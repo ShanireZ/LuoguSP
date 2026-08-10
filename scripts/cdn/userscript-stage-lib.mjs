@@ -100,7 +100,7 @@ function createMetadata(options, { versionPattern, qaIdentity }) {
     grantIndex,
     0,
     "// @sandbox      raw",
-    "// @connect      spcdn.betaoi.cc",
+    `// @connect      ${new URL(compatibilityOrigin).hostname}`,
   );
 
   const withoutRequires = permissionLines.filter(

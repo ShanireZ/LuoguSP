@@ -44,14 +44,14 @@ const manifest = {
 };
 const config = {
   origins: {
-    primary: "https://spcdn.betaoi.cc",
-    bootstrap: "https://spcdn.betaoi.cc",
+    primary: "https://luogusp.round1.cc",
+    bootstrap: "https://luogusp.round1.cc",
   },
 };
 const early =
-  `https://spcdn.betaoi.cc/${manifest.compat.earlyGate.path}#sha256=${sha}`;
+  `https://luogusp.round1.cc/${manifest.compat.earlyGate.path}#sha256=${sha}`;
 const runtime =
-  `https://spcdn.betaoi.cc/${manifest.compat.runtime.path}#sha256=${sha}`;
+  `https://luogusp.round1.cc/${manifest.compat.runtime.path}#sha256=${sha}`;
 const artifact = `// ==UserScript==
 // @version      3.0.0
 // @require      ${early}

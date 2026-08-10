@@ -86,7 +86,10 @@ test("release metadata, README badge and update endpoints stay aligned", () => {
   );
   if (releaseVersion !== "2.13.4") {
     assert.equal(metadata.get("sandbox"), "raw");
-    assert.equal(metadata.get("connect"), "spcdn.betaoi.cc");
+    assert.equal(
+      metadata.get("connect"),
+      new URL(releaseManifest.origin).hostname,
+    );
   }
   assert.equal(metadata.get("run-at"), "document-start");
   assert.equal(
@@ -111,7 +114,7 @@ test("runtime dependencies migrate atomically to two first-party compatibility f
   const compatibilityUrl = (file) =>
     `${new URL(
       file.path,
-      `${cdnConfig.origins.bootstrap.replace(/\/+$/, "")}/`,
+      `${releaseManifest.origin.replace(/\/+$/, "")}/`,
     )}#sha256=${file.sha256}`;
   const expectedPair = [
     compatibilityUrl(releaseManifest.compat.earlyGate),
