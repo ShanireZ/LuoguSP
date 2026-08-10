@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import {
   resolveBootstrapOrigin,
   resolveConfiguredOrigin,
+  resolveLegacyOrigins,
+  resolveSupportedOrigins,
 } from "../scripts/cdn/origin-policy.mjs";
 
 const root = resolve(
@@ -14,15 +16,16 @@ const root = resolve(
 );
 const config = {
   origins: {
-    primary: "https://spcdn.betaoi.cc",
-    bootstrap: "https://spcdn.betaoi.cc",
+    primary: "https://luogusp.round1.cc",
+    bootstrap: "https://luogusp.round1.cc",
+    legacy: ["https://spcdn.betaoi.cc"],
   },
 };
 
 test("CDN tooling accepts only the configured Cloudflare custom origin", () => {
   assert.equal(
     resolveConfiguredOrigin({ config }),
-    "https://spcdn.betaoi.cc",
+    "https://luogusp.round1.cc",
   );
   assert.throws(
     () =>
@@ -44,7 +47,7 @@ test("CDN tooling accepts only the configured Cloudflare custom origin", () => {
     () =>
       resolveConfiguredOrigin({
         config,
-        originOverride: "https://spcdn.betaoi.cc/?token=preview",
+        originOverride: "https://luogusp.round1.cc/?token=preview",
       }),
     /clean HTTPS origin/,
   );
@@ -53,7 +56,7 @@ test("CDN tooling accepts only the configured Cloudflare custom origin", () => {
 test("userscript bootstrap uses one configured custom origin", () => {
   assert.equal(
     resolveBootstrapOrigin(config),
-    "https://spcdn.betaoi.cc",
+    "https://luogusp.round1.cc",
   );
   assert.throws(
     () =>
@@ -77,6 +80,36 @@ test("userscript bootstrap uses one configured custom origin", () => {
   );
 });
 
+test("CDN tooling preserves only explicit legacy custom origins", () => {
+  assert.deepEqual(resolveLegacyOrigins(config), [
+    "https://spcdn.betaoi.cc",
+  ]);
+  assert.deepEqual(resolveSupportedOrigins(config), [
+    "https://luogusp.round1.cc",
+    "https://spcdn.betaoi.cc",
+  ]);
+  assert.throws(
+    () =>
+      resolveLegacyOrigins({
+        origins: {
+          ...config.origins,
+          legacy: ["https://luogusp.round1.cc"],
+        },
+      }),
+    /must differ from primary/,
+  );
+  assert.throws(
+    () =>
+      resolveLegacyOrigins({
+        origins: {
+          ...config.origins,
+          legacy: ["https://old.example.workers.dev"],
+        },
+      }),
+    /platform default domain/,
+  );
+});
+
 test("Cloudflare deployment keeps the workers.dev default domain disabled", async () => {
   const repositoryConfig = JSON.parse(
     await readFile(resolve(root, "config/cdn.json"), "utf8"),
@@ -87,6 +120,7 @@ test("Cloudflare deployment keeps the workers.dev default domain disabled", asyn
   assert.deepEqual(Object.keys(repositoryConfig.origins), [
     "primary",
     "bootstrap",
+    "legacy",
   ]);
   assert.deepEqual(Object.keys(repositoryConfig.cli), ["wrangler"]);
   assert.deepEqual(
@@ -103,6 +137,10 @@ test("Cloudflare deployment keeps the workers.dev default domain disabled", asyn
   assert.equal(wrangler.workers_dev, false);
   assert.equal(wrangler.preview_urls, false);
   assert.deepEqual(wrangler.routes, [
+    {
+      pattern: "luogusp.round1.cc",
+      custom_domain: true,
+    },
     {
       pattern: "spcdn.betaoi.cc",
       custom_domain: true,

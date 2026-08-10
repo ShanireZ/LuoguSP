@@ -4,8 +4,11 @@
     "cloudflare": "luogusp-cdn"
   },
   "origins": {
-    "primary": "https://spcdn.betaoi.cc",
-    "bootstrap": "https://spcdn.betaoi.cc"
+    "primary": "https://luogusp.round1.cc",
+    "bootstrap": "https://luogusp.round1.cc",
+    "legacy": [
+      "https://spcdn.betaoi.cc"
+    ]
   },
   "cli": {
     "wrangler": "4.107.0"

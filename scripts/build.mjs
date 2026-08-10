@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { resolveSupportedOrigins } from "./cdn/origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(root, "LuoguSP.user.js");
@@ -24,11 +25,11 @@ if (
 const requireUrls = [
   ...metadata.matchAll(/^\/\/ @require\s+(\S+)$/gm),
 ].map((match) => match[1]);
-const primaryOrigin = new URL(config.origins.primary).origin;
+const supportedOrigins = new Set(resolveSupportedOrigins(config));
 const firstPartyRequires = requireUrls.filter((value) => {
   const url = new URL(value);
   return (
-    url.origin === primaryOrigin &&
+    supportedOrigins.has(url.origin) &&
     url.pathname.startsWith("/releases/")
   );
 });

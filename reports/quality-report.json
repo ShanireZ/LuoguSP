@@ -1,42 +1,42 @@
 {
-  "generatedAt": "2026-08-07T14:55:29.888Z",
+  "generatedAt": "2026-08-10T14:13:45.648Z",
   "artifact": {
-    "sha256": "91da8ecda1064c1c81a180699babcd5ac1f871f713c33098149ea0397755c147",
-    "bytes": 1351,
-    "gzipBytes": 809,
+    "sha256": "9ac8af0210a5e4ad12821ac0b45e27cadf43e633df7c67b7d262a203cd065276",
+    "bytes": 1357,
+    "gzipBytes": 805,
     "lines": 21,
-    "parseMedianMs": 0.0015000000000000568
+    "parseMedianMs": 0.0016999999999995907
   },
   "browserQa": {
     "status": "passed",
-    "checkedAt": "2026-08-07T22:54:37+08:00",
-    "artifactSha256": "91da8ecda1064c1c81a180699babcd5ac1f871f713c33098149ea0397755c147",
-    "maxStartupMs": 4.1,
+    "checkedAt": "2026-08-10T22:07:52+08:00",
+    "artifactSha256": "9ac8af0210a5e4ad12821ac0b45e27cadf43e633df7c67b7d262a203cd065276",
+    "maxStartupMs": 3.1,
     "luoguSpConsoleErrorCount": 0,
     "failures": []
   },
   "startupRequires": {
     "count": 2,
-    "totalBytes": 108727,
-    "totalGzipBytes": 38303,
+    "totalBytes": 108731,
+    "totalGzipBytes": 38301,
     "resources": [
       {
-        "url": "https://spcdn.betaoi.cc/releases/2.13.6/compat/early-gate.2dd1be00c1170602.js#sha256=2dd1be00c1170602e715425ba167794999194010764775018199a23d6cade7e0",
+        "url": "https://luogusp.round1.cc/releases/2.13.7/compat/early-gate.1916ef8ec808a0fc.js#sha256=1916ef8ec808a0fceacedb06210e9a269d380414d4d16ee7e81d0ecb29fac37e",
         "bytes": 2896,
         "gzipBytes": 1464,
-        "sha256": "2dd1be00c1170602e715425ba167794999194010764775018199a23d6cade7e0"
+        "sha256": "1916ef8ec808a0fceacedb06210e9a269d380414d4d16ee7e81d0ecb29fac37e"
       },
       {
-        "url": "https://spcdn.betaoi.cc/releases/2.13.6/compat/runtime.0d14e575d779f48e.js#sha256=0d14e575d779f48e6e782700f1210c1f877b183c727b780364150fbdd8f26446",
-        "bytes": 105831,
-        "gzipBytes": 36839,
-        "sha256": "0d14e575d779f48e6e782700f1210c1f877b183c727b780364150fbdd8f26446"
+        "url": "https://luogusp.round1.cc/releases/2.13.7/compat/runtime.ec4bca98c60ae3f6.js#sha256=ec4bca98c60ae3f683831bcddff917dbf72fdf7cf93f4a0863bd5ac1e2407cff",
+        "bytes": 105835,
+        "gzipBytes": 36837,
+        "sha256": "ec4bca98c60ae3f683831bcddff917dbf72fdf7cf93f4a0863bd5ac1e2407cff"
       }
     ],
     "measuredOnline": true
   },
   "optionalRenderer": {
-    "url": "https://spcdn.betaoi.cc/releases/2.13.6/render/markdown-renderer.1772ec569df81ec8.js",
+    "url": "https://luogusp.round1.cc/releases/2.13.7/render/markdown-renderer.1772ec569df81ec8.js",
     "bytes": 412674,
     "gzipBytes": 126845,
     "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
@@ -516,7 +516,7 @@
     },
     {
       "path": "src/userscript.meta.js",
-      "bytes": 1180,
+      "bytes": 1186,
       "lines": 20,
       "nonBlankLines": 19,
       "functions": 0,

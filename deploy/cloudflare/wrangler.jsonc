@@ -7,6 +7,10 @@
   "preview_urls": false,
   "routes": [
     {
+      "pattern": "luogusp.round1.cc",
+      "custom_domain": true
+    },
+    {
       "pattern": "spcdn.betaoi.cc",
       "custom_domain": true
     }

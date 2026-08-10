@@ -1,17 +1,17 @@
 {
-  "startedAt": "2026-08-07T14:37:36.906Z",
-  "completedAt": "2026-08-07T14:38:11.195Z",
+  "startedAt": "2026-08-10T13:57:18.736Z",
+  "completedAt": "2026-08-10T13:58:16.309Z",
   "status": "ready-for-browser-qa",
-  "release": "2.13.6",
-  "resumed": true,
+  "release": "2.13.7",
+  "resumed": false,
   "userscript": {
-    "bytes": 1351,
-    "sha256": "91da8ecda1064c1c81a180699babcd5ac1f871f713c33098149ea0397755c147",
+    "bytes": 1357,
+    "sha256": "9ac8af0210a5e4ad12821ac0b45e27cadf43e633df7c67b7d262a203cd065276",
     "requires": 2
   },
   "renderer": {
     "apiVersion": 1,
-    "path": "releases/2.13.6/render/markdown-renderer.1772ec569df81ec8.js",
+    "path": "releases/2.13.7/render/markdown-renderer.1772ec569df81ec8.js",
     "bytes": 412674,
     "gzipBytes": 126845,
     "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
@@ -23,9 +23,9 @@
       "highlight.js": "11.11.1"
     }
   },
-  "customOrigin": "https://spcdn.betaoi.cc",
+  "customOrigin": "https://luogusp.round1.cc",
   "deployedOrigins": [
-    "https://spcdn.betaoi.cc"
+    "https://luogusp.round1.cc"
   ],
   "platformDefaultDomainsUsed": false,
   "productionModified": true,

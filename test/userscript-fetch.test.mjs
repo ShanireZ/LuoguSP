@@ -23,7 +23,7 @@ test("userscript fetch adapts GM_xmlhttpRequest to the verified loader contract"
   });
 
   const response = await transport.fetchImpl(
-    "https://spcdn.betaoi.cc/renderer.js",
+    "https://luogusp.round1.cc/renderer.js",
   );
 
   assert.equal(transport.transport, "gm-xhr");
@@ -53,7 +53,7 @@ test("userscript fetch aborts the owned GM request", async () => {
     },
   });
   const controller = new AbortController();
-  const pending = transport.fetchImpl("https://spcdn.betaoi.cc/renderer.js", {
+  const pending = transport.fetchImpl("https://luogusp.round1.cc/renderer.js", {
     signal: controller.signal,
   });
 
