@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.13.7
+// @version      2.13.8
 // @description  LuoguSP：题号显示难度颜色 / 私信 Ctrl+Click 打开用户个人页 / 个人页显示个人介绍 / IDE 模式一键测试所有样例 / 显示受限文章与剪贴板
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -13,7 +13,7 @@
 // @sandbox      raw
 // @connect      luogusp.round1.cc
 // @grant        GM_xmlhttpRequest
-// @require      https://luogusp.round1.cc/releases/2.13.7/compat/early-gate.1916ef8ec808a0fc.js#sha256=1916ef8ec808a0fceacedb06210e9a269d380414d4d16ee7e81d0ecb29fac37e
-// @require      https://luogusp.round1.cc/releases/2.13.7/compat/runtime.ec4bca98c60ae3f6.js#sha256=ec4bca98c60ae3f683831bcddff917dbf72fdf7cf93f4a0863bd5ac1e2407cff
+// @require      https://luogusp.round1.cc/releases/2.13.8/compat/early-gate.fb2d887badaf76c5.js#sha256=fb2d887badaf76c5ec97071bfac4145dfc374eaa91726519301586725d1bfa1a
+// @require      https://luogusp.round1.cc/releases/2.13.8/compat/runtime.0bce27dc8c0559ec.js#sha256=0bce27dc8c0559eca0c1fdf7bd41959f17be4ba4f96b1781980b6f2cea8ccf7b
 // @run-at       document-start
 // ==/UserScript==

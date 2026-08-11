@@ -1,0 +1,6 @@
+# 发布物按字节校验：LuoguSP.user.js 的 @require 用 #sha256= 钉住 cdn/releases 下的产物，
+# 文件名里也带内容哈希。Windows 上 core.autocrlf=true 会在检出时把 LF 换成 CRLF，
+# 工作区文件与仓库里的字节就此对不上——scripts/cdn/prepare.mjs 直接从工作区拷贝并上传，
+# 那样发出去的历史版本会与已装脚本的 @require 校验值不符，全体用户当场加载失败。
+# 仓库里全部 264 个文件都是文本、没有二进制，统一钉死 LF。
+* text=auto eol=lf

@@ -1,42 +1,42 @@
 {
-  "generatedAt": "2026-08-10T14:13:45.648Z",
+  "generatedAt": "2026-08-11T08:25:18.204Z",
   "artifact": {
-    "sha256": "9ac8af0210a5e4ad12821ac0b45e27cadf43e633df7c67b7d262a203cd065276",
+    "sha256": "6fe4eeb5b6f7a57e4d86b249608b461f09868419382d2a58521b90e46dc2f61e",
     "bytes": 1357,
-    "gzipBytes": 805,
+    "gzipBytes": 806,
     "lines": 21,
-    "parseMedianMs": 0.0016999999999995907
+    "parseMedianMs": 0.0015999999999998238
   },
   "browserQa": {
     "status": "passed",
-    "checkedAt": "2026-08-10T22:07:52+08:00",
-    "artifactSha256": "9ac8af0210a5e4ad12821ac0b45e27cadf43e633df7c67b7d262a203cd065276",
-    "maxStartupMs": 3.1,
+    "checkedAt": "2026-08-11T16:24:17+08:00",
+    "artifactSha256": "6fe4eeb5b6f7a57e4d86b249608b461f09868419382d2a58521b90e46dc2f61e",
+    "maxStartupMs": 3.7,
     "luoguSpConsoleErrorCount": 0,
     "failures": []
   },
   "startupRequires": {
     "count": 2,
-    "totalBytes": 108731,
-    "totalGzipBytes": 38301,
+    "totalBytes": 108721,
+    "totalGzipBytes": 38297,
     "resources": [
       {
-        "url": "https://luogusp.round1.cc/releases/2.13.7/compat/early-gate.1916ef8ec808a0fc.js#sha256=1916ef8ec808a0fceacedb06210e9a269d380414d4d16ee7e81d0ecb29fac37e",
+        "url": "https://luogusp.round1.cc/releases/2.13.8/compat/early-gate.fb2d887badaf76c5.js#sha256=fb2d887badaf76c5ec97071bfac4145dfc374eaa91726519301586725d1bfa1a",
         "bytes": 2896,
         "gzipBytes": 1464,
-        "sha256": "1916ef8ec808a0fceacedb06210e9a269d380414d4d16ee7e81d0ecb29fac37e"
+        "sha256": "fb2d887badaf76c5ec97071bfac4145dfc374eaa91726519301586725d1bfa1a"
       },
       {
-        "url": "https://luogusp.round1.cc/releases/2.13.7/compat/runtime.ec4bca98c60ae3f6.js#sha256=ec4bca98c60ae3f683831bcddff917dbf72fdf7cf93f4a0863bd5ac1e2407cff",
-        "bytes": 105835,
-        "gzipBytes": 36837,
-        "sha256": "ec4bca98c60ae3f683831bcddff917dbf72fdf7cf93f4a0863bd5ac1e2407cff"
+        "url": "https://luogusp.round1.cc/releases/2.13.8/compat/runtime.0bce27dc8c0559ec.js#sha256=0bce27dc8c0559eca0c1fdf7bd41959f17be4ba4f96b1781980b6f2cea8ccf7b",
+        "bytes": 105825,
+        "gzipBytes": 36833,
+        "sha256": "0bce27dc8c0559eca0c1fdf7bd41959f17be4ba4f96b1781980b6f2cea8ccf7b"
       }
     ],
     "measuredOnline": true
   },
   "optionalRenderer": {
-    "url": "https://luogusp.round1.cc/releases/2.13.7/render/markdown-renderer.1772ec569df81ec8.js",
+    "url": "https://luogusp.round1.cc/releases/2.13.8/render/markdown-renderer.1772ec569df81ec8.js",
     "bytes": 412674,
     "gzipBytes": 126845,
     "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
@@ -65,9 +65,9 @@
       },
       "hidden-intro": {
         "files": 7,
-        "bytes": 46188,
-        "lines": 1328,
-        "nonBlankLines": 1272,
+        "bytes": 45211,
+        "lines": 1330,
+        "nonBlankLines": 1273,
         "functions": 149,
         "branchPoints": 300
       },
@@ -108,7 +108,7 @@
   "sourceFiles": [
     {
       "path": "src/app/create-luogusp-app.js",
-      "bytes": 4379,
+      "bytes": 4247,
       "lines": 133,
       "nonBlankLines": 123,
       "functions": 23,
@@ -132,7 +132,7 @@
     },
     {
       "path": "src/bootstrap/run-app.js",
-      "bytes": 538,
+      "bytes": 518,
       "lines": 21,
       "nonBlankLines": 19,
       "functions": 2,
@@ -156,7 +156,7 @@
     },
     {
       "path": "src/cdn/canary-loader.js",
-      "bytes": 6827,
+      "bytes": 6595,
       "lines": 233,
       "nonBlankLines": 220,
       "functions": 16,
@@ -180,7 +180,7 @@
     },
     {
       "path": "src/cdn/optional-bundle-loader.js",
-      "bytes": 4585,
+      "bytes": 4427,
       "lines": 159,
       "nonBlankLines": 151,
       "functions": 17,
@@ -188,7 +188,7 @@
     },
     {
       "path": "src/cdn/qa-hidden-intro.js",
-      "bytes": 2514,
+      "bytes": 2422,
       "lines": 93,
       "nonBlankLines": 84,
       "functions": 9,
@@ -196,7 +196,7 @@
     },
     {
       "path": "src/cdn/runtime-entry.js",
-      "bytes": 3282,
+      "bytes": 3177,
       "lines": 106,
       "nonBlankLines": 103,
       "functions": 3,
@@ -204,7 +204,7 @@
     },
     {
       "path": "src/cdn/userscript-fetch.js",
-      "bytes": 3198,
+      "bytes": 3095,
       "lines": 104,
       "nonBlankLines": 99,
       "functions": 12,
@@ -212,7 +212,7 @@
     },
     {
       "path": "src/core/browser-route-adapter.js",
-      "bytes": 2782,
+      "bytes": 2696,
       "lines": 87,
       "nonBlankLines": 85,
       "functions": 16,
@@ -228,7 +228,7 @@
     },
     {
       "path": "src/core/page-lifecycle.js",
-      "bytes": 6168,
+      "bytes": 5958,
       "lines": 211,
       "nonBlankLines": 208,
       "functions": 31,
@@ -252,7 +252,7 @@
     },
     {
       "path": "src/features/hidden-intro/diagnostics.js",
-      "bytes": 796,
+      "bytes": 765,
       "lines": 32,
       "nonBlankLines": 30,
       "functions": 1,
@@ -260,7 +260,7 @@
     },
     {
       "path": "src/features/hidden-intro/fallback-intro-controller.js",
-      "bytes": 6438,
+      "bytes": 6252,
       "lines": 187,
       "nonBlankLines": 173,
       "functions": 20,
@@ -268,15 +268,15 @@
     },
     {
       "path": "src/features/hidden-intro/feature.js",
-      "bytes": 8277,
-      "lines": 266,
-      "nonBlankLines": 254,
+      "bytes": 8328,
+      "lines": 268,
+      "nonBlankLines": 255,
       "functions": 21,
       "branchPoints": 63
     },
     {
       "path": "src/features/hidden-intro/markdown-lite.js",
-      "bytes": 5559,
+      "bytes": 5419,
       "lines": 141,
       "nonBlankLines": 140,
       "functions": 33,
@@ -284,7 +284,7 @@
     },
     {
       "path": "src/features/hidden-intro/native-intro-adapter.js",
-      "bytes": 19728,
+      "bytes": 19124,
       "lines": 605,
       "nonBlankLines": 584,
       "functions": 69,
@@ -292,7 +292,7 @@
     },
     {
       "path": "src/features/hidden-intro/renderer-client.js",
-      "bytes": 2157,
+      "bytes": 2090,
       "lines": 68,
       "nonBlankLines": 63,
       "functions": 5,
@@ -468,7 +468,7 @@
     },
     {
       "path": "src/rendering/code-highlight.js",
-      "bytes": 1927,
+      "bytes": 1863,
       "lines": 65,
       "nonBlankLines": 61,
       "functions": 6,
@@ -476,7 +476,7 @@
     },
     {
       "path": "src/rendering/markdown-full.js",
-      "bytes": 3399,
+      "bytes": 3297,
       "lines": 103,
       "nonBlankLines": 96,
       "functions": 16,
@@ -484,7 +484,7 @@
     },
     {
       "path": "src/rendering/markdown-lite.js",
-      "bytes": 81,
+      "bytes": 80,
       "lines": 2,
       "nonBlankLines": 1,
       "functions": 0,
@@ -492,7 +492,7 @@
     },
     {
       "path": "src/rendering/markdown-renderer-api.js",
-      "bytes": 846,
+      "bytes": 822,
       "lines": 25,
       "nonBlankLines": 22,
       "functions": 1,
@@ -500,7 +500,7 @@
     },
     {
       "path": "src/rendering/markdown-renderer-entry.js",
-      "bytes": 1906,
+      "bytes": 1845,
       "lines": 62,
       "nonBlankLines": 55,
       "functions": 2,
@@ -508,7 +508,7 @@
     },
     {
       "path": "src/rendering/renderer-dependencies.js",
-      "bytes": 471,
+      "bytes": 456,
       "lines": 16,
       "nonBlankLines": 13,
       "functions": 0,
