@@ -45,17 +45,19 @@ export function createHiddenIntroFeature({
     (document.head || document.documentElement).appendChild(style);
   };
 
+  // 个人页的子页是路径段（/user/{uid}/activity·/article·/practice·/following·/follower），
+  // 主页只有 /user/{uid} 本身；更深的路径洛谷返回 404，一律不认。个人介绍只属于主页。
+  // hash 不再参与判定：洛谷已放弃 hash 路由，/user/{uid}#practice 渲染出来的就是主页。
+  const USER_ROUTE_PATTERN = /^\/(?:user|space)\/(\d+)(?:\/([^/]*))?\/?$/;
+
   function currentUserRoute() {
-    const match = location.pathname.match(/^\/(?:user|space)\/(\d+)/);
-    const hash = location.hash || "";
+    const match = location.pathname.match(USER_ROUTE_PATTERN);
     return {
       uid: match ? match[1] : "",
       key: match
-        ? `${location.pathname}${location.search}${hash}`
+        ? `${location.pathname}${location.search}${location.hash || ""}`
         : "",
-      isHome:
-        !!match &&
-        (!hash || hash === "#" || hash === "#home" || hash === "#main"),
+      isHome: !!match && !match[2],
     };
   }
 

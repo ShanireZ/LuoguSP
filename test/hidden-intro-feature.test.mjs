@@ -105,6 +105,116 @@ function mountFeature(nativeAdapter) {
   };
 }
 
+const USER_SUBPAGES = [
+  ["动态", "/user/2/activity"],
+  ["专栏", "/user/2/article"],
+  ["练习", "/user/2/practice"],
+  ["关注", "/user/2/following"],
+  ["粉丝", "/user/2/follower"],
+];
+
+for (const [label, path] of USER_SUBPAGES) {
+  test(`hidden intro stays off the ${label} sub-page on a direct load`, async () => {
+    const restoreDom = installDom(`https://www.luogu.com.cn${path}`);
+    try {
+      const log = { attached: [], restored: [] };
+      const mounted = mountFeature(createNativeAdapter(log));
+      for (let index = 0; index < 3; index++)
+        document.body.append(document.createElement("span"));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      assert.deepEqual(log, { attached: [], restored: [] });
+      assert.equal(document.querySelector(".luogusp-intro-card"), null);
+      assert.equal(document.querySelector(".native-intro-card"), null);
+      mounted.dispose();
+    } finally {
+      restoreDom();
+    }
+  });
+
+  test(`hidden intro withdraws when the SPA moves to the ${label} sub-page`, async () => {
+    const restoreDom = installDom();
+    try {
+      const log = { attached: [], restored: [] };
+      const mounted = mountFeature(createNativeAdapter(log));
+      await waitFor(
+        () => log.attached.length === 1,
+        "native adapter did not attach on the user home page",
+      );
+
+      history.pushState({}, "", path);
+      document.body.append(document.createElement("span"));
+      await waitFor(
+        () => log.restored.length === 1,
+        `native adapter did not restore when entering ${path}`,
+      );
+
+      assert.deepEqual(log, { attached: ["2"], restored: ["2"] });
+      assert.equal(document.querySelector(".native-intro-card"), null);
+      assert.equal(document.querySelector(".luogusp-intro-card"), null);
+      mounted.dispose();
+    } finally {
+      restoreDom();
+    }
+  });
+}
+
+test("hidden intro returns when the SPA comes back to the user home page", async () => {
+  const restoreDom = installDom("https://www.luogu.com.cn/user/2/practice");
+  try {
+    const log = { attached: [], restored: [] };
+    const mounted = mountFeature(createNativeAdapter(log));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(log.attached, []);
+
+    history.pushState({}, "", "/user/2");
+    document.body.append(document.createElement("span"));
+    await waitFor(
+      () => log.attached.length === 1,
+      "native adapter did not attach after returning to the home page",
+    );
+
+    assert.deepEqual(log.attached, ["2"]);
+    mounted.dispose();
+  } finally {
+    restoreDom();
+  }
+});
+
+test("hidden intro treats the retired hash routes as the user home page", async () => {
+  const restoreDom = installDom("https://www.luogu.com.cn/user/2#practice");
+  try {
+    const log = { attached: [], restored: [] };
+    const mounted = mountFeature(createNativeAdapter(log));
+    await waitFor(
+      () => log.attached.length === 1,
+      "a legacy hash suppressed the intro on a page Luogu renders as the home tab",
+    );
+
+    assert.deepEqual(log.attached, ["2"]);
+    mounted.dispose();
+  } finally {
+    restoreDom();
+  }
+});
+
+test("hidden intro ignores paths Luogu does not serve as a user page", async () => {
+  const restoreDom = installDom("https://www.luogu.com.cn/user/2/a/b");
+  try {
+    const log = { attached: [], restored: [] };
+    const mounted = mountFeature(createNativeAdapter(log));
+    for (let index = 0; index < 3; index++)
+      document.body.append(document.createElement("span"));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    assert.deepEqual(log, { attached: [], restored: [] });
+    assert.equal(document.querySelector(".luogusp-intro-card"), null);
+    mounted.dispose();
+  } finally {
+    restoreDom();
+  }
+});
+
 test("hidden intro restores the native gate when leaving the user page", async () => {
   const restoreDom = installDom();
   try {
