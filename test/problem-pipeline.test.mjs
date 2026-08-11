@@ -197,6 +197,64 @@ test("Problem Pipeline harvests injected lists once without mutating page data",
   fx.pipeline.dispose();
 });
 
+test("Problem Pipeline keeps a whole harvested page even when it exceeds the fetch cache", async () => {
+  // A practice page ships every solved problem at once — 1300+ for an active
+  // user. Harvested entries used to share the bounded fetch LRU, so a batch
+  // larger than the limit evicted its own earliest entries: exactly the pids
+  // rendered at the top of the page, which then fell back to one request each.
+  const source = Array.from({ length: 1400 }, (_, index) => ({
+    pid: `P${index}`,
+    difficulty: 1,
+  }));
+  const fetched = [];
+  const fx = fixture({
+    anchors: [
+      { pid: "P0", href: "/problem/P0" },
+      { pid: "P699", href: "/problem/P699" },
+      { pid: "P1399", href: "/problem/P1399" },
+    ],
+    text: async (path) => {
+      fetched.push(path);
+      throw new Error("a harvested pid must never be fetched");
+    },
+    harvest: () => [{ source, problems: source }],
+  });
+
+  fx.pipeline.mount();
+  await flushMicrotasks();
+
+  assert.deepEqual(fetched, []);
+  assert.deepEqual(
+    fx.writes.map(({ pid, color }) => ({ pid, color })),
+    [
+      { pid: "P0", color: "color-1" },
+      { pid: "P699", color: "color-1" },
+      { pid: "P1399", color: "color-1" },
+    ],
+  );
+  fx.pipeline.dispose();
+});
+
+test("Problem Pipeline prefers a freshly fetched difficulty over the harvested one", async () => {
+  const source = [{ pid: "P9", difficulty: 1 }];
+  const fx = fixture({
+    anchors: [{ pid: "P9", href: "/problem/P9" }],
+    text: async () => '{"currentData":{"problem":{"difficulty":7}}}',
+    harvest: () => [{ source, problems: source }],
+  });
+
+  fx.pipeline.mount();
+  await flushMicrotasks();
+  // The harvested value answers first; a later route must not lose the fetched
+  // value to it, so re-colouring the same pid keeps the fetched difficulty.
+  fx.pipeline.dispose();
+
+  assert.deepEqual(
+    fx.writes.map(({ pid, color }) => ({ pid, color })),
+    [{ pid: "P9", color: "color-1" }],
+  );
+});
+
 test("Problem Pipeline clears a recycled anchor when the new problem has no difficulty", async () => {
   const anchor = { pid: "P4", href: "/problem/P4" };
   const paths = [];

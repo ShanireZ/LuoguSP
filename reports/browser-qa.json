@@ -1,34 +1,34 @@
 {
-  "checkedAt": "2026-08-11T16:24:17+08:00",
+  "checkedAt": "2026-08-11T17:23:47+08:00",
   "status": "passed",
   "browser": "Claude Code in-app browser (Chromium) with direct QA injection",
   "commit": null,
-  "artifactSha256": "6fe4eeb5b6f7a57e4d86b249608b461f09868419382d2a58521b90e46dc2f61e",
+  "artifactSha256": "49fdaf87c6ca300b183b627d5f8d87c04ed74b9dfa559360762dbb927b84f4c1",
   "artifactBytes": 1357,
   "runtimeValidation": {
-    "method": "npm run qa:prepare fetched the stable 2.13.8 artifact together with both SHA-256-pinned startup files from the production origin and combined them into one payload; the payload was carried into a real Luogu tab through window.name (the page's meta CSP allows 'unsafe-eval' but blocks every cross-origin script and fetch, so the CDN cannot be reached from the page itself) and evaluated in the main world",
-    "release": "2.13.8",
+    "method": "npm run qa:prepare fetched the stable 2.13.9 artifact together with both SHA-256-pinned startup files from the production origin and combined them into one payload; the payload was carried into a real Luogu tab through window.name (the page's meta CSP allows 'unsafe-eval' but blocks every cross-origin script and fetch, so the CDN cannot be reached from the page itself) and evaluated in the main world",
+    "release": "2.13.9",
     "apiVersion": 1,
     "cdnOrigin": "https://luogusp.round1.cc",
-    "manifestPath": "releases/2.13.8/manifest.76aadc2a86ef8295.json",
+    "manifestPath": "releases/2.13.9/manifest.553848a14dfe11f2.json",
     "immutableFilesVerified": 16
   },
   "startupMeasurement": {
-    "method": "Measured synchronous execution of the prepared 2.13.8 QA payload in the browser main world",
+    "method": "Measured synchronous execution of the prepared 2.13.9 QA payload in the browser main world",
     "networkIncluded": false,
-    "purpose": "Bootstrap execution budget; network integrity and delivery were independently verified by the production CDN gate and by re-hashing both pinned startup files fetched from the origin"
+    "purpose": "Bootstrap execution budget; network integrity and delivery were independently verified by the production CDN gate, by the new pre-upload release-integrity gate, and by re-hashing both pinned startup files fetched from the origin"
   },
   "startupMeasurements": [
-    { "route": "/user/52918", "ms": 3.7 },
-    { "route": "/problem/list", "ms": 2.6 },
-    { "route": "/user/52918 (pinned sidebar)", "ms": 2.9 }
+    { "route": "/user/52918/practice", "ms": 2.9 },
+    { "route": "/user/52918", "ms": 2.1 },
+    { "route": "/problem/list", "ms": 1.3 }
   ],
   "checks": {
     "productionCdn": {
       "origin": "https://luogusp.round1.cc",
       "immutableFiles": 16,
       "pinnedStartupFilesRehashed": 2,
-      "priorReleaseStillByteIntact": "2.13.7 runtime re-fetched and re-hashed to ec4bca98c60ae3f6…, so installed 2.13.7 users keep passing their @require integrity check",
+      "preUploadIntegrityGate": "scripts/cdn/prepare.mjs re-hashed every file pinned by all 11 release manifests before wrangler uploaded dist/cdn",
       "status": "passed"
     },
     "hiddenIntroRouteScope": {
@@ -39,24 +39,36 @@
       "practice": "hidden",
       "following": "hidden",
       "follower": "hidden",
-      "spaRoundTrips": "home -> activity -> home -> article -> practice -> home -> following -> follower -> home, driven by real tab clicks and real anchor clicks; the introduction reappeared on every return to the home tab and never appeared on a sub-page",
-      "directSubPageLoad": "/user/52918/practice loaded directly: no introduction, no fallback card, feature stayed inert until the home tab was entered",
+      "spaRoundTrips": "home -> activity -> home -> following -> home driven by real tab and anchor clicks; the introduction reappeared on every return to the home tab and never appeared on a sub-page",
+      "directSubPageLoad": "/user/52918/practice loaded directly: no introduction, no fallback card",
       "fallbackCardsObserved": 0,
       "status": "passed"
     },
-    "problemList": {
-      "route": "/problem/list",
-      "colouredPids": 50,
-      "p1001Text": "P1001",
-      "p1001Color": "rgb(254, 76, 97)",
-      "p1001FontWeight": "700",
+    "problemColourBatchHarvest": {
+      "practicePage": {
+        "route": "/user/52918/practice",
+        "colouredAnchors": 1039,
+        "crossCheckedAgainstPayload": 1039,
+        "mismatches": 0,
+        "singleProblemRequests": 0
+      },
+      "problemList": {
+        "route": "/problem/list",
+        "colouredPids": 50,
+        "crossCheckedAgainstPayload": 50,
+        "mismatches": 0,
+        "p1001Color": "rgb(254, 76, 97)",
+        "singleProblemRequests": 0
+      },
+      "note": "Difficulties now come from <script id=\"lentille-context\">; window._feInstance, the previous source, no longer exists anywhere on Luogu. Every colour was re-derived from the page payload and compared against the rendered computed style. Both pages previously issued one request per problem.",
+      "recordList": "not exercised — /record/list requires a signed-in session, so the records branch is covered by unit tests only",
       "status": "passed"
     },
     "settingsEntry": {
       "pinnedSidebar": "nav.sidebar lside bar -> 1 entry",
-      "drawerSidebar": "nav.lside drawer -> 0 entries",
-      "status": "pre-existing-gap",
-      "note": "SELECTORS.navContainers only matches nav.lfe-body and nav.sidebar. When Luogu's left sidebar is in its unpinned drawer state the nav element carries neither class, so the 插件设置 entry is not injected. Identical in 2.13.7; not introduced by this release."
+      "drawerSidebar": "nav.lside drawer -> 1 entry (0 before this release)",
+      "label": "插件设置",
+      "status": "passed"
     },
     "ide": {
       "route": "/problem/list",
@@ -65,8 +77,8 @@
       "status": "not-run-unauthenticated"
     },
     "automatedReleaseSuite": {
-      "tests": 149,
-      "passed": 149,
+      "tests": 169,
+      "passed": 169,
       "failed": 0,
       "status": "passed"
     }
@@ -82,7 +94,8 @@
   "limitations": [
     "The in-app browser does not install Tampermonkey; the exact two pinned production startup files and the stable artifact were injected after the initial document load, so document-start restricted-page coverage was not repeated.",
     "The browser pane was not displayed, so the page never composited: requestAnimationFrame had to be shimmed onto timers for the lifecycle remount to run, and screenshots were unavailable. All findings are DOM and computed-style assertions rather than images.",
-    "The browser session was not signed in, so IDE batch execution and private-message Ctrl+Click were not available.",
-    "Restricted article and paste recovery were not re-exercised in this behaviour-only release; their behaviour remains covered by the passing automated suite and the previous stable browser run."
+    "The browser session was not signed in, so IDE batch execution, private-message Ctrl+Click and the /record/list difficulty harvest were not available.",
+    "Sustained automated navigation made Luogu's own SPA start failing route loads with 'Server returned 200 with non-object'. A control run with no userscript injected reproduced it identically, so it is site-side throttling rather than a regression; the reported runs were taken outside that window.",
+    "Restricted article and paste recovery were not re-exercised in this release; their behaviour remains covered by the passing automated suite and the previous stable browser run."
   ]
 }
