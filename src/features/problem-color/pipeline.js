@@ -26,7 +26,12 @@ export function createProblemPipeline(config) {
     throw new TypeError("Problem Pipeline requires a color adapter");
 
   const DIFFICULTY_RE = /"difficulty":\s*(\d+)/;
+  // colors = 网络请求结果的 LRU（有界，因为它会跨路由无限增长）。
+  // ★harvested 与它分开：整批数据是本页自带的 payload，不是请求结果，条数由页面决定。
+  //   曾经两者共用一个 1000 条的 LRU——练习页一次收 1363 题，后来的直接把先收的挤掉，
+  //   而收取顺序与页面渲染顺序一致，被挤掉的恰好是屏幕最上面那批，整批优化等于白做。
   const colors = new Map();
+  const harvested = new Map();
   const harvestedLists = new WeakSet();
   let coloringAnchors = new WeakMap();
   let contentOnlySupport = null;
@@ -47,8 +52,11 @@ export function createProblemPipeline(config) {
   };
   const rememberDifficulty = (pid, difficulty) => {
     if (pid && typeof difficulty === "number")
-      rememberColor(pid, colorForDifficulty(difficulty));
+      harvested.set(pid, colorForDifficulty(difficulty));
   };
+  // 请求结果优先于整批数据：单题接口给的是当前值，整批里可能是历史编号。
+  const knownColor = (pid) =>
+    colors.has(pid) ? colors.get(pid) : harvested.get(pid);
   const harvest = () => {
     if (typeof difficultySource.harvest !== "function") return;
     const batches = difficultySource.harvest() || [];
@@ -114,7 +122,8 @@ export function createProblemPipeline(config) {
   };
   const getColor = async (pid, signal) => {
     harvest();
-    if (colors.has(pid)) return colors.get(pid);
+    const known = knownColor(pid);
+    if (known) return known;
     const difficulty = await fetchDifficulty(pid, signal);
     if (signal.aborted || difficulty == null) return null;
     const color = colorForDifficulty(difficulty);

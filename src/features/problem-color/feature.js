@@ -1,9 +1,10 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createGetRequestScheduler } from "../../core/get-request-scheduler.js";
+import { createProblemIdentityResolver } from "./identity.js";
 import {
-  createProblemIdentityResolver,
-  recordDifficultyForHarvest,
-} from "./identity.js";
+  collectDifficultyBatches,
+  readLentilleData,
+} from "./lentille-harvest.js";
 import { createProblemPipeline } from "./pipeline.js";
 
 export function createProblemColorFeature({ storage }) {
@@ -113,36 +114,9 @@ export function createProblemColorFeature({ storage }) {
     },
     difficultySource: {
       text: (path, options) => limiter.text(path, options),
-      // 记录列表 / 练习页已把整批难度注入 _feInstance；返回来源对象与纯题目数据，
-      // 去重和 LRU 均由 Problem Pipeline Module 持有，不污染洛谷原始数组。
-      // 记录列表的高档难度值不可靠，映射为 null 后由 Pipeline 查询题目页当前值。
-      harvest: () => {
-        const cur = window._feInstance && window._feInstance.currentData;
-        if (!cur) return [];
-        const batches = [];
-        const url = location.href;
-        if (url.startsWith("https://www.luogu.com.cn/record/list")) {
-          const list = cur.records && cur.records.result;
-          if (list && typeof list === "object")
-            batches.push({
-              source: list,
-              problems: () => [...list].map((item) => ({
-                pid: item.problem && item.problem.pid,
-                difficulty: recordDifficultyForHarvest(
-                  item.problem && item.problem.difficulty,
-                ),
-              })),
-            });
-        }
-        if (/^https:\/\/www\.luogu\.com\.cn\/user\/\d+#practice$/.test(url)) {
-          for (const key of ["submittedProblems", "passedProblems"]) {
-            const list = cur[key];
-            if (list && typeof list === "object")
-              batches.push({ source: list, problems: () => [...list] });
-          }
-        }
-        return batches;
-      },
+      // 练习页 / 评测记录列表随页面下发整批难度，收下可省掉成百上千次单题请求。
+      // 数据源与判据见 lentille-harvest.js（原先读的 window._feInstance 已全站消失）。
+      harvest: () => collectDifficultyBatches(readLentilleData()),
     },
     colorForDifficulty: (difficulty) => diffColor(difficulty),
     logError: (pid, error) =>

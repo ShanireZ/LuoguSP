@@ -1,12 +1,12 @@
 {
-  "checkedAt": "2026-08-11T08:13:40.208Z",
+  "checkedAt": "2026-08-11T09:20:45.308Z",
   "status": "ready",
-  "release": "2.13.8",
-  "manifestPath": "releases/2.13.8/manifest.76aadc2a86ef8295.json",
-  "manifestSha256": "76aadc2a86ef82955015989f733f4b92b8f1df9f3a38bbf48378f5621cc9a95e",
+  "release": "2.13.9",
+  "manifestPath": "releases/2.13.9/manifest.553848a14dfe11f2.json",
+  "manifestSha256": "553848a14dfe11f2f9796e6d0515702ddf4fd978fad8e98e3fdf57c7c398dc97",
   "origin": "https://luogusp.round1.cc",
   "stagedUserscript": {
-    "path": "dist/staged/LuoguSP.2.13.8.user.js",
+    "path": "dist/staged/LuoguSP.2.13.9.user.js",
     "bytes": 1357,
     "requires": 2
   },
@@ -15,7 +15,7 @@
   "optionalBundles": {
     "markdownRenderer": {
       "apiVersion": 1,
-      "path": "releases/2.13.8/render/markdown-renderer.1772ec569df81ec8.js",
+      "path": "releases/2.13.9/render/markdown-renderer.1772ec569df81ec8.js",
       "bytes": 412674,
       "gzipBytes": 126845,
       "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
@@ -32,10 +32,10 @@
   "results": [
     {
       "attempt": 1,
-      "path": "releases/2.13.8/manifest.76aadc2a86ef8295.json",
+      "path": "releases/2.13.9/manifest.553848a14dfe11f2.json",
       "status": 200,
       "bytes": 6451,
-      "sha256": "76aadc2a86ef82955015989f733f4b92b8f1df9f3a38bbf48378f5621cc9a95e",
+      "sha256": "553848a14dfe11f2f9796e6d0515702ddf4fd978fad8e98e3fdf57c7c398dc97",
       "contentType": "application/json",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -44,10 +44,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/compat/early-gate.fb2d887badaf76c5.js",
+      "path": "releases/2.13.9/compat/early-gate.55c32ade4af69c41.js",
       "status": 200,
       "bytes": 2896,
-      "sha256": "fb2d887badaf76c5ec97071bfac4145dfc374eaa91726519301586725d1bfa1a",
+      "sha256": "55c32ade4af69c41b30b5740572b9e32f8ea7f0c21aad13cee06a50f9f4b385d",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -56,10 +56,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/compat/runtime.0bce27dc8c0559ec.js",
+      "path": "releases/2.13.9/compat/runtime.3f6aacec4adff247.js",
       "status": 200,
-      "bytes": 105825,
-      "sha256": "0bce27dc8c0559eca0c1fdf7bd41959f17be4ba4f96b1781980b6f2cea8ccf7b",
+      "bytes": 106114,
+      "sha256": "3f6aacec4adff247223dfc0d9037c6dc45e3916518b471368eda0d1991bcc25d",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -68,7 +68,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/render/markdown-renderer.1772ec569df81ec8.js",
+      "path": "releases/2.13.9/render/markdown-renderer.1772ec569df81ec8.js",
       "status": 200,
       "bytes": 412674,
       "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
@@ -80,7 +80,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/restricted-content-DD4PKHKP.js",
+      "path": "releases/2.13.9/esm/restricted-content-DD4PKHKP.js",
       "status": 200,
       "bytes": 29010,
       "sha256": "934aeb2211792d3cb93f70c66e85d9be7ec42cfb56e346b28275268bd0df6e01",
@@ -92,7 +92,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/canary-loader-BTLX3PLI.js",
+      "path": "releases/2.13.9/esm/canary-loader-BTLX3PLI.js",
       "status": 200,
       "bytes": 173,
       "sha256": "b9279332f7a9ae376535bc4a2170496a787ff3e8a9e77171681a614cf7ec43ed",
@@ -104,7 +104,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/early-gate-api-HAJ35GVC.js",
+      "path": "releases/2.13.9/esm/early-gate-api-HAJ35GVC.js",
       "status": 200,
       "bytes": 2787,
       "sha256": "fdb5369424be9b60f12c676241c91724f2d9690d23a4869923fa4dd3105323a5",
@@ -116,7 +116,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/app-core-3TBGMHL4.js",
+      "path": "releases/2.13.9/esm/app-core-3TBGMHL4.js",
       "status": 200,
       "bytes": 3611,
       "sha256": "522f59b8c723d19368aa9fcea403ba14747359e6cf1e4a251ddf1c74846d5321",
@@ -128,10 +128,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/settings-OOQUXAWM.js",
+      "path": "releases/2.13.9/esm/settings-OM6RDWZN.js",
       "status": 200,
-      "bytes": 6112,
-      "sha256": "78330babc6f45e5f6a31b6a630df9fb17e2e9dfd94992b3ec8e0c2f323f33042",
+      "bytes": 6124,
+      "sha256": "e1163b24d9968c55d4380adda5a88faadb5afbac7251af32ccd1e2376e8197ed",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -140,10 +140,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/problem-color-YVPQM2AJ.js",
+      "path": "releases/2.13.9/esm/problem-color-PSNXCJI5.js",
       "status": 200,
-      "bytes": 10545,
-      "sha256": "fadf4133ea6ccc585a6796b9c2c6228a9607520084afc061b1d64e30dc97008c",
+      "bytes": 10802,
+      "sha256": "81777c9a336628dd5d6176cd6645ab5e0b2afa7772f58250c19654c0caf7ec0c",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -152,7 +152,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/chat-shortcut-3SB6G7HS.js",
+      "path": "releases/2.13.9/esm/chat-shortcut-3SB6G7HS.js",
       "status": 200,
       "bytes": 2049,
       "sha256": "1742fab67854c901a23ef0740347831c28d62cccde4b79690dcc4f78250dcf3c",
@@ -164,7 +164,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/hidden-intro-YG7CK77U.js",
+      "path": "releases/2.13.9/esm/hidden-intro-YG7CK77U.js",
       "status": 200,
       "bytes": 22482,
       "sha256": "48e0f04903890157870d507ef34814807b7cafaa9712a0f54a739b031414d922",
@@ -176,7 +176,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/chunks/chunk-WFSUDTKV.js",
+      "path": "releases/2.13.9/esm/chunks/chunk-WFSUDTKV.js",
       "status": 200,
       "bytes": 3920,
       "sha256": "1fc8be58f33138442d809731eec3ba4d5b1412fba8f8735fed950a8092519e95",
@@ -188,7 +188,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/ide-batch-JTBEEUH4.js",
+      "path": "releases/2.13.9/esm/ide-batch-JTBEEUH4.js",
       "status": 200,
       "bytes": 20052,
       "sha256": "5203f5e33a53e36e08e7dc42cc9f6475b932fba479e5430f78ad8a2bb273f6ef",
@@ -200,7 +200,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/chunks/chunk-PQ6PWWZS.js",
+      "path": "releases/2.13.9/esm/chunks/chunk-PQ6PWWZS.js",
       "status": 200,
       "bytes": 1314,
       "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
@@ -212,7 +212,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.13.8/esm/chunks/chunk-V7FYNATP.js",
+      "path": "releases/2.13.9/esm/chunks/chunk-V7FYNATP.js",
       "status": 200,
       "bytes": 342,
       "sha256": "8cbdb457fff355ba763f8e8606f5a48903a7dba84377787a34a5ff0583c7936f",

@@ -1,8 +1,12 @@
 import { SETTINGS_STYLE } from "./style.js";
 
 export function createSettingsFeature({ storage, configurableFeatures }) {
+  // 按先后顺序试，第一个命中的就是本页导航。
+  // ★ nav.lside 是窄视口兜底：columba 侧栏钉住时是 `nav.sidebar lside bar`，
+  //   收窄到抽屉态就变成 `nav.lside drawer`——没有 sidebar 类，入口会整个消失。
+  //   两种形态都带 lside，所以放在 nav.sidebar 之后兜底，宽屏行为一字不变。
   const SELECTORS = {
-    navContainers: ["nav.lfe-body", "nav.sidebar"],
+    navContainers: ["nav.lfe-body", "nav.sidebar", "nav.lside"],
     navText: ".text, .title",
   };
   const featureLabels = new Map(
