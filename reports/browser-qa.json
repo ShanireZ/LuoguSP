@@ -1,88 +1,107 @@
 {
-  "checkedAt": "2026-08-12T13:34:38+08:00",
+  "checkedAt": "2026-08-12T15:58:29.5139384+08:00",
   "status": "passed",
-  "browser": "Playwright CLI Chromium with production release injection",
-  "commit": null,
+  "browser": "Playwright CLI Chromium with local immutable canary injection",
+  "sourceCommit": "1c5c94bf63f88c6c595579dd49d2042e3bf512d8",
+  "worktreeIncluded": true,
+  "release": "2.14.0-canary.4",
   "artifactSha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
-  "artifactBytes": 1360,
-  "runtimeValidation": {
-    "method": "npm run qa:prepare fetched both SHA-256-pinned startup files referenced by the promoted 2.13.10 userscript from the production custom origin; the combined payload was injected into real Luogu pages in Chromium",
-    "release": "2.13.10",
-    "apiVersion": 1,
-    "cdnOrigin": "https://luogusp.round1.cc",
-    "manifestPath": "releases/2.13.10/manifest.35669c28df67d49e.json",
-    "immutableFilesVerified": 16
-  },
-  "startupMeasurement": {
-    "method": "Measured synchronous execution of the prepared 2.13.10 QA payload in the browser main world",
-    "networkIncluded": false,
-    "purpose": "Bootstrap execution budget; production delivery and integrity were independently verified by the CDN production gate"
-  },
   "startupMeasurements": [
     { "route": "/user/52918/practice", "ms": 3.0 },
     { "route": "/user/52918", "ms": 3.2 },
     { "route": "/problem/list", "ms": 2.7 }
   ],
-  "checks": {
-    "productionCdn": {
-      "origin": "https://luogusp.round1.cc",
-      "immutableFiles": 16,
-      "pinnedStartupFilesFetched": 2,
-      "productionGate": "scripts/cdn/verify-production.mjs verified every immutable 2.13.10 file after deployment",
-      "status": "passed"
-    },
-    "practiceProblemColourScope": {
-      "route": "/user/52918/practice",
-      "attemptedAnchors": 60,
-      "attemptedPayloadEntries": 60,
-      "attemptedColoured": 60,
-      "attemptedDifficultyMismatches": 0,
-      "passedAnchors": 1303,
-      "passedPayloadEntries": 1303,
-      "passedColoured": 0,
-      "passedPluginWrappers": 0,
-      "singleProblemRequests": 0,
-      "recycledAnchor": "A coloured attempted anchor moved into the passed card lost its marker, inline style and wrapper within 100 ms",
-      "status": "passed"
-    },
-    "problemList": {
-      "route": "/problem/list",
-      "payloadEntries": 50,
-      "colouredPids": 50,
-      "difficultyMismatches": 0,
-      "singleProblemRequests": 0,
-      "status": "passed"
-    },
-    "hiddenIntroRouteScope": {
-      "home": "native introduction shown",
-      "practiceDirectLoad": "no introduction or fallback card",
-      "spaHomeToPractice": "introduction withdrawn after clicking the practice tab",
-      "fallbackCardsObserved": 0,
-      "status": "passed"
-    },
-    "settingsEntry": {
-      "practice": 1,
-      "problemList": 1,
-      "userHome": 1,
-      "label": "插件设置",
-      "status": "passed"
-    },
-    "automatedReleaseSuite": {
-      "tests": 170,
-      "passed": 170,
-      "failed": 0,
-      "status": "passed"
-    }
-  },
-  "failures": [],
   "console": {
     "luoguSpErrorCount": 0,
     "siteErrorCount": 0,
-    "summary": "No console error was observed in the direct practice, problem-list, user-home, or SPA home-to-practice runs."
+    "summary": "No application error occurred in the live article, forced fallback, or paste run; forced network failures are recorded separately."
+  },
+  "qaArtifact": {
+    "path": "dist/qa/LuoguSP-QA.2.14.0-canary.4.user.js",
+    "sha256": "afbd2faa0a6a722a3b312af6c7c5d24d3011fd2dcdbce213e628f5671d18b7a0",
+    "bytes": 1123
+  },
+  "canaryInstaller": {
+    "path": "canary/LuoguSP-canary.user.js",
+    "sha256": "c21734a43e00e2d492e308fc8d8479c495b6e5373653812841fbf2f4b7e31ff1",
+    "bytes": 1094,
+    "automaticUpdateUrl": false
+  },
+  "cdnArtifact": {
+    "published": true,
+    "channel": "canary",
+    "manifestPath": "releases/2.14.0-canary.4/manifest.e770860c1369682a.json",
+    "manifestSha256": "e770860c1369682a3dc11434d39976dd7f2c3ac14febbbc0dab09e016dfb6e21",
+    "immutableFiles": 15,
+    "verifyExisting": "passed",
+    "productionGate": "passed",
+    "directRequires": "200 with matching SHA-256",
+    "previousCanary": "2.13.5-canary.20 removed from deployment (404)"
+  },
+  "checks": {
+    "restrictedArticleLiveReplies": {
+      "route": "/article/2l4x53kj",
+      "request": "GET /article/2l4x53kj/replies?sort=",
+      "status": 200,
+      "sourceHeader": null,
+      "firstReplyId": 1630273,
+      "commentsRendered": true,
+      "consoleErrors": 0,
+      "statusText": "passed"
+    },
+    "restrictedArticleSaverFallback": {
+      "route": "/article/2l4x53kj",
+      "fault": "all matching Luogu reply requests aborted by Playwright routing",
+      "status": 200,
+      "sourceHeader": "saver",
+      "savedReplyIdsPreserved": [1788099, 1695546, 1694596],
+      "commentHeading": "50 条评论",
+      "commentsRendered": true,
+      "applicationErrors": 0,
+      "expectedBrowserNetworkErrors": 2,
+      "statusText": "passed"
+    },
+    "restrictedArticleContext": {
+      "anonymous": true,
+      "favored": null,
+      "voted": null,
+      "canReply": false,
+      "articleVoted": null,
+      "articleCanReply": false,
+      "articleCanEdit": false,
+      "statusText": "passed"
+    },
+    "restrictedPasteReadOnly": {
+      "route": "/paste/40hfk7qm",
+      "template": "PasteShow",
+      "pasteFields": ["id", "user", "time", "public", "data"],
+      "canEdit": false,
+      "commentInputs": 0,
+      "officialInteractionButtons": 0,
+      "extensionButtons": ["申请更新", "国际站原文"],
+      "consoleErrors": 0,
+      "statusText": "passed"
+    },
+    "localCi": {
+      "commands": ["npm run check", "npm audit --audit-level=moderate"],
+      "tests": 180,
+      "passed": 180,
+      "failed": 0,
+      "buildCheck": "passed",
+      "qualityCheck": "passed",
+      "npmAuditModerate": "0 vulnerabilities",
+      "statusText": "passed"
+    }
+  },
+  "writeSafety": {
+    "externalMutationsPerformed": false,
+    "reason": "点赞、收藏和发表评论具有真实账户副作用；浏览器 QA 验证只读渲染与传输契约，写入路径由自动化测试覆盖。",
+    "contract": "只有官方 UI 的用户点击会发起写请求；同源 Cookie 与 CSRF 被保留或补齐；界面仅在服务器成功响应后更新。"
   },
   "limitations": [
-    "Chromium did not install Tampermonkey; the exact promoted userscript and both production startup files were injected after initial document load, so document-start restricted-page coverage was not repeated.",
-    "The browser session was signed out, so IDE batch execution, private-message Ctrl+Click, and authenticated /record/list behaviour remain covered by automated tests rather than this browser run.",
-    "Restricted article and paste recovery were not re-exercised; their behavior remains covered by the passing automated suite."
-  ]
+    "受限 .cn 页面没有读取当前账号 favored/voted 的只读接口；不可获知时使用 null，而不伪造 false。",
+    "canReply 在匿名态为 false；登录态依据当前同源 viewer 开启，最终权限仍由洛谷写接口判定。",
+    "保存站 upvote/favorCount 是存档快照，不是实时个人状态；正式版将在用户验收后再通过 pnpm release 发布。"
+  ],
+  "failures": []
 }

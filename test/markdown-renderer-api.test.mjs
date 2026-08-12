@@ -38,7 +38,7 @@ test("markdown renderer exposes the versioned data-only API", () => {
   assert.deepEqual(dependencyVersions, {
     katex: "0.18.1",
     marked: "18.0.7",
-    dompurify: "3.4.12",
+    dompurify: "3.4.13",
     highlight: "11.11.1",
   });
   assert.deepEqual(result, {
