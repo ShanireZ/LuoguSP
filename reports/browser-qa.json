@@ -1,84 +1,75 @@
 {
-  "checkedAt": "2026-08-11T17:23:47+08:00",
+  "checkedAt": "2026-08-12T13:34:38+08:00",
   "status": "passed",
-  "browser": "Claude Code in-app browser (Chromium) with direct QA injection",
+  "browser": "Playwright CLI Chromium with production release injection",
   "commit": null,
-  "artifactSha256": "49fdaf87c6ca300b183b627d5f8d87c04ed74b9dfa559360762dbb927b84f4c1",
-  "artifactBytes": 1357,
+  "artifactSha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
+  "artifactBytes": 1360,
   "runtimeValidation": {
-    "method": "npm run qa:prepare fetched the stable 2.13.9 artifact together with both SHA-256-pinned startup files from the production origin and combined them into one payload; the payload was carried into a real Luogu tab through window.name (the page's meta CSP allows 'unsafe-eval' but blocks every cross-origin script and fetch, so the CDN cannot be reached from the page itself) and evaluated in the main world",
-    "release": "2.13.9",
+    "method": "npm run qa:prepare fetched both SHA-256-pinned startup files referenced by the promoted 2.13.10 userscript from the production custom origin; the combined payload was injected into real Luogu pages in Chromium",
+    "release": "2.13.10",
     "apiVersion": 1,
     "cdnOrigin": "https://luogusp.round1.cc",
-    "manifestPath": "releases/2.13.9/manifest.553848a14dfe11f2.json",
+    "manifestPath": "releases/2.13.10/manifest.35669c28df67d49e.json",
     "immutableFilesVerified": 16
   },
   "startupMeasurement": {
-    "method": "Measured synchronous execution of the prepared 2.13.9 QA payload in the browser main world",
+    "method": "Measured synchronous execution of the prepared 2.13.10 QA payload in the browser main world",
     "networkIncluded": false,
-    "purpose": "Bootstrap execution budget; network integrity and delivery were independently verified by the production CDN gate, by the new pre-upload release-integrity gate, and by re-hashing both pinned startup files fetched from the origin"
+    "purpose": "Bootstrap execution budget; production delivery and integrity were independently verified by the CDN production gate"
   },
   "startupMeasurements": [
-    { "route": "/user/52918/practice", "ms": 2.9 },
-    { "route": "/user/52918", "ms": 2.1 },
-    { "route": "/problem/list", "ms": 1.3 }
+    { "route": "/user/52918/practice", "ms": 3.0 },
+    { "route": "/user/52918", "ms": 3.2 },
+    { "route": "/problem/list", "ms": 2.7 }
   ],
   "checks": {
     "productionCdn": {
       "origin": "https://luogusp.round1.cc",
       "immutableFiles": 16,
-      "pinnedStartupFilesRehashed": 2,
-      "preUploadIntegrityGate": "scripts/cdn/prepare.mjs re-hashed every file pinned by all 11 release manifests before wrangler uploaded dist/cdn",
+      "pinnedStartupFilesFetched": 2,
+      "productionGate": "scripts/cdn/verify-production.mjs verified every immutable 2.13.10 file after deployment",
+      "status": "passed"
+    },
+    "practiceProblemColourScope": {
+      "route": "/user/52918/practice",
+      "attemptedAnchors": 60,
+      "attemptedPayloadEntries": 60,
+      "attemptedColoured": 60,
+      "attemptedDifficultyMismatches": 0,
+      "passedAnchors": 1303,
+      "passedPayloadEntries": 1303,
+      "passedColoured": 0,
+      "passedPluginWrappers": 0,
+      "singleProblemRequests": 0,
+      "recycledAnchor": "A coloured attempted anchor moved into the passed card lost its marker, inline style and wrapper within 100 ms",
+      "status": "passed"
+    },
+    "problemList": {
+      "route": "/problem/list",
+      "payloadEntries": 50,
+      "colouredPids": 50,
+      "difficultyMismatches": 0,
+      "singleProblemRequests": 0,
       "status": "passed"
     },
     "hiddenIntroRouteScope": {
-      "user": "/user/52918 (introduction present in the Lentille payload, not rendered by Luogu)",
-      "home": "SHOWN",
-      "activity": "hidden",
-      "article": "hidden",
-      "practice": "hidden",
-      "following": "hidden",
-      "follower": "hidden",
-      "spaRoundTrips": "home -> activity -> home -> following -> home driven by real tab and anchor clicks; the introduction reappeared on every return to the home tab and never appeared on a sub-page",
-      "directSubPageLoad": "/user/52918/practice loaded directly: no introduction, no fallback card",
+      "home": "native introduction shown",
+      "practiceDirectLoad": "no introduction or fallback card",
+      "spaHomeToPractice": "introduction withdrawn after clicking the practice tab",
       "fallbackCardsObserved": 0,
       "status": "passed"
     },
-    "problemColourBatchHarvest": {
-      "practicePage": {
-        "route": "/user/52918/practice",
-        "colouredAnchors": 1039,
-        "crossCheckedAgainstPayload": 1039,
-        "mismatches": 0,
-        "singleProblemRequests": 0
-      },
-      "problemList": {
-        "route": "/problem/list",
-        "colouredPids": 50,
-        "crossCheckedAgainstPayload": 50,
-        "mismatches": 0,
-        "p1001Color": "rgb(254, 76, 97)",
-        "singleProblemRequests": 0
-      },
-      "note": "Difficulties now come from <script id=\"lentille-context\">; window._feInstance, the previous source, no longer exists anywhere on Luogu. Every colour was re-derived from the page payload and compared against the rendered computed style. Both pages previously issued one request per problem.",
-      "recordList": "not exercised — /record/list requires a signed-in session, so the records branch is covered by unit tests only",
-      "status": "passed"
-    },
     "settingsEntry": {
-      "pinnedSidebar": "nav.sidebar lside bar -> 1 entry",
-      "drawerSidebar": "nav.lside drawer -> 1 entry (0 before this release)",
+      "practice": 1,
+      "problemList": 1,
+      "userHome": 1,
       "label": "插件设置",
       "status": "passed"
     },
-    "ide": {
-      "route": "/problem/list",
-      "batchButtonCount": 0,
-      "remoteRunTriggered": false,
-      "status": "not-run-unauthenticated"
-    },
     "automatedReleaseSuite": {
-      "tests": 169,
-      "passed": 169,
+      "tests": 170,
+      "passed": 170,
       "failed": 0,
       "status": "passed"
     }
@@ -86,16 +77,12 @@
   "failures": [],
   "console": {
     "luoguSpErrorCount": 0,
-    "siteErrorCount": 1,
-    "siteWarningCount": 0,
-    "otherExtensionErrorCount": 0,
-    "summary": "No LuoguSP or luogusp.round1.cc error was observed on the exercised routes. The one site error, [@lfe/utils/error-handler] ApiResponseError Error: 用户尚未登录, is Luogu's own signed-out API response."
+    "siteErrorCount": 0,
+    "summary": "No console error was observed in the direct practice, problem-list, user-home, or SPA home-to-practice runs."
   },
   "limitations": [
-    "The in-app browser does not install Tampermonkey; the exact two pinned production startup files and the stable artifact were injected after the initial document load, so document-start restricted-page coverage was not repeated.",
-    "The browser pane was not displayed, so the page never composited: requestAnimationFrame had to be shimmed onto timers for the lifecycle remount to run, and screenshots were unavailable. All findings are DOM and computed-style assertions rather than images.",
-    "The browser session was not signed in, so IDE batch execution, private-message Ctrl+Click and the /record/list difficulty harvest were not available.",
-    "Sustained automated navigation made Luogu's own SPA start failing route loads with 'Server returned 200 with non-object'. A control run with no userscript injected reproduced it identically, so it is site-side throttling rather than a regression; the reported runs were taken outside that window.",
-    "Restricted article and paste recovery were not re-exercised in this release; their behaviour remains covered by the passing automated suite and the previous stable browser run."
+    "Chromium did not install Tampermonkey; the exact promoted userscript and both production startup files were injected after initial document load, so document-start restricted-page coverage was not repeated.",
+    "The browser session was signed out, so IDE batch execution, private-message Ctrl+Click, and authenticated /record/list behaviour remain covered by automated tests rather than this browser run.",
+    "Restricted article and paste recovery were not re-exercised; their behavior remains covered by the passing automated suite."
   ]
 }

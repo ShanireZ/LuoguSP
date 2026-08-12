@@ -1,17 +1,17 @@
 {
-  "startedAt": "2026-08-11T09:20:18.916Z",
-  "completedAt": "2026-08-11T09:20:49.218Z",
+  "startedAt": "2026-08-12T05:29:05.261Z",
+  "completedAt": "2026-08-12T05:29:39.213Z",
   "status": "ready-for-browser-qa",
-  "release": "2.13.9",
+  "release": "2.13.10",
   "resumed": false,
   "userscript": {
-    "bytes": 1357,
-    "sha256": "49fdaf87c6ca300b183b627d5f8d87c04ed74b9dfa559360762dbb927b84f4c1",
+    "bytes": 1360,
+    "sha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
     "requires": 2
   },
   "renderer": {
     "apiVersion": 1,
-    "path": "releases/2.13.9/render/markdown-renderer.1772ec569df81ec8.js",
+    "path": "releases/2.13.10/render/markdown-renderer.1772ec569df81ec8.js",
     "bytes": 412674,
     "gzipBytes": 126845,
     "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",

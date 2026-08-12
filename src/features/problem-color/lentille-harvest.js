@@ -35,9 +35,9 @@ export function readLentilleData(doc = globalThis.document) {
 }
 
 // 题目直接摊在 data 下的几种键：
-//   /user/{uid}/practice → passed / submitted（裸数组）
+//   /user/{uid}/practice → submitted（裸数组）；passed 已按难度分组展示，刻意忽略
 //   /problem/list        → problems（分页容器 { perPage, count, result }）
-const DIRECT_PROBLEM_LISTS = ["passed", "submitted", "problems"];
+const DIRECT_PROBLEM_LISTS = ["submitted", "problems"];
 
 // 裸数组与分页容器都收；其它形状一律当作没有批量数据。
 function asList(value) {

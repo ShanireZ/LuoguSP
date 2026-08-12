@@ -2,7 +2,7 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.13.9](https://img.shields.io/badge/version-2.13.9-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+[![Version: 2.13.10](https://img.shields.io/badge/version-2.13.10-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
 LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信、用户个人页、IDE 模式、受限文章与剪贴板提供实用增强。
 
@@ -10,7 +10,7 @@ LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信�
 
 ## 功能
 
-- **题号显示难度颜色**：在题库、评测记录和练习页面中，为题号显示对应的难度颜色。
+- **题号显示难度颜色**：在主页、题库、评测记录和练习页面中，为题号显示对应的难度颜色。
 - **私信 Ctrl+Click 打开用户个人页**：在私信页面按住 `Ctrl` 点击头像或用户名，直接打开对应用户的个人页。
 - **个人页显示个人介绍**：在用户个人页的主页显示原本未渲染的个人介绍，并支持 Markdown、表格、任务列表、KaTeX 公式、代码高亮和代码复制；动态、专栏、练习、关注等子页不显示。
 - **IDE 模式一键测试所有样例**：在题目页的 IDE 模式下一键运行所有样例，查看每组结果、用时、内存和差异；支持停止、重新测试及结果过期提示。

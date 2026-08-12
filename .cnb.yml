@@ -1,0 +1,20 @@
+main:
+  push:
+    - name: LuoguSP CI
+      docker:
+        image: node:24.18.1-bookworm
+      stages:
+        - name: Install locked dependencies
+          script: npm ci
+        - name: Verify reproducible build, quality budgets, and tests
+          script: npm run check
+
+  pull_request:
+    - name: LuoguSP CI
+      docker:
+        image: node:24.18.1-bookworm
+      stages:
+        - name: Install locked dependencies
+          script: npm ci
+        - name: Verify reproducible build, quality budgets, and tests
+          script: npm run check

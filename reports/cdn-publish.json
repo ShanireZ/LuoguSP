@@ -1,6 +1,6 @@
 {
-  "publishedAt": "2026-08-11T09:20:38.156Z",
-  "release": "2.13.9",
+  "publishedAt": "2026-08-12T05:29:27.812Z",
+  "release": "2.13.10",
   "target": "cloudflare-workers",
   "project": "luogusp-cdn",
   "origin": "https://luogusp.round1.cc",

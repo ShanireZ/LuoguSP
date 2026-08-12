@@ -18,7 +18,7 @@ function documentWithContext(body) {
 const flatten = (batches) =>
   batches.flatMap((batch) => batch.problems());
 
-test("lentille harvest reads the practice payload Luogu ships with the page", () => {
+test("lentille harvest reads only attempted problems from the practice payload", () => {
   const doc = documentWithContext({
     template: "user.show",
     data: {
@@ -35,10 +35,8 @@ test("lentille harvest reads the practice payload Luogu ships with the page", ()
 
   const batches = collectDifficultyBatches(readLentilleData(doc));
 
-  assert.equal(batches.length, 2);
+  assert.equal(batches.length, 1);
   assert.deepEqual(flatten(batches).map((p) => [p.pid, p.difficulty]), [
-    ["P1001", 1],
-    ["P1003", 2],
     ["P1009", 2],
   ]);
 });
@@ -95,7 +93,7 @@ test("lentille harvest keeps only unambiguous record difficulties", () => {
 
 test("lentille harvest returns a stable source so the pipeline can dedupe it", () => {
   const doc = documentWithContext({
-    data: { passed: [{ pid: "P1001", difficulty: 1 }] },
+    data: { submitted: [{ pid: "P1001", difficulty: 1 }] },
   });
 
   const first = collectDifficultyBatches(readLentilleData(doc));
@@ -133,10 +131,10 @@ test("lentille harvest tolerates a missing, empty or malformed context", () => {
 
 test("lentille harvest re-parses when the document itself is replaced", () => {
   const first = documentWithContext({
-    data: { passed: [{ pid: "P1001", difficulty: 1 }] },
+    data: { submitted: [{ pid: "P1001", difficulty: 1 }] },
   });
   const second = documentWithContext({
-    data: { passed: [{ pid: "P2001", difficulty: 4 }] },
+    data: { submitted: [{ pid: "P2001", difficulty: 4 }] },
   });
 
   assert.deepEqual(
