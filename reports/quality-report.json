@@ -1,42 +1,42 @@
 {
-  "generatedAt": "2026-08-11T09:24:29.656Z",
+  "generatedAt": "2026-08-12T05:37:21.105Z",
   "artifact": {
-    "sha256": "49fdaf87c6ca300b183b627d5f8d87c04ed74b9dfa559360762dbb927b84f4c1",
-    "bytes": 1357,
-    "gzipBytes": 806,
+    "sha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
+    "bytes": 1360,
+    "gzipBytes": 809,
     "lines": 21,
-    "parseMedianMs": 0.0019000000000026773
+    "parseMedianMs": 0.0023999999999979593
   },
   "browserQa": {
     "status": "passed",
-    "checkedAt": "2026-08-11T17:23:47+08:00",
-    "artifactSha256": "49fdaf87c6ca300b183b627d5f8d87c04ed74b9dfa559360762dbb927b84f4c1",
-    "maxStartupMs": 2.9,
+    "checkedAt": "2026-08-12T13:34:38+08:00",
+    "artifactSha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
+    "maxStartupMs": 3.2,
     "luoguSpConsoleErrorCount": 0,
     "failures": []
   },
   "startupRequires": {
     "count": 2,
-    "totalBytes": 109010,
-    "totalGzipBytes": 38392,
+    "totalBytes": 109555,
+    "totalGzipBytes": 38634,
     "resources": [
       {
-        "url": "https://luogusp.round1.cc/releases/2.13.9/compat/early-gate.55c32ade4af69c41.js#sha256=55c32ade4af69c41b30b5740572b9e32f8ea7f0c21aad13cee06a50f9f4b385d",
-        "bytes": 2896,
-        "gzipBytes": 1464,
-        "sha256": "55c32ade4af69c41b30b5740572b9e32f8ea7f0c21aad13cee06a50f9f4b385d"
+        "url": "https://luogusp.round1.cc/releases/2.13.10/compat/early-gate.702eb1cf0f84940e.js#sha256=702eb1cf0f84940ed9a9866c13314b3a7afb72b43727695d3c9d284281cc9763",
+        "bytes": 2897,
+        "gzipBytes": 1465,
+        "sha256": "702eb1cf0f84940ed9a9866c13314b3a7afb72b43727695d3c9d284281cc9763"
       },
       {
-        "url": "https://luogusp.round1.cc/releases/2.13.9/compat/runtime.3f6aacec4adff247.js#sha256=3f6aacec4adff247223dfc0d9037c6dc45e3916518b471368eda0d1991bcc25d",
-        "bytes": 106114,
-        "gzipBytes": 36928,
-        "sha256": "3f6aacec4adff247223dfc0d9037c6dc45e3916518b471368eda0d1991bcc25d"
+        "url": "https://luogusp.round1.cc/releases/2.13.10/compat/runtime.a86d47accc3a6fd1.js#sha256=a86d47accc3a6fd19da3b5e95b817e32972586b6d0511b932dd9d53b9adf9e52",
+        "bytes": 106658,
+        "gzipBytes": 37169,
+        "sha256": "a86d47accc3a6fd19da3b5e95b817e32972586b6d0511b932dd9d53b9adf9e52"
       }
     ],
     "measuredOnline": true
   },
   "optionalRenderer": {
-    "url": "https://luogusp.round1.cc/releases/2.13.9/render/markdown-renderer.1772ec569df81ec8.js",
+    "url": "https://luogusp.round1.cc/releases/2.13.10/render/markdown-renderer.1772ec569df81ec8.js",
     "bytes": 412674,
     "gzipBytes": 126845,
     "sha256": "1772ec569df81ec8fe03efe6615e832bd94415ff928146ff9004698ea9b2f574",
@@ -80,12 +80,12 @@
         "branchPoints": 277
       },
       "problem-color": {
-        "files": 4,
-        "bytes": 23877,
-        "lines": 659,
-        "nonBlankLines": 630,
-        "functions": 76,
-        "branchPoints": 201
+        "files": 5,
+        "bytes": 25665,
+        "lines": 713,
+        "nonBlankLines": 679,
+        "functions": 83,
+        "branchPoints": 219
       },
       "restricted-content": {
         "files": 12,
@@ -332,11 +332,11 @@
     },
     {
       "path": "src/features/problem-color/feature.js",
-      "bytes": 9299,
-      "lines": 262,
-      "nonBlankLines": 253,
-      "functions": 32,
-      "branchPoints": 51
+      "bytes": 10441,
+      "lines": 295,
+      "nonBlankLines": 284,
+      "functions": 36,
+      "branchPoints": 60
     },
     {
       "path": "src/features/problem-color/identity.js",
@@ -348,7 +348,7 @@
     },
     {
       "path": "src/features/problem-color/lentille-harvest.js",
-      "bytes": 3469,
+      "bytes": 3499,
       "lines": 79,
       "nonBlankLines": 69,
       "functions": 7,
@@ -361,6 +361,14 @@
       "nonBlankLines": 196,
       "functions": 29,
       "branchPoints": 75
+    },
+    {
+      "path": "src/features/problem-color/practice-policy.js",
+      "bytes": 616,
+      "lines": 21,
+      "nonBlankLines": 18,
+      "functions": 3,
+      "branchPoints": 9
     },
     {
       "path": "src/features/restricted-content/document-boot.js",
@@ -524,7 +532,7 @@
     },
     {
       "path": "src/userscript.meta.js",
-      "bytes": 1186,
+      "bytes": 1189,
       "lines": 20,
       "nonBlankLines": 19,
       "functions": 0,

@@ -6,6 +6,7 @@ import {
   readLentilleData,
 } from "./lentille-harvest.js";
 import { createProblemPipeline } from "./pipeline.js";
+import { isProblemAnchorColorable } from "./practice-policy.js";
 
 export function createProblemColorFeature({ storage }) {
   const DIFFICULTY_COLORS = [
@@ -56,7 +57,16 @@ export function createProblemColorFeature({ storage }) {
     voidAnchorSelector: SELECTORS.voidAnchor,
     standalonePidSelector: SELECTORS.standalonePid,
   });
-  const problemAnchorIdentity = (anchor) => problemIdentity.resolve(anchor);
+  const shouldColorProblemAnchor = (anchor) =>
+    isProblemAnchorColorable(anchor, location.pathname);
+  const shouldProcessProblemAnchor = (anchor) =>
+    shouldColorProblemAnchor(anchor) || Boolean(anchor?.dataset?.luoguspPid);
+  const problemAnchorIdentity = Object.freeze({
+    resolve: (anchor) =>
+      shouldColorProblemAnchor(anchor)
+        ? problemIdentity.resolve(anchor)
+        : null,
+  });
 
   // 把子树中第一处 pid 文本包成 <b>（纯 DOM，避免 innerHTML.replace 误伤属性内同名子串、
   // 重建整个锚点子树、抖掉已绑定的监听）。返回创建的包裹节点，未找到则返回 null。
@@ -107,14 +117,15 @@ export function createProblemColorFeature({ storage }) {
     typeof document === "undefined"
       ? null
       : createProblemPipeline({
-    identity: problemIdentity,
+    identity: problemAnchorIdentity,
     routeAdapter: {
       token: () =>
         `${location.origin}${location.pathname}${location.search}`,
     },
     difficultySource: {
       text: (path, options) => limiter.text(path, options),
-      // 练习页 / 评测记录列表随页面下发整批难度，收下可省掉成百上千次单题请求。
+      // 练习页只收“尝试过的题目”；“已通过”已按难度分组，既不着色也不入缓存。
+      // 评测记录列表仍随页面下发整批难度，省掉逐题请求。
       // 数据源与判据见 lentille-harvest.js（原先读的 window._feInstance 已全站消失）。
       harvest: () => collectDifficultyBatches(readLentilleData()),
     },
@@ -126,35 +137,55 @@ export function createProblemColorFeature({ storage }) {
       anchors: (root) => {
         if (!root || !root.querySelectorAll) return [];
         const anchors = [];
-        if (root.matches && root.matches(PROBLEM_ANCHOR_SELECTOR))
+        if (
+          root.matches &&
+          root.matches(PROBLEM_ANCHOR_SELECTOR) &&
+          shouldProcessProblemAnchor(root)
+        )
           anchors.push(root);
         root
           .querySelectorAll(PROBLEM_ANCHOR_SELECTOR)
-          .forEach((anchor) => anchors.push(anchor));
+          .forEach((anchor) => {
+            if (shouldProcessProblemAnchor(anchor)) anchors.push(anchor);
+          });
         return anchors;
       },
       observeAnchors: (accept) => {
         const observer = new MutationObserver((mutations) => {
           const anchors = new Set();
+          const addAnchor = (anchor) => {
+            if (anchor && shouldProcessProblemAnchor(anchor))
+              anchors.add(anchor);
+          };
+          const addDescendants = (root) => {
+            if (!root || !root.querySelectorAll) return;
+            if (root.matches && root.matches(PROBLEM_ANCHOR_SELECTOR))
+              addAnchor(root);
+            root
+              .querySelectorAll(PROBLEM_ANCHOR_SELECTOR)
+              .forEach(addAnchor);
+          };
+          const reconsiderPracticeCard = (target) => {
+            if (!target || typeof target.closest !== "function") return;
+            const card = target.closest(".l-card");
+            if (card) addDescendants(card);
+          };
           for (const mutation of mutations) {
             if (mutation.type === "childList") {
               for (const node of mutation.addedNodes) {
                 if (node.nodeType !== Node.ELEMENT_NODE) continue;
-                if (node.matches && node.matches(PROBLEM_ANCHOR_SELECTOR))
-                  anchors.add(node);
-                if (node.querySelectorAll)
-                  node
-                    .querySelectorAll(PROBLEM_ANCHOR_SELECTOR)
-                    .forEach((anchor) => anchors.add(anchor));
+                addDescendants(node);
               }
+              reconsiderPracticeCard(mutation.target);
             } else if (mutation.type === "characterData") {
               const element = mutation.target.parentElement;
+              reconsiderPracticeCard(element);
               if (
                 element &&
                 element.matches &&
                 element.matches(SELECTORS.standalonePid)
               ) {
-                anchors.add(element);
+                addAnchor(element);
                 continue;
               }
               const anchor =
@@ -162,16 +193,16 @@ export function createProblemColorFeature({ storage }) {
                 element.matches &&
                 element.matches("span.pid") &&
                 element.closest("a[href]");
-              if (anchor) anchors.add(anchor);
+              addAnchor(anchor);
             } else if (mutation.type === "attributes") {
-              anchors.add(mutation.target);
+              addAnchor(mutation.target);
               if (
                 mutation.attributeName === "href" &&
                 mutation.target.parentElement
               )
                 mutation.target.parentElement
                   .querySelectorAll(SELECTORS.standalonePid)
-                  .forEach((target) => anchors.add(target));
+                  .forEach(addAnchor);
             }
           }
           accept(anchors);

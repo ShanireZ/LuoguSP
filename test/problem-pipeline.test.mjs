@@ -237,21 +237,39 @@ test("Problem Pipeline keeps a whole harvested page even when it exceeds the fet
 
 test("Problem Pipeline prefers a freshly fetched difficulty over the harvested one", async () => {
   const source = [{ pid: "P9", difficulty: 1 }];
+  const anchor = { pid: "P9", href: "/problem/P9" };
+  let exposeHarvest = false;
+  let fetches = 0;
   const fx = fixture({
-    anchors: [{ pid: "P9", href: "/problem/P9" }],
-    text: async () => '{"currentData":{"problem":{"difficulty":7}}}',
-    harvest: () => [{ source, problems: source }],
+    anchors: [anchor],
+    text: async () => {
+      fetches++;
+      return '{"currentData":{"problem":{"difficulty":7}}';
+    },
+    harvest: () =>
+      exposeHarvest ? [{ source, problems: source }] : [],
   });
 
   fx.pipeline.mount();
   await flushMicrotasks();
-  // The harvested value answers first; a later route must not lose the fetched
-  // value to it, so re-colouring the same pid keeps the fetched difficulty.
   fx.pipeline.dispose();
 
+  // A later route exposes an older bulk value for the same pid. Force the
+  // recycled anchor through the pipeline again; the fetched value must win.
+  exposeHarvest = true;
+  delete anchor.appliedPid;
+  delete anchor.color;
+  fx.pipeline.mount();
+  await flushMicrotasks();
+  fx.pipeline.dispose();
+
+  assert.equal(fetches, 1);
   assert.deepEqual(
     fx.writes.map(({ pid, color }) => ({ pid, color })),
-    [{ pid: "P9", color: "color-1" }],
+    [
+      { pid: "P9", color: "color-7" },
+      { pid: "P9", color: "color-7" },
+    ],
   );
 });
 
