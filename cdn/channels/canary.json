@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "channel": "canary",
-  "release": "2.13.10",
-  "manifestPath": "releases/2.13.10/manifest.35669c28df67d49e.json",
-  "manifestSha256": "35669c28df67d49ed183f464e1a83aae2bbd0743a576610a208cb3022405f1ca",
+  "release": "2.14.0-canary.4",
+  "manifestPath": "releases/2.14.0-canary.4/manifest.e770860c1369682a.json",
+  "manifestSha256": "e770860c1369682a3dc11434d39976dd7f2c3ac14febbbc0dab09e016dfb6e21",
   "origin": "https://luogusp.round1.cc",
-  "updatedAt": "2026-08-12T05:29:05.457Z"
+  "updatedAt": "2026-08-12T07:34:54.267Z"
 }

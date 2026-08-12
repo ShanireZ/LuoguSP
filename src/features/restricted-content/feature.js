@@ -1,4 +1,5 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
+import { completeRestrictedArticleInteraction } from "./article-interaction-state.js";
 import { createRestrictedDocumentBoot } from "./document-boot.js";
 import {
   createRestrictedDocumentCommitter,
@@ -31,9 +32,10 @@ export function createRestrictedContentFeature({
   //      （文章=lentille-context template "article.show"；剪贴板=window._feInjection "PasteShow"）；
   //   3) document.write 重建文档并加载官方前端 JS——顶栏/侧栏/主题/登录态/markdown/评论组件
   //      全部由洛谷原生前端渲染，本脚本零复刻（2026-07-22 owner 拍板弃手工烘焙路线）；
-  //   4) fetch 拦截（window 不随 document.write 重建，包装器天然存活）：
-  //      评论接口 GET /article/{id}/replies 喂保存站存档，
-  //      形状 {replySlice:[{id,author:userSummary,time,content}]}，sort=time-d、after=<id> 分页（20/页）；
+  //   4) 网络包装（window 不随 document.write 重建，包装器天然存活）：
+  //      评论接口 GET /article/{id}/replies 优先读取洛谷实时数据，仅失败时用保存站存档；
+  //      回退形状 {replySlice:[{id,author:userSummary,time,content}]}，支持 sort=time-d、after=<id>；
+  //      官方点赞/收藏/评论写入仅由用户点击触发，使用同源 Cookie 与壳页面的真实 CSRF；
   //   5) 官方渲染完成后注入两枚蓝色扩展按钮（申请更新 / 国际站原文）：
   //      文章页=互动条 button-2line 挂「不推荐」右侧；剪贴板页=源码卡下方 lfe 实心按钮。
   // 数据源=洛谷保存站 api.luogu.me（CORS 开放、匿名；owner 拍板纯保存站+更新仅手动）；
@@ -280,9 +282,10 @@ export function createRestrictedContentFeature({
   const rstEscapeHtmlText = (value) =>
     String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
-  // 评论接口桩：官方文章组件启动后会 GET /article/{lid}/replies（?sort=&after=）。
-  // window.fetch 包装器不随 document.write 重建，天然对新文档生效；其余请求全部放行。
-  const rstReplyFetchInstaller =
+  // 官方文章组件启动后会 GET /article/{lid}/replies（?sort=&after=）：先请求洛谷，
+  // 仅失败时回退保存站。写操作仍由官方 UI 的用户点击触发，包装器只补同源凭据与 CSRF。
+  // fetch / XMLHttpRequest 包装器不随 document.write 重建，天然对新文档生效；其余请求全部放行。
+  const rstReplyTransportInstaller =
     typeof window === "undefined"
       ? null
       : createRestrictedReplyFetchInstaller({
@@ -290,22 +293,28 @@ export function createRestrictedContentFeature({
           origin: location.origin,
           Response,
           URL,
+          Request,
+          Headers,
         });
-  const rstDisposeReplyStub = () => {
-    if (rstReplyFetchInstaller) rstReplyFetchInstaller.dispose();
+  const rstDisposeReplyTransport = () => {
+    if (rstReplyTransportInstaller) rstReplyTransportInstaller.dispose();
   };
-  function rstStubReplies(lid, comments) {
+  function rstInstallArticleTransport(lid, comments, csrf) {
     const mapped = comments.map((c, i) => {
       const a = c.author || {};
+      const sourceId = Number(c.id);
       return {
-        id: i + 1,
+        id:
+          Number.isSafeInteger(sourceId) && sourceId > 0
+            ? sourceId
+            : i + 1,
         author: rstUserSummary(null, a, a.id),
         time: Number(c.time) || 0,
         content: String(c.content || ""),
       };
     });
-    return rstReplyFetchInstaller
-      ? rstReplyFetchInstaller.install(lid, mapped)
+    return rstReplyTransportInstaller
+      ? rstReplyTransportInstaller.install(lid, mapped, csrf)
       : () => {};
   }
 
@@ -370,34 +379,35 @@ export function createRestrictedContentFeature({
       Array.isArray(commentsResult.data.comments)
         ? commentsResult.data.comments
         : [];
+    const interaction = completeRestrictedArticleInteraction({
+      article: {
+        lid: data.id,
+        title: data.title || "",
+        category: data.category != null ? data.category : 1,
+        // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
+        time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
+        author: rstUserSummary(cnUser, data.author, data.authorId),
+        upvote: Number(data.upvote) || 0,
+        replyCount: comments.length,
+        favorCount: Number(data.favorCount) || 0,
+        status: 2,
+        solutionFor: null,
+        promoteStatus: 0,
+        collection: null,
+        content: String(data.content || ""),
+        contentFull: true,
+        adminNote: null,
+      },
+      archived: data,
+      viewer,
+    });
     const ctx = {
       instance: "main",
       template: "article.show",
       status: 200,
       locale: "zh-CN",
       data: {
-        article: {
-          lid: data.id,
-          title: data.title || "",
-          category: data.category != null ? data.category : 1,
-          // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
-          time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
-          author: rstUserSummary(cnUser, data.author, data.authorId),
-          upvote: Number(data.upvote) || 0,
-          replyCount: comments.length,
-          favorCount: Number(data.favorCount) || 0,
-          status: 2,
-          solutionFor: null,
-          promoteStatus: 0,
-          collection: null,
-          content: String(data.content || ""),
-          contentFull: true,
-          adminNote: null,
-        },
-        favored: false,
-        voted: null,
-        canReply: !!viewer,
-        canEdit: false,
+        ...interaction,
       },
       user: viewer,
       time: Math.floor(Date.now() / 1000),
@@ -421,8 +431,8 @@ export function createRestrictedContentFeature({
     return {
       kind: "article",
       html,
-      install: () => rstStubReplies(info.id, comments),
-      rollback: rstDisposeReplyStub,
+      install: () => rstInstallArticleTransport(info.id, comments, csrf),
+      rollback: rstDisposeReplyTransport,
       afterReady: () => rstMountArticleButtons(info, data),
     };
   }
@@ -738,7 +748,7 @@ export function createRestrictedContentFeature({
     dispose: () => {
       if (rstRefreshController) rstRefreshController.abort();
       rstRefreshController = null;
-      rstDisposeReplyStub();
+      rstDisposeReplyTransport();
       for (const dispose of [...rstInjectionDisposers]) dispose();
       if (rstRefreshResetTimer !== null) {
         clearTimeout(rstRefreshResetTimer);

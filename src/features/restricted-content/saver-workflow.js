@@ -164,7 +164,9 @@ export function createSaverWorkflow(config, policy) {
     return withTask(options && options.signal, (signal) =>
       postRaw(
         `/workflow/create/template/${type}-save-pipeline`,
-        { targetId: id },
+        type === "article"
+          ? { targetId: id, forceUpdate: true }
+          : { targetId: id },
         signal,
         "保存站拒绝更新请求",
       ),

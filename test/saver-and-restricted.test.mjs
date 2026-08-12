@@ -7,11 +7,20 @@ import {
   createRestrictedPageDetector,
 } from "../src/features/restricted-content/page-detector.js";
 import {
+  completeRestrictedArticleInteraction,
+} from "../src/features/restricted-content/article-interaction-state.js";
+import {
+  createOfficialArticleWriteAdapter,
+} from "../src/features/restricted-content/article-write-adapter.js";
+import {
   createRestrictedReplyFetchAdapter,
 } from "../src/features/restricted-content/reply-fetch-adapter.js";
 import {
   createRestrictedReplyFetchInstaller,
 } from "../src/features/restricted-content/reply-fetch-installer.js";
+import {
+  createRestrictedReplyXhrAdapter,
+} from "../src/features/restricted-content/reply-xhr-adapter.js";
 import {
   createRestrictedUrlPolicy,
 } from "../src/features/restricted-content/url-policy.js";
@@ -316,10 +325,14 @@ test("Saver Workflow stops polling on explicit business error and cancels timers
 test("Saver Workflow manual refresh locks only on business success", async () => {
   const clock = new FakeClock();
   const replies = [{ code: 400, message: "retry" }, { code: 202 }];
+  const requests = [];
   const workflow = createSaverWorkflow({
     transport: {
       get: async () => ({ code: 404 }),
-      post: async () => replies.shift(),
+      post: async (path, body) => {
+        requests.push({ path, body });
+        return replies.shift();
+      },
     },
     clock: clock.adapter(),
   });
@@ -329,6 +342,24 @@ test("Saver Workflow manual refresh locks only on business success", async () =>
   assert.equal(first.retryable, true);
   assert.deepEqual(await workflow.requestRefresh("article", "abc"), {
     kind: "accepted",
+  });
+  assert.deepEqual(requests, [
+    {
+      path: "/workflow/create/template/article-save-pipeline",
+      body: { targetId: "abc", forceUpdate: true },
+    },
+    {
+      path: "/workflow/create/template/article-save-pipeline",
+      body: { targetId: "abc", forceUpdate: true },
+    },
+  ]);
+
+  requests.length = 0;
+  replies.push({ code: 202 });
+  await workflow.requestRefresh("paste", "def");
+  assert.deepEqual(requests[0], {
+    path: "/workflow/create/template/paste-save-pipeline",
+    body: { targetId: "def" },
   });
 });
 
@@ -374,8 +405,133 @@ test("restricted page detection requires all three anchors and canonicalizes out
   assert.equal(detector.detect(), null);
 });
 
-test("reply fetch adapter intercepts only exact same-origin GET", async () => {
-  const fallbackCalls = [];
+test("restricted article interaction state keeps nested and outer fields aligned", () => {
+  const known = completeRestrictedArticleInteraction({
+    article: { lid: "abc", upvote: 5, favorCount: 4 },
+    archived: { favored: true, voted: 1, canReply: true },
+    viewer: { uid: 123 },
+  });
+  assert.deepEqual(
+    {
+      article: {
+        voted: known.article.voted,
+        canReply: known.article.canReply,
+        canEdit: known.article.canEdit,
+      },
+      favored: known.favored,
+      voted: known.voted,
+      canReply: known.canReply,
+      canEdit: known.canEdit,
+    },
+    {
+      article: { voted: 1, canReply: true, canEdit: false },
+      favored: true,
+      voted: 1,
+      canReply: true,
+      canEdit: false,
+    },
+  );
+
+  const unknown = completeRestrictedArticleInteraction({
+    article: { lid: "abc" },
+    archived: {},
+    viewer: { uid: 123 },
+  });
+  assert.equal(unknown.favored, null);
+  assert.equal(unknown.voted, null);
+  assert.equal(unknown.article.voted, null);
+  assert.equal(unknown.article.canReply, true);
+  assert.equal(
+    completeRestrictedArticleInteraction({
+      article: { lid: "abc" },
+      archived: { canReply: true },
+      viewer: null,
+    }).article.canReply,
+    false,
+  );
+});
+
+test("official article writes preserve user intent and enforce same-origin auth", async () => {
+  const calls = [];
+  const adapter = createOfficialArticleWriteAdapter({
+    fetch: async (request) => {
+      calls.push(request);
+      return new Response('{"upvotes":7,"voted":1}', { status: 200 });
+    },
+    origin: "https://www.luogu.com.cn",
+    URL,
+    Request,
+    Headers,
+    lid: "abc",
+    csrf: "same-origin-token",
+  });
+
+  assert.equal(calls.length, 0);
+  const response = await adapter.fetch("/article/abc/vote?vote=1", {
+    method: "POST",
+    body: "{}",
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://www.luogu.com.cn/article/abc/vote?vote=1");
+  assert.equal(calls[0].method, "POST");
+  assert.equal(calls[0].credentials, "same-origin");
+  assert.equal(calls[0].headers.get("x-csrf-token"), "same-origin-token");
+  assert.equal(await calls[0].text(), "{}");
+
+  const requestBody = JSON.stringify({ content: "hello" });
+  const request = new Request(
+    "https://www.luogu.com.cn/article/abc/reply",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: requestBody,
+    },
+  );
+  await adapter.fetch(request);
+  assert.equal(await calls[1].text(), requestBody);
+  assert.equal(calls[1].headers.get("content-type"), "application/json");
+  assert.equal(calls[1].headers.get("x-csrf-token"), "same-origin-token");
+});
+
+test("official article write adapter does not hijack unrelated or failed requests", async () => {
+  const originalInputs = [];
+  const serverFailure = new Response('{"error":"denied"}', { status: 403 });
+  const adapter = createOfficialArticleWriteAdapter({
+    fetch: async (input, init) => {
+      originalInputs.push({ input, init });
+      return serverFailure;
+    },
+    origin: "https://www.luogu.com.cn",
+    URL,
+    Request,
+    Headers,
+    lid: "abc",
+    csrf: "same-origin-token",
+  });
+
+  assert.equal(await adapter.fetch("/article/abc/favor", { method: "GET" }), serverFailure);
+  assert.equal(originalInputs[0].input, "/article/abc/favor");
+  assert.deepEqual(originalInputs[0].init, { method: "GET" });
+  assert.equal(
+    await adapter.fetch("/article/other/reply", { method: "POST" }),
+    serverFailure,
+  );
+  assert.equal(originalInputs[1].input, "/article/other/reply");
+
+  const failedWrite = await adapter.fetch("/article/abc/favor", {
+    method: "POST",
+    headers: { "X-CSRF-TOKEN": "official-token" },
+  });
+  assert.equal(failedWrite, serverFailure);
+  assert.equal(
+    originalInputs[2].input.headers.get("x-csrf-token"),
+    "official-token",
+  );
+});
+
+test("reply fetch adapter prefers a valid same-origin Luogu response", async () => {
+  const nativeCalls = [];
   const replies = [
     { id: 1, time: 10, content: "old" },
     { id: 2, time: 30, content: "new" },
@@ -383,8 +539,11 @@ test("reply fetch adapter intercepts only exact same-origin GET", async () => {
   ];
   const adapter = createRestrictedReplyFetchAdapter({
     fetch: async (input, init) => {
-      fallbackCalls.push({ input: String(input), method: init && init.method });
-      return "fallback";
+      nativeCalls.push({ input: String(input), method: init && init.method });
+      return new Response(
+        JSON.stringify({ replySlice: [{ id: 9, content: "live" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
     },
     origin: "https://www.luogu.com.cn",
     Response,
@@ -397,24 +556,17 @@ test("reply fetch adapter intercepts only exact same-origin GET", async () => {
     "/article/abc/replies?sort=time-d&after=2",
   );
   assert.equal(exact.status, 200);
-  assert.deepEqual((await exact.json()).replySlice.map((reply) => reply.id), [
-    3,
-    1,
+  assert.deepEqual((await exact.json()).replySlice, [
+    { id: 9, content: "live" },
   ]);
 
-  assert.equal(
-    await adapter.fetch("https://evil.example/article/abc/replies"),
-    "fallback",
+  const crossOrigin = await adapter.fetch(
+    "https://evil.example/article/abc/replies",
   );
-  assert.equal(
-    await adapter.fetch("/article/abc/replies", { method: "POST" }),
-    "fallback",
-  );
-  assert.equal(
-    await adapter.fetch("/other?next=/article/abc/replies"),
-    "fallback",
-  );
-  assert.equal(fallbackCalls.length, 3);
+  assert.equal((await crossOrigin.json()).replySlice[0].id, 9);
+  await adapter.fetch("/article/abc/replies", { method: "POST" });
+  await adapter.fetch("/other?next=/article/abc/replies");
+  assert.equal(nativeCalls.length, 4);
 
   assert.throws(
     () =>
@@ -430,9 +582,166 @@ test("reply fetch adapter intercepts only exact same-origin GET", async () => {
   );
 });
 
+test("reply fetch adapter falls back to Saver only when Luogu replies fail", async () => {
+  const nativeResponses = [
+    Promise.reject(new TypeError("offline")),
+    Promise.resolve(new Response("denied", { status: 503 })),
+    Promise.resolve(
+      new Response('{"unexpected":true}', {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ),
+  ];
+  const adapter = createRestrictedReplyFetchAdapter({
+    fetch: () => nativeResponses.shift(),
+    origin: "https://www.luogu.com.cn",
+    Response,
+    URL,
+    lid: "abc",
+    replies: [
+      { id: 1, time: 10, content: "old" },
+      { id: 2, time: 30, content: "new" },
+      { id: 3, time: 20, content: "middle" },
+    ],
+  });
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await adapter.fetch(
+      "/article/abc/replies?sort=time-d&after=2",
+    );
+    assert.equal(response.headers.get("x-luogusp-source"), "saver");
+    assert.deepEqual((await response.json()).replySlice.map(({ id }) => id), [
+      3,
+      1,
+    ]);
+  }
+});
+
+test("reply fetch adapter preserves caller cancellation", async () => {
+  const aborted = new DOMException("Aborted", "AbortError");
+  const adapter = createRestrictedReplyFetchAdapter({
+    fetch: async () => {
+      throw aborted;
+    },
+    origin: "https://www.luogu.com.cn",
+    Response,
+    URL,
+    lid: "abc",
+    replies: [{ id: 1, time: 10, content: "stale" }],
+  });
+
+  await assert.rejects(adapter.fetch("/article/abc/replies"), aborted);
+});
+
+function xhrHarness(response) {
+  const instances = [];
+  class FakeXhr {
+    constructor() {
+      this.readyState = 0;
+      this.status = 0;
+      this.statusText = "";
+      this.responseText = "";
+      this.response = "";
+      this.responseType = "";
+      this.responseURL = "";
+      this.timeout = 0;
+      this.withCredentials = false;
+      this.upload = {};
+      this.headers = [];
+      instances.push(this);
+    }
+    open(method, url) {
+      this.method = method;
+      this.url = url;
+      this.readyState = 1;
+    }
+    setRequestHeader(name, value) {
+      this.headers.push([name, value]);
+    }
+    getAllResponseHeaders() {
+      return response.headers || "content-type: application/json\r\n";
+    }
+    getResponseHeader(name) {
+      return /content-type/i.test(name) ? "application/json" : null;
+    }
+    send(body) {
+      this.body = body;
+      Object.assign(this, response, { readyState: 4 });
+      queueMicrotask(() => this.onloadend?.({ type: "loadend" }));
+    }
+    abort() {
+      this.aborted = true;
+      queueMicrotask(() => this.onabort?.({ type: "abort" }));
+    }
+    addEventListener(type, listener) {
+      this[`on${type}`] = listener;
+    }
+    removeEventListener(type, listener) {
+      if (this[`on${type}`] === listener) this[`on${type}`] = null;
+    }
+  }
+  return { FakeXhr, instances };
+}
+
+test("reply XHR adapter preserves valid live Luogu replies", async () => {
+  const live = JSON.stringify({ replySlice: [{ id: 91, content: "live" }] });
+  const { FakeXhr, instances } = xhrHarness({
+    status: 200,
+    statusText: "OK",
+    responseText: live,
+    response: live,
+  });
+  const { XMLHttpRequest: AdaptedXhr } = createRestrictedReplyXhrAdapter({
+    XMLHttpRequest: FakeXhr,
+    URL,
+    origin: "https://www.luogu.com.cn",
+    lid: "abc",
+    replies: [{ id: 1, time: 1, content: "saved" }],
+  });
+  const xhr = new AdaptedXhr();
+  xhr.open("GET", "/article/abc/replies?sort=");
+  const loaded = new Promise((resolve) => {
+    xhr.onloadend = resolve;
+  });
+  xhr.send();
+  await loaded;
+  assert.equal(xhr.status, 200);
+  assert.equal(xhr.responseText, live);
+  assert.equal(xhr.getResponseHeader("x-luogusp-source"), null);
+  assert.equal(instances.length, 1);
+});
+
+test("reply XHR adapter exposes Saver replies after a live request failure", async () => {
+  const { FakeXhr } = xhrHarness({ status: 0, responseText: "", response: "" });
+  const { XMLHttpRequest: AdaptedXhr } = createRestrictedReplyXhrAdapter({
+    XMLHttpRequest: FakeXhr,
+    URL,
+    origin: "https://www.luogu.com.cn",
+    lid: "abc",
+    replies: [
+      { id: 1, time: 10, content: "old" },
+      { id: 2, time: 30, content: "new" },
+      { id: 3, time: 20, content: "middle" },
+    ],
+  });
+  const xhr = new AdaptedXhr();
+  xhr.responseType = "json";
+  xhr.open("GET", "/article/abc/replies?sort=time-d&after=2");
+  const loaded = new Promise((resolve) => {
+    xhr.onloadend = resolve;
+  });
+  xhr.send();
+  await loaded;
+  assert.equal(xhr.status, 200);
+  assert.equal(xhr.getResponseHeader("x-luogusp-source"), "saver");
+  assert.deepEqual(xhr.response.replySlice.map(({ id }) => id), [3, 1]);
+});
+
 test("reply fetch installer replaces its own wrapper and restores safely", async () => {
   const originalFetch = async () => new Response("fallback");
-  const host = { fetch: originalFetch };
+  const { FakeXhr } = xhrHarness({ status: 200, responseText: '{"replySlice":[]}' });
+  const host = { fetch: originalFetch, XMLHttpRequest: FakeXhr };
   const installer = createRestrictedReplyFetchInstaller({
     host,
     origin: "https://www.luogu.com.cn",
@@ -443,12 +752,15 @@ test("reply fetch installer replaces its own wrapper and restores safely", async
     { id: 1, time: 1, content: "first" },
   ]);
   const firstWrapper = host.fetch;
+  const firstXhr = host.XMLHttpRequest;
   installer.install("abc", [{ id: 2, time: 2, content: "second" }]);
   assert.notEqual(host.fetch, firstWrapper);
+  assert.notEqual(host.XMLHttpRequest, firstXhr);
   releaseFirst();
   assert.notEqual(host.fetch, originalFetch);
   installer.dispose();
   assert.equal(host.fetch, originalFetch);
+  assert.equal(host.XMLHttpRequest, FakeXhr);
 
   installer.install("abc", []);
   const staleWrapper = host.fetch;

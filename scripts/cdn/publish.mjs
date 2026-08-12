@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { commandInvocation } from "./command-invocation.mjs";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -27,16 +28,8 @@ const environment = {
   npm_config_cache: npmCache,
   WRANGLER_LOG_PATH: resolve(npmCache, "wrangler.log"),
 };
-const npmCli = process.env.npm_execpath || null;
-const npxCli = npmCli ? resolve(dirname(npmCli), "npx-cli.js") : null;
-const invocationFor = (command, args) => {
-  if (command === "node") return [process.execPath, args];
-  if (command === "npx" && npxCli)
-    return [process.execPath, [npxCli, ...args]];
-  return [command, args];
-};
 const run = (command, args) => {
-  const [executable, invocationArgs] = invocationFor(command, args);
+  const [executable, invocationArgs] = commandInvocation(command, args);
   const result = spawnSync(executable, invocationArgs, {
     cwd: root,
     env: environment,
