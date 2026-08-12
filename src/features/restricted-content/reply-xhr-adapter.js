@@ -29,6 +29,7 @@ export function createRestrictedReplyXhrAdapter(config) {
     origin,
     lid,
     replies,
+    onWrite,
   } = config || {};
   if (
     typeof NativeXhr !== "function" ||
@@ -40,12 +41,19 @@ export function createRestrictedReplyXhrAdapter(config) {
   )
     throw new TypeError("Reply XHR adapter configuration is invalid");
   const repliesPath = `/article/${lid}/replies`;
+  // 官方前端用 axios（adapter 顺序 xhr→http→fetch），点赞/收藏/评论写入实际都走 XHR。
+  // 这里只旁观已完成的写请求，不改方法、URL、请求头、请求体或响应。
+  const writePaths = new Set([
+    `/article/${lid}/favor`,
+    `/article/${lid}/vote`,
+  ]);
 
   class RestrictedReplyXhr {
     constructor() {
       this.native = new NativeXhr();
       this.listeners = new Map();
       this.targetUrl = null;
+      this.writeUrl = null;
       this.fallback = null;
       this.completed = false;
       this.aborted = false;
@@ -55,8 +63,43 @@ export function createRestrictedReplyXhrAdapter(config) {
       }
     }
 
+    reportWrite() {
+      const url = this.writeUrl;
+      this.writeUrl = null;
+      if (!url || typeof onWrite !== "function") return;
+      let responseText = "";
+      try {
+        // responseType 为 json/blob 时读 responseText 会抛 InvalidStateError。
+        const body =
+          this.native.responseType && this.native.responseType !== "text"
+            ? this.native.response
+            : this.native.responseText;
+        responseText =
+          typeof body === "string"
+            ? body
+            : body && typeof body === "object"
+              ? JSON.stringify(body)
+              : "";
+      } catch (error) {
+        /* 响应体不可读时按空体处理，个人状态仍可由请求意图确认 */
+      }
+      try {
+        onWrite({
+          method: "POST",
+          url,
+          status: this.native.status,
+          responseText,
+        });
+      } catch (error) {
+        /* 观察失败绝不影响官方写入本身 */
+      }
+    }
+
     handleNative(type, event) {
-      if (!this.targetUrl) return this.emit(type, event);
+      if (!this.targetUrl) {
+        if (type === "loadend") this.reportWrite();
+        return this.emit(type, event);
+      }
       if (this.completed) return;
       if (type === "abort") {
         this.completed = true;
@@ -119,11 +162,18 @@ export function createRestrictedReplyXhrAdapter(config) {
       } catch (error) {
         /* 无法解析的请求按普通 XHR 透传 */
       }
+      const verb = String(method).toUpperCase();
       this.targetUrl =
-        String(method).toUpperCase() === "GET" &&
+        verb === "GET" &&
         requestUrl?.origin === origin &&
         requestUrl.pathname === repliesPath
           ? requestUrl
+          : null;
+      this.writeUrl =
+        verb === "POST" &&
+        requestUrl?.origin === origin &&
+        writePaths.has(requestUrl.pathname)
+          ? String(rawUrl)
           : null;
       return this.native.open(method, rawUrl, ...rest);
     }
