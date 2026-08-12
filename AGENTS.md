@@ -6,17 +6,17 @@ LuoguSP is a browser userscript for Luogu. Source modules live under `src/`; `Lu
 
 ## Commands
 
-- `npm run check` — reproducible-build check, quality budgets, and the full Node test suite.
-- `npm run publish -- --plan --version <version>` — inspect the release plan without changing production.
-- `npm run publish -- --version <version>` — build and deploy an immutable CDN release, update all version-bearing files, then stop for real-browser QA.
-- `npm run qa:prepare` — prepare the currently promoted userscript for browser injection.
+- `pnpm run check` — reproducible-build check, quality budgets, and the full Node test suite.
+- `pnpm release -- --plan --version <version>` — inspect the release plan without changing production.
+- `pnpm release -- --version <version>` — build and deploy an immutable CDN release, update all version-bearing files, then stop for real-browser QA (`publish` remains a compatibility alias).
+- `pnpm run qa:prepare` — prepare the currently promoted userscript for browser injection.
 
 ## Release safety
 
 - Never edit or overwrite an existing directory under `cdn/releases/`; release paths and hashed files are immutable.
-- Run real-browser QA after `npm run publish` and before commit/push. Verify the deployed custom origin as well as the user-visible Luogu behavior.
-- Keep `src/userscript.meta.js`, `LuoguSP.user.js`, `package.json`, `package-lock.json`, the README version badge, CDN manifest, and release reports on one version. The publish script owns this synchronization.
-- Push the release commit to both `origin` (GitHub) and `cnb`, verify their branch heads and CI/build results, then create matching annotated tags and releases on both platforms.
+- Run real-browser QA after `pnpm release` and before commit/push. Verify the deployed custom origin as well as the user-visible Luogu behavior.
+- Keep `src/userscript.meta.js`, `LuoguSP.user.js`, `package.json`, both lockfiles, the README version badge, CDN manifest, and release reports aligned. The release script owns version synchronization; dependency changes must refresh both lockfiles.
+- Push the release commit to both `origin` (GitHub) and `cnb`, then verify their branch heads and CI/build results. The project release is the immutable CDN deployment; do not create GitHub or CNB Release objects unless explicitly requested.
 - Do not expose authentication tokens, request headers, cookies, or browser storage in logs or committed QA artifacts.
 
 ## Product constraints

@@ -25,6 +25,13 @@ const root = path.resolve(
 );
 const script = fs.readFileSync(path.join(root, "LuoguSP.user.js"), "utf8");
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(root, "package.json"), "utf8"),
+);
+const pnpmWorkspace = fs.readFileSync(
+  path.join(root, "pnpm-workspace.yaml"),
+  "utf8",
+);
 const cdnConfig = JSON.parse(
   fs.readFileSync(path.join(root, "config/cdn.json"), "utf8"),
 );
@@ -68,6 +75,12 @@ const metadata = new Map(
     match[2].trim(),
   ]),
 );
+
+test("pnpm release uses the guarded CDN publisher", () => {
+  assert.equal(packageJson.packageManager, "pnpm@11.18.0");
+  assert.equal(packageJson.scripts.release, packageJson.scripts.publish);
+  assert.match(pnpmWorkspace, /allowBuilds:\s+esbuild: true/);
+});
 
 test("release metadata, README badge and update endpoints stay aligned", () => {
   assert.equal(metadata.get("version"), releaseVersion);
