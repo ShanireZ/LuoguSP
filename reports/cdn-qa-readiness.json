@@ -1,12 +1,12 @@
 {
-  "checkedAt": "2026-08-12T07:57:08.796Z",
+  "checkedAt": "2026-08-12T14:41:32.754Z",
   "status": "ready",
-  "release": "2.14.0-canary.4",
-  "manifestPath": "releases/2.14.0-canary.4/manifest.e770860c1369682a.json",
-  "manifestSha256": "e770860c1369682a3dc11434d39976dd7f2c3ac14febbbc0dab09e016dfb6e21",
+  "release": "2.14.0-canary.7",
+  "manifestPath": "releases/2.14.0-canary.7/manifest.8558f30018927ea2.json",
+  "manifestSha256": "8558f30018927ea2d4743cabbe9c60cb3821a395cce20167c2163fad49455ad2",
   "origin": "https://luogusp.round1.cc",
   "stagedUserscript": {
-    "path": "dist/qa/LuoguSP-QA.2.14.0-canary.4.user.js",
+    "path": "dist/qa/LuoguSP-QA.2.14.0-canary.7.user.js",
     "bytes": 1123,
     "requires": 2
   },
@@ -15,7 +15,7 @@
   "optionalBundles": {
     "markdownRenderer": {
       "apiVersion": 1,
-      "path": "releases/2.14.0-canary.4/render/markdown-renderer.1e3542bb7ec67cf3.js",
+      "path": "releases/2.14.0-canary.7/render/markdown-renderer.1e3542bb7ec67cf3.js",
       "bytes": 412941,
       "gzipBytes": 126917,
       "sha256": "1e3542bb7ec67cf316e94db6213fb4a894cd7ca33ba7c6a19899d08936457afe",
@@ -32,10 +32,10 @@
   "results": [
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/manifest.e770860c1369682a.json",
+      "path": "releases/2.14.0-canary.7/manifest.8558f30018927ea2.json",
       "status": 200,
       "bytes": 6838,
-      "sha256": "e770860c1369682a3dc11434d39976dd7f2c3ac14febbbc0dab09e016dfb6e21",
+      "sha256": "8558f30018927ea2d4743cabbe9c60cb3821a395cce20167c2163fad49455ad2",
       "contentType": "application/json",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -44,10 +44,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/compat/early-gate.389e87346cac26f9.js",
+      "path": "releases/2.14.0-canary.7/compat/early-gate.e486514c5aaf7d55.js",
       "status": 200,
       "bytes": 2905,
-      "sha256": "389e87346cac26f9e418404c6cf69564275b5baef5bb58feebc6f640f75c5f0f",
+      "sha256": "e486514c5aaf7d55837e945515cd8a9ad68def052967aab1966bfd6626d4d352",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -56,10 +56,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/compat/runtime.14ba1934dde58807.js",
+      "path": "releases/2.14.0-canary.7/compat/runtime.64f19d57664cea05.js",
       "status": 200,
-      "bytes": 112466,
-      "sha256": "14ba1934dde5880797dfadafefb0982367d910561e8cb2c45c479441a350f682",
+      "bytes": 118505,
+      "sha256": "64f19d57664cea05d8027087b8efbecae04d70ed6be12b7250bd715ba1c9dbb3",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -68,7 +68,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/render/markdown-renderer.1e3542bb7ec67cf3.js",
+      "path": "releases/2.14.0-canary.7/render/markdown-renderer.1e3542bb7ec67cf3.js",
       "status": 200,
       "bytes": 412941,
       "sha256": "1e3542bb7ec67cf316e94db6213fb4a894cd7ca33ba7c6a19899d08936457afe",
@@ -80,10 +80,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/restricted-content-BSNDE2BM.js",
+      "path": "releases/2.14.0-canary.7/esm/restricted-content-SJOLGCPP.js",
       "status": 200,
-      "bytes": 34801,
-      "sha256": "7e0ce871a8edbee524b848bb1b9a1f5582bf0c295b9cde07684af393b25e3bd8",
+      "bytes": 40811,
+      "sha256": "49eb9280df303d1bc0a19b143a70248dfd7ca6cc426bcbbebf0ff8b3d7fee625",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -92,7 +92,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/canary-loader-BTLX3PLI.js",
+      "path": "releases/2.14.0-canary.7/esm/canary-loader-BTLX3PLI.js",
       "status": 200,
       "bytes": 173,
       "sha256": "b9279332f7a9ae376535bc4a2170496a787ff3e8a9e77171681a614cf7ec43ed",
@@ -104,7 +104,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/early-gate-api-HAJ35GVC.js",
+      "path": "releases/2.14.0-canary.7/esm/early-gate-api-HAJ35GVC.js",
       "status": 200,
       "bytes": 2787,
       "sha256": "fdb5369424be9b60f12c676241c91724f2d9690d23a4869923fa4dd3105323a5",
@@ -116,7 +116,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/app-core-3TBGMHL4.js",
+      "path": "releases/2.14.0-canary.7/esm/app-core-3TBGMHL4.js",
       "status": 200,
       "bytes": 3611,
       "sha256": "522f59b8c723d19368aa9fcea403ba14747359e6cf1e4a251ddf1c74846d5321",
@@ -128,7 +128,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/settings-OM6RDWZN.js",
+      "path": "releases/2.14.0-canary.7/esm/settings-OM6RDWZN.js",
       "status": 200,
       "bytes": 6124,
       "sha256": "e1163b24d9968c55d4380adda5a88faadb5afbac7251af32ccd1e2376e8197ed",
@@ -140,7 +140,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/problem-color-TMB7HDGF.js",
+      "path": "releases/2.14.0-canary.7/esm/problem-color-TMB7HDGF.js",
       "status": 200,
       "bytes": 11336,
       "sha256": "a328bf06b1b82196da655481a64c81c7e05ca0f1b7f38d86d94af8d75646e295",
@@ -152,7 +152,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/chat-shortcut-3SB6G7HS.js",
+      "path": "releases/2.14.0-canary.7/esm/chat-shortcut-3SB6G7HS.js",
       "status": 200,
       "bytes": 2049,
       "sha256": "1742fab67854c901a23ef0740347831c28d62cccde4b79690dcc4f78250dcf3c",
@@ -164,7 +164,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/hidden-intro-PFIZQKX4.js",
+      "path": "releases/2.14.0-canary.7/esm/hidden-intro-PFIZQKX4.js",
       "status": 200,
       "bytes": 22482,
       "sha256": "bb45ef9bc85f1415a4a69b57bccc547d91f89828436b9f561461b4ba08f1a197",
@@ -176,7 +176,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/chunks/chunk-WFSUDTKV.js",
+      "path": "releases/2.14.0-canary.7/esm/chunks/chunk-WFSUDTKV.js",
       "status": 200,
       "bytes": 3920,
       "sha256": "1fc8be58f33138442d809731eec3ba4d5b1412fba8f8735fed950a8092519e95",
@@ -188,7 +188,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/ide-batch-JTBEEUH4.js",
+      "path": "releases/2.14.0-canary.7/esm/ide-batch-JTBEEUH4.js",
       "status": 200,
       "bytes": 20052,
       "sha256": "5203f5e33a53e36e08e7dc42cc9f6475b932fba479e5430f78ad8a2bb273f6ef",
@@ -200,7 +200,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/chunks/chunk-PQ6PWWZS.js",
+      "path": "releases/2.14.0-canary.7/esm/chunks/chunk-PQ6PWWZS.js",
       "status": 200,
       "bytes": 1314,
       "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
@@ -212,7 +212,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.4/esm/chunks/chunk-V7FYNATP.js",
+      "path": "releases/2.14.0-canary.7/esm/chunks/chunk-V7FYNATP.js",
       "status": 200,
       "bytes": 342,
       "sha256": "8cbdb457fff355ba763f8e8606f5a48903a7dba84377787a34a5ff0583c7936f",

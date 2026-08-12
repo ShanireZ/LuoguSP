@@ -19,7 +19,7 @@ export function createRestrictedReplyFetchInstaller(config) {
     if (currentDispose) currentDispose();
     currentDispose = null;
   };
-  const install = (lid, replies, csrf = "") => {
+  const install = (lid, replies, csrf = "", onWrite = null) => {
     const installed = host.fetch && host.fetch[brand];
     if (installed && typeof installed.dispose === "function")
       installed.dispose();
@@ -35,6 +35,7 @@ export function createRestrictedReplyFetchInstaller(config) {
           Headers: HeadersCtor,
           lid,
           csrf,
+          onWrite,
         }).fetch
       : (input, init) => realFetch.call(host, input, init);
     const adapter = createRestrictedReplyFetchAdapter({
@@ -54,6 +55,7 @@ export function createRestrictedReplyFetchInstaller(config) {
             origin,
             lid,
             replies,
+            onWrite,
           }).XMLHttpRequest
         : null;
     let active = true;

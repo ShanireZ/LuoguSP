@@ -7,6 +7,7 @@ export function createOfficialArticleWriteAdapter(config) {
     Headers: HeadersCtor,
     lid,
     csrf,
+    onWrite,
   } = config || {};
   if (
     typeof realFetch !== "function" ||
@@ -58,12 +59,36 @@ export function createOfficialArticleWriteAdapter(config) {
         : new RequestCtor(requestUrl.href, init);
     const headers = new HeadersCtor(request.headers);
     if (!headers.has("x-csrf-token")) headers.set("x-csrf-token", csrf);
-    return realFetch(
+    const result = realFetch(
       new RequestCtor(request, {
         credentials: "same-origin",
         headers,
       }),
     );
+    if (typeof onWrite !== "function") return result;
+    // 官方前端目前用 axios/XHR 写入，这里只是同一契约在 fetch 侧的旁观镜像：
+    // 读取响应副本，绝不改动交还给调用方的原响应。
+    return Promise.resolve(result).then((response) => {
+      try {
+        if (response && typeof response.clone === "function")
+          response
+            .clone()
+            .text()
+            .then(
+              (responseText) =>
+                onWrite({
+                  method: "POST",
+                  url: requestUrl.href,
+                  status: response.status,
+                  responseText,
+                }),
+              () => {},
+            );
+      } catch (error) {
+        /* 观察失败绝不影响官方写入本身 */
+      }
+      return response;
+    });
   };
   return Object.freeze({ fetch: wrappedFetch });
 }

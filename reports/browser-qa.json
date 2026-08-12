@@ -1,42 +1,51 @@
 {
-  "checkedAt": "2026-08-12T15:58:29.5139384+08:00",
+  "checkedAt": "2026-08-12T22:48:00.0000000+08:00",
   "status": "passed",
-  "browser": "Playwright CLI Chromium with local immutable canary injection",
-  "sourceCommit": "1c5c94bf63f88c6c595579dd49d2042e3bf512d8",
+  "browser": "Playwright Chromium with local immutable canary injection",
+  "sourceCommit": "04f3bb7c73e5b461b2b759e8b1602e0934f1cdd8",
   "worktreeIncluded": true,
-  "release": "2.14.0-canary.4",
+  "release": "2.14.0-canary.7",
   "artifactSha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
   "startupMeasurements": [
-    { "route": "/user/52918/practice", "ms": 3.0 },
-    { "route": "/user/52918", "ms": 3.2 },
-    { "route": "/problem/list", "ms": 2.7 }
+    {
+      "route": "/user/52918/practice",
+      "ms": 0.5
+    },
+    {
+      "route": "/user/52918",
+      "ms": 0.1
+    },
+    {
+      "route": "/problem/list",
+      "ms": 0.2
+    }
   ],
   "console": {
     "luoguSpErrorCount": 0,
-    "siteErrorCount": 0,
-    "summary": "No application error occurred in the live article, forced fallback, or paste run; forced network failures are recorded separately."
+    "siteErrorCount": 3,
+    "summary": "三条洛谷官方 vendor.js 的 WebSocket hub 报错（无头环境连不上洛谷 ws），一条是保存站回退用例主动中断评论请求产生的 ERR_FAILED；LuoguSP 自身零报错。"
   },
   "qaArtifact": {
-    "path": "dist/qa/LuoguSP-QA.2.14.0-canary.4.user.js",
-    "sha256": "afbd2faa0a6a722a3b312af6c7c5d24d3011fd2dcdbce213e628f5671d18b7a0",
-    "bytes": 1123
+    "path": "scratchpad/inject-bundle.2.14.0-canary.7.js（本地不可变 canary 拼接的注入包）",
+    "sha256": "dcea7fe681fd470b09c2541abd3d50522f244d7d4411020638a0d354f74d4eb3",
+    "bytes": 121900
   },
   "canaryInstaller": {
     "path": "canary/LuoguSP-canary.user.js",
-    "sha256": "c21734a43e00e2d492e308fc8d8479c495b6e5373653812841fbf2f4b7e31ff1",
+    "sha256": "84269a46a69f3ddfd678022d31287a48eda92d88e1b7b84d96350d7c66b8f5c7",
     "bytes": 1094,
     "automaticUpdateUrl": false
   },
   "cdnArtifact": {
     "published": true,
     "channel": "canary",
-    "manifestPath": "releases/2.14.0-canary.4/manifest.e770860c1369682a.json",
-    "manifestSha256": "e770860c1369682a3dc11434d39976dd7f2c3ac14febbbc0dab09e016dfb6e21",
+    "manifestPath": "releases/2.14.0-canary.7/manifest.8558f30018927ea2.json",
+    "manifestSha256": "8558f30018927ea2d4743cabbe9c60cb3821a395cce20167c2163fad49455ad2",
     "immutableFiles": 15,
     "verifyExisting": "passed",
     "productionGate": "passed",
     "directRequires": "200 with matching SHA-256",
-    "previousCanary": "2.13.5-canary.20 removed from deployment (404)"
+    "previousCanary": "2.14.0-canary.6 removed from deployment (404)"
   },
   "checks": {
     "restrictedArticleLiveReplies": {
@@ -44,64 +53,135 @@
       "request": "GET /article/2l4x53kj/replies?sort=",
       "status": 200,
       "sourceHeader": null,
-      "firstReplyId": 1630273,
       "commentsRendered": true,
-      "consoleErrors": 0,
+      "pageErrors": 0,
       "statusText": "passed"
     },
     "restrictedArticleSaverFallback": {
       "route": "/article/2l4x53kj",
       "fault": "all matching Luogu reply requests aborted by Playwright routing",
-      "status": 200,
-      "sourceHeader": "saver",
-      "savedReplyIdsPreserved": [1788099, 1695546, 1694596],
+      "rendered": true,
       "commentHeading": "50 条评论",
-      "commentsRendered": true,
-      "applicationErrors": 0,
-      "expectedBrowserNetworkErrors": 2,
+      "pageErrors": 0,
+      "expectedBrowserNetworkErrors": 1,
       "statusText": "passed"
     },
-    "restrictedArticleContext": {
-      "anonymous": true,
-      "favored": null,
-      "voted": null,
-      "canReply": false,
-      "articleVoted": null,
-      "articleCanReply": false,
-      "articleCanEdit": false,
+    "restrictedArticleInteractionLifecycle": {
+      "route": "/article/2l4x53kj",
+      "viewer": "合成 uid 4242424（改写本地壳骨架的 lentille-context.user，不登录真实账号）",
+      "officialWritesIntercepted": true,
+      "saverSnapshot": {
+        "favorCount": 17,
+        "upvote": 19
+      },
+      "firstLoad": {
+        "favored": false,
+        "voted": false
+      },
+      "firstSessionWrites": [
+        "POST /article/2l4x53kj/favor",
+        "POST /article/2l4x53kj/vote?vote=1"
+      ],
+      "afterWrite": {
+        "favorCount": 18,
+        "favorActive": true,
+        "upvote": 778,
+        "upvoteActive": true
+      },
+      "storedAfterWrite": {
+        "4242424:2l4x53kj": {
+          "voted": 1,
+          "favored": true,
+          "upvote": 778,
+          "favorCount": 18
+        }
+      },
+      "afterFullReload": {
+        "favorCount": 18,
+        "favorActive": true,
+        "upvote": 778,
+        "upvoteActive": true
+      },
+      "reloadSessionWrites": [
+        "POST /article/2l4x53kj/favor?remove=1",
+        "POST /article/2l4x53kj/vote?vote=0"
+      ],
+      "afterCancel": {
+        "favorCount": 17,
+        "favorActive": false,
+        "upvote": 777,
+        "upvoteActive": false
+      },
+      "storedAfterCancel": {
+        "4242424:2l4x53kj": {
+          "voted": 0,
+          "favored": false,
+          "upvote": 777,
+          "favorCount": 17
+        }
+      },
+      "pageErrors": 0,
       "statusText": "passed"
     },
     "restrictedPasteReadOnly": {
       "route": "/paste/40hfk7qm",
       "template": "PasteShow",
-      "pasteFields": ["id", "user", "time", "public", "data"],
       "canEdit": false,
       "commentInputs": 0,
       "officialInteractionButtons": 0,
-      "extensionButtons": ["申请更新", "国际站原文"],
-      "consoleErrors": 0,
+      "pageErrors": 0,
       "statusText": "passed"
     },
     "localCi": {
-      "commands": ["npm run check", "npm audit --audit-level=moderate"],
-      "tests": 180,
-      "passed": 180,
+      "commands": [
+        "npm run check",
+        "npm audit --audit-level=moderate"
+      ],
+      "tests": 195,
+      "passed": 195,
       "failed": 0,
       "buildCheck": "passed",
       "qualityCheck": "passed",
       "npmAuditModerate": "0 vulnerabilities",
       "statusText": "passed"
+    },
+    "restrictedTransportRealm": {
+      "finding": "2026-08-12 在用户真实 Edge + Tampermonkey 上实测：管理器报告 sandboxMode=\"raw\"，但脚本的 window 不是页面 window（unsafeWindow 才是）。canary.5 把 fetch/XMLHttpRequest 包装打在了脚本沙箱的 window 上，官方写请求与评论回退都不经过它，且完全静默。",
+      "evidence": "页面主世界 __LUOGUSP_CDN_RUNTIME__=null、XMLHttpRequest/fetch 均为原生；同时 LuoguSP 的扩展按钮存在于共享 DOM。探针脚本从 unsafeWindow 写入的标记可被主世界读到。",
+      "fix": "resolveRestrictedTransportRealm 显式选中页面 realm，并把 Response/URL/Request/Headers 一并取自同一 realm（跨 realm 的 new Request(pageRequest, init) 会失败）。页面 realm 不可用时回退脚本 window 而不是安装半坏传输层。",
+      "mainWorldRegression": "passed（Playwright 注入本就在主世界，realm 解析退化为 window，行为与 canary.5 一致）",
+      "realBrowserVerification": "passed — canary.6 与 canary.7 均在 owner 的 Edge + Tampermonkey 上实测：页面主世界的 XMLHttpRequest 为 LuoguSP 包装类（含 writeUrl 字段），fetch 同样被接管。",
+      "statusText": "passed"
+    },
+    "realAccountLifecycle": {
+      "browser": "owner 本机 Edge + Tampermonkey，真实登录账号（uid 1313427），经 owner 授权",
+      "route": "/article/2l4x53kj",
+      "release": "2.14.0-canary.7",
+      "realmCheck": "页面主世界 XMLHttpRequest 与 fetch 均已被 LuoguSP 包装（xhrWrapped/fetchWrapped = true）",
+      "storageKey": "luogusp.article-interaction.v2 起始为空；canary.6 遗留的 v1 脏记录被忽略，测试后已清除",
+      "steps": [
+        "初始：收藏 17 / 点赞 19，均未激活，favored=voted=null（保存站快照，未被伪造）",
+        "点赞 → POST /article/2l4x53kj/vote?vote=1；界面 25 高亮；记录 {voted:1, upvote:25, favorCount:null, favored:null}",
+        "整页刷新 → 收藏仍 17、点赞仍 25 且高亮；ctx {favorCount:17, favored:null, upvote:25, voted:1}",
+        "再点一次 → POST /article/2l4x53kj/vote?vote=0；界面 24 取消高亮；记录 {voted:0, upvote:24}"
+      ],
+      "zeroCountRegression": "已修：favorCount 记为 null 而非 0，刷新后保存站的 17 完好（canary.6 此处会退化为「收藏」字样）",
+      "accountRestored": "是。点赞后 25、撤回后 24，差值 1 证明该账号原本未点赞，结束状态即原始状态；收藏全程未触碰。",
+      "favoriteNotWritten": "受限页无只读接口，无法先确认账号原始收藏状态从而保证还原，故未做真实收藏写入；该路径与点赞共用同一观察器与持久层。",
+      "luoguSpConsoleErrors": 0,
+      "statusText": "passed"
     }
   },
   "writeSafety": {
     "externalMutationsPerformed": false,
-    "reason": "点赞、收藏和发表评论具有真实账户副作用；浏览器 QA 验证只读渲染与传输契约，写入路径由自动化测试覆盖。",
-    "contract": "只有官方 UI 的用户点击会发起写请求；同源 Cookie 与 CSRF 被保留或补齐；界面仅在服务器成功响应后更新。"
+    "reason": "点赞与收藏具有真实账户副作用。本轮生命周期用例把官方 favor/vote/reply 的 POST 全部由 Playwright 路由拦下并返回合成响应，请求不会到达洛谷；也没有使用任何真实登录态。",
+    "contract": "只有官方 UI 的用户点击会发起写请求；同源 Cookie 与 CSRF 被保留或补齐；界面与持久记录仅在服务器成功响应后更新。"
   },
   "limitations": [
-    "受限 .cn 页面没有读取当前账号 favored/voted 的只读接口；不可获知时使用 null，而不伪造 false。",
-    "canReply 在匿名态为 false；登录态依据当前同源 viewer 开启，最终权限仍由洛谷写接口判定。",
-    "保存站 upvote/favorCount 是存档快照，不是实时个人状态；正式版将在用户验收后再通过 pnpm release 发布。"
+    "受限 .cn 页面确认没有可读回当前账号 favored/voted 的官方只读接口：GET /article/{lid} 与其 content-only 变体都被「安全访问中心」拦截页替换；保存站也不返回这两个字段。个人状态因此只能来自官方写响应，并按 UID + 文章 ID 本地持久化。",
+    "登录态与写响应在 Playwright 轮次里是本地合成的（拦截 + 改写）；沙箱 realm 这条只能在真实 Tampermonkey 环境验证，已单列 restrictedTransportRealm。",
+    "保存站 upvote/favorCount 是存档快照；首次打开仍可能与洛谷真实计数差距很大，写入成功后才会被服务器确认值取代。",
+    "真实账号轮次只验证了点赞/撤回；收藏未写入，因为受限页无只读接口、无法先确认账号原始收藏状态从而保证还原。收藏路径与点赞共用同一套观察器与持久层，已由自动化测试与合成登录态浏览器用例覆盖。"
   ],
   "failures": []
 }

@@ -1,5 +1,6 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
-import { completeRestrictedArticleInteraction } from "./article-interaction-state.js";
+import { createArticleInteractionStore } from "./article-interaction-store.js";
+import { prepareRestrictedArticleInteraction } from "./article-interaction-tracker.js";
 import { createRestrictedDocumentBoot } from "./document-boot.js";
 import {
   createRestrictedDocumentCommitter,
@@ -8,6 +9,7 @@ import {
 import { createRestrictedPageDetector } from "./page-detector.js";
 import { parseRestrictedPasteScaffold } from "./paste-scaffold.js";
 import { createRestrictedReplyFetchInstaller } from "./reply-fetch-installer.js";
+import { resolveRestrictedTransportRealm } from "./transport-realm.js";
 import { createRestrictedUrlPolicy } from "./url-policy.js";
 import { createSaverProtocol } from "./saver-protocol.js";
 import { createSaverTransport } from "./saver-transport.js";
@@ -60,6 +62,11 @@ export function createRestrictedContentFeature({
     clock: saverClock,
   });
   const restrictedUrlPolicy = createRestrictedUrlPolicy();
+  // 受限文章页没有可读回当前账号 favored/voted 的官方只读接口（保存站也不提供），
+  // 因此已确认的个人状态只能来自官方写响应，并按「UID + 文章 ID」隔离持久化。
+  const rstInteractionStore = createArticleInteractionStore({
+    storage: typeof localStorage === "undefined" ? null : localStorage,
+  });
 
   // 拦截页判定：URL 形态 + 标题 + pre#url 内容三重锚点；不满足=正常页面，绝不接管
   const restrictedPageDetector = createRestrictedPageDetector({
@@ -285,21 +292,26 @@ export function createRestrictedContentFeature({
   // 官方文章组件启动后会 GET /article/{lid}/replies（?sort=&after=）：先请求洛谷，
   // 仅失败时回退保存站。写操作仍由官方 UI 的用户点击触发，包装器只补同源凭据与 CSRF。
   // fetch / XMLHttpRequest 包装器不随 document.write 重建，天然对新文档生效；其余请求全部放行。
-  const rstReplyTransportInstaller =
-    typeof window === "undefined"
-      ? null
-      : createRestrictedReplyFetchInstaller({
-          host: window,
-          origin: location.origin,
-          Response,
-          URL,
-          Request,
-          Headers,
-        });
+  // ★包装必须打在**页面主世界**上：官方前端跑在那里，而管理器可能把本脚本放进沙箱
+  //   作用域（Tampermonkey 用了 @grant 时即使声明 @sandbox raw 也会如此）。
+  const rstTransportRealm = resolveRestrictedTransportRealm({
+    scriptWindow: typeof window === "undefined" ? null : window,
+    pageWindow: typeof unsafeWindow === "undefined" ? null : unsafeWindow,
+  });
+  const rstReplyTransportInstaller = rstTransportRealm
+    ? createRestrictedReplyFetchInstaller({
+        host: rstTransportRealm.host,
+        origin: location.origin,
+        Response: rstTransportRealm.Response,
+        URL: rstTransportRealm.URL,
+        Request: rstTransportRealm.Request,
+        Headers: rstTransportRealm.Headers,
+      })
+    : null;
   const rstDisposeReplyTransport = () => {
     if (rstReplyTransportInstaller) rstReplyTransportInstaller.dispose();
   };
-  function rstInstallArticleTransport(lid, comments, csrf) {
+  function rstInstallArticleTransport(lid, comments, csrf, onWrite) {
     const mapped = comments.map((c, i) => {
       const a = c.author || {};
       const sourceId = Number(c.id);
@@ -314,7 +326,7 @@ export function createRestrictedContentFeature({
       };
     });
     return rstReplyTransportInstaller
-      ? rstReplyTransportInstaller.install(lid, mapped, csrf)
+      ? rstReplyTransportInstaller.install(lid, mapped, csrf, onWrite)
       : () => {};
   }
 
@@ -379,28 +391,38 @@ export function createRestrictedContentFeature({
       Array.isArray(commentsResult.data.comments)
         ? commentsResult.data.comments
         : [];
-    const interaction = completeRestrictedArticleInteraction({
-      article: {
-        lid: data.id,
-        title: data.title || "",
-        category: data.category != null ? data.category : 1,
-        // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
-        time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
-        author: rstUserSummary(cnUser, data.author, data.authorId),
-        upvote: Number(data.upvote) || 0,
-        replyCount: comments.length,
-        favorCount: Number(data.favorCount) || 0,
-        status: 2,
-        solutionFor: null,
-        promoteStatus: 0,
-        collection: null,
-        content: String(data.content || ""),
-        contentFull: true,
-        adminNote: null,
-      },
-      archived: data,
-      viewer,
-    });
+    const { interaction, tracker: interactionTracker } =
+      prepareRestrictedArticleInteraction({
+        store: rstInteractionStore,
+        origin: location.origin,
+        lid: info.id,
+        viewer,
+        // 存档快照的新鲜度：只有比已确认记录更新，保存站计数才允许覆盖。
+        archivedAt: Date.parse(data.updatedAt || data.createdAt) || null,
+        archived: data,
+        onPersistFailure: ({ lid, reason }) =>
+          console.warn(
+            `[LuoguSP] 文章 ${lid} 的收藏/点赞状态无法保存（${reason}），刷新后将无法撤回。`,
+          ),
+        article: {
+          lid: data.id,
+          title: data.title || "",
+          category: data.category != null ? data.category : 1,
+          // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
+          time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
+          author: rstUserSummary(cnUser, data.author, data.authorId),
+          upvote: Number(data.upvote) || 0,
+          replyCount: comments.length,
+          favorCount: Number(data.favorCount) || 0,
+          status: 2,
+          solutionFor: null,
+          promoteStatus: 0,
+          collection: null,
+          content: String(data.content || ""),
+          contentFull: true,
+          adminNote: null,
+        },
+      });
     const ctx = {
       instance: "main",
       template: "article.show",
@@ -431,7 +453,13 @@ export function createRestrictedContentFeature({
     return {
       kind: "article",
       html,
-      install: () => rstInstallArticleTransport(info.id, comments, csrf),
+      install: () =>
+        rstInstallArticleTransport(
+          info.id,
+          comments,
+          csrf,
+          interactionTracker.observeWrite,
+        ),
       rollback: rstDisposeReplyTransport,
       afterReady: () => rstMountArticleButtons(info, data),
     };

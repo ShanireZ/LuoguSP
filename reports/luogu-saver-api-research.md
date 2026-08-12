@@ -245,6 +245,51 @@ POST /article/comments/:id/refresh
    不会落库。
 5. 剪贴板保持只读，界面不显示点赞、收藏、评论输入框或可点击的交互计数。
 
+## 补充调查（2026-08-12 夜）：洛谷侧只读接口与官方写契约
+
+### 受限文章没有可用的官方只读状态接口
+
+对受限文章 `2l4x53kj` 实测，三种读法都被「安全访问中心」拦截页替换
+（HTTP 200、`text/html`、2680 字节，标题 `安全访问中心 - 洛谷`）：
+
+| 请求 | 结果 |
+|---|---|
+| `GET /article/2l4x53kj` | 拦截页 |
+| `GET /article/2l4x53kj` + `x-luogu-type: content-only` | 拦截页 |
+| `GET /article/2l4x53kj?_contentOnly=1` | 拦截页 |
+
+结论：受限文章不存在可带当前 `.cn` 登录态读回 `favored` / `voted` 的同源只读接口。
+`favored` / `voted` 只能来自官方写响应，并按账号隔离本地持久化。
+
+### 官方 article.show 的互动写契约
+
+源码基线：columba `20260730-2078`，
+`https://fecdn.luogu.com.cn/columba/columba~0bd2df6a7ee2b996.js`（`article.show` 页面组件）。
+
+```js
+// 收藏：响应体不参与状态，客户端自行推导
+await post({ name: "article.favor", params: { lid }, query: favored ? { remove: 1 } : {} });
+data.favored = !favored;
+data.article.favorCount = data.article.favorCount + (favored ? -1 : 1);
+
+// 点赞：响应体是权威
+const vote = data.article.voted === intent ? 0 : intent;
+const { data: body } = await post({ name: "article.vote", params: { lid }, query: { vote } });
+data.article.upvote = body.upvotes;
+data.article.voted = body.voted;
+```
+
+要点：
+
+1. 撤回点赞发 `?vote=0`，取消收藏发 `?remove=1`；两者都由**当前显示的个人状态**决定，
+   所以个人状态一旦丢失就无法撤回。
+2. 点赞响应体形状是 `{ upvotes, voted }`（`post` 是 axios 实例，`.data` 即 HTTP 响应体）。
+3. 状态容器是 `lentille current data`，即 `lentille-context` 的 `data`；组件直接改它。
+4. 官方前端用 axios，默认 `adapter: ["xhr","http","fetch"]` →
+   **这些写请求实际走 XMLHttpRequest**。要观察写响应必须挂在 XHR 层，只挂 fetch 收不到。
+5. CSRF 由官方 `useAxiosDefaults` 从文档里的 `meta[name=csrf-token]` 读取并设为
+   `X-CSRF-TOKEN` 请求头；同源 XHR 自带 Cookie。LuoguSP 重建文档时写入的是活取的真实 CSRF。
+
 ## 调查限制
 
 - 本调查只调用了公开 GET 接口。为保持只读，未向保存站提交任何 workflow
