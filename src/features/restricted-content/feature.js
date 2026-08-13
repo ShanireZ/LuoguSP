@@ -2,6 +2,7 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createArticleInteractionStore } from "./article-interaction-store.js";
 import { prepareRestrictedArticleInteraction } from "./article-interaction-tracker.js";
 import { resolveLiveArticleCounts } from "./article-live-counts.js";
+import { relabelArchiveTime } from "./archive-time-label.js";
 import { createRestrictedDocumentBoot } from "./document-boot.js";
 import {
   createRestrictedDocumentCommitter,
@@ -337,7 +338,7 @@ export function createRestrictedContentFeature({
       rstHarvest("columba", signal),
       rstCnUser(data.authorId, signal),
       saverWorkflow.loadComments(info.id, { signal }),
-      resolveLiveArticleCounts({ fetchPage: rstFetch, authorUid: data.authorId, lid: info.id, signal }),
+      resolveLiveArticleCounts({ fetchPage: rstFetch, authorUid: data.authorId, lid: info.id, category: data.category, signal }),
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
@@ -464,7 +465,7 @@ export function createRestrictedContentFeature({
           interactionTracker.observeWrite,
         ),
       rollback: rstDisposeReplyTransport,
-      afterReady: () => rstMountArticleButtons(info, data),
+      afterReady: () => rstMountArticleButtons(info, data, live),
     };
   }
 
@@ -562,7 +563,7 @@ export function createRestrictedContentFeature({
   // 扩展按钮（文章页）：等官方前端渲染出互动条再注入；Vue 重渲染会抹节点，观察器负责补种。
   // 同时在正文底部「创建时间：…」后方补「更新时间」＝保存站存档最近更新时间（updatedAt），
   // 供 owner 判断是否需要点「申请更新」。
-  function rstMountArticleButtons(info, data) {
+  function rstMountArticleButtons(info, data, live) {
     const updText = rstFmtTime(data && data.updatedAt, true);
     // owner 要求：扩展按钮不带 title 悬浮说明（与时间栏一致，页面不出浏览器浮泡）
     const make = (icon, extraCls, text, onClick) => {
@@ -608,7 +609,7 @@ export function createRestrictedContentFeature({
         updateBars.forEach((bar) => {
           if (bar.querySelector(".luogusp-rst-updtime")) return;
           const ref = [...bar.querySelectorAll("span")].find((s) =>
-            /创建时间/.test(s.textContent || ""),
+            /创建时间|存档时间/.test(s.textContent || ""),
           );
           const span = document.createElement("span");
           if (ref)
@@ -621,6 +622,8 @@ export function createRestrictedContentFeature({
           if (ref) ref.after(sep, span);
           else bar.append(sep, span);
         });
+      // 取不到真实发表时间时，这一行其实是保存站入档时间，别标成「创建时间」。
+      if (!(live && live.time)) relabelArchiveTime(updateBars, "创建时间");
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
       if (actionBars.length && updateBars.length) rstHideLoader();
     };
@@ -661,7 +664,7 @@ export function createRestrictedContentFeature({
       // （removeAttribute 无属性时不产生变更记录，天然幂等）
       const pubRow = author
         ? [...author.querySelectorAll("div.lfe-caption")].find((d) =>
-            /发表时间/.test(d.textContent || ""),
+            /发表时间|存档时间/.test(d.textContent || ""),
           )
         : null;
       if (pubRow) {
@@ -679,6 +682,8 @@ export function createRestrictedContentFeature({
         row.appendChild(span);
         pubRow.after(row);
       }
+      // 剪贴板永远拿不到真实发表时间（.cn 无来源），这一行只能是存档时间。
+      if (pubRow) relabelArchiveTime([pubRow], "发表时间");
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
       if (author && pubRow) rstHideLoader();
     };
