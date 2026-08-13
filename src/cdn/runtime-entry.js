@@ -101,7 +101,19 @@ const restrictedContentLoader = createOptionalBundleLoader({
   exports: ["createRestrictedContentFeature"],
   fetchImpl: userscriptFetch.fetchImpl,
 });
+const hoverCardLoader = createOptionalBundleLoader({
+  bundle: __LUOGUSP_HOVER_CARD_BUNDLE__,
+  origin: __LUOGUSP_CDN_ORIGIN__,
+  expectedApiVersion: 1,
+  exports: ["createHoverCardFeature"],
+  fetchImpl: userscriptFetch.fetchImpl,
+});
 runLuoguSP(installRestrictedEarlyGate(), {
+  hoverCardLoadBundle: () =>
+    hoverCardLoader.load().then((result) => result.module),
+  // 卡片数据全部同源，用页面自己的 fetch（带 Cookie 与 CSRF）。
+  hoverCardFetchPage: (path, signal, init) =>
+    fetch(path, { credentials: "same-origin", ...(init || {}), signal }),
   restrictedContentLoadBundle: () =>
     restrictedContentLoader.load().then((result) => result.module),
   hiddenIntroRendererConfig: Object.freeze({

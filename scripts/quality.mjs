@@ -219,6 +219,38 @@ if (
 )
   throw new Error("Optional restricted content gzip size drift");
 
+// hover 卡按需块：同 restrictedContent，「清单声明了才校验」。
+const hoverDescriptor = manifest.optionalBundles?.hoverCard || null;
+const hoverFile =
+  hoverDescriptor?.path && manifest.files?.[hoverDescriptor.path];
+if (hoverDescriptor && !hoverFile)
+  throw new Error(
+    "Production manifest declares a hover card bundle it does not pin",
+  );
+if (
+  hoverDescriptor &&
+  (hoverDescriptor.apiVersion !== 1 ||
+    hoverDescriptor.bytes !== hoverFile.bytes ||
+    hoverDescriptor.sha256 !== hoverFile.sha256 ||
+    hoverDescriptor.sri !== hoverFile.sri)
+)
+  throw new Error(
+    "Production manifest does not pin a complete hover card bundle",
+  );
+const expectedOptionalHoverCard = hoverDescriptor
+  ? {
+      ...(await localResource(hoverFile, { integrityFragment: false })),
+      apiVersion: hoverDescriptor.apiVersion,
+      declaredGzipBytes: hoverDescriptor.gzipBytes,
+    }
+  : null;
+if (
+  expectedOptionalHoverCard &&
+  expectedOptionalHoverCard.gzipBytes !==
+    expectedOptionalHoverCard.declaredGzipBytes
+)
+  throw new Error("Optional hover card gzip size drift");
+
 const expectedOptionalRenderer = {
   ...(await localResource(rendererFile, {
     integrityFragment: false,
@@ -325,6 +357,7 @@ const report = {
     measuredOnline: fetchRequires,
   },
   optionalRestrictedContent: expectedOptionalRestrictedContent,
+  optionalHoverCard: expectedOptionalHoverCard,
   optionalRenderer: {
     ...optionalRenderer,
     measuredOnline: fetchRequires,
@@ -469,6 +502,18 @@ if (check) {
     )
       failures.push(
         `optional restricted content gzip bytes ${report.optionalRestrictedContent.gzipBytes} > ${budget.optionalRestrictedContent.maxGzipBytes}`,
+      );
+  }
+  if (report.optionalHoverCard) {
+    if (report.optionalHoverCard.bytes > budget.optionalHoverCard.maxBytes)
+      failures.push(
+        `optional hover card bytes ${report.optionalHoverCard.bytes} > ${budget.optionalHoverCard.maxBytes}`,
+      );
+    if (
+      report.optionalHoverCard.gzipBytes > budget.optionalHoverCard.maxGzipBytes
+    )
+      failures.push(
+        `optional hover card gzip bytes ${report.optionalHoverCard.gzipBytes} > ${budget.optionalHoverCard.maxGzipBytes}`,
       );
   }
   if (fetchRequires) {

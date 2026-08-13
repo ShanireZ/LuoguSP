@@ -85,6 +85,20 @@ export function verifyStagedActivation(options) {
   )
     throw new Error("Staged userscript manifest is not production-ready");
   // 同 verify-production：声明了就必须钉全；「必须存在」由构建侧结构守卫负责。
+  const hover = manifest.optionalBundles?.hoverCard;
+  if (hover) {
+    const hoverFile = manifest.files?.[hover.path];
+    if (
+      !hoverFile ||
+      hover.apiVersion !== 1 ||
+      hover.bytes !== hoverFile.bytes ||
+      hover.sha256 !== hoverFile.sha256 ||
+      hover.sri !== hoverFile.sri
+    )
+      throw new Error(
+        "Staged userscript manifest does not pin a complete hover card bundle",
+      );
+  }
   const restricted = manifest.optionalBundles?.restrictedContent;
   if (restricted) {
     const restrictedFile = manifest.files?.[restricted.path];
