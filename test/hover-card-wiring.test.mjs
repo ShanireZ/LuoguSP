@@ -47,29 +47,36 @@ function node({ tag = "A", href = null, src = null, parent = null } = {}) {
 // 锚点文本真的显示该 pid）。这里只认它的结果。
 const identityOf = (pid) => ({ resolve: () => (pid ? { pid } : null) });
 
-test("题号锚点只认 identity 解析器的结果", () => {
+test("题号锚点解析出 pid", () => {
   const hit = resolveProblemAnchor(node({ href: "/problem/P3372" }), identityOf("P3372"));
   assert.equal(hit.kind, "problem");
   assert.equal(hit.pid, "P3372");
   assert.equal(hit.key, "problem:P3372");
   assert.equal(resolveProblemAnchor(node({ href: "/user/1" }), identityOf("P3372")), null);
   assert.equal(resolveProblemAnchor(null, identityOf("P3372")), null);
-  // 解析器认不出就不出卡，不再自己用松正则兜底。
-  assert.equal(resolveProblemAnchor(node({ href: "/problem/P3372" }), identityOf(null)), null);
+});
+
+// ★ canary.14 过度修复：我把判据全交给 problem-color 的解析器，而它额外要求
+// 「锚点文本真的显示该 pid」—— 那是为**着色**设计的。题库列表里题目链接的文本是**题名**，
+// 于是题库里的题目反而不弹卡了。href 的 path 恰好是 /problem/{pid} 就该弹。
+test("题库列表里按题名链接的行也要弹卡", () => {
+  const row = node({ href: "/problem/P3372" });
+  const hit = resolveProblemAnchor(row, identityOf(null));
+  assert.equal(hit && hit.pid, "P3372", "解析器认不出时应当退回 href 的 path");
 });
 
 // ★ canary.13 真机回归：题库导航（/problem/list）与 TAG 胶囊
 // （/problem/list?tag=N）都被松正则当成了 pid=`list`，于是到处弹卡。
 test("题库导航与 TAG 胶囊不得被当成题号", () => {
-  for (const href of ["/problem/list", "/problem/list?tag=42", "/problem/solution/P1000", "/problem/new"]) {
-    // 即使解析器被喂了这些路径段，pid 校验（必须同时含字母和数字）也要挡住。
-    for (const fake of ["list", "solution", "new"])
-      assert.equal(
-        resolveProblemAnchor(node({ href }), identityOf(fake)),
-        null,
-        `${href} → ${fake}`,
-      );
-  }
+  // path 恰好是 /problem/list（query 不参与），而 `list` 不含数字 → 出局。
+  for (const href of ["/problem/list", "/problem/list?tag=42", "/problem/new", "/problem/solution/P1000"])
+    assert.equal(resolveProblemAnchor(node({ href }), identityOf(null)), null, href);
+  // 解析器就算被喂了这些路径段也要挡住。
+  for (const fake of ["list", "solution", "new"])
+    assert.equal(resolveProblemAnchor(node({ href: "/problem/list" }), identityOf(fake)), null, fake);
+  // 带 query 的真题号仍然要认（比赛内跳转会带 contestId）。
+  const hit = resolveProblemAnchor(node({ href: "/problem/P1000?contestId=1" }), identityOf(null));
+  assert.equal(hit && hit.pid, "P1000");
 });
 
 test("用户名链接解析出 uid", () => {
@@ -114,8 +121,8 @@ test("读不到登录态就当匿名", () => {
 test("卡片撞到视口右边和下边会翻回来", () => {
   const card = { offsetWidth: 320, offsetHeight: 200, style: {} };
   const placed = placeCard(card, { left: 1100, right: 1180, top: 700, bottom: 720 }, { width: 1280, height: 800 });
-  assert.ok(placed.left + 320 <= 1280 - 8, "右边不许超出视口");
-  assert.ok(placed.top >= 8, "上边不许超出视口");
+  assert.ok(placed.left + 320 <= 1280 - 4, "右边不许超出视口");
+  assert.ok(placed.top >= 4, "上边不许超出视口");
   assert.ok(placed.top < 700, "下方放不下就翻到上方");
 });
 

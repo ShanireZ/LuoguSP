@@ -97,11 +97,26 @@ export function createHoverCardFeature(config) {
       }
     };
 
+    // 最近一次指针坐标：跨行锚点要靠它挑出「指针所在的那一行」来定位，
+    // 否则卡片会被推到整个盒子的下沿，离题号很远。
+    let pointer = null;
+    // 从锚点的多个 client rect 里挑包含指针纵坐标的那一行；挑不到就退回整体盒子。
+    const rectForPointer = (anchor) => {
+      const rects = anchor.getClientRects ? [...anchor.getClientRects()] : [];
+      if (pointer && rects.length > 1) {
+        const hit = rects.find(
+          (r) => pointer.y >= r.top - 2 && pointer.y <= r.bottom + 2,
+        );
+        if (hit) return hit;
+      }
+      return rects[0] || anchor.getBoundingClientRect();
+    };
+
     const position = () => {
       if (!shown || card.hidden) return;
       const anchor = shown.anchor;
       if (!anchor || !anchor.getBoundingClientRect) return;
-      placeCard(card, anchor.getBoundingClientRect(), {
+      placeCard(card, rectForPointer(anchor), {
         width: window.innerWidth,
         height: window.innerHeight,
       });
@@ -163,6 +178,8 @@ export function createHoverCardFeature(config) {
     });
 
     const onOver = (event) => {
+      if (typeof event.clientX === "number")
+        pointer = { x: event.clientX, y: event.clientY };
       // 指针落在卡片自己身上：维持当前卡，别关。
       if (card.contains(event.target)) {
         if (shown) intent.enter(shown.key);

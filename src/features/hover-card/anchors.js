@@ -9,13 +9,26 @@ const PID_PATTERN = /^[A-Za-z0-9_]+$/;
 // 头像 URL 形如 https://cdn.luogu.com.cn/upload/usericon/1313427.png
 const AVATAR_UID = /\/upload\/usericon\/(\d+)\./;
 
-// ★ canary.13 真机回归：题库导航与 TAG 胶囊也弹出了题目卡。根因是我用
-// `/\/problem\/([A-Za-z0-9]+)/` 松匹配兜底，`/problem/list` 与
-// `/problem/list?tag=N` 都被当成了 pid=`list`。
-// problem-color/identity.js 本来就有正确校验（pid 必须同时含字母和数字、路径必须恰好是
-// /problem/{id}、锚点文本必须真的显示该 pid），所以这里**只认它的结果**，不再自己兜底。
+// ★ pid 判据。canary.13 的教训是**别用松正则**（`/problem/list` 与
+//   `/problem/list?tag=N` 都会被当成 pid=`list`，于是导航按钮和 TAG 胶囊到处弹卡）；
+//   canary.14 的教训是**也别全交给 problem-color 的解析器** —— 它额外要求「锚点文本
+//   真的显示该 pid」，那是为**着色**设计的判据，而题库列表里题目链接的文本是**题名**，
+//   于是题库里的题目反而不弹卡了（过度修复）。
+//
+// 所以这里自己判，两条硬要求：
+//   1. href 的 **path 必须恰好是 `/problem/{id}`**（允许尾斜杠与 query，
+//      所以 `/problem/list?tag=42` 因为 path 是 `/problem/list` 而被 id 形态挡下）；
+//   2. id 必须**同时含字母和数字** —— `list` / `solution` / `new` 天然出局。
 const looksLikePid = (id) =>
   typeof id === "string" && /[A-Za-z]/.test(id) && /[0-9]/.test(id) && PID_PATTERN.test(id);
+
+const pidFromHref = (href) => {
+  if (typeof href !== "string" || !href) return null;
+  // 只看 path 段，query 与 hash 一律不参与。
+  const path = href.split(/[?#]/)[0];
+  const match = path.match(/\/problem\/([A-Za-z0-9_]+)\/?$/);
+  return match ? match[1] : null;
+};
 
 export function resolveProblemAnchor(node, identity) {
   if (!node || typeof node.closest !== "function") return null;
@@ -25,8 +38,10 @@ export function resolveProblemAnchor(node, identity) {
     identity && typeof identity.resolve === "function"
       ? identity.resolve(anchor)
       : null;
-  // problem-color 着色时会把 pid 写进 dataset，认它；除此之外只认解析器。
-  const pid = (resolved && resolved.pid) || anchor.dataset?.luoguspPid || null;
+  const pid =
+    (resolved && resolved.pid) ||
+    anchor.dataset?.luoguspPid ||
+    pidFromHref(anchor.getAttribute("href"));
   if (!looksLikePid(pid)) return null;
   return Object.freeze({ kind: "problem", key: `problem:${pid}`, pid, anchor });
 }
