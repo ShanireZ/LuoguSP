@@ -1,6 +1,7 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createArticleInteractionStore } from "./article-interaction-store.js";
 import { prepareRestrictedArticleInteraction } from "./article-interaction-tracker.js";
+import { resolveLiveArticleCounts } from "./article-live-counts.js";
 import { createRestrictedDocumentBoot } from "./document-boot.js";
 import {
   createRestrictedDocumentCommitter,
@@ -144,7 +145,7 @@ export function createRestrictedContentFeature({
   // 接口=/api/user/search?keyword={uid}（拦截页源实测可用；旧 /user/{uid}?_contentOnly=1 已死，返回 HTML），
   // 返回 userSummary：{uid,name,avatar,slogan,badge,color,ccfLevel,xcpcLevel,…}。失败回退存档快照。
   const rstUserCache = new Map();
-  async function rstFetch(input, signal) {
+  async function rstFetch(input, signal, init) {
     const controller = new AbortController();
     let timedOut = false;
     const cancel = () => controller.abort();
@@ -158,7 +159,7 @@ export function createRestrictedContentFeature({
       controller.abort();
     }, 15000);
     try {
-      return await fetch(input, { signal: controller.signal });
+      return await fetch(input, { ...(init || {}), signal: controller.signal });
     } catch (error) {
       if (error && error.name === "AbortError")
         throw Object.assign(
@@ -332,10 +333,11 @@ export function createRestrictedContentFeature({
 
   // 文章页：合成 lentille-context（template article.show）+ 官方 columba 前端
   async function rstBootArticle(info, data, signal) {
-    const [scaffold, cnUser, commentsResult] = await Promise.all([
+    const [scaffold, cnUser, commentsResult, live] = await Promise.all([
       rstHarvest("columba", signal),
       rstCnUser(data.authorId, signal),
       saverWorkflow.loadComments(info.id, { signal }),
+      resolveLiveArticleCounts({ fetchPage: rstFetch, authorUid: data.authorId, lid: info.id, signal }),
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
@@ -400,6 +402,7 @@ export function createRestrictedContentFeature({
         // 存档快照的新鲜度：只有比已确认记录更新，保存站计数才允许覆盖。
         archivedAt: Date.parse(data.updatedAt || data.createdAt) || null,
         archived: data,
+        live,
         onPersistFailure: ({ lid, reason }) =>
           console.warn(
             `[LuoguSP] 文章 ${lid} 的收藏/点赞状态无法保存（${reason}），刷新后将无法撤回。`,
