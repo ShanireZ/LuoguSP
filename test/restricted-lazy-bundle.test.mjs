@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createRestrictedContentFeature } from "../src/features/restricted-content/lazy-feature.js";
@@ -200,4 +200,47 @@ test("构建脚本把块写进 manifest.optionalBundles 与 files，并注入 de
   assert.match(build, /__LUOGUSP_RESTRICTED_CONTENT_BUNDLE__: JSON\.stringify\(/);
   assert.match(build, /\[restrictedContentFile\.path\]: restrictedContentFile/);
   assert.match(build, /restrictedContent: restrictedContentBundle/);
+});
+
+// ★ canary.10 真机回归：早期加载层在 document-start 就用
+// `body>*{visibility:hidden}` 遮住了**所有** /article/*、/paste/* 页面，
+// 旧代码由 document-boot 在探测失败时释放。薄壳提前 return 却忘了释放，
+// 结果每一个正常文章/剪贴板页面都被永久遮成空白。
+test("不是拦截页时必须放掉早期加载层，否则正常文章页会一直空白", async () => {
+  let released = 0;
+  const gate = { start: () => {}, release: () => void (released += 1) };
+  const { feature, calls } = harness({ gate, page: { title: "GenGen 洛谷国际 - 洛谷专栏" } });
+  const dispose = feature.mount({ isCurrent: () => true });
+  await settle();
+  assert.equal(released, 1, "探测失败必须 release，页面才看得见");
+  assert.equal(calls.load, 0);
+  dispose();
+});
+
+// ★ canary.10 真机回归：`TypeError: Illegal invocation`。
+// `{ setTimeout, clearTimeout }` 简写会让 `clock.setTimeout(...)` 以 `this === clock`
+// 调用原生方法。在用户脚本沙箱里侥幸能过；一旦模块随按需块经 blob: 动态 import
+// 在**页面 realm** 执行，原生方法就会拒绝这个 this。
+// 行为测试拦不住它（测试都注入自己的时钟），所以只能结构守卫。
+test("源码里不得出现裸引用全局定时器的简写", () => {
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(resolve(root, dir), { withFileTypes: true })) {
+      const relative = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(relative);
+      else if (entry.name.endsWith(".js")) {
+        const text = read(relative);
+        // 只匹配真的赋值 / 属性位置（`clock = {…}`、`clock: {…}`），
+        // 否则会误报到讲这条坑的注释文本上。
+        if (/[=:]\s*\{\s*setTimeout\s*,\s*clearTimeout\s*\}/.test(text))
+          offenders.push(relative);
+      }
+    }
+  };
+  walk("src");
+  assert.deepEqual(
+    offenders,
+    [],
+    `这些文件用了简写，在页面 realm 会 Illegal invocation：${offenders.join(", ")}`,
+  );
 });

@@ -80,10 +80,52 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       if (act === "save") {
         boxes().forEach((b) => storage.set(b.dataset.key, b.checked));
         close();
-        if (confirm("设置已保存，是否立即刷新页面生效？")) location.reload();
+        // owner 要求：提示要在屏幕正中。浏览器原生 confirm() 在 Chrome/Edge 一律贴
+        // 视口顶部且样式不可控，所以复用设置面板同一套遮罩 + 居中面板。
+        askRefresh();
       }
     });
     document.addEventListener("keydown", esc);
+  }
+
+  // 保存后的「是否立即刷新」确认框。与设置面板共用 #luogusp-settings 的样式作用域，
+  // 所以天然居中、天然跟随同一套配色。
+  function askRefresh() {
+    const overlay = document.createElement("div");
+    overlay.id = "luogusp-settings";
+    overlay.innerHTML =
+      '<div class="luogusp-mask"></div>' +
+      '<div class="luogusp-panel" role="alertdialog" aria-modal="true">' +
+      '<div class="luogusp-content">' +
+      '<h3>设置已保存</h3>' +
+      '<p class="luogusp-confirm">是否立即刷新页面生效？</p>' +
+      '<div class="luogusp-actions">' +
+      '<button data-act="reload" class="luogusp-primary">立即刷新</button>' +
+      '<button data-act="later">稍后</button>' +
+      "</div></div></div>";
+    document.body.appendChild(overlay);
+    let done = false;
+    const finish = (reload) => {
+      if (done) return;
+      done = true;
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+      if (reload) location.reload();
+    };
+    function onKey(event) {
+      if (event.key === "Escape") finish(false);
+      if (event.key === "Enter") finish(true);
+    }
+    overlay.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target.classList.contains("luogusp-mask")) return finish(false);
+      const act = target.getAttribute && target.getAttribute("data-act");
+      if (act === "reload") return finish(true);
+      if (act === "later") return finish(false);
+    });
+    document.addEventListener("keydown", onKey);
+    const primary = overlay.querySelector('[data-act="reload"]');
+    if (primary) primary.focus();
   }
 
   // 齿轮图标（24×24 Material settings，fill=currentColor 跟随导航文字色）
