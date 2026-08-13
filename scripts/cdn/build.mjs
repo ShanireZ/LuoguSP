@@ -181,6 +181,39 @@ const restrictedContentBundle = Object.freeze({
   sha256: restrictedContentFile.sha256,
   sri: restrictedContentFile.sri,
 });
+// hover 预览卡按需块：只有指针真的停在题号或用户名上才拉。
+const hoverCardResult = await build({
+  absWorkingDir: root,
+  entryPoints: ["src/cdn/hover-card-bundle.js"],
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  charset: "utf8",
+  legalComments: "none",
+  minify: true,
+  treeShaking: true,
+  write: false,
+});
+if (hoverCardResult.outputFiles?.length !== 1)
+  throw new Error("Expected one hover card bundle output");
+const hoverCardBody = Buffer.from(hoverCardResult.outputFiles[0].contents);
+const hoverCardRelativePath = `feature/hover-card.${digest(hoverCardBody).slice(0, 16)}.js`;
+if (!verifyExisting && !dryRun) {
+  await mkdir(resolve(releaseDir, "feature"), { recursive: true });
+  await writeFile(resolve(releaseDir, hoverCardRelativePath), hoverCardBody);
+}
+const hoverCardFile = fileRecord(
+  `releases/${version}/${hoverCardRelativePath}`,
+  hoverCardBody,
+);
+const hoverCardBundle = Object.freeze({
+  apiVersion: 1,
+  path: hoverCardFile.path,
+  bytes: hoverCardFile.bytes,
+  gzipBytes: gzipSync(hoverCardBody, { level: 9 }).length,
+  sha256: hoverCardFile.sha256,
+  sri: hoverCardFile.sri,
+});
 const compatEarlyGate = await buildCompat(
   "src/cdn/early-gate-entry.js",
   "early-gate",
@@ -195,6 +228,7 @@ const compatRuntime = await buildCompat(
     __LUOGUSP_RESTRICTED_CONTENT_BUNDLE__: JSON.stringify(
       restrictedContentBundle,
     ),
+    __LUOGUSP_HOVER_CARD_BUNDLE__: JSON.stringify(hoverCardBundle),
     __LUOGUSP_CDN_ORIGIN__: JSON.stringify(
       cdnOrigin,
     ),
@@ -236,6 +270,7 @@ const files = {
   [compatRuntime.path]: compatRuntime,
   [markdownRendererFile.path]: markdownRendererFile,
   [restrictedContentFile.path]: restrictedContentFile,
+  [hoverCardFile.path]: hoverCardFile,
 };
 for (const output of esmResult.outputFiles || []) {
   const relativePath = normalizePath(relative(outputRoot, output.path));
@@ -290,6 +325,7 @@ const manifest = {
   optionalBundles: {
     markdownRenderer: markdownRendererBundle,
     restrictedContent: restrictedContentBundle,
+    hoverCard: hoverCardBundle,
   },
   esm: {
     enabled: false,

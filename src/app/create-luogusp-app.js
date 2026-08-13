@@ -4,6 +4,7 @@ import { createChatShortcutFeature } from "../features/chat-shortcut/feature.js"
 import { createHiddenIntroFeature } from "../features/hidden-intro/feature.js";
 import { createIdeBatchFeature } from "../features/ide-batch/feature.js";
 import { createProblemColorFeature } from "../features/problem-color/feature.js";
+import { createHoverCardFeature } from "../features/hover-card/lazy-feature.js";
 import { createRestrictedContentFeature } from "../features/restricted-content/lazy-feature.js";
 import { createSettingsFeature } from "../features/settings/feature.js";
 
@@ -77,12 +78,18 @@ export function createLuoguSPApp(options = {}) {
     getPageLifecycle: () => pageLifecycle,
     loadBundle: options.restrictedContentLoadBundle,
   });
+  const hoverCardFeature = createHoverCardFeature({
+    storage,
+    loadBundle: options.hoverCardLoadBundle,
+    fetchPage: options.hoverCardFetchPage,
+  });
   const configurableFeatures = Object.freeze([
     problemColorFeature,
     chatShortcutFeature,
     hiddenIntroFeature,
     ideBatchFeature,
     restrictedContentFeature,
+    hoverCardFeature,
   ]);
   const settingsFeature = createSettingsFeature({
     storage,

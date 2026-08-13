@@ -123,7 +123,8 @@ test("保存后的刷新提示是页内居中对话框，不是原生 confirm", 
   // 不剥就会像定时器那条守卫一样误报到自己身上。
   const code = source
     .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/[^\n]*/g, "");
+    // 只剥行首注释：剥任意 // 会把 URL 里的 // 当注释起点，把要查的代码一起删掉。
+    .replace(/^[ \t]*\/\/[^\n]*$/gm, "");
   assert.doesNotMatch(
     code,
     /\bconfirm\(/,

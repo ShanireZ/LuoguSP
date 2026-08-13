@@ -91,6 +91,18 @@ if (Buffer.byteLength(stagedArtifact) > 5000)
 // 受限内容按需块：清单声明了就必须钉全。这里不强制它「必须存在」——
 // 老 release（2.14.0 之前）没有这个块，而「必须存在」由构建侧的结构守卫
 // （test/restricted-lazy-bundle.test.mjs）无条件盯着。
+const optionalHover = manifest.optionalBundles?.hoverCard;
+if (optionalHover) {
+  const hoverFile = manifest.files?.[optionalHover.path];
+  if (
+    !hoverFile ||
+    optionalHover.apiVersion !== 1 ||
+    optionalHover.bytes !== hoverFile.bytes ||
+    optionalHover.sha256 !== hoverFile.sha256 ||
+    optionalHover.sri !== hoverFile.sri
+  )
+    failures.push("manifest does not pin a complete hover card bundle");
+}
 const optionalRestricted = manifest.optionalBundles?.restrictedContent;
 if (optionalRestricted) {
   const restrictedFile = manifest.files?.[optionalRestricted.path];

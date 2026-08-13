@@ -25,5 +25,9 @@
   "optionalRestrictedContent": {
     "maxBytes": 60000,
     "maxGzipBytes": 22000
+  },
+  "optionalHoverCard": {
+    "maxBytes": 32000,
+    "maxGzipBytes": 12000
   }
 }
