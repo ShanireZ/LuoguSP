@@ -123,3 +123,25 @@ test("optional bundle loader retries after failure and honors AbortSignal", asyn
     kind: "cancelled",
   });
 });
+
+// 可选块机制原本把模块契约写死成 markdown 渲染器的两个导出。
+// 启动包减肥（把 restricted-content 挪成按需块）和 hover 卡都需要**第二个**可选块，
+// 所以契约改成可注入；默认值保持 markdown 渲染器那两个，既有调用方不必改。
+test("模块契约可注入，缺哪个导出要点名报出", async () => {
+  const loader = createOptionalBundleLoader({
+    bundle,
+    origin: "https://primary.example",
+    expectedApiVersion: 1,
+    exports: ["mountCard", "disposeCard"],
+    fetchImpl: async () => new Response(body),
+    importer: async () => ({ apiVersion: 1, mountCard: () => {} }),
+    urlApi,
+  });
+  const error = await loader.load().then(
+    () => null,
+    (e) => e,
+  );
+  assert.equal(error?.kind, "api-invalid");
+  assert.deepEqual(error?.missing, ["disposeCard"]);
+  assert.match(error.message, /disposeCard/);
+});
