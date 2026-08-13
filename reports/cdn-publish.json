@@ -1,6 +1,6 @@
 {
-  "publishedAt": "2026-08-13T07:24:59.398Z",
-  "release": "2.14.0-canary.14",
+  "publishedAt": "2026-08-13T07:52:43.951Z",
+  "release": "2.14.0-canary.15",
   "target": "cloudflare-workers",
   "project": "luogusp-cdn",
   "origin": "https://luogusp.round1.cc",

@@ -32,6 +32,14 @@ export const badgeStyle = (color) =>
 // 是**记录详情页**才展开的细分状态，而「数字码 → 细分名」这张表本轮没能取到证据
 // （owner 账号只有 12 与 14 两种记录，bundle 里也搜不到那些字面量）。
 // 所以这里只实现有据可依的两种，**不编细分名** —— 编错一个字比少显示一个字更糟。
+// 有证据的码值（2026-08-13 实测）：
+//   12 → Accepted（记录 179363526 的记录级；记录 292611285 的测试点级）
+//   14 → Unaccepted（记录 292611285 记录级，score 80 也是 14）
+//   6  → Wrong Answer（记录 292611285 的**测试点级**）
+// ★ 细分状态是**测试点级**的；洛谷的**记录级** status 本身就只有 Accepted/Unaccepted
+//   （详情页顶部也只写 Unaccepted）。所以 bestRecord.status 先天只会是这两种。
+//   6 收进表里是为了兼容仍带细分码的旧记录；其余码值没有证据，一律按 Unaccepted 渲染。
+const DETAILED = Object.freeze({ 6: "Wrong Answer" });
 const ACCEPTED = 12;
 export const STATUS_ACCEPTED_COLOR = "#52c41a";
 export const STATUS_UNACCEPTED_COLOR = "#e74c3c";
@@ -47,9 +55,17 @@ const finiteOrNull = (value) =>
 export function statusPresentation(status) {
   const code = finiteOrNull(status);
   if (code === null) return null;
-  return code === ACCEPTED
-    ? Object.freeze({ label: "Accepted", color: STATUS_ACCEPTED_COLOR, accepted: true })
-    : Object.freeze({ label: "Unaccepted", color: STATUS_UNACCEPTED_COLOR, accepted: false });
+  if (code === ACCEPTED)
+    return Object.freeze({
+      label: "Accepted",
+      color: STATUS_ACCEPTED_COLOR,
+      accepted: true,
+    });
+  return Object.freeze({
+    label: DETAILED[code] || "Unaccepted",
+    color: STATUS_UNACCEPTED_COLOR,
+    accepted: false,
+  });
 }
 
 // 计数缩写（owner 拍板）：小于 1000 全显示；小于 1000000 用 k；否则用 m。

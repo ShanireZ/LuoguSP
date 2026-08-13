@@ -78,7 +78,8 @@ export function renderProblemCard(card, options = {}) {
   // ★ owner 拍板：标签默认折叠 —— 标签会剧透算法。
   if (card.tags.length) {
     const tags = el("div", "luogusp-hc-tags");
-    const toggle = el("button", "luogusp-hc-tagbtn", `显示标签（${card.tags.length}）`);
+    // owner 要求：按钮上不带统计数字。
+    const toggle = el("button", "luogusp-hc-tagbtn", "显示标签");
     toggle.type = "button";
     const list = el("div", "luogusp-hc-taglist");
     list.hidden = true;
@@ -87,9 +88,7 @@ export function renderProblemCard(card, options = {}) {
       event.preventDefault();
       event.stopPropagation();
       list.hidden = !list.hidden;
-      toggle.textContent = list.hidden
-        ? `显示标签（${card.tags.length}）`
-        : "隐藏标签";
+      toggle.textContent = list.hidden ? "显示标签" : "隐藏标签";
     });
     tags.appendChild(toggle);
     tags.appendChild(list);
@@ -283,17 +282,21 @@ export function renderUserCard(card, options = {}) {
   return box;
 }
 
-// 卡片位置：贴锚点下方，撞到视口边就翻到上方 / 收回边内。
-export function placeCard(cardEl, anchorRect, viewport) {
-  const gap = 8;
+// 卡片位置。★ owner 报「卡片离题目较远，鼠标移动时卡片会消失然后显示另一题的卡片」：
+// 根因是跨行锚点（题号被包在一个跨两行的 <a> 里）的 getBoundingClientRect().bottom
+// 落在第二行下面，卡片被推远；鼠标去卡片的路上就会经过别的题号，于是切了目标。
+// 修法：定位锚点用**指针所在的那一行**（调用方传 pointer 时以它为准），并把间隙收到 4px。
+// 调用方负责先挑好「指针所在的那一行」再传进来（见 feature.js 的 rectForPointer）。
+export function placeCard(cardEl, rect, viewport) {
+  const gap = 4;
   const width = cardEl.offsetWidth || 320;
   const height = cardEl.offsetHeight || 160;
-  let left = anchorRect.left;
+  let left = rect.left;
   if (left + width > viewport.width - gap) left = viewport.width - width - gap;
   if (left < gap) left = gap;
-  let top = anchorRect.bottom + gap;
+  let top = rect.bottom + gap;
   if (top + height > viewport.height - gap) {
-    const above = anchorRect.top - height - gap;
+    const above = rect.top - height - gap;
     top = above >= gap ? above : Math.max(gap, viewport.height - height - gap);
   }
   cardEl.style.left = `${Math.round(left)}px`;
