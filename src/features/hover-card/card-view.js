@@ -1,3 +1,10 @@
+import {
+  NATIVE_BADGE_COLOR,
+  abbreviateCount,
+  badgeStyle,
+  levelColor,
+  statusPresentation,
+} from "./luogu-native.js";
 // 卡片 DOM。★ 全程 createElement + textContent，不用 innerHTML 拼用户数据 ——
 // 题名、slogan、徽章、标签都来自洛谷，拼字符串等于把注入面留给上游。
 
@@ -26,8 +33,8 @@ const fmtDate = (seconds) =>
     ? new Date(seconds * 1000).toLocaleDateString("zh-CN")
     : null;
 
-const fmtCount = (value) =>
-  Number.isFinite(value) ? value.toLocaleString("zh-CN") : null;
+// owner 拍板：小于 1000 全显示，小于 1000000 用 k，否则用 m。
+const fmtCount = (value) => abbreviateCount(value);
 
 export function renderProblemCard(card, options = {}) {
   const { origin = "" } = options;
@@ -44,11 +51,13 @@ export function renderProblemCard(card, options = {}) {
   head.appendChild(titles);
   box.appendChild(head);
 
-  if (card.acceptanceRate !== null)
+  // owner 要求：通过数与提交数都要显示，且按 k / m 缩写。
+  if (card.acceptedCount !== null || card.submittedCount !== null)
     box.appendChild(
       row(
-        "通过率",
-        `${card.acceptanceRate}%　${fmtCount(card.acceptedCount) || "?"} 通过`,
+        "通过 / 提交",
+        `${fmtCount(card.acceptedCount) || "?"} / ${fmtCount(card.submittedCount) || "?"}` +
+          (card.acceptanceRate === null ? "" : `　${card.acceptanceRate}%`),
       ),
     );
   if (card.timeLimitMs !== null || card.memoryLimitKb !== null)
@@ -96,19 +105,28 @@ export function renderProblemCard(card, options = {}) {
   if (hasMine) {
     box.appendChild(el("div", "luogusp-hc-sep"));
     // 未知就说未知：accepted 缺失不等于「没通过」。
-    let statusText = "未知";
-    let statusClass = "luogusp-hc-muted";
-    if (mine.accepted === true) {
-      statusText = "已通过";
-      statusClass = "luogusp-hc-ok";
-    } else if (mine.submitted === true) {
-      statusText =
-        mine.bestScore === null ? "尝试过" : `尝试过 · 最高 ${mine.bestScore} 分`;
-      statusClass = "luogusp-hc-warn";
-    } else if (mine.submitted === false) {
-      statusText = "未提交";
+    // owner 要求：用洛谷原生的状态表示。实测洛谷记录列表只渲染两种 ——
+    // status 12 = Accepted（#52c41a），其它（实测到 14）= Unaccepted（#e74c3c）。
+    // 细分状态（WA/TLE/…）的**数字码表本轮没取到证据**，所以不编。
+    const native =
+      mine.bestStatus !== null
+        ? statusPresentation(mine.bestStatus)
+        : mine.accepted === true
+          ? statusPresentation(12)
+          : mine.submitted === true
+            ? statusPresentation(-1)
+            : null;
+    const status = el("span", "luogusp-hc-status");
+    if (native) {
+      status.textContent =
+        mine.bestScore === null
+          ? native.label
+          : `${native.label} · ${mine.bestScore} 分`;
+      status.style.color = native.color;
+    } else {
+      status.className = "luogusp-hc-muted";
+      status.textContent = mine.submitted === false ? "未提交" : "未知";
     }
-    const status = el("span", statusClass, statusText);
     box.appendChild(row("我的状态", status));
     if (mine.lastAttempt && mine.lastAttempt.at) {
       const when = fmtDate(mine.lastAttempt.at) || "";
@@ -154,13 +172,29 @@ export function renderUserCard(card, options = {}) {
   const titles = el("div");
   titles.style.minWidth = "0";
   const title = el("p", "luogusp-hc-title", card.name);
+  // 原生用户名就是按等级色渲染的（实测 6 档配对）。
+  title.style.color = levelColor(card.color);
   // ★ ✅ 与气球的驱动字段：ccfLevel>0 / xcpcLevel>0（41 用户双向零反例实测）。
   const badges = el("span", "luogusp-hc-badges");
-  if (card.ccfLevel !== null && card.ccfLevel > 0)
-    badges.appendChild(el("span", "luogusp-hc-badge", `✅ CCF ${card.ccfLevel}`));
-  if (card.xcpcLevel !== null && card.xcpcLevel > 0)
-    badges.appendChild(el("span", "luogusp-hc-badge", `🎈 XCPC ${card.xcpcLevel}`));
-  if (card.badge) badges.appendChild(el("span", "luogusp-hc-badge", card.badge));
+  // 原生 ✅(fa-badge-check) 与 🎈(fa-balloon) 实测都是 #3498db、1em。
+  // ★ 两者都是 duotone **双 path** 图标，精确复刻要 4 段 path 数据（下一轮补）；
+  //   这里先把颜色、字号与位置对齐原生。
+  if (card.ccfLevel !== null && card.ccfLevel > 0) {
+    const ccf = el("span", "luogusp-hc-badge luogusp-hc-badge-icon", `CCF ${card.ccfLevel}`);
+    ccf.style.color = NATIVE_BADGE_COLOR;
+    badges.appendChild(ccf);
+  }
+  if (card.xcpcLevel !== null && card.xcpcLevel > 0) {
+    const xcpc = el("span", "luogusp-hc-badge luogusp-hc-badge-icon", `XCPC ${card.xcpcLevel}`);
+    xcpc.style.color = NATIVE_BADGE_COLOR;
+    badges.appendChild(xcpc);
+  }
+  // 称号：原生是白字 + 等级色底 + 圆角 2px。
+  if (card.badge) {
+    const badge = el("span", "luogusp-hc-badge", card.badge);
+    badge.setAttribute("style", badgeStyle(card.color));
+    badges.appendChild(badge);
+  }
   if (badges.childNodes.length) title.appendChild(badges);
   titles.appendChild(title);
   if (card.slogan)

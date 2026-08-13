@@ -43,13 +43,33 @@ function node({ tag = "A", href = null, src = null, parent = null } = {}) {
   return self;
 }
 
-test("题号锚点解析出 pid", () => {
-  const hit = resolveProblemAnchor(node({ href: "/problem/P3372" }), null);
+// problem-color 的解析器才是唯一权威（它校验 pid 含字母+数字、路径恰好是 /problem/{id}、
+// 锚点文本真的显示该 pid）。这里只认它的结果。
+const identityOf = (pid) => ({ resolve: () => (pid ? { pid } : null) });
+
+test("题号锚点只认 identity 解析器的结果", () => {
+  const hit = resolveProblemAnchor(node({ href: "/problem/P3372" }), identityOf("P3372"));
   assert.equal(hit.kind, "problem");
   assert.equal(hit.pid, "P3372");
   assert.equal(hit.key, "problem:P3372");
-  assert.equal(resolveProblemAnchor(node({ href: "/user/1" }), null), null);
-  assert.equal(resolveProblemAnchor(null, null), null);
+  assert.equal(resolveProblemAnchor(node({ href: "/user/1" }), identityOf("P3372")), null);
+  assert.equal(resolveProblemAnchor(null, identityOf("P3372")), null);
+  // 解析器认不出就不出卡，不再自己用松正则兜底。
+  assert.equal(resolveProblemAnchor(node({ href: "/problem/P3372" }), identityOf(null)), null);
+});
+
+// ★ canary.13 真机回归：题库导航（/problem/list）与 TAG 胶囊
+// （/problem/list?tag=N）都被松正则当成了 pid=`list`，于是到处弹卡。
+test("题库导航与 TAG 胶囊不得被当成题号", () => {
+  for (const href of ["/problem/list", "/problem/list?tag=42", "/problem/solution/P1000", "/problem/new"]) {
+    // 即使解析器被喂了这些路径段，pid 校验（必须同时含字母和数字）也要挡住。
+    for (const fake of ["list", "solution", "new"])
+      assert.equal(
+        resolveProblemAnchor(node({ href }), identityOf(fake)),
+        null,
+        `${href} → ${fake}`,
+      );
+  }
 });
 
 test("用户名链接解析出 uid", () => {

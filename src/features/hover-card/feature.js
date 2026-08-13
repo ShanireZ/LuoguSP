@@ -74,6 +74,28 @@ export function createHoverCardFeature(config) {
     // 当前正在展示的目标（由 hover-intent 决定），以及它的锚点矩形。
     let shown = null;
     const targets = new Map();
+    // ★ owner 要求屏蔽洛谷原生的题号悬停。原生那个就是 `.pid[title]` 上的 title 属性
+    //   （problem-color 的选择器就叫这个名字）触发的浏览器浮泡 —— 我们的卡片一接管，
+    //   两层提示就会打架。摘掉 title，并记下原值，dispose 时还回去。
+    const strippedTitles = new WeakMap();
+    const stripNativeTitle = (anchor) => {
+      for (const node of [anchor, ...anchor.querySelectorAll?.("[title]") ?? []]) {
+        if (!node || strippedTitles.has(node)) continue;
+        const title = node.getAttribute && node.getAttribute("title");
+        if (title === null || title === undefined) continue;
+        strippedTitles.set(node, title);
+        node.removeAttribute("title");
+      }
+    };
+    const restoreNativeTitles = () => {
+      for (const target of targets.values()) {
+        const anchor = target.anchor;
+        for (const node of [anchor, ...(anchor.querySelectorAll?.("*") ?? [])]) {
+          const title = strippedTitles.get(node);
+          if (title !== undefined) node.setAttribute("title", title);
+        }
+      }
+    };
 
     const position = () => {
       if (!shown || card.hidden) return;
@@ -148,6 +170,7 @@ export function createHoverCardFeature(config) {
       }
       const target = resolveHoverTarget(event.target, identity);
       if (!target) return;
+      if (target.kind === "problem") stripNativeTitle(target.anchor);
       targets.set(target.key, target);
       intent.enter(target.key);
     };
@@ -175,6 +198,7 @@ export function createHoverCardFeature(config) {
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
       document.removeEventListener("keydown", onKey);
+      restoreNativeTitles();
       targets.clear();
       card.remove();
     };

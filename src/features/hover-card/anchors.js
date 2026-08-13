@@ -5,23 +5,29 @@
 //   而且**绕开了 rAF 节流那个坑** —— 隐藏标签页里 rAF 不触发，
 //   凡是靠 rAF 补种监听的路径都会假死（交接单里记过两次）。
 
-const PID_PATTERN = /^[A-Za-z0-9]+$/;
+const PID_PATTERN = /^[A-Za-z0-9_]+$/;
 // 头像 URL 形如 https://cdn.luogu.com.cn/upload/usericon/1313427.png
 const AVATAR_UID = /\/upload\/usericon\/(\d+)\./;
+
+// ★ canary.13 真机回归：题库导航与 TAG 胶囊也弹出了题目卡。根因是我用
+// `/\/problem\/([A-Za-z0-9]+)/` 松匹配兜底，`/problem/list` 与
+// `/problem/list?tag=N` 都被当成了 pid=`list`。
+// problem-color/identity.js 本来就有正确校验（pid 必须同时含字母和数字、路径必须恰好是
+// /problem/{id}、锚点文本必须真的显示该 pid），所以这里**只认它的结果**，不再自己兜底。
+const looksLikePid = (id) =>
+  typeof id === "string" && /[A-Za-z]/.test(id) && /[0-9]/.test(id) && PID_PATTERN.test(id);
 
 export function resolveProblemAnchor(node, identity) {
   if (!node || typeof node.closest !== "function") return null;
   const anchor = node.closest('a[href*="/problem/"], .pid[title], a[data-luogusp-pid]');
   if (!anchor) return null;
-  const resolved = identity && typeof identity.resolve === "function"
-    ? identity.resolve(anchor)
-    : null;
-  const pid =
-    (resolved && resolved.pid) ||
-    anchor.dataset.luoguspPid ||
-    (anchor.getAttribute("href") || "").match(/\/problem\/([A-Za-z0-9]+)/)?.[1] ||
-    null;
-  if (!pid || !PID_PATTERN.test(pid)) return null;
+  const resolved =
+    identity && typeof identity.resolve === "function"
+      ? identity.resolve(anchor)
+      : null;
+  // problem-color 着色时会把 pid 写进 dataset，认它；除此之外只认解析器。
+  const pid = (resolved && resolved.pid) || anchor.dataset?.luoguspPid || null;
+  if (!looksLikePid(pid)) return null;
   return Object.freeze({ kind: "problem", key: `problem:${pid}`, pid, anchor });
 }
 
