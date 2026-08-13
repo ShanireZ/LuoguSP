@@ -185,6 +185,40 @@ if (
   throw new Error(
     "Production manifest does not pin a complete optional renderer",
   );
+// 受限内容按需块。正式版产物指向的 release 可能还没有这个块（2.14.0 之前都没有），
+// 所以这里按「清单声明了才校验」处理；块必须存在这件事由
+// test/restricted-lazy-bundle.test.mjs 的结构守卫无条件盯着。
+const restrictedDescriptor = manifest.optionalBundles?.restrictedContent || null;
+const restrictedFile =
+  restrictedDescriptor?.path && manifest.files?.[restrictedDescriptor.path];
+if (restrictedDescriptor && !restrictedFile)
+  throw new Error(
+    "Production manifest declares a restricted content bundle it does not pin",
+  );
+if (
+  restrictedDescriptor &&
+  (restrictedDescriptor.apiVersion !== 1 ||
+    restrictedDescriptor.bytes !== restrictedFile.bytes ||
+    restrictedDescriptor.sha256 !== restrictedFile.sha256 ||
+    restrictedDescriptor.sri !== restrictedFile.sri)
+)
+  throw new Error(
+    "Production manifest does not pin a complete restricted content bundle",
+  );
+const expectedOptionalRestrictedContent = restrictedDescriptor
+  ? {
+      ...(await localResource(restrictedFile, { integrityFragment: false })),
+      apiVersion: restrictedDescriptor.apiVersion,
+      declaredGzipBytes: restrictedDescriptor.gzipBytes,
+    }
+  : null;
+if (
+  expectedOptionalRestrictedContent &&
+  expectedOptionalRestrictedContent.gzipBytes !==
+    expectedOptionalRestrictedContent.declaredGzipBytes
+)
+  throw new Error("Optional restricted content gzip size drift");
+
 const expectedOptionalRenderer = {
   ...(await localResource(rendererFile, {
     integrityFragment: false,
@@ -290,6 +324,7 @@ const report = {
     resources: startupResources,
     measuredOnline: fetchRequires,
   },
+  optionalRestrictedContent: expectedOptionalRestrictedContent,
   optionalRenderer: {
     ...optionalRenderer,
     measuredOnline: fetchRequires,
@@ -420,6 +455,22 @@ if (check) {
     failures.push(
       `optional renderer gzip bytes ${report.optionalRenderer.gzipBytes} > ${budget.optionalRenderer.maxGzipBytes}`,
     );
+  if (report.optionalRestrictedContent) {
+    if (
+      report.optionalRestrictedContent.bytes >
+      budget.optionalRestrictedContent.maxBytes
+    )
+      failures.push(
+        `optional restricted content bytes ${report.optionalRestrictedContent.bytes} > ${budget.optionalRestrictedContent.maxBytes}`,
+      );
+    if (
+      report.optionalRestrictedContent.gzipBytes >
+      budget.optionalRestrictedContent.maxGzipBytes
+    )
+      failures.push(
+        `optional restricted content gzip bytes ${report.optionalRestrictedContent.gzipBytes} > ${budget.optionalRestrictedContent.maxGzipBytes}`,
+      );
+  }
   if (fetchRequires) {
     for (const actual of startupResources) {
       const expected = expectedStartupResources.find(

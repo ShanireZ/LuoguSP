@@ -8,6 +8,7 @@ import {
   updateQaRendererProbeDataset,
 } from "./qa-hidden-intro.js";
 import { createUserscriptFetch } from "./userscript-fetch.js";
+import { createOptionalBundleLoader } from "./optional-bundle-loader.js";
 
 function createQaProbe(release, mode) {
   if (!mode) return null;
@@ -92,7 +93,17 @@ Object.defineProperty(globalThis, "__LUOGUSP_CDN_RUNTIME__", {
   value: runtime,
   configurable: true,
 });
+// 受限内容功能块：只在真的落到「安全访问中心」拦截页时才拉（见 features/restricted-content/lazy-feature.js）。
+const restrictedContentLoader = createOptionalBundleLoader({
+  bundle: __LUOGUSP_RESTRICTED_CONTENT_BUNDLE__,
+  origin: __LUOGUSP_CDN_ORIGIN__,
+  expectedApiVersion: 1,
+  exports: ["createRestrictedContentFeature"],
+  fetchImpl: userscriptFetch.fetchImpl,
+});
 runLuoguSP(installRestrictedEarlyGate(), {
+  restrictedContentLoadBundle: () =>
+    restrictedContentLoader.load().then((result) => result.module),
   hiddenIntroRendererConfig: Object.freeze({
     bundle: __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__,
     origin: __LUOGUSP_CDN_ORIGIN__,
