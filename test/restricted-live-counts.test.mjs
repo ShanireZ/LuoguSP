@@ -21,7 +21,7 @@ const LID = "2l4x53kj";
 const AUTHOR = 697932;
 
 function row(lid, extra = {}) {
-  return { lid, title: `文章 ${lid}`, upvote: 1, favorCount: 2, replyCount: 3, ...extra };
+  return { lid, title: `文章 ${lid}`, upvote: 1, favorCount: 2, replyCount: 3, time: 1759309175, ...extra };
 }
 
 function listPayload(rows, { perPage = 10, count = rows.length } = {}) {
@@ -91,11 +91,17 @@ test("命中项取三个计数；0 是合法计数，不是缺失", () => {
     upvote: 24,
     favorCount: 22,
     replyCount: 50,
+    time: 1759309175,
+    status: null,
+    solutionFor: null,
   });
   assert.deepEqual(pickLiveCounts([row(LID, { upvote: 0, favorCount: 0, replyCount: 0 })], LID), {
     upvote: 0,
     favorCount: 0,
     replyCount: 0,
+    time: 1759309175,
+    status: null,
+    solutionFor: null,
   });
 });
 
@@ -111,6 +117,9 @@ test("upvote 或 favorCount 缺失时整体作废，绝不伪造 0", () => {
     upvote: 1,
     favorCount: 2,
     replyCount: null,
+    time: 1759309175,
+    status: null,
+    solutionFor: null,
   });
 });
 
@@ -124,7 +133,7 @@ test("第一页命中时只发一次请求，且路径与 header 符合契约", 
   const { fetchPage, calls } = stubFetch({
     1: listPayload([row("a"), row(LID, { upvote: 24, favorCount: 22, replyCount: 50 })]),
   });
-  assert.deepEqual(await resolve(fetchPage), { upvote: 24, favorCount: 22, replyCount: 50 });
+  assert.deepEqual(await resolve(fetchPage), { upvote: 24, favorCount: 22, replyCount: 50, time: 1759309175, status: null, solutionFor: null });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, `/user/${AUTHOR}/article?page=1`);
   assert.equal(calls[0].init.headers["x-lentille-request"], "content-only");
@@ -136,7 +145,7 @@ test("首页未命中时按 count 并行扫剩余页", async () => {
     2: listPayload(Array.from({ length: 10 }, (u, i) => row(`p2-${i}`)), { count: 26 }),
     3: listPayload([row(LID, { upvote: 24, favorCount: 22, replyCount: 50 })], { count: 26 }),
   });
-  assert.deepEqual(await resolve(fetchPage), { upvote: 24, favorCount: 22, replyCount: 50 });
+  assert.deepEqual(await resolve(fetchPage), { upvote: 24, favorCount: 22, replyCount: 50, time: 1759309175, status: null, solutionFor: null });
   assert.deepEqual(
     calls.map((c) => c.path),
     [1, 2, 3].map((p) => `/user/${AUTHOR}/article?page=${p}`),
@@ -157,7 +166,9 @@ test("列表页数超出上限时只扫前 N 页，并把截断报出来", async
   assert.equal(result, null);
   assert.equal(calls.length, 3);
   // 默默少扫几页会让「没找到」看起来像「洛谷没有这条数据」。
-  assert.deepEqual(truncations, [{ lid: LID, totalPages: 50, scannedPages: 3 }]);
+  assert.deepEqual(truncations, [
+    { lid: LID, totalPages: 50, scannedPages: 3, category: null },
+  ]);
 });
 
 test("拦截页 / 网络错误 / 形状漂移都降级为 null，不抛", async () => {
@@ -274,4 +285,157 @@ test("live 缺 replyCount 时保留调用方传入的评论条数", () => {
   });
   assert.equal(merged.article.replyCount, 45);
   assert.equal(merged.article.upvote, 24);
+});
+
+// ★ `?category=N` 实测生效（作者 697932：26 篇 → category=3 只剩 4 篇），
+// 而保存站存档里就带 category，所以扫页前就能把搜索空间缩小若干倍。
+test("给了分类就带 category 过滤扫，命中后不再全量扫", async () => {
+  const { fetchPage, calls } = stubFetch({
+    1: listPayload([row(LID, { upvote: 24, favorCount: 22, replyCount: 50 })], { count: 4 }),
+  });
+  assert.deepEqual(await resolve(fetchPage, { category: 3 }), {
+    upvote: 24,
+    favorCount: 22,
+    replyCount: 50,
+    time: 1759309175,
+    status: null,
+    solutionFor: null,
+  });
+  assert.deepEqual(calls.map((c) => c.path), [
+    `/user/${AUTHOR}/article?page=1&category=3`,
+  ]);
+});
+
+// 存档里的 category 可能已经过期（文章被改分类），过滤扫不到必须退回全量扫。
+test("分类过滤扫不到时退回全量扫", async () => {
+  const calls = [];
+  const fetchPage = (path, signal, init) => {
+    calls.push(path);
+    const filtered = path.includes("category=");
+    const payload = filtered
+      ? listPayload([row("别的文章")], { count: 1 })
+      : listPayload([row(LID, { upvote: 24, favorCount: 22 })], { count: 1 });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(payload) });
+  };
+  const hit = await resolve(fetchPage, { category: 3 });
+  assert.equal(hit.upvote, 24);
+  assert.deepEqual(calls, [
+    `/user/${AUTHOR}/article?page=1&category=3`,
+    `/user/${AUTHOR}/article?page=1`,
+  ]);
+});
+
+test("非法分类不进 URL", async () => {
+  for (const bad of [0, -1, "x", null, 1.5]) {
+    const { fetchPage, calls } = stubFetch({ 1: listPayload([row(LID)]) });
+    await resolve(fetchPage, { category: bad });
+    assert.equal(calls[0].path, `/user/${AUTHOR}/article?page=1`, String(bad));
+  }
+});
+
+// 40 页一次性并发发出去对洛谷不礼貌，也容易踩限流。
+test("剩余页按并发上限分批，不是一次性全撒出去", async () => {
+  const inFlight = { now: 0, peak: 0 };
+  const pages = {};
+  for (let p = 1; p <= 9; p++) pages[p] = listPayload([row(`p${p}`)], { perPage: 1, count: 9 });
+  pages[9] = listPayload([row(LID, { upvote: 24, favorCount: 22 })], { perPage: 1, count: 9 });
+  const fetchPage = (path) => {
+    inFlight.now += 1;
+    inFlight.peak = Math.max(inFlight.peak, inFlight.now);
+    const page = Number((path.match(/page=(\d+)/) || [])[1]);
+    return new Promise((done) =>
+      setTimeout(() => {
+        inFlight.now -= 1;
+        done({ ok: true, json: () => Promise.resolve(pages[page]) });
+      }, 1),
+    );
+  };
+  const hit = await resolve(fetchPage, { concurrency: 3, deadlineMs: 0 });
+  assert.equal(hit.upvote, 24);
+  assert.ok(inFlight.peak <= 3, `峰值并发 ${inFlight.peak} 应当 <= 3`);
+});
+
+// ★ 保存站只有入档时间；实测 2l4x53kj 入档 2026-01-02、真实发表 2025-10-01，
+// 差了三个月。把入档时间当发表时间显示是错的。
+test("发表时间取 live 真值；缺失或非正数则留 null", () => {
+  assert.equal(pickLiveCounts([row(LID, { time: 1759309175 })], LID).time, 1759309175);
+  for (const bad of [null, undefined, "", 0, -1, "abc"])
+    assert.equal(pickLiveCounts([row(LID, { time: bad })], LID).time, null, String(bad));
+});
+
+test("合并层用 live 的发表时间覆盖存档入档时间", () => {
+  const archivedSeconds = Math.floor(Date.parse("2026-01-02T09:12:59.895Z") / 1000);
+  const merged = completeRestrictedArticleInteraction({
+    article: { ...archivedArticle, time: archivedSeconds },
+    archived: {},
+    archivedAt: null,
+    viewer: null,
+    confirmed: null,
+    live: { upvote: 24, favorCount: 22, replyCount: 50, time: 1759309175 },
+  });
+  assert.equal(merged.article.time, 1759309175);
+  // 拿不到真值时保留调用方传入的值，不擅自改成 0。
+  const fallback = completeRestrictedArticleInteraction({
+    article: { ...archivedArticle, time: archivedSeconds },
+    archived: {},
+    archivedAt: null,
+    viewer: null,
+    confirmed: null,
+    live: { upvote: 24, favorCount: 22, replyCount: 50, time: null },
+  });
+  assert.equal(fallback.article.time, archivedSeconds);
+});
+
+// ★ 页数预算跨两次尝试共享：否则「分类过滤扫不到 → 全量扫」会把请求数翻倍。
+test("分类回退不得让请求数翻倍：页数预算跨尝试共享", async () => {
+  const calls = [];
+  const fetchPage = (path) => {
+    calls.push(path);
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve(listPayload([row(`x${calls.length}`)], { perPage: 1, count: 500 })),
+    });
+  };
+  const result = await resolve(fetchPage, { category: 3, maxPages: 4, concurrency: 2 });
+  assert.equal(result, null);
+  // 4 页预算 = 两次尝试合计最多 4 次请求，不是每次 4 页。
+  assert.equal(calls.length, 4, calls.join(" "));
+  assert.ok(calls.some((p) => p.includes("category=3")));
+});
+
+// owner 拍板接上：此前 feature.js 只能硬写 solutionFor:null / status:2。
+// 官方组件读的是 article.solutionFor.pid（链到 problem.solution），
+// 所以原样透传洛谷自己的字段，形状不由我们构造。
+test("题解归属与审核状态原样透传，非对象的 solutionFor 一律作废", () => {
+  const sol = { pid: "P3372", title: "【模板】线段树 1" };
+  const hit = pickLiveCounts([row(LID, { status: 2, solutionFor: sol })], LID);
+  assert.equal(hit.status, 2);
+  assert.deepEqual(hit.solutionFor, sol);
+  for (const bad of [null, undefined, "P3372", 0, true])
+    assert.equal(pickLiveCounts([row(LID, { solutionFor: bad })], LID).solutionFor, null, String(bad));
+});
+
+test("合并层把 solutionFor 与 status 覆盖到官方 article 上", () => {
+  const sol = { pid: "P3372" };
+  const merged = completeRestrictedArticleInteraction({
+    article: { ...archivedArticle, status: 2, solutionFor: null },
+    archived: {},
+    archivedAt: null,
+    viewer: null,
+    confirmed: null,
+    live: { upvote: 24, favorCount: 22, status: 3, solutionFor: sol },
+  });
+  assert.equal(merged.article.status, 3);
+  assert.deepEqual(merged.article.solutionFor, sol);
+  // 拿不到 live 时保留调用方传入的硬编码值，不擅自改。
+  const fallback = completeRestrictedArticleInteraction({
+    article: { ...archivedArticle, status: 2, solutionFor: null },
+    archived: {},
+    archivedAt: null,
+    viewer: null,
+    confirmed: null,
+    live: null,
+  });
+  assert.equal(fallback.article.status, 2);
+  assert.equal(fallback.article.solutionFor, null);
 });

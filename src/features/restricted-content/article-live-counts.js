@@ -15,8 +15,15 @@
 const LENTILLE_INIT = Object.freeze({
   headers: Object.freeze({ "x-lentille-request": "content-only" }),
 });
-const DEFAULT_MAX_PAGES = 6;
-const DEFAULT_DEADLINE_MS = 4000;
+// `?category=N` 实测生效（作者 697932：26 篇 → category=3 只剩 4 篇），而保存站的
+// 存档里就带 `category`，所以扫页前就能把搜索空间缩小若干倍。`?keyword=` 实测**无效**
+// （结果集不变），别指望它。
+const DEFAULT_MAX_PAGES = 40;
+const DEFAULT_CONCURRENCY = 5;
+// ★ 这个预算直接压在受限页的首屏上（它和骨架抓取、作者查询、评论并行，
+// 但总时长取最大值）。实测单页 ~600ms，分类过滤后常见情况就是 1 页，
+// 2.5s 够覆盖三四批；再长就是拿所有人的首屏去赌一个罕见的巨型专栏，不值。
+const DEFAULT_DEADLINE_MS = 2500;
 const FALLBACK_PER_PAGE = 10;
 
 // ★同 article-interaction-store：Number(null) === 0 且 Number.isFinite(0) 为真，
@@ -40,8 +47,12 @@ export function parseArticleListPayload(payload) {
   });
 }
 
-// 命中项 → 三个公共计数。`upvote` / `favorCount` 缺一不可（它们是这个特性的全部意义）；
-// `replyCount` 允许缺失，调用方回落到已加载的评论条数。
+// 命中项 → 公共计数 + 真实发表时间。`upvote` / `favorCount` 缺一不可（它们是这个特性的
+// 全部意义）；`replyCount` 与 `time` 允许缺失，调用方回落。
+//
+// ★ `time` 是**洛谷的真实发表时间**（秒）。保存站只有 `createdAt`＝入档时间，
+//   两者可以差几个月（实测 2l4x53kj：入档 2026-01-02，真实发表 2025-10-01），
+//   此前把入档时间当「创建时间」显示是错的。
 export function pickLiveCounts(rows, lid) {
   if (!Array.isArray(rows) || typeof lid !== "string" || !lid) return null;
   const hit = rows.find((row) => row && row.lid === lid);
@@ -49,10 +60,18 @@ export function pickLiveCounts(rows, lid) {
   const upvote = countOrNull(hit.upvote);
   const favorCount = countOrNull(hit.favorCount);
   if (upvote === null || favorCount === null) return null;
+  const time = countOrNull(hit.time);
   return Object.freeze({
     upvote,
     favorCount,
     replyCount: countOrNull(hit.replyCount),
+    time: time !== null && time > 0 ? time : null,
+    status: countOrNull(hit.status),
+    // 原样透传：形状由洛谷决定（官方组件读 solutionFor.pid），这里不构造也不猜。
+    solutionFor:
+      hit.solutionFor && typeof hit.solutionFor === "object"
+        ? hit.solutionFor
+        : null,
   });
 }
 
@@ -85,7 +104,9 @@ export function resolveLiveArticleCounts(config) {
     fetchPage,
     authorUid,
     lid,
+    category,
     maxPages = DEFAULT_MAX_PAGES,
+    concurrency = DEFAULT_CONCURRENCY,
     deadlineMs = DEFAULT_DEADLINE_MS,
     clock = { setTimeout, clearTimeout },
     signal,
@@ -101,10 +122,20 @@ export function resolveLiveArticleCounts(config) {
   )
     return Promise.resolve(null);
 
-  const readPage = async (page) => {
+  const cat = Number(category);
+  const filter =
+    Number.isSafeInteger(cat) && cat > 0 ? `&category=${cat}` : "";
+
+  // ★ 页数预算是**跨两次尝试共享**的。否则「分类过滤扫不到 → 全量扫」这条回退路径
+  // 会把请求数翻倍（巨型专栏可达 40+40 页），对洛谷不礼貌。
+  let pagesLeft = Math.max(1, Number(maxPages) || 1);
+
+  const readPage = async (page, query) => {
+    if (pagesLeft <= 0) return null;
+    pagesLeft -= 1;
     try {
       const response = await fetchPage(
-        `/user/${uid}/article?page=${page}`,
+        `/user/${uid}/article?page=${page}${query}`,
         signal,
         LENTILLE_INIT,
       );
@@ -116,29 +147,48 @@ export function resolveLiveArticleCounts(config) {
     }
   };
 
-  const scan = async () => {
-    const first = await readPage(1);
-    if (!first) return null;
-    const found = pickLiveCounts(first.result, lid);
-    if (found) return found;
+  // 分批并发：40 页一次性并发发出去对洛谷不礼貌，也容易踩限流。
+  const sweep = async (first, query) => {
     const perPage = first.perPage || first.result.length || FALLBACK_PER_PAGE;
     const total = first.count === null ? 1 : Math.ceil(first.count / perPage);
     if (total <= 1) return null;
-    const limit = Math.min(total, Math.max(1, Number(maxPages) || 1));
+    const limit = Math.min(total, pagesLeft + 1);
     // 截断必须报出来：默默少扫几页会让「没找到」看起来像「洛谷没有这条数据」。
     if (total > limit && typeof onTruncated === "function")
-      onTruncated({ lid, totalPages: total, scannedPages: limit });
-    const rest = await Promise.all(
-      Array.from({ length: limit - 1 }, (unused, index) =>
-        readPage(index + 2),
-      ),
-    );
-    for (const page of rest) {
-      if (!page) continue;
-      const hit = pickLiveCounts(page.result, lid);
-      if (hit) return hit;
+      onTruncated({
+        lid,
+        totalPages: total,
+        scannedPages: limit,
+        category: query ? cat : null,
+      });
+    const step = Math.max(1, Number(concurrency) || 1);
+    for (let start = 2; start <= limit; start += step) {
+      const batch = await Promise.all(
+        Array.from(
+          { length: Math.min(step, limit - start + 1) },
+          (unused, index) => readPage(start + index, query),
+        ),
+      );
+      for (const page of batch) {
+        if (!page) continue;
+        const hit = pickLiveCounts(page.result, lid);
+        if (hit) return hit;
+      }
     }
     return null;
+  };
+
+  const attempt = async (query) => {
+    const first = await readPage(1, query);
+    if (!first) return null;
+    return pickLiveCounts(first.result, lid) ?? (await sweep(first, query));
+  };
+
+  const scan = async () => {
+    // 先按分类过滤扫（保存站给了 category，搜索空间小很多）；
+    // 分类过滤扫不到就退回全量扫 —— 存档的 category 可能已经过期（文章被改分类）。
+    const filtered = filter ? await attempt(filter) : null;
+    return filtered ?? (await attempt(""));
   };
 
   return withDeadline(

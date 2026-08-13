@@ -59,6 +59,17 @@ export function completeRestrictedArticleInteraction(config) {
     liveFavorCount ?? (countsWin ? numberOrNull(record.favorCount) : null);
   // 评论数只有 live 一个可信来源；拿不到就沿用调用方传进来的已加载评论条数。
   const replyCount = live ? numberOrNull(live.replyCount) : null;
+  // ★ 发表时间同理，而且更要紧：保存站只有入档时间，两者能差几个月，
+  //   把入档时间当发表时间显示是错的。live 有就用真值。
+  const time = live ? numberOrNull(live.time) : null;
+  // 题解归属与审核状态：调用方此前只能硬写 solutionFor:null / status:2。
+  // 这两个值**原样透传洛谷自己列表 API 的字段**，形状由洛谷决定，不由这里构造 ——
+  // 官方组件读的是 `article.solutionFor.pid`（链到 problem.solution）。
+  const status = live ? numberOrNull(live.status) : null;
+  const solutionFor =
+    live && live.solutionFor && typeof live.solutionFor === "object"
+      ? live.solutionFor
+      : null;
   const canReply = Boolean(viewer) && archive.canReply !== false;
   const canEdit = false;
   return Object.freeze({
@@ -67,6 +78,9 @@ export function completeRestrictedArticleInteraction(config) {
       ...(upvote === null ? {} : { upvote }),
       ...(favorCount === null ? {} : { favorCount }),
       ...(replyCount === null ? {} : { replyCount }),
+      ...(time === null ? {} : { time }),
+      ...(status === null ? {} : { status }),
+      ...(solutionFor === null ? {} : { solutionFor }),
       voted,
       canReply,
       canEdit,
