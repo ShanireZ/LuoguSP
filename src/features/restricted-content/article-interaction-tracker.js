@@ -73,6 +73,7 @@ export function prepareRestrictedArticleInteraction(config) {
     article,
     archived,
     archivedAt,
+    live,
     onPersistFailure,
   } = config || {};
   const uid = viewerUid(viewer);
@@ -81,6 +82,7 @@ export function prepareRestrictedArticleInteraction(config) {
     archived,
     viewer,
     archivedAt,
+    live,
     confirmed: store ? store.read({ uid, lid }) : null,
   });
   const tracker = createArticleInteractionTracker({
