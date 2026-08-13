@@ -4,24 +4,24 @@
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
 [![Version: 2.13.10](https://img.shields.io/badge/version-2.13.10-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
-LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信、用户个人页、IDE 模式、受限文章与剪贴板提供实用增强。
+LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题目、私信、个人页、IDE 模式、文章与剪贴板提供实用增强。
 
 项目仓库：[GitHub](https://github.com/ShanireZ/LuoguSP)（主仓库）／[CNB](https://cnb.cool/Round1/LuoguSP)（辅助镜像）
 
 ## 功能
 
-- **题号显示难度颜色**：在主页、题库、评测记录和练习页面中，为题号显示对应的难度颜色。
+- **题号显示难度颜色**：在主页、题库、评测记录等位置中，让题号渲染显示对应的难度颜色。
 - **私信 Ctrl+Click 打开用户个人页**：在私信页面按住 `Ctrl` 点击头像或用户名，直接打开对应用户的个人页。
-- **个人页显示个人介绍**：在用户个人页的主页显示原本未渲染的个人介绍，并支持 Markdown、表格、任务列表、KaTeX 公式、代码高亮和代码复制；动态、专栏、练习、关注等子页不显示。
-- **IDE 模式一键测试所有样例**：在题目页的 IDE 模式下一键运行所有样例，查看每组结果、用时、内存和差异；支持停止、重新测试及结果过期提示。
-- **显示受限文章与剪贴板**：遇到「安全访问中心」拦截时，通过[洛谷保存站](https://www.luogu.me/)显示已收录的专栏文章或云剪贴板，并支持申请收录和更新。
-- **页面内设置**：从洛谷导航栏进入「插件设置」，按需开启或关闭各项功能。
+- **个人页显示个人介绍**：在用户个人页的主页中，显示原本未渲染的个人介绍。
+- **IDE 模式一键测试所有样例**：在题目页的 IDE 模式下一键运行题目的所有样例，并可查看每组结果、用时、内存和输出差异。
+- **显示受限文章与剪贴板**：遇到「安全访问中心」拦截时，通过[洛谷保存站](https://www.luogu.me/)数据，自动显示该文章或云剪贴板，并支持主动更新、点赞、收藏及评论发送。
+- **页面内设置**：从导航栏进入「插件设置」，可按需开启或关闭各项功能。
 
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/)。
 2. 打开脚本 Raw 地址，Tampermonkey 会自动识别脚本，确认安装即可：
-   - [CNB Raw（境内推荐）](https://cnb.cool/Round1/LuoguSP/-/git/raw/main/LuoguSP.user.js)
+   - [CNB Raw（🌟推荐🌟）](https://cnb.cool/Round1/LuoguSP/-/git/raw/main/LuoguSP.user.js)
    - [GitHub Raw](https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js)
 
 也可以使用以下方式安装：
@@ -31,9 +31,11 @@ LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题号、私信�
 
 ## 更新
 
+更新可以用下列方式之一来完成：
+
+- 再次打开任一 Raw 地址，Tampermonkey 会自动识别脚本更新，确认更新即可。（🌟推荐🌟）
 - 在 Tampermonkey 管理面板中找到 LuoguSP，点击「最后更新时间」检查并安装更新。
 - 复制最新版 `LuoguSP.user.js` 源码，替换现有脚本并保存。
-- 再次打开任一 Raw 地址，Tampermonkey 会自动识别脚本更新，确认更新即可。
 
 ## 作者
 
