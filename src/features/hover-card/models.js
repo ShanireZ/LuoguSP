@@ -107,6 +107,7 @@ export function buildProblemCard(config) {
       score,
       bestRecordId: best ? numberOrNull(best.id) : null,
       bestScore: best ? numberOrNull(best.score) : score,
+      bestStatus: best ? numberOrNull(best.status) : null,
       bookmarked: boolOrNull(data.bookmarked),
       lastAttempt: lastAttempt || null,
     }),

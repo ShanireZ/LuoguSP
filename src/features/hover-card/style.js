@@ -9,7 +9,11 @@ export const HOVER_CARD_STYLE = `
 .luogusp-hc-title{font-size:14px;font-weight:600;line-height:1.4;margin:0;word-break:break-all;}
 .luogusp-hc-sub{font-size:12px;margin-top:1px;}
 .luogusp-hc-badges{display:inline-flex;align-items:center;gap:4px;margin-left:4px;vertical-align:middle;}
-.luogusp-hc-badge{font-size:11px;line-height:1.4;padding:0 5px;border-radius:3px;background:#f2f4f7;color:#5a5a5a;white-space:nowrap;}
+/* 原生徽章实测：✅(fa-badge-check) 与 🎈(fa-balloon) 的 computed color 都是 #3498db、1em；
+   称号是白字 + 等级色底 + 圆角 2px + .765em + 左右 .383em 内边距（底色跟随用户等级色）。 */
+.luogusp-hc-badge{font-size:.765em;line-height:1.5;white-space:nowrap;}
+.luogusp-hc-badge-icon{color:#3498db;font-size:1em;}
+.luogusp-hc-status{font-size:.9em;font-weight:600;}
 .luogusp-hc-row{display:flex;justify-content:space-between;gap:10px;padding:2px 0;}
 .luogusp-hc-key{color:#8a8a8a;flex:0 0 auto;}
 .luogusp-hc-val{text-align:right;word-break:break-all;}
@@ -17,6 +21,10 @@ export const HOVER_CARD_STYLE = `
 .luogusp-hc-tags{margin-top:2px;}
 .luogusp-hc-tagbtn{background:none;border:0;padding:0;color:#3498db;cursor:pointer;font:inherit;}
 .luogusp-hc-taglist{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+/* ★ canary.13 真机回归：标签默认就显示、切换按钮看着失效。根因是上面这条类选择器的
+   display:flex 特异性高于 UA 样式表的 [hidden]{display:none}，于是 hidden 根本不起作用。
+   任何给了 display 的元素都必须自己再声明一次 [hidden]。 */
+.luogusp-hc-taglist[hidden]{display:none;}
 .luogusp-hc-tag{font-size:11px;line-height:1.5;padding:0 6px;border-radius:3px;background:#eef4fb;color:#2b6ca3;}
 .luogusp-hc-actions{display:flex;align-items:center;gap:8px;margin-top:10px;}
 .luogusp-hc-btn{font-size:12px;line-height:1.5;padding:3px 12px;border-radius:3px;border:1px solid #3498db;background:#3498db;color:#fff;cursor:pointer;}

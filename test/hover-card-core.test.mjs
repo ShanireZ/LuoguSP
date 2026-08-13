@@ -454,3 +454,69 @@ test("缓存过期后重新取", async () => {
   await sources.user(1);
   assert.equal(calls.length, before + 1);
 });
+
+// ---- 洛谷原生表现（全部实测取值）----
+import {
+  NATIVE_BADGE_COLOR,
+  abbreviateCount,
+  badgeStyle,
+  levelColor,
+  statusPresentation,
+} from "../src/features/hover-card/luogu-native.js";
+
+// owner 拍板：小于 1000 全显示，小于 1000000 用 k，否则用 m。
+test("计数缩写按 owner 的口径", () => {
+  assert.equal(abbreviateCount(0), "0");
+  assert.equal(abbreviateCount(999), "999");
+  assert.equal(abbreviateCount(1000), "1k");
+  assert.equal(abbreviateCount(1234), "1.2k");
+  assert.equal(abbreviateCount(259644), "260k");
+  assert.equal(abbreviateCount(999999), "1000k");
+  assert.equal(abbreviateCount(1000000), "1m");
+  assert.equal(abbreviateCount(1234567), "1.2m");
+  assert.equal(abbreviateCount(12345678), "12.3m");
+  // 不留 `1.0k` 这种尾巴
+  assert.equal(abbreviateCount(2000), "2k");
+  // ★ Number(null) === 0 且 isFinite(0) 为真：只判 isFinite 会把「没有计数」变成 0。
+  for (const bad of [null, undefined, "", "x", NaN])
+    assert.equal(abbreviateCount(bad), null, String(bad));
+});
+
+// 等级色是在 /discuss 上把每个用户的 color 字段与用户名的 computed color 配对得到的。
+test("等级色对齐实测值，未知落到 Gray", () => {
+  assert.equal(levelColor("Purple"), "#9d3dcf");
+  assert.equal(levelColor("Red"), "#fe4c61");
+  assert.equal(levelColor("Orange"), "#f39c11");
+  assert.equal(levelColor("Green"), "#52c41a");
+  assert.equal(levelColor("Blue"), "#3498db");
+  assert.equal(levelColor("Gray"), "#bfbfbf");
+  // Cheater 本轮没在页面上遇到，不编值 —— 未知一律 Gray。
+  for (const bad of ["Cheater", "", null, undefined, 1])
+    assert.equal(levelColor(bad), "#bfbfbf", String(bad));
+});
+
+// 称号原生样式：白字 + 等级色底 + 圆角 2px（底色跟随用户等级色，实测紫名用户是紫底）。
+test("称号样式跟随等级色", () => {
+  const style = badgeStyle("Purple");
+  assert.match(style, /background:#9d3dcf/);
+  assert.match(style, /color:#fff/);
+  assert.match(style, /border-radius:2px/);
+  assert.equal(NATIVE_BADGE_COLOR, "#3498db");
+});
+
+// ★ 实测洛谷记录列表只渲染两种：12 → Accepted（#52c41a），其它（实测到 14）→
+// Unaccepted（#e74c3c）。细分状态的数字码表没取到证据，所以这里不编细分名。
+test("评测状态用洛谷原生的两种表示与配色", () => {
+  const ac = statusPresentation(12);
+  assert.equal(ac.label, "Accepted");
+  assert.equal(ac.color, "#52c41a");
+  assert.equal(ac.accepted, true);
+  const no = statusPresentation(14);
+  assert.equal(no.label, "Unaccepted");
+  assert.equal(no.color, "#e74c3c");
+  assert.equal(no.accepted, false);
+  // ★ 同一个陷阱：没有状态时绝不能渲染成 Unaccepted ——
+  // 那等于在不知情的情况下断言用户没通过。
+  for (const bad of [null, undefined, "", "x", NaN])
+    assert.equal(statusPresentation(bad), null, String(bad));
+});
