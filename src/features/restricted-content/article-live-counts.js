@@ -25,6 +25,10 @@ const DEFAULT_CONCURRENCY = 5;
 // 2.5s 够覆盖三四批；再长就是拿所有人的首屏去赌一个罕见的巨型专栏，不值。
 const DEFAULT_DEADLINE_MS = 2500;
 const FALLBACK_PER_PAGE = 10;
+const DEFAULT_CLOCK = Object.freeze({
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (id) => clearTimeout(id),
+});
 
 // ★同 article-interaction-store：Number(null) === 0 且 Number.isFinite(0) 为真，
 // 只判 isFinite 会把「列表里没有这个字段」悄悄变成 0，再反过来盖掉保存站的真实值。
@@ -108,7 +112,11 @@ export function resolveLiveArticleCounts(config) {
     maxPages = DEFAULT_MAX_PAGES,
     concurrency = DEFAULT_CONCURRENCY,
     deadlineMs = DEFAULT_DEADLINE_MS,
-    clock = { setTimeout, clearTimeout },
+    // ★ 必须包一层，不能写 `{ setTimeout, clearTimeout }` 简写。裸引用会让
+    //   `clock.setTimeout(...)` 以 `this === clock` 调用原生方法 —— 在**页面 realm**
+    //   （本模块随受限内容按需块经 blob: 动态 import 执行）里就是
+    //   `TypeError: Illegal invocation`。在用户脚本沙箱里侥幸能过，一挪进按需块就炸。
+    clock = DEFAULT_CLOCK,
     signal,
     onTruncated,
   } = config || {};
@@ -196,6 +204,6 @@ export function resolveLiveArticleCounts(config) {
     deadlineMs,
     clock && typeof clock.setTimeout === "function"
       ? clock
-      : { setTimeout, clearTimeout },
+      : DEFAULT_CLOCK,
   );
 }

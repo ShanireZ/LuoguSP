@@ -13,5 +13,6 @@ export const SETTINGS_STYLE = `
   #luogusp-settings .luogusp-primary:hover{background:#0879bd;border-color:#0879bd;color:#fff;}
   #luogusp-settings .luogusp-primary:active{background:#066ca9;border-color:#066ca9;color:#fff;}
   #luogusp-settings .luogusp-hint{margin:10px 0 0;color:#888;font-size:12px;}
+  #luogusp-settings .luogusp-confirm{margin:0 0 16px;font-size:14px;line-height:1.6;}
   .luogusp-setting-entry{cursor:pointer;}
 `;

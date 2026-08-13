@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { createSettingsFeature } from "../src/features/settings/feature.js";
 
@@ -108,4 +109,34 @@ test("settings entry stays out of pages with no recognisable navigation", () => 
   } finally {
     restore();
   }
+});
+
+// owner 要求：保存后的刷新提示要在屏幕正中。浏览器原生 confirm() 在 Chrome/Edge
+// 一律贴视口顶部且样式不可控，所以换成页内对话框，复用设置面板同一套
+// #luogusp-settings 遮罩 + 居中面板作用域。
+test("保存后的刷新提示是页内居中对话框，不是原生 confirm", () => {
+  const source = readFileSync(
+    new URL("../src/features/settings/feature.js", import.meta.url),
+    "utf8",
+  );
+  // 先剥注释再匹配：讲这条坑的注释里本来就会出现反例字面量，
+  // 不剥就会像定时器那条守卫一样误报到自己身上。
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "");
+  assert.doesNotMatch(
+    code,
+    /\bconfirm\(/,
+    "原生确认框会贴在视口顶部，owner 明确要求居中",
+  );
+  assert.match(source, /function askRefresh\(/);
+  assert.match(source, /role="alertdialog"/);
+  // 复用同一个 id 才能吃到 .luogusp-panel 的 translate(-50%,-50%) 居中规则。
+  assert.match(source, /overlay\.id = "luogusp-settings"[\s\S]*luogusp-confirm/);
+  const style = readFileSync(
+    new URL("../src/features/settings/style.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(style, /luogusp-panel\{position:absolute;top:50%;left:50%;transform:translate\(-50%,-50%\)/);
+  assert.match(style, /luogusp-confirm/);
 });

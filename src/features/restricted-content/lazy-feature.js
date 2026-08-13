@@ -93,7 +93,14 @@ export function createRestrictedContentFeature(config) {
     storage,
     mount: (context) => {
       // 不是拦截页 → 一个字节都不拉。这是本次拆分的全部意义。
-      if (!detect()) return () => {};
+      // ★ 但必须先把早期加载层放掉：它在 document-start 就遮住了**所有**
+      //   /article/*、/paste/* 页面（`body>*{visibility:hidden}`），
+      //   旧代码由 document-boot 在探测失败时释放。这里提前 return 却不释放，
+      //   就会把每一个正常文章/剪贴板页面永久遮成空白。
+      if (!detect()) {
+        if (restrictedLoadingGate) restrictedLoadingGate.release();
+        return () => {};
+      }
       let released = false;
       let innerDispose = null;
       ensureFeature().then((loaded) => {
