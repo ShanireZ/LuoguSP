@@ -88,6 +88,21 @@ if (stagedArtifact.includes("/channels/"))
   failures.push("staged userscript must not load a mutable channel");
 if (Buffer.byteLength(stagedArtifact) > 5000)
   failures.push("staged userscript loader exceeds 5000 bytes");
+// 受限内容按需块：清单声明了就必须钉全。这里不强制它「必须存在」——
+// 老 release（2.14.0 之前）没有这个块，而「必须存在」由构建侧的结构守卫
+// （test/restricted-lazy-bundle.test.mjs）无条件盯着。
+const optionalRestricted = manifest.optionalBundles?.restrictedContent;
+if (optionalRestricted) {
+  const restrictedFile = manifest.files?.[optionalRestricted.path];
+  if (
+    !restrictedFile ||
+    optionalRestricted.apiVersion !== 1 ||
+    optionalRestricted.bytes !== restrictedFile.bytes ||
+    optionalRestricted.sha256 !== restrictedFile.sha256 ||
+    optionalRestricted.sri !== restrictedFile.sri
+  )
+    failures.push("manifest does not pin a complete restricted content bundle");
+}
 const optionalRenderer = manifest.optionalBundles?.markdownRenderer;
 const optionalRendererFile =
   optionalRenderer?.path && manifest.files?.[optionalRenderer.path];

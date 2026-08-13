@@ -84,6 +84,21 @@ export function verifyStagedActivation(options) {
     manifest?.esm?.enabled !== false
   )
     throw new Error("Staged userscript manifest is not production-ready");
+  // 同 verify-production：声明了就必须钉全；「必须存在」由构建侧结构守卫负责。
+  const restricted = manifest.optionalBundles?.restrictedContent;
+  if (restricted) {
+    const restrictedFile = manifest.files?.[restricted.path];
+    if (
+      !restrictedFile ||
+      restricted.apiVersion !== 1 ||
+      restricted.bytes !== restrictedFile.bytes ||
+      restricted.sha256 !== restrictedFile.sha256 ||
+      restricted.sri !== restrictedFile.sri
+    )
+      throw new Error(
+        "Staged userscript manifest does not pin a complete restricted content bundle",
+      );
+  }
   const renderer = manifest.optionalBundles?.markdownRenderer;
   const rendererFile =
     renderer?.path && manifest.files?.[renderer.path];

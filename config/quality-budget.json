@@ -21,5 +21,9 @@
   "optionalRenderer": {
     "maxBytes": 474575,
     "maxGzipBytes": 145872
+  },
+  "optionalRestrictedContent": {
+    "maxBytes": 60000,
+    "maxGzipBytes": 22000
   }
 }

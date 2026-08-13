@@ -142,6 +142,45 @@ const markdownRendererBundle = Object.freeze({
   sri: markdownRendererFile.sri,
   dependencies: rendererStackDependencies,
 });
+// 受限内容按需块：启动包里最大的一块（实测 44506 B / 37%），却只在
+// 「安全访问中心」拦截页才用得到。拆出来后启动包降到约 83 KB。
+const restrictedContentResult = await build({
+  absWorkingDir: root,
+  entryPoints: ["src/cdn/restricted-content-bundle.js"],
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  charset: "utf8",
+  legalComments: "none",
+  minify: true,
+  treeShaking: true,
+  write: false,
+});
+if (restrictedContentResult.outputFiles?.length !== 1)
+  throw new Error("Expected one restricted content bundle output");
+const restrictedContentBody = Buffer.from(
+  restrictedContentResult.outputFiles[0].contents,
+);
+const restrictedContentRelativePath = `feature/restricted-content.${digest(restrictedContentBody).slice(0, 16)}.js`;
+if (!verifyExisting && !dryRun) {
+  await mkdir(resolve(releaseDir, "feature"), { recursive: true });
+  await writeFile(
+    resolve(releaseDir, restrictedContentRelativePath),
+    restrictedContentBody,
+  );
+}
+const restrictedContentFile = fileRecord(
+  `releases/${version}/${restrictedContentRelativePath}`,
+  restrictedContentBody,
+);
+const restrictedContentBundle = Object.freeze({
+  apiVersion: 1,
+  path: restrictedContentFile.path,
+  bytes: restrictedContentFile.bytes,
+  gzipBytes: gzipSync(restrictedContentBody, { level: 9 }).length,
+  sha256: restrictedContentFile.sha256,
+  sri: restrictedContentFile.sri,
+});
 const compatEarlyGate = await buildCompat(
   "src/cdn/early-gate-entry.js",
   "early-gate",
@@ -152,6 +191,9 @@ const compatRuntime = await buildCompat(
   {
     __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__: JSON.stringify(
       markdownRendererBundle,
+    ),
+    __LUOGUSP_RESTRICTED_CONTENT_BUNDLE__: JSON.stringify(
+      restrictedContentBundle,
     ),
     __LUOGUSP_CDN_ORIGIN__: JSON.stringify(
       cdnOrigin,
@@ -193,6 +235,7 @@ const files = {
   [compatEarlyGate.path]: compatEarlyGate,
   [compatRuntime.path]: compatRuntime,
   [markdownRendererFile.path]: markdownRendererFile,
+  [restrictedContentFile.path]: restrictedContentFile,
 };
 for (const output of esmResult.outputFiles || []) {
   const relativePath = normalizePath(relative(outputRoot, output.path));
@@ -246,6 +289,7 @@ const manifest = {
   },
   optionalBundles: {
     markdownRenderer: markdownRendererBundle,
+    restrictedContent: restrictedContentBundle,
   },
   esm: {
     enabled: false,
