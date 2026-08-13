@@ -8,6 +8,7 @@ import {
   createRestrictedDocumentCommitter,
   serializeJsonForScript,
 } from "./document-committer.js";
+import { SHELL_LOADER_CSS } from "./loader-geometry.js";
 import { createRestrictedPageDetector } from "./page-detector.js";
 import { parseRestrictedPasteScaffold } from "./paste-scaffold.js";
 import { createRestrictedReplyFetchInstaller } from "./reply-fetch-installer.js";
@@ -80,11 +81,8 @@ export function createRestrictedContentFeature({
     },
     urlPolicy: restrictedUrlPolicy,
   });
-  const RST_LOADER_CSS =
-    ".luogusp-rst-loader{position:fixed;inset:0;z-index:2147483000;background:#f5f5f5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#595959;font:14px/1.5 -apple-system,BlinkMacSystemFont,\"Helvetica Neue\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;}" +
-    ".luogusp-rst-spinner{width:36px;height:36px;border:3px solid rgba(52,152,219,.25);border-top-color:#3498db;border-radius:50%;animation:luogusp-rst-spin .8s linear infinite;}" +
-    "@keyframes luogusp-rst-spin{to{transform:rotate(360deg);}}" +
-    "@media (prefers-reduced-motion:reduce){.luogusp-rst-spinner{animation-duration:1.8s;}}";
+  // 转圈与文案都绝对定位（见 loader-geometry.js）：不随文案变长而位移，也与早期加载层严丝合缝。
+  const RST_LOADER_CSS = SHELL_LOADER_CSS;
   const RST_LOADER_CONTENT_HTML =
     '<div class="luogusp-rst-spinner" aria-hidden="true"></div><div class="msg">加载中…</div>';
   const RST_LOADER_HTML =
