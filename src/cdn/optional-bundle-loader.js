@@ -24,7 +24,14 @@ function validateOptions(bundle, origin, expectedApiVersion) {
     );
 }
 
-function validateModule(module, expectedApiVersion) {
+// markdown 渲染器的导出契约。这里保留成默认值，是为了让既有调用方
+// （hidden-intro/renderer-client.js）不必改一行；新的可选块用 `exports` 传自己的。
+const MARKDOWN_RENDERER_EXPORTS = Object.freeze([
+  "renderMarkdown",
+  "enhanceCodeBlocks",
+]);
+
+function validateModule(module, expectedApiVersion, requiredExports) {
   if (module?.apiVersion !== expectedApiVersion)
     throw Object.assign(
       new Error(
@@ -32,13 +39,15 @@ function validateModule(module, expectedApiVersion) {
       ),
       { kind: "api-version" },
     );
-  if (
-    typeof module.renderMarkdown !== "function" ||
-    typeof module.enhanceCodeBlocks !== "function"
-  )
-    throw Object.assign(new Error("Optional renderer API is incomplete"), {
-      kind: "api-invalid",
-    });
+  // 缺哪个导出要报出来 —— 「API 不完整」这五个字对排查毫无帮助。
+  const missing = requiredExports.filter(
+    (name) => typeof module[name] !== "function",
+  );
+  if (missing.length)
+    throw Object.assign(
+      new Error(`Optional bundle API is incomplete: ${missing.join(", ")}`),
+      { kind: "api-invalid", missing },
+    );
 }
 
 export function createOptionalBundleLoader(options = {}) {
@@ -46,6 +55,7 @@ export function createOptionalBundleLoader(options = {}) {
     bundle,
     origin,
     expectedApiVersion,
+    exports: requiredExports = MARKDOWN_RENDERER_EXPORTS,
     fetchImpl,
     timeoutMs,
     importer = (url) => import(url),
@@ -53,6 +63,12 @@ export function createOptionalBundleLoader(options = {}) {
     BlobImpl = globalThis.Blob,
     onEvent = () => {},
   } = options;
+  // 契约在构造时定死：调用方后来改 options 也影响不了已建好的 loader。
+  const contract = Object.freeze(
+    (Array.isArray(requiredExports) ? requiredExports : [])
+      .filter((name) => typeof name === "string" && name)
+      .slice(),
+  );
   let loaded = null;
   let pending = null;
   const emit = (event) => {
@@ -90,7 +106,7 @@ export function createOptionalBundleLoader(options = {}) {
     try {
       const module = await importer(objectUrl);
       if (signal?.aborted) throw cancelledError();
-      validateModule(module, expectedApiVersion);
+      validateModule(module, expectedApiVersion, contract);
       emit({
         type: "loaded",
         origin: asset.origin,
