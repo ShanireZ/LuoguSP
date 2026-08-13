@@ -1,3 +1,10 @@
+import {
+  LOADER_BACKDROP,
+  LOADER_FONT,
+  LOADER_MESSAGE_BOX,
+  LOADER_SPINNER_BOX,
+  LOADER_TEXT_COLOR,
+} from "../features/restricted-content/loader-geometry.js";
 import { createRestrictedLoadingGate } from "../features/restricted-content/loading-gate.js";
 
 const SHARED_GATE_KEY = "__LUOGUSP_RESTRICTED_LOADING_GATE_V1__";
@@ -36,11 +43,13 @@ function createGate() {
           if (!document.getElementById(styleId)) {
             const style = document.createElement("style");
             style.id = styleId;
+            // 几何与壳内加载层同源（loader-geometry.js）：两者先后出现在同一位置，
+            // 一旦不一致，切换瞬间转圈就会跳一下。
             style.textContent = `
-              html.${className},html.${className} body{overflow:hidden!important;background:#f5f5f5!important;}
+              html.${className},html.${className} body{overflow:hidden!important;background:${LOADER_BACKDROP}!important;}
               html.${className} body>*{visibility:hidden!important;}
-              html.${className}::before{content:"";position:fixed;left:50%;top:50%;z-index:2147483646;width:36px;height:36px;margin:-31px 0 0 -21px;border:3px solid rgba(52,152,219,.25);border-top-color:#3498db;border-radius:50%;animation:luogusp-rst-early-spin .8s linear infinite;}
-              html.${className}::after{content:"加载中…";position:fixed;left:0;right:0;top:calc(50% + 17px);z-index:2147483646;color:#595959;text-align:center;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;}
+              html.${className}::before{content:"";${LOADER_SPINNER_BOX}z-index:2147483646;animation:luogusp-rst-early-spin .8s linear infinite;}
+              html.${className}::after{content:"加载中…";${LOADER_MESSAGE_BOX}z-index:2147483646;color:${LOADER_TEXT_COLOR};font:${LOADER_FONT};}
               @keyframes luogusp-rst-early-spin{to{transform:rotate(360deg);}}
               @media (prefers-reduced-motion:reduce){html.${className}::before{animation-duration:1.8s;}}
             `;
