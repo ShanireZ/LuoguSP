@@ -2,7 +2,9 @@
 // ★ 卡片用 position:fixed —— 锚点常在 overflow:hidden 的容器里（讨论区行、题解列表），
 //   用 absolute 会被裁掉。
 export const HOVER_CARD_STYLE = `
-.luogusp-hc{position:fixed;z-index:2147482000;width:320px;max-width:calc(100vw - 24px);background:#fff;color:#3f3f3f;border:1px solid #e6e6e6;border-radius:4px;box-shadow:0 4px 16px rgba(26,26,26,.14);font:13px/1.6 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;padding:12px 14px;box-sizing:border-box;}
+/* ★ 宽度固定、并且**永远不出视口**：高度由 placeCard 按可用空间钉 max-height，
+   内容再长也只在卡片内部出滚动条（owner 2026-08-14：展开标签后卡片顶出界）。 */
+.luogusp-hc{position:fixed;z-index:2147482000;width:320px;max-width:calc(100vw - 24px);background:#fff;color:#3f3f3f;border:1px solid #e6e6e6;border-radius:4px;box-shadow:0 4px 16px rgba(26,26,26,.14);font:13px/1.6 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;padding:12px 14px;box-sizing:border-box;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;}
 .luogusp-hc[hidden]{display:none;}
 .luogusp-hc-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;}
 /* 用户卡=复刻洛谷原生 UserFloatCard 的骨架：背景图页头 → 头像压在下沿 → 名字/签名/统计/操作。
@@ -41,9 +43,14 @@ export const HOVER_CARD_STYLE = `
 .luogusp-hc-val{text-align:right;word-break:break-all;min-width:0;}
 /* 获奖等可能有多条，右对齐竖着码；别让它们挤成一行。 */
 .luogusp-hc-stack{display:flex;flex-direction:column;align-items:flex-end;}
-/* 个人签名过长时压成两行 + 省略号。webkit-box 是唯一跨浏览器可用的多行截断，
-   Firefox 也实现了这套前缀属性。 */
+/* 个人签名默认压两行，展开到 6 行封顶（再多也截断，免得把卡片顶出视口）。
+   webkit-box 是唯一跨浏览器可用的多行截断，Firefox 也实现了这套前缀属性。
+   ★ 展开按钮压在**最后一行末尾**，白底盖住省略号的尾巴。 */
+.luogusp-hc-slogan{position:relative;}
 .luogusp-hc-clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
+.luogusp-hc-slogan.is-open .luogusp-hc-clamp{-webkit-line-clamp:6;}
+.luogusp-hc-expand{position:absolute;right:0;bottom:0;border:0;padding:0 0 0 10px;background:linear-gradient(90deg,rgba(255,255,255,0) 0,#fff 10px,#fff 100%);color:#3498db;cursor:pointer;font:inherit;font-size:12px;line-height:inherit;}
+.luogusp-hc-expand[hidden]{display:none;}
 .luogusp-hc-sep{border-top:1px solid #f0f0f0;margin:8px 0 6px;}
 .luogusp-hc-tags{margin-top:2px;}
 .luogusp-hc-tagbtn{background:none;border:0;padding:0;color:#3498db;cursor:pointer;font:inherit;}
@@ -53,7 +60,9 @@ export const HOVER_CARD_STYLE = `
    任何给了 display 的元素都必须自己再声明一次 [hidden]。 */
 .luogusp-hc-taglist[hidden]{display:none;}
 .luogusp-hc-tag{font-size:11px;line-height:1.5;padding:0 6px;border-radius:3px;background:#eef4fb;color:#2b6ca3;}
-.luogusp-hc-actions{display:flex;align-items:center;gap:8px;margin-top:10px;}
+/* ★ 按钮行必须能换行：拉黑状态下是「已拉黑 私信 专栏 举报 取消屏蔽」五个，
+   320px 一行放不下，不换行就会撑出一条横向滚动条并把最后一个按钮切掉。 */
+.luogusp-hc-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:10px;}
 .luogusp-hc-btn{font-size:12px;line-height:1.5;padding:3px 12px;border-radius:3px;border:1px solid #3498db;background:#3498db;color:#fff;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block;white-space:nowrap;}
 .luogusp-hc-btn:hover{background:rgba(52,152,219,.9);}
 .luogusp-hc-btn.is-off,.luogusp-hc-btn.is-ghost{background:#fff;color:#3498db;}

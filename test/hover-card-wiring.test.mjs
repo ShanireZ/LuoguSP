@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { createHoverCardFeature } from "../src/features/hover-card/lazy-feature.js";
+import { createHoverCardFeatures } from "../src/features/hover-card/lazy-feature.js";
 import {
   readCsrfToken,
   readPageSubject,
@@ -215,7 +215,7 @@ function shellHarness(options = {}) {
     addEventListener: (type, fn) => listeners.set(type, fn),
     removeEventListener: (type) => listeners.delete(type),
   };
-  const feature = createHoverCardFeature({
+  const features = createHoverCardFeatures({
     storage,
     logError: (error) => errors.push(error),
     loadBundle:
@@ -236,7 +236,8 @@ function shellHarness(options = {}) {
           }),
   });
   return {
-    feature,
+    feature: features.problem,
+    features,
     calls,
     errors,
     fire: (target) => {
@@ -262,8 +263,11 @@ const chromeCandidate = () => ({ closest: () => ({}) });
 test("描述符不加载块就能给设置页用", () => {
   const h = shellHarness();
   try {
-    assert.equal(h.feature.key, "showHoverCards");
-    assert.equal(h.feature.label, "题号与用户悬停预览卡");
+    // ★ owner 第四轮：一个开关拆成两个，标签也改了。
+    assert.equal(h.feature.key, "showProblemHoverCards");
+    assert.equal(h.feature.label, "题目悬停显示预览卡");
+    assert.equal(h.features.user.key, "showUserHoverCards");
+    assert.equal(h.features.user.label, "用户名/头像悬停显示预览卡");
     assert.equal(h.calls.load, 0);
   } finally {
     h.restore();
@@ -369,7 +373,7 @@ test("块接管后补发一次悬停，第一次停下就该出卡", async () =>
   dom.window.document.elementFromPoint = () => anchor;
   const seen = [];
   try {
-    const feature = createHoverCardFeature({
+    const features = createHoverCardFeatures({
       storage,
       loadBundle: () =>
         Promise.resolve({
@@ -390,7 +394,7 @@ test("块接管后补发一次悬停，第一次停下就该出卡", async () =>
           }),
         }),
     });
-    feature.mount();
+    features.problem.mount();
     anchor.dispatchEvent(
       new dom.window.MouseEvent("mouseover", {
         bubbles: true,
@@ -422,7 +426,7 @@ test("块到达时指针已经离开候选锚点，就不补发", async () => {
   dom.window.document.elementFromPoint = () => dom.window.document.getElementById("plain");
   const seen = [];
   try {
-    const feature = createHoverCardFeature({
+    const features = createHoverCardFeatures({
       storage,
       loadBundle: () =>
         Promise.resolve({
@@ -437,7 +441,7 @@ test("块到达时指针已经离开候选锚点，就不补发", async () => {
           }),
         }),
     });
-    feature.mount();
+    features.problem.mount();
     anchor.dispatchEvent(
       new dom.window.MouseEvent("mouseover", { bubbles: true, clientX: 1, clientY: 2 }),
     );
@@ -460,7 +464,24 @@ test("应用根注册薄壳并接上加载器与同源 fetch", () => {
   assert.doesNotMatch(app, /hover-card\/feature\.js/, "应用根直接引重机械会把块打回启动包");
   assert.match(app, /loadBundle: options\.hoverCardLoadBundle/);
   assert.match(app, /fetchPage: options\.hoverCardFetchPage/);
-  assert.match(app, /hoverCardFeature,/, "功能没进 configurableFeatures 就不会被挂载，也不会出现在设置里");
+  // ★ owner 第四轮：拆成两个开关，两个都必须进 configurableFeatures，
+  //   而且这个数组的顺序就是设置面板里的顺序。
+  assert.match(app, /hoverCardFeatures\.problem,/);
+  assert.match(app, /hoverCardFeatures\.user,/);
+  const order = app
+    .slice(app.indexOf("const configurableFeatures"), app.indexOf("const settingsFeature"))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith(",") && !line.includes("("))
+    .map((line) => line.slice(0, -1));
+  assert.deepEqual(order, [
+    "problemColorFeature",
+    "hoverCardFeatures.problem",
+    "hoverCardFeatures.user",
+    "hiddenIntroFeature",
+    "restrictedContentFeature",
+    "ideBatchFeature",
+  ]);
 });
 
 test("runtime 入口接上加载器、声明导出契约、并给同源 fetch", () => {
@@ -478,6 +499,27 @@ test("构建脚本把 hover 块写进 manifest 与 files，并注入 define", ()
   assert.match(build, /__LUOGUSP_HOVER_CARD_BUNDLE__: JSON\.stringify\(hoverCardBundle\)/);
   assert.match(build, /\[hoverCardFile\.path\]: hoverCardFile/);
   assert.match(build, /hoverCard: hoverCardBundle/);
+});
+
+// ★★ owner 2026-08-14 第四轮：滚轮滚动时指针还在卡里，卡片却消失了 —— 根因是
+//    滚动处理器无条件 dismiss。卡片自己是可滚的（内容超高走 overflow:auto），
+//    在卡里滚本来就不该关它。这条是**行为守卫拦不住**的接线（滚动发生在真实浏览器里），
+//    所以用结构守卫盯住那两个判据都在。
+test("滚动时指针若还在卡片里就不许关卡", () => {
+  const feature = read("src/features/hover-card/feature.js");
+  assert.match(feature, /pointerInsideCard/, "必须有「指针是否在卡内」的判据");
+  assert.match(feature, /elementFromPoint/, "滚动事件不带坐标，只能用最后落点去问");
+  const handler = feature.slice(feature.indexOf("const onScroll"), feature.indexOf("const onKey"));
+  assert.match(handler, /pointerInsideCard\(\)/, "onScroll 必须先问一句再决定关不关");
+  assert.match(handler, /intent\.dismiss\(\)/);
+});
+
+// ★ 卡片永远不许出视口：高度由 placeCard 钉 max-height，内容再长也只在卡内滚。
+test("卡片自身可滚，且高度由定位函数钉住", () => {
+  const style = read("src/features/hover-card/style.js");
+  assert.match(style, /overflow-y:auto/, "卡片要能自己滚");
+  const view = read("src/features/hover-card/card-view.js");
+  assert.match(view, /style\.maxHeight/, "定位时必须把可用高度写进 max-height");
 });
 
 // ★★★「永远红不了的门等于没有门」。这道门原先只量正式版产物，canary 的可选块

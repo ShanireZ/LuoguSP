@@ -15,14 +15,20 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 //    ★ 用 `elementFromPoint` 现取元素，而不是复用当初那个 target：块下载要几百毫秒，
 //      这中间指针很可能已经挪到别的锚点上了（那些 mouseover 同样没人接）。
 
-const CANDIDATE_SELECTOR =
-  'a[href*="/problem/"], a[href*="/user/"], .pid[title], img[src*="/upload/usericon/"]';
+// 候选锚点选择器按**当前开着的类别**拼：只开了题目卡就别为用户名去拉块。
+const PROBLEM_CANDIDATES = 'a[href*="/problem/"], .pid[title]';
+const USER_CANDIDATES = 'a[href*="/user/"], img[src*="/upload/usericon/"]';
 // 站点框架（顶栏 + 左右抽屉）里的锚点永远不会出卡（判据在块里的 anchors.js），
 // 所以连块都不必为它们拉下来。★ 这是**纯省事**的收紧，不是判据：
 // 少拉一次块顶多慢一点，多拉一次块什么也不会坏。
 const CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
 
-export function createHoverCardFeature(config) {
+// ★ owner 2026-08-14 第四轮把开关拆成两个：「题目悬停显示预览卡」与
+//   「用户名/头像悬停显示预览卡」。两个开关**共用同一个块、同一次挂载** ——
+//   分别挂两次会得到两张卡片元素、两套委托监听。做法是引用计数：
+//   哪一类被打开就把它记进 active，块在 hover 时按 active 过滤；
+//   两类都关掉了才真正卸载。
+export function createHoverCardFeatures(config) {
   const {
     storage,
     loadBundle,
@@ -52,7 +58,11 @@ export function createHoverCardFeature(config) {
               ? module.createHoverCardFeature
               : null;
           if (!create) throw new TypeError("hover 卡功能块缺少工厂导出");
-          feature = create({ storage, fetchPage });
+          feature = create({
+            storage,
+            fetchPage,
+            isEnabled: (kind) => active.has(kind),
+          });
           return feature;
         })
         .catch((error) => {
@@ -76,7 +86,9 @@ export function createHoverCardFeature(config) {
     if (!point || typeof Ctor !== "function" || !document.elementFromPoint) return;
     const node = document.elementFromPoint(point.x, point.y);
     if (!node || typeof node.closest !== "function") return;
-    if (!node.closest(CANDIDATE_SELECTOR) || node.closest(CHROME_SELECTOR)) return;
+    const selector = candidateSelector();
+    if (!selector) return;
+    if (!node.closest(selector) || node.closest(CHROME_SELECTOR)) return;
     node.dispatchEvent(
       new Ctor("mouseover", {
         bubbles: true,
@@ -87,10 +99,24 @@ export function createHoverCardFeature(config) {
     );
   };
 
-  const mount = () => {
+  // 当前开着的类别。块通过 `isEnabled` 现问，所以在设置里改开关**立刻生效**，不必重挂。
+  const active = new Set();
+  const candidateSelector = () =>
+    [
+      active.has("problem") ? PROBLEM_CANDIDATES : null,
+      active.has("user") ? USER_CANDIDATES : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+  // ★ 两个开关共用**一次**挂载：各挂各的会得到两张卡片元素、两套委托监听。
+  //   所以做引用计数 —— 第一个打开时装壳，最后一个关掉时才拆。
+  let shellDispose = null;
+  let refs = 0;
+  let innerDispose = null;
+
+  const mountShell = () => {
     if (!document.body) return () => {};
     let released = false;
-    let innerDispose = null;
     // 指针最后落在哪儿。★ 探针**一直挂到块真正接管为止**，就是为了让这个坐标保持新鲜：
     //   块在路上时用户还在移动，补发要按最新位置来。
     let point = null;
@@ -98,7 +124,9 @@ export function createHoverCardFeature(config) {
     function probe(event) {
       const node = event.target;
       if (!node || typeof node.closest !== "function") return;
-      if (!node.closest(CANDIDATE_SELECTOR)) return;
+      const selector = candidateSelector();
+      if (!selector) return;
+      if (!node.closest(selector)) return;
       if (node.closest(CHROME_SELECTOR)) return;
       if (typeof event.clientX === "number")
         point = { x: event.clientX, y: event.clientY };
@@ -124,11 +152,33 @@ export function createHoverCardFeature(config) {
     };
   };
 
-  return defineConfigurableFeature({
-    id: "hover-card",
-    key: "showHoverCards",
-    label: "题号与用户悬停预览卡",
-    storage,
-    mount,
+  const mountFor = (kind) => {
+    active.add(kind);
+    if (refs === 0) shellDispose = mountShell();
+    refs += 1;
+    return () => {
+      active.delete(kind);
+      refs -= 1;
+      if (refs > 0) return;
+      if (typeof shellDispose === "function") shellDispose();
+      shellDispose = null;
+    };
+  };
+
+  return Object.freeze({
+    problem: defineConfigurableFeature({
+      id: "hover-card-problem",
+      key: "showProblemHoverCards",
+      label: "题目悬停显示预览卡",
+      storage,
+      mount: () => mountFor("problem"),
+    }),
+    user: defineConfigurableFeature({
+      id: "hover-card-user",
+      key: "showUserHoverCards",
+      label: "用户名/头像悬停显示预览卡",
+      storage,
+      mount: () => mountFor("user"),
+    }),
   });
 }

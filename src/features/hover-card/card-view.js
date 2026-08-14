@@ -60,6 +60,29 @@ const fmtDate = (seconds) =>
 // owner 拍板：小于 1000 全显示，小于 1000000 用 k，否则用 m。
 const fmtCount = (value) => abbreviateCount(value);
 
+// 洛谷原生页头背景图的兜底。★ 抄自 UserFloatCard 组件原文：
+// `user.background || "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg"`。
+const DEFAULT_HEADER_BACKGROUND =
+  "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg";
+
+// 原生统计块：一个标签一个数字，横着铺。原生四项是 关注 / 粉丝 / 排名 / 等级分，
+// 其中等级分**只在 eloValue 有值时才出现**（组件原文里就是 `...e.eloValue?[…]:[]`）。
+// ★ 「排名」按 owner 2026-08-14 上一轮的明确要求移除，其余照原生。
+const statTile = (name, value) => {
+  const tile = el("div", "luogusp-hc-stat");
+  tile.appendChild(el("span", "luogusp-hc-stat-k", name));
+  tile.appendChild(el("span", "luogusp-hc-stat-v", value));
+  return tile;
+};
+
+const linkButton = (text, href, extraClass) => {
+  const node = el("a", `luogusp-hc-btn is-ghost${extraClass ? " " + extraClass : ""}`, text);
+  node.href = href;
+  node.target = "_blank";
+  node.rel = "noopener noreferrer";
+  return node;
+};
+
 export function renderProblemCard(card, options = {}) {
   const { origin = "" } = options;
   const box = document.createDocumentFragment();
@@ -167,45 +190,16 @@ export function renderProblemCard(card, options = {}) {
     if (mine.bookmarked === true) box.appendChild(row("收藏", "已收藏"));
   }
 
+  // ★ owner 2026-08-14 第四轮：这两个改成和用户卡一样的按钮，文案也改。
   const actions = el("div", "luogusp-hc-actions");
-  const problemLink = el("a", "luogusp-hc-link", "打开题目");
-  problemLink.href = `${origin}/problem/${card.pid}`;
-  problemLink.target = "_blank";
-  problemLink.rel = "noopener noreferrer";
-  actions.appendChild(problemLink);
-  if (mine.bestRecordId !== null) {
-    const record = el("a", "luogusp-hc-link", "最好的一次提交");
-    record.href = `${origin}/record/${mine.bestRecordId}`;
-    record.target = "_blank";
-    record.rel = "noopener noreferrer";
-    actions.appendChild(record);
-  }
+  actions.appendChild(linkButton("跳转题目", `${origin}/problem/${card.pid}`));
+  if (mine.bestRecordId !== null)
+    actions.appendChild(
+      linkButton("最佳提交", `${origin}/record/${mine.bestRecordId}`, "is-ghost"),
+    );
   box.appendChild(actions);
   return box;
 }
-
-// 洛谷原生页头背景图的兜底。★ 抄自 UserFloatCard 组件原文：
-// `user.background || "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg"`。
-const DEFAULT_HEADER_BACKGROUND =
-  "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg";
-
-// 原生统计块：一个标签一个数字，横着铺。原生四项是 关注 / 粉丝 / 排名 / 等级分，
-// 其中等级分**只在 eloValue 有值时才出现**（组件原文里就是 `...e.eloValue?[…]:[]`）。
-// ★ 「排名」按 owner 2026-08-14 上一轮的明确要求移除，其余照原生。
-const statTile = (name, value) => {
-  const tile = el("div", "luogusp-hc-stat");
-  tile.appendChild(el("span", "luogusp-hc-stat-k", name));
-  tile.appendChild(el("span", "luogusp-hc-stat-v", value));
-  return tile;
-};
-
-const linkButton = (text, href, extraClass) => {
-  const node = el("a", `luogusp-hc-btn is-ghost${extraClass ? " " + extraClass : ""}`, text);
-  node.href = href;
-  node.target = "_blank";
-  node.rel = "noopener noreferrer";
-  return node;
-};
 
 export function renderUserCard(card, options = {}) {
   const { origin = "", onFollow, onBlock, followBusy = false, viewerUid = null } = options;
@@ -242,8 +236,19 @@ export function renderUserCard(card, options = {}) {
   for (const badge of [ccfBadge(card.ccfLevel), xcpcBadge(card.xcpcLevel)])
     if (badge) badges.appendChild(badgeIcon(badge));
   // 称号：原生是白字 + 等级色底 + 圆角 2px。
-  if (card.badge) {
-    const badge = el("span", "luogusp-hc-badge", card.badge);
+  // ★★ owner 2026-08-14 第四轮报「管理员、作弊者没显示」。规则照抄 `UserName` 组件原文：
+  //    `Cheater` 色 → 「作弊者」；否则 `user.badge`；否则 `isAdmin` → 「管理员」；都没有就不画。
+  //    两个字面量取自洛谷自己的 i18n 表（`Cheat` / `Admin` 的 zh-CN 值）。
+  const badgeText =
+    card.color === "Cheater"
+      ? "作弊者"
+      : card.badge
+        ? card.badge
+        : card.isAdmin
+          ? "管理员"
+          : null;
+  if (badgeText) {
+    const badge = el("span", "luogusp-hc-badge", badgeText);
     badge.setAttribute("style", badgeStyle(card.color));
     badges.appendChild(badge);
   }
@@ -254,13 +259,27 @@ export function renderUserCard(card, options = {}) {
 
   // slogan。原生在空的时候回落到「这个人很懒，什么也没有留下。」，我们照做。
   // ★ 过长交给 CSS 截（-webkit-line-clamp 两行），不在 JS 里切字符串 —— 会劈开 emoji。
-  body.appendChild(
-    el(
-      "div",
-      "luogusp-hc-sub luogusp-hc-muted luogusp-hc-clamp",
-      card.slogan || "这个人很懒，什么也没有留下。",
-    ),
+  // ★ owner 2026-08-14 第四轮：超两行时**在第二行末尾**给一个展开按钮，展开到最多 6 行
+  //   （再多也截断，免得卡片顶出视口）。按钮默认藏着，由 `finalizeCard()` 量完实际高度
+  //   再决定露不露 —— 只有真的溢出才需要它。
+  const sloganBox = el("div", "luogusp-hc-slogan");
+  const slogan = el(
+    "div",
+    "luogusp-hc-sub luogusp-hc-muted luogusp-hc-clamp",
+    card.slogan || "这个人很懒，什么也没有留下。",
   );
+  const expand = el("button", "luogusp-hc-expand", "展开");
+  expand.type = "button";
+  expand.hidden = true;
+  expand.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const open = sloganBox.classList.toggle("is-open");
+    expand.textContent = open ? "收起" : "展开";
+    if (typeof options.onResize === "function") options.onResize();
+  });
+  sloganBox.append(slogan, expand);
+  body.appendChild(sloganBox);
 
   const stats = el("div", "luogusp-hc-stats");
   if (card.followingCount !== null)
@@ -316,7 +335,10 @@ export function renderUserCard(card, options = {}) {
     }
     // 私信：原生就是一个到 /chat?uid= 的链接（路由名 chat.list）。
     actions.appendChild(linkButton("私信", `${origin}/chat?uid=${card.uid}`));
-    // ★ owner 2026-08-14：举报与屏蔽不再靠右，**紧跟在私信后面**。
+    // ★ owner 2026-08-14 第四轮：私信与举报之间加一个「专栏」。
+    //   路由 user.show.article → /user/{uid}/article（`/_lfe/config` 里可查）。
+    actions.appendChild(linkButton("专栏", `${origin}/user/${card.uid}/article`));
+    // ★ 举报与屏蔽不靠右，**紧跟在私信/专栏后面**。
     // 举报：原生也只是个链接，路由 ticket.create → /ticket/new。不发任何请求。
     actions.appendChild(
       linkButton(
@@ -361,15 +383,8 @@ export function renderUserCard(card, options = {}) {
     if (entries.length) {
       const list = el("span", "luogusp-hc-stack");
       for (const text of entries) list.appendChild(el("span", null, text));
-      extras.appendChild(row("获奖", list));
+      extras.appendChild(row("最近奖项", list));
     }
-  }
-  if (card.blogAddress) {
-    const blog = el("a", "luogusp-hc-link", "个人博客");
-    blog.href = card.blogAddress;
-    blog.target = "_blank";
-    blog.rel = "noopener noreferrer";
-    extras.appendChild(row("博客", blog));
   }
   if (extras.childNodes.length) {
     body.appendChild(el("div", "luogusp-hc-sep"));
@@ -379,24 +394,47 @@ export function renderUserCard(card, options = {}) {
   return box;
 }
 
-// 卡片位置。★ owner 报「卡片离题目较远，鼠标移动时卡片会消失然后显示另一题的卡片」：
-// 根因是跨行锚点（题号被包在一个跨两行的 <a> 里）的 getBoundingClientRect().bottom
-// 落在第二行下面，卡片被推远；鼠标去卡片的路上就会经过别的题号，于是切了目标。
-// 修法：定位锚点用**指针所在的那一行**（调用方传 pointer 时以它为准），并把间隙收到 4px。
-// 调用方负责先挑好「指针所在的那一行」再传进来（见 feature.js 的 rectForPointer）。
+// 插入文档之后才做得了的那点收尾。★ 目前只有一件事：签名到底有没有溢出两行 ——
+// 没溢出就别摆那个「展开」按钮。读 `scrollHeight` 会强制一次同步布局，
+// 而这时候卡片已经在文档里、`hidden` 也已经摘掉，量得到真值。
+export function finalizeCard(cardEl) {
+  const box = cardEl.querySelector(".luogusp-hc-slogan");
+  const slogan = box && box.querySelector(".luogusp-hc-clamp");
+  const expand = box && box.querySelector(".luogusp-hc-expand");
+  if (!slogan || !expand) return;
+  expand.hidden = slogan.scrollHeight <= slogan.clientHeight + 1;
+}
+
+// 卡片位置。
+// ★ owner 2026-08-14 第一轮报过「卡片离题目远、鼠标移过去时被换掉」：定位锚点用
+//   **指针所在的那一行**（调用方先挑好再传进来），间隙收到 4px。
+// ★★ owner 第四轮报「有的向上有的向下，向下时点开标签就出界」：
+//   旧判据是「下面放不下就翻上去」，于是下面差一点点也整张翻走；而翻上去同样放不下时
+//   又被压回视口内 —— 卡片高度一变（展开标签、展开签名）就顶出去。
+//   现在改成两步：**放得下就放下面，放不下挑空间大的那一边**，
+//   并且把 `max-height` 钉在那一侧的可用空间上（配合 CSS 的 `overflow:auto`），
+//   于是内容再长也只是卡片内部出滚动条，永远不出界。
 export function placeCard(cardEl, rect, viewport) {
   const gap = 4;
   const width = cardEl.offsetWidth || 320;
-  const height = cardEl.offsetHeight || 160;
   let left = rect.left;
   if (left + width > viewport.width - gap) left = viewport.width - width - gap;
   if (left < gap) left = gap;
-  let top = rect.bottom + gap;
-  if (top + height > viewport.height - gap) {
-    const above = rect.top - height - gap;
-    top = above >= gap ? above : Math.max(gap, viewport.height - height - gap);
-  }
+
+  const below = viewport.height - rect.bottom - gap * 2;
+  const above = rect.top - gap * 2;
+  const natural = cardEl.offsetHeight || 160;
+  const useBelow = natural <= below || below >= above;
+  const room = Math.max(120, Math.round(useBelow ? below : above));
+  cardEl.style.maxHeight = `${room}px`;
+  const height = Math.min(cardEl.offsetHeight || natural, room);
+  const top = useBelow ? rect.bottom + gap : Math.max(gap, rect.top - height - gap);
   cardEl.style.left = `${Math.round(left)}px`;
   cardEl.style.top = `${Math.round(top)}px`;
-  return { left: Math.round(left), top: Math.round(top) };
+  return {
+    left: Math.round(left),
+    top: Math.round(top),
+    maxHeight: room,
+    below: useBelow,
+  };
 }

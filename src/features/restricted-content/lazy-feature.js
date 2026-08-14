@@ -89,7 +89,7 @@ export function createRestrictedContentFeature(config) {
   return defineConfigurableFeature({
     id: "restricted-document",
     key: "showRestrictedContent",
-    label: "显示受限文章与剪贴板",
+    label: "受限文章与剪贴板解限",
     storage,
     mount: (context) => {
       // 不是拦截页 → 一个字节都不拉。这是本次拆分的全部意义。

@@ -1,10 +1,9 @@
 import { createBrowserRouteAdapter } from "../core/browser-route-adapter.js";
 import { createPageLifecycle } from "../core/page-lifecycle.js";
-import { createChatShortcutFeature } from "../features/chat-shortcut/feature.js";
 import { createHiddenIntroFeature } from "../features/hidden-intro/feature.js";
 import { createIdeBatchFeature } from "../features/ide-batch/feature.js";
 import { createProblemColorFeature } from "../features/problem-color/feature.js";
-import { createHoverCardFeature } from "../features/hover-card/lazy-feature.js";
+import { createHoverCardFeatures } from "../features/hover-card/lazy-feature.js";
 import { createRestrictedContentFeature } from "../features/restricted-content/lazy-feature.js";
 import { createSettingsFeature } from "../features/settings/feature.js";
 
@@ -61,7 +60,6 @@ export function createLuoguSPApp(options = {}) {
   let pageLifecycle = null;
 
   const problemColorFeature = createProblemColorFeature({ storage });
-  const chatShortcutFeature = createChatShortcutFeature({ storage });
   const hiddenIntroFeature = createHiddenIntroFeature({
     storage,
     nativeIntroAdapter: options.hiddenIntroNativeAdapter,
@@ -78,18 +76,19 @@ export function createLuoguSPApp(options = {}) {
     getPageLifecycle: () => pageLifecycle,
     loadBundle: options.restrictedContentLoadBundle,
   });
-  const hoverCardFeature = createHoverCardFeature({
+  const hoverCardFeatures = createHoverCardFeatures({
     storage,
     loadBundle: options.hoverCardLoadBundle,
     fetchPage: options.hoverCardFetchPage,
   });
+  // ★ 这个数组的顺序**就是设置面板里的顺序**（owner 2026-08-14 第四轮点名要的排法）。
   const configurableFeatures = Object.freeze([
     problemColorFeature,
-    chatShortcutFeature,
+    hoverCardFeatures.problem,
+    hoverCardFeatures.user,
     hiddenIntroFeature,
-    ideBatchFeature,
     restrictedContentFeature,
-    hoverCardFeature,
+    ideBatchFeature,
   ]);
   const settingsFeature = createSettingsFeature({
     storage,
