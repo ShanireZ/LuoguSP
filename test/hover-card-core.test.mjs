@@ -8,6 +8,7 @@ import {
   buildTagDictionary,
   buildUserCard,
   pickLastAttempt,
+  pickPrizes,
   relationOf,
 } from "../src/features/hover-card/models.js";
 import {
@@ -99,6 +100,35 @@ test("离开后有宽限期，指针移到卡片上不会被收走", () => {
   intent.leave();
   clock.advance(160);
   assert.deepEqual(closed, ["P1000"]);
+});
+
+// ★★ canary.15 真机复现的那条：练习页的题号是零间距铺开的（实测 A.bottom=193、
+// 下一行 B.top=193），卡片落在 bottom+4，所以**从题号挪到卡片必然横穿一个别的题号**。
+// 事件序列就是下面这串 —— 注意第 3 步没有 leave()：`onOut` 里「移到卡片上不算离开」
+// 那条快路径直接 return 了，而 leave() 正是原本负责 cancelOpen 的地方。
+// 于是隔壁那道题的待打开活满 300ms，把当前卡关掉换成隔壁 —— owner 看到的就是「卡片消失」。
+test("从题号横穿隔壁题号移到卡片上，卡片不许被换掉", () => {
+  const clock = manualClock();
+  const events = [];
+  const intent = createHoverIntent({
+    clock,
+    openDelayMs: 300,
+    closeGraceMs: 160,
+    onOpen: (t) => events.push(`open:${t}`),
+    onClose: (t) => events.push(`close:${t}`),
+  });
+  intent.enter("problem:A");
+  clock.advance(300);
+  assert.deepEqual(events, ["open:problem:A"]);
+  intent.leave();              // mouseout A（relatedTarget = 隔壁题号 B）
+  clock.advance(20);
+  intent.enter("problem:B");   // mouseover B —— 只是路过，60ms
+  clock.advance(60);
+  intent.enter("problem:A");   // mouseover 卡片本体：onOver 用 shown.key 重新 enter
+  clock.advance(2000);
+  assert.deepEqual(events, ["open:problem:A"], "隔壁题号的待打开必须被这一步掐掉");
+  assert.equal(intent.getState().target, "problem:A");
+  assert.equal(clock.pending(), 0, "不能留下任何还会开卡的定时器");
 });
 
 test("切换目标时同时只有一张卡", () => {
@@ -283,6 +313,28 @@ test("徽章驱动字段只认 ccfLevel 与 xcpcLevel", () => {
   assert.equal("verified" in card, false, "verified 与 ✅ 无关，不该进模型");
 });
 
+// ★★ owner 追问过两次。实测 `data.prizes` 形状是**套一层**的、且**按年份升序**
+// （697932：2024 CSP-J 在前，2025 CSP-S 在后，洛谷个人页也照这个顺序列）。
+// 旧代码 `slice(0,4)` + 视图取 `[0]` = **永远只显示最早那个奖**。
+test("获奖按年份降序，最近的排在最前", () => {
+  const picked = pickPrizes([
+    { prize: { year: 2024, contest: "CSP-J", prize: "一等奖" } },
+    { prize: { year: 2025, contest: "CSP-S", prize: "一等奖" } },
+    { prize: { year: 2023, contest: "NOIP", prize: "二等奖" } },
+  ]);
+  assert.deepEqual(picked.map((p) => p.prize.year), [2025, 2024, 2023]);
+  // 上游给的就是升序 —— 不排序的话第一条会是 2023，反证一下别退回去。
+  assert.notEqual(picked[0].prize.year, 2023);
+  // 最多 4 条，且取的是**最近**的 4 条。
+  const many = pickPrizes([2019, 2020, 2021, 2022, 2023].map((year) => ({ prize: { year } })));
+  assert.deepEqual(many.map((p) => p.prize.year), [2023, 2022, 2021, 2020]);
+  // 没有年份的排最后，也不该把整条丢掉。
+  const mixed = pickPrizes([{ prize: { prize: "特等奖" } }, { prize: { year: 2020 } }]);
+  assert.deepEqual(mixed.map((p) => p.prize.year ?? null), [2020, null]);
+  assert.deepEqual(pickPrizes(null), []);
+  assert.deepEqual(pickPrizes([null, {}, { prize: null }]), []);
+});
+
 test("关系枚举：0/1 之外一律未知", () => {
   assert.equal(relationOf(0), "unrelated");
   assert.equal(relationOf(1), "following");
@@ -457,11 +509,15 @@ test("缓存过期后重新取", async () => {
 
 // ---- 洛谷原生表现（全部实测取值）----
 import {
-  NATIVE_BADGE_COLOR,
+  FA_BADGE_CHECK,
+  FA_BALLOON,
   abbreviateCount,
   badgeStyle,
+  badgeTierColor,
+  ccfBadge,
   levelColor,
   statusPresentation,
+  xcpcBadge,
 } from "../src/features/hover-card/luogu-native.js";
 
 // owner 拍板：小于 1000 全显示，小于 1000000 用 k，否则用 m。
@@ -490,9 +546,48 @@ test("等级色对齐实测值，未知落到 Gray", () => {
   assert.equal(levelColor("Green"), "#52c41a");
   assert.equal(levelColor("Blue"), "#3498db");
   assert.equal(levelColor("Gray"), "#bfbfbf");
-  // Cheater 本轮没在页面上遇到，不编值 —— 未知一律 Gray。
-  for (const bad of ["Cheater", "", null, undefined, 1])
+  // ★ Cheater 上一轮因为「页面上没遇到」而留白；2026-08-14 从 UserName 组件原文
+  //   拿到了映射（yellow-4 = #ad8b00），可以照实写了。
+  assert.equal(levelColor("Cheater"), "#ad8b00");
+  // ★ Red 映射到 pink-3，不是 red-3（#e74c3c）—— 按名字猜会写错。
+  assert.notEqual(levelColor("Red"), "#e74c3c");
+  for (const bad of ["", null, undefined, 1, "Rainbow"])
     assert.equal(levelColor(bad), "#bfbfbf", String(bad));
+});
+
+// ★★ 分档与配色抄自 OiLevel / XcpcLevel 组件原文：[[8,gold],[6,blue],[3,green]]，
+// **level < 3 一个图标都不画**。旧口径「> 0 就显示」是抽样偏差（抽到的人都在 6~7 档）。
+test("徽章分档：低于 3 级不画图标，配色按档走", () => {
+  assert.equal(badgeTierColor(8), "#ffc116");
+  assert.equal(badgeTierColor(9), "#ffc116");
+  assert.equal(badgeTierColor(7), "#3498db");
+  assert.equal(badgeTierColor(6), "#3498db");
+  assert.equal(badgeTierColor(5), "#52c41a");
+  assert.equal(badgeTierColor(3), "#52c41a");
+  for (const low of [2, 1, 0]) assert.equal(badgeTierColor(low), null, String(low));
+  for (const bad of [null, undefined, "", "x", NaN])
+    assert.equal(badgeTierColor(bad), null, String(bad));
+  assert.equal(ccfBadge(2), null);
+  assert.equal(xcpcBadge(0), null);
+});
+
+// ★ 两个图标的着色**是反的**（组件原文），写反了气球会变成白底上的白气球。
+test("✅ 与 🎈 的着色互为镜像，path 逐字节抄自洛谷的 FA 块", () => {
+  const ccf = ccfBadge(7);
+  assert.equal(ccf.primary, "#fff", "✅ 的那一钩恒为白");
+  assert.equal(ccf.secondary, "#3498db", "✅ 的盾面取等级色");
+  const xcpc = xcpcBadge(7);
+  assert.equal(xcpc.primary, "#3498db", "🎈 的球体取等级色");
+  assert.equal(xcpc.secondary, "#fff", "🎈 的高光恒为白");
+  // 长度是 2026-08-13 与 08-14 两次独立测得的同一组数，抄错/截断会当场露馅。
+  assert.equal(FA_BADGE_CHECK.viewBox, "0 0 512 512");
+  assert.equal(FA_BADGE_CHECK.secondary.length, 589);
+  assert.equal(FA_BADGE_CHECK.primary.length, 211);
+  assert.equal(FA_BALLOON.viewBox, "0 0 384 512");
+  assert.equal(FA_BALLOON.secondary.length, 125);
+  assert.equal(FA_BALLOON.primary.length, 320);
+  for (const d of [FA_BADGE_CHECK.secondary, FA_BADGE_CHECK.primary, FA_BALLOON.secondary, FA_BALLOON.primary])
+    assert.match(d, /^M[-\d]/, "path 必须以 moveto 开头");
 });
 
 // 称号原生样式：白字 + 等级色底 + 圆角 2px（底色跟随用户等级色，实测紫名用户是紫底）。
@@ -501,7 +596,6 @@ test("称号样式跟随等级色", () => {
   assert.match(style, /background:#9d3dcf/);
   assert.match(style, /color:#fff/);
   assert.match(style, /border-radius:2px/);
-  assert.equal(NATIVE_BADGE_COLOR, "#3498db");
 });
 
 // ★ 实测洛谷记录列表只渲染两种：12 → Accepted（#52c41a），其它（实测到 14）→

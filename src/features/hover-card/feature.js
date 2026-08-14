@@ -1,6 +1,11 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createProblemIdentityResolver } from "../problem-color/identity.js";
-import { readCsrfToken, readViewerUid, resolveHoverTarget } from "./anchors.js";
+import {
+  readCsrfToken,
+  readPageSubject,
+  readViewerUid,
+  resolveHoverTarget,
+} from "./anchors.js";
 import { placeCard, renderProblemCard, renderUserCard } from "./card-view.js";
 import { createFollowAction } from "./follow-action.js";
 import { createHoverIntent } from "./hover-intent.js";
@@ -185,7 +190,13 @@ export function createHoverCardFeature(config) {
         if (shown) intent.enter(shown.key);
         return;
       }
-      const target = resolveHoverTarget(event.target, identity);
+      // ★ 页面主体每次 hover 现读，不在 mount 时算一次：洛谷是 SPA，
+      //   路由一换 pathname 就变了，缓存下来会在下一页拿旧主体做判断。
+      const target = resolveHoverTarget(
+        event.target,
+        identity,
+        readPageSubject(location.pathname),
+      );
       if (!target) return;
       if (target.kind === "problem") stripNativeTitle(target.anchor);
       targets.set(target.key, target);

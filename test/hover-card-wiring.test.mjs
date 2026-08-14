@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { createHoverCardFeature } from "../src/features/hover-card/lazy-feature.js";
 import {
   readCsrfToken,
+  readPageSubject,
   readViewerUid,
   resolveHoverTarget,
   resolveProblemAnchor,
@@ -20,17 +21,20 @@ const read = (relative) => readFileSync(resolve(root, relative), "utf8");
 // 指针第一次碰到题号或用户链接才把块拉下来，绝大多数页面浏览根本不触发。
 
 // ---- 锚点识别（最小 DOM 替身，只实现 closest / getAttribute / tagName）----
-function node({ tag = "A", href = null, src = null, parent = null } = {}) {
+function node({ tag = "A", href = null, src = null, parent = null, chrome = null } = {}) {
   const self = {
     tagName: tag,
     getAttribute: (name) => (name === "href" ? href : name === "src" ? src : null),
     parentElement: parent,
+    // 站点框架标记：".top-bar" / ".lside" / ".rside" 之一，模拟真机上的祖先容器。
+    chrome,
   };
   self.closest = (selector) => {
     let cursor = self;
     while (cursor) {
       const h = cursor.getAttribute("href");
       const s = cursor.getAttribute("src");
+      if (cursor.chrome && selector.includes(cursor.chrome)) return cursor;
       if (selector.includes('/problem/') && h && h.includes("/problem/")) return cursor;
       if (selector.includes('/user/') && h && h.includes("/user/")) return cursor;
       if (selector === "img" && cursor.tagName === "IMG") return cursor;
@@ -103,6 +107,77 @@ test("用户优先于题号，避免讨论区行内误判", () => {
   assert.equal(resolveHoverTarget(name, null).kind, "user");
 });
 
+// ★★ owner 2026-08-14 报的误弹，三条里有两条落在站点框架上。真机 DOM 实测：
+//   顶栏 `div.top-bar` 里同时装着**左上角题号**（面包屑）和**我自己的头像**；
+//   「个人中心」菜单在 `div.user-nav.rside`，它是 **.top-bar 的兄弟节点**，
+//   只排除 .top-bar 会整个漏掉 —— 这条是本轮最容易写漏的。
+test("站点框架里的锚点一律不出卡", () => {
+  // ★ `.user-nav` 是真机扫出来补上的：**首页是旧版页**，它的用户菜单是
+  //   `nav.user-nav`，根本不在 `.top-bar` 里 —— 只按新版 DOM 写判据会漏掉一整类页面。
+  for (const chrome of [".top-bar", ".lside", ".rside", ".user-nav"]) {
+    const bar = node({ tag: "DIV", chrome });
+    const pid = node({ href: "/problem/P1001", parent: bar });
+    const me = node({ href: "/user/116524", parent: bar });
+    const avatar = node({
+      tag: "IMG",
+      src: "https://cdn.luogu.com.cn/upload/usericon/116524.png",
+      parent: bar,
+    });
+    for (const target of [pid, me, avatar])
+      assert.equal(resolveHoverTarget(target, null, null), null, chrome);
+  }
+  // 反过来：正文里同样的链接照常出卡，别把排除写成全局。
+  assert.equal(resolveHoverTarget(node({ href: "/user/116524" }), null, null).kind, "user");
+});
+
+// ★ owner：页面自己讲的那个人 / 那道题不出卡（个人页的大头像、题目页指回本题的链接），
+// 但「推荐题目」是别的 pid，必须照常出卡。
+test("页面主体自己不出卡，同页别的目标照出", () => {
+  const onUser = readPageSubject("/user/116524/practice");
+  assert.equal(resolveHoverTarget(node({ href: "/user/116524" }), null, onUser), null);
+  assert.equal(
+    resolveHoverTarget(
+      node({ tag: "IMG", src: "https://cdn.luogu.com.cn/upload/usericon/116524.png" }),
+      null,
+      onUser,
+    ),
+    null,
+  );
+  assert.equal(resolveHoverTarget(node({ href: "/user/697932" }), null, onUser).uid, 697932);
+  // 主体是用户时不该误伤题号。
+  assert.equal(
+    resolveHoverTarget(node({ href: "/problem/P1001" }), null, onUser).pid,
+    "P1001",
+  );
+
+  const onProblem = readPageSubject("/problem/P1001");
+  assert.equal(resolveHoverTarget(node({ href: "/problem/P1001" }), null, onProblem), null);
+  assert.equal(
+    resolveHoverTarget(node({ href: "/problem/P1002" }), null, onProblem).pid,
+    "P1002",
+    "推荐题目必须留着",
+  );
+});
+
+test("页面主体解析只认真正的 uid / pid", () => {
+  assert.deepEqual(readPageSubject("/problem/P1001"), { kind: "problem", pid: "P1001" });
+  assert.deepEqual(readPageSubject("/user/1313427"), { kind: "user", uid: 1313427 });
+  assert.deepEqual(readPageSubject("/user/1313427/practice"), { kind: "user", uid: 1313427 });
+  // 这些路径段不是 pid，没有主体 —— 否则会把一整类页面的卡全关掉。
+  for (const path of [
+    "/problem/list",
+    "/problem/list?tag=42",
+    "/problem/solution/P1000",
+    "/problem/new",
+    "/user/setting",
+    "/user/notification",
+    "/",
+    "",
+    null,
+  ])
+    assert.equal(readPageSubject(path), null, String(path));
+});
+
 test("读不到登录态就当匿名", () => {
   const doc = {
     getElementById: () => ({ textContent: JSON.stringify({ user: { uid: 1313427 } }) }),
@@ -167,6 +242,7 @@ function shellHarness(options = {}) {
       const probe = listeners.get("mouseover");
       if (probe) probe({ target });
     },
+    hasProbe: () => listeners.has("mouseover"),
     restore: () => {
       globalThis.document = originalDocument;
     },
@@ -174,6 +250,13 @@ function shellHarness(options = {}) {
 }
 
 const settle = () => new Promise((done) => setTimeout(done, 0));
+
+// 候选锚点替身：命中候选选择器，但不在站点框架里。
+const candidate = () => ({
+  closest: (selector) => (selector.includes("/problem/") ? {} : null),
+});
+// 顶栏里的锚点替身：两个选择器都命中。
+const chromeCandidate = () => ({ closest: () => ({}) });
 
 test("描述符不加载块就能给设置页用", () => {
   const h = shellHarness();
@@ -204,7 +287,7 @@ test("碰到候选锚点才拉块，并且只拉一次", async () => {
   const h = shellHarness();
   try {
     h.feature.mount();
-    const hit = { closest: () => ({}) };
+    const hit = candidate();
     h.fire(hit);
     await settle();
     assert.equal(h.calls.load, 1);
@@ -212,6 +295,24 @@ test("碰到候选锚点才拉块，并且只拉一次", async () => {
     h.fire(hit);
     await settle();
     assert.equal(h.calls.load, 1, "探针接管后应当已被摘掉");
+  } finally {
+    h.restore();
+  }
+});
+
+// ★ 站点框架里的锚点永远不会出卡，连块都不该为它们拉下来。
+test("顶栏 / 抽屉里的锚点不触发拉块", async () => {
+  const h = shellHarness();
+  try {
+    h.feature.mount();
+    h.fire(chromeCandidate());
+    await settle();
+    assert.equal(h.calls.load, 0);
+    assert.equal(h.hasProbe(), true, "探针不能被框架锚点白白摘掉");
+    // 换成正文里的锚点，仍然要拉。
+    h.fire(candidate());
+    await settle();
+    assert.equal(h.calls.load, 1);
   } finally {
     h.restore();
   }
@@ -228,7 +329,7 @@ test("块到达前已被释放则不再挂载", async () => {
   });
   try {
     const dispose = h.feature.mount();
-    h.fire({ closest: () => ({}) });
+    h.fire(candidate());
     await settle();
     dispose();
     release();
@@ -243,7 +344,7 @@ test("加载器没接线时报错，不静默也不抛", async () => {
   const h = shellHarness({ loadBundle: null });
   try {
     h.feature.mount();
-    h.fire({ closest: () => ({}) });
+    h.fire(candidate());
     await settle();
     assert.equal(h.errors.length, 1);
     assert.match(String(h.errors[0].message), /未接线/);
