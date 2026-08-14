@@ -134,17 +134,41 @@ test("等级低于 3 不画徽章", () => {
   assert.equal(host.querySelectorAll("svg.luogusp-hc-fa").length, 0);
 });
 
-// ---- 用户卡：行的取舍 ----
-// ★ owner 的三条：去掉排名、去掉「尝试」、通过题数改叫「通过 / 提交」。
-test("通过 / 提交合成一行，排名与「尝试」都不再出现", () => {
+// ---- 用户卡：统计排 ----
+// ★ owner 三轮下来的口径：去掉排名与「尝试」；通过题数叫「通过 / 提交」；
+//   并且咕值与「通过 / 提交」从下面的扩展行**挪进统计排**，依次尾随在等级分后面。
+test("统计排依次是 关注·粉丝·等级分·咕值·通过/提交", () => {
   const host = mount(() =>
-    renderUserCard(userCard({ passed: 612, submitted: 710, ranking: 560 }), { origin: "" }),
+    renderUserCard(
+      userCard({
+        following: 54,
+        follower: 102,
+        elo: { rating: 1478, time: 1770888600, latest: true },
+        gu: { rating: 307 },
+        passed: 612,
+        submitted: 710,
+        ranking: 560,
+      }),
+      { origin: "" },
+    ),
   );
+  const tiles = [...host.querySelectorAll(".luogusp-hc-stat")].map((n) => [
+    n.querySelector(".luogusp-hc-stat-k").textContent,
+    n.querySelector(".luogusp-hc-stat-v").textContent,
+  ]);
+  assert.deepEqual(tiles, [
+    ["关注", "54"],
+    ["粉丝", "102"],
+    ["等级分", "1478"],
+    ["咕值", "307"],
+    ["通过 / 提交", "612 / 710"],
+  ]);
+  // 反证：这两样不许再以 key-value 行的形式留在下面。
   const keys = [...host.querySelectorAll(".luogusp-hc-key")].map((n) => n.textContent);
-  assert.ok(keys.includes("通过 / 提交"));
+  assert.equal(keys.includes("通过 / 提交"), false);
+  assert.equal(keys.includes("咕值"), false);
   assert.equal(keys.includes("排名"), false, "排名要移除");
   assert.doesNotMatch(host.textContent, /尝试/, "「尝试」两个字要移除");
-  assert.match(host.textContent, /612 \/ 710/);
 });
 
 // ★ owner：隐藏了个人信息的账号拿不到这些字段，没数据的行不画。
@@ -152,6 +176,7 @@ test("拿不到的数据不画那一行，绝不用 0 顶替", () => {
   const bare = mount(() => renderUserCard(userCard({}), { origin: "" }));
   const keys = () => [...bare.querySelectorAll(".luogusp-hc-key")].map((n) => n.textContent);
   for (const gone of ["通过 / 提交", "咕值", "比赛 Elo", "获奖", "关注 / 粉丝", "关系", "注册于"])
+    // 这些键一个都不该出现：有的是移除了，有的是没数据。
     assert.equal(keys().includes(gone), false, gone);
   // 反证：不能因为「没数据」就写成 0 或「未关注」。
   assert.doesNotMatch(bare.textContent, /0/);
@@ -162,16 +187,32 @@ test("拿不到的数据不画那一行，绝不用 0 顶替", () => {
   assert.match(half.textContent, /\? \/ 1\.2k/);
 });
 
-// ★★ 关系那一行以前恒画、两边未知时写「未关注」—— 匿名访客拿到的就是这种，
-//    等于在不知情的情况下断言「他没关注」。
-test("关系两边都未知就不画，不伪造成「未关注」", () => {
-  const anonymous = mount(() => renderUserCard(userCard({ follower: 10 }), { origin: "" }));
-  assert.doesNotMatch(anonymous.textContent, /关系/);
-  const known = mount(() => renderUserCard(userCard({ rel: 1, rev: 1 }), { origin: "" }));
-  assert.match(known.textContent, /互相关注/);
-  // 一边知道一边不知道，只说确定的那一半。
-  const partial = mount(() => renderUserCard(userCard({ rel: 0 }), { origin: "" }));
-  assert.match(partial.textContent, /我未关注/);
+// ★ owner 2026-08-14 第三轮：「关系」整行移除 —— 关注按钮已经把关系说清楚了
+//   （关注 / 已关注 / 互相关注 / 已拉黑），再写一行是重复。「注册于」同样移除。
+test("关系与注册于都不再单列一行", () => {
+  for (const over of [{ rel: 1, rev: 1 }, { rel: 0, rev: 0 }, {}]) {
+    const host = mount(() =>
+      renderUserCard(userCard({ ...over, registerTime: 1647344053 }), {
+        origin: "",
+        onFollow: () => {},
+        onBlock: () => {},
+        viewerUid: 1,
+      }),
+    );
+    const keys = [...host.querySelectorAll(".luogusp-hc-key")].map((n) => n.textContent);
+    assert.equal(keys.includes("关系"), false, JSON.stringify(over));
+    assert.equal(keys.includes("注册于"), false, JSON.stringify(over));
+  }
+  // 关系仍然由按钮表达 —— 互相关注时按钮就该这么写。
+  const mutual = mount(() =>
+    renderUserCard(userCard({ rel: 1, rev: 1 }), {
+      origin: "",
+      onFollow: () => {},
+      onBlock: () => {},
+      viewerUid: 1,
+    }),
+  );
+  assert.equal(mutual.querySelector("button.luogusp-hc-btn").textContent, "互相关注");
 });
 
 // ★ owner 追问两次的那条：以前只画 prizes[0]，而洛谷发的是**年份升序**，
@@ -236,6 +277,8 @@ test("举报是链接、屏蔽是按钮，都摊在操作行里", () => {
     }),
   );
   const actions = host.querySelector(".luogusp-hc-actions");
+  // ★ owner 第三轮：举报与屏蔽不再靠右，紧跟私信 —— 中间那个撑开的空隙要没有。
+  assert.equal(actions.querySelector(".luogusp-hc-spacer"), null);
   const labels = [...actions.children].map((n) => n.textContent).filter(Boolean);
   assert.deepEqual(labels, ["关注", "私信", "举报", "屏蔽"]);
   const report = [...actions.querySelectorAll("a")].find((a) => a.textContent === "举报");
@@ -259,9 +302,6 @@ test("看自己不画操作区，关注中的人不给屏蔽按钮", () => {
     }),
   );
   assert.equal(self.querySelector(".luogusp-hc-actions"), null);
-
-  // 「我和我自己未关注」是句废话，关系那一行也不画。
-  assert.doesNotMatch(self.textContent, /关系/);
 
   const following = mount(() =>
     renderUserCard(userCard({ rel: 1 }), {
@@ -290,7 +330,6 @@ test("已拉黑时关注按钮禁用并写「已拉黑」", () => {
   const follow = host.querySelector("button.luogusp-hc-btn");
   assert.equal(follow.textContent, "已拉黑");
   assert.equal(follow.disabled, true);
-  assert.match(host.textContent, /我已屏蔽/);
   const labels = [...host.querySelector(".luogusp-hc-actions").children].map((n) => n.textContent);
   assert.ok(labels.includes("取消屏蔽"));
 });
@@ -322,4 +361,18 @@ test("获奖只用简称，不拼那段又臭又长的 event", () => {
   // 最近 3 条，年份降序，一条都不带 event。
   assert.deepEqual(lines, ["2025 ICPC Regional 铜牌", "2024 NOIP 一等奖", "2023 CSP-S 一等奖"]);
   assert.doesNotMatch(host.textContent, /国际大学生程序设计竞赛/);
+});
+
+// ★ owner 第三轮：用户名那一行**最右侧**显示 uid。挂在用户名行而不是签名行 ——
+//   签名会被截成两行，右边缘不稳定。
+test("用户名行最右侧显示 uid", () => {
+  const host = mount(() => renderUserCard(userCard({ ccfLevel: 7 }), { origin: "" }));
+  const title = host.querySelector(".luogusp-hc-utitle");
+  assert.ok(title, "用户名行要用两端对齐的容器");
+  const uid = title.querySelector(".luogusp-hc-uid");
+  assert.equal(uid.textContent, "uid : 697932");
+  // uid 必须是这一行的**最后**一个子元素，名字与徽章都在它前面。
+  assert.equal(title.lastElementChild, uid);
+  assert.ok(title.querySelector(".luogusp-hc-identity .luogusp-hc-name"));
+  assert.ok(title.querySelector(".luogusp-hc-identity svg.luogusp-hc-fa"));
 });

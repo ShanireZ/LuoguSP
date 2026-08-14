@@ -184,22 +184,6 @@ export function renderProblemCard(card, options = {}) {
   return box;
 }
 
-// 关系文案。★ 两个方向各自可能是「未知」（响应里没这个字段），所以不能只判 following ——
-// 一边未知时只说得出确定的那一半，说满了就是伪造。两边都未知时调用方根本不画这一行。
-export function relationText(card) {
-  // 拉黑压过一切：既然已经拉黑，说「未关注」是废话。
-  if (card.relation === "blacklisted") return "我已屏蔽";
-  if (card.reverseRelation === "blacklisted") return "他屏蔽了我";
-  const mine = card.relation === "following";
-  const theirs = card.reverseRelation === "following";
-  if (mine && theirs) return "互相关注";
-  if (mine) return "我已关注";
-  if (theirs) return "他关注了我";
-  if (card.relation === "unrelated" && card.reverseRelation === "unrelated")
-    return "未关注";
-  return card.relation === "unrelated" ? "我未关注" : "他未关注我";
-}
-
 // 洛谷原生页头背景图的兜底。★ 抄自 UserFloatCard 组件原文：
 // `user.background || "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg"`。
 const DEFAULT_HEADER_BACKGROUND =
@@ -240,14 +224,18 @@ export function renderUserCard(card, options = {}) {
   box.appendChild(header);
 
   const body = el("div", "luogusp-hc-userbody");
-  const title = el("p", "luogusp-hc-title");
+  // 用户名这一行是个左右两端对齐的 flex：左边名字 + 徽章 + 称号，右边贴着 uid。
+  // ★ owner 2026-08-14：uid 要在这一行**最右侧**。挂在这里而不是签名行 ——
+  //   签名会被截成两行，右边缘不稳定。
+  const title = el("p", "luogusp-hc-title luogusp-hc-utitle");
+  const identity = el("span", "luogusp-hc-identity");
   const nameLink = el("a", "luogusp-hc-name", card.name);
   // 原生用户名就是按等级色渲染的，并且是加粗的（UserName 组件默认 noBold=false）。
   nameLink.style.color = levelColor(card.color);
   nameLink.href = `${origin}/user/${card.uid}`;
   nameLink.target = "_blank";
   nameLink.rel = "noopener noreferrer";
-  title.appendChild(nameLink);
+  identity.appendChild(nameLink);
   // ★ ✅ 与 🎈 是真图标：两段 duotone path 抄自洛谷的 fontawsm 块，
   //   分档与配色抄自 OiLevel / XcpcLevel 组件（见 luogu-native.js）。
   const badges = el("span", "luogusp-hc-badges");
@@ -259,7 +247,9 @@ export function renderUserCard(card, options = {}) {
     badge.setAttribute("style", badgeStyle(card.color));
     badges.appendChild(badge);
   }
-  if (badges.childNodes.length) title.appendChild(badges);
+  if (badges.childNodes.length) identity.appendChild(badges);
+  title.appendChild(identity);
+  title.appendChild(el("span", "luogusp-hc-uid", `uid : ${card.uid}`));
   body.appendChild(title);
 
   // slogan。原生在空的时候回落到「这个人很懒，什么也没有留下。」，我们照做。
@@ -281,6 +271,17 @@ export function renderUserCard(card, options = {}) {
   //   **只对 `/user/{uid}` 成立**；主接口 `/api/user/info/{uid}` 里是真值，原生卡读的就是它。
   if (card.eloRating !== null)
     stats.appendChild(statTile("等级分", String(card.eloRating)));
+  // ★ owner 2026-08-14：咕值与「通过 / 提交」从下面的扩展行**挪进这一排**，依次尾随。
+  if (card.guRating !== null) stats.appendChild(statTile("咕值", String(card.guRating)));
+  // ★★ 「通过 / 提交」只认 `/user/{uid}` 的口径（主接口同名字段是提交**次数**，会大 8 倍）。
+  //    隐藏了做题情况的账号两个都拿不到（实测 397982），整格不画。
+  if (card.passedCount !== null || card.submittedCount !== null)
+    stats.appendChild(
+      statTile(
+        "通过 / 提交",
+        `${fmtCount(card.passedCount) || "?"} / ${fmtCount(card.submittedCount) || "?"}`,
+      ),
+    );
   if (stats.childNodes.length) body.appendChild(stats);
 
   // ---- 操作区。原生是「关注 / 私信 / 更多(拉黑·举报·管理用户)」，
@@ -315,7 +316,7 @@ export function renderUserCard(card, options = {}) {
     }
     // 私信：原生就是一个到 /chat?uid= 的链接（路由名 chat.list）。
     actions.appendChild(linkButton("私信", `${origin}/chat?uid=${card.uid}`));
-    actions.appendChild(el("span", "luogusp-hc-spacer"));
+    // ★ owner 2026-08-14：举报与屏蔽不再靠右，**紧跟在私信后面**。
     // 举报：原生也只是个链接，路由 ticket.create → /ticket/new。不发任何请求。
     actions.appendChild(
       linkButton(
@@ -344,17 +345,11 @@ export function renderUserCard(card, options = {}) {
   }
 
   // ---- 到这里为止是「复刻」，下面是我们的扩展 ----
+  // 扩展区只剩上面那排放不下的东西。★ owner 2026-08-14 砍掉两行：
+  //   「关系」—— 关注按钮已经把关系说清楚了（关注 / 已关注 / 互相关注 / 已拉黑），重复；
+  //   「注册于」—— 不看。
+  //   咕值与通过/提交不是删掉，是**挪进了上面的统计排**。
   const extras = el("div", "luogusp-hc-extra");
-  // ★★ 「通过 / 提交」只认 `/user/{uid}` 的口径（主接口同名字段含义不同，会大 8 倍）。
-  //    隐藏了做题情况的账号两个都拿不到（实测 397982），整行不画。
-  if (card.passedCount !== null || card.submittedCount !== null)
-    extras.appendChild(
-      row(
-        "通过 / 提交",
-        `${fmtCount(card.passedCount) || "?"} / ${fmtCount(card.submittedCount) || "?"}`,
-      ),
-    );
-  if (card.guRating !== null) extras.appendChild(row("咕值", card.guRating));
   // 获奖：最近 3 条，年份降序。★ 只取 `contest`（已经是简称），**不取 `event`** ——
   // 那是「被认为是第 50 届 ICPC…上海站」这种全称，会把整行撑爆。
   if (card.prizes.length) {
@@ -369,12 +364,6 @@ export function renderUserCard(card, options = {}) {
       extras.appendChild(row("获奖", list));
     }
   }
-  // ★★ 关系：两边都未知就不画 —— 匿名访客拿不到这两个字段，写「未关注」是伪造。
-  //    看自己时也不画：「我和我自己未关注」是句废话（原生连整个操作区都不画）。
-  if (!isSelf && (card.relation !== "unknown" || card.reverseRelation !== "unknown"))
-    extras.appendChild(row("关系", relationText(card)));
-  if (card.registerTime !== null)
-    extras.appendChild(row("注册于", fmtDate(card.registerTime) || "?"));
   if (card.blogAddress) {
     const blog = el("a", "luogusp-hc-link", "个人博客");
     blog.href = card.blogAddress;
