@@ -5,7 +5,11 @@
 //   而且**绕开了 rAF 节流那个坑** —— 隐藏标签页里 rAF 不触发，
 //   凡是靠 rAF 补种监听的路径都会假死（交接单里记过两次）。
 
-const PID_PATTERN = /^[A-Za-z0-9_]+$/;
+// ★★ pid 的字符集只有这一份。sources.js 曾经自己写了一份**漏掉下划线**的，
+//    于是 `AT_abc397_a` / `CF_...` 这类题在数据层被当成非法 pid 直接退出，
+//    卡片只剩一句「拿不到这条数据」—— 而接口本身是好的（实测 200、11541 B）。
+//    owner 2026-08-14 第五轮报的就是它。同一个判据不许有第二份。
+export const PID_PATTERN = /^[A-Za-z0-9_]+$/;
 // 头像 URL 形如 https://cdn.luogu.com.cn/upload/usericon/1313427.png
 const AVATAR_UID = /\/upload\/usericon\/(\d+)\./;
 
@@ -52,9 +56,16 @@ const pidFromHref = (href) => {
   return match ? match[1] : null;
 };
 
+// ★★★ owner 2026-08-14 第五轮：题库里悬停**题号**不该出卡，而且它「和难度着色冲突」。
+//    查清了，是同一个根因：题库每行的题号是 `div.pid[title="P1000"]`（不是链接），
+//    而 **problem-color 正是靠这个 `title` 认出这是哪道题**
+//    （`identity.js` 的 standaloneIdentity：title 必须是合法 pid 且与文本相同）。
+//    我们为了灭掉浏览器原生浮泡会 `removeAttribute("title")` —— 一摘，着色当场失效。
+//    所以 `.pid[title]` **整个从锚点选择器里拿掉**：题号格不出卡、title 不被碰，
+//    同一行的**题名链接**照常出卡（那才是 canary.14 修过要保住的那条）。
 export function resolveProblemAnchor(node, identity) {
   if (!node || typeof node.closest !== "function") return null;
-  const anchor = node.closest('a[href*="/problem/"], .pid[title], a[data-luogusp-pid]');
+  const anchor = node.closest('a[href*="/problem/"], a[data-luogusp-pid]');
   if (!anchor) return null;
   const resolved =
     identity && typeof identity.resolve === "function"
@@ -113,11 +124,44 @@ export function readPageSubject(pathname) {
   return null;
 }
 
-export function resolveHoverTarget(node, identity, subject) {
+// 私信页「最近联系」列表的兜底。★ owner 2026-08-14 第五轮：悬停那里的**用户名**没反应。
+// 真机 DOM 实测（/chat，旧版页）：
+//     div.item
+//       span.avatar > img{src=.../usericon/2020479.png}
+//       div > span > span[用户名]        ← 纯 span，没有链接，**整行只有头像带 uid**
+// 所以名字上什么都解析不出来。这里从命中元素往上找**最多 4 层**，
+// 找一个「正好含一个头像」的容器，用那个头像的 uid。
+//
+// ★★ 故意**只在 `/chat` 上生效**。同样的形状在讨论区、文章列表里到处都是
+//    （头像 + 标题 + 作者），在那些地方按行兜底会让「悬停标题弹出作者卡」，
+//    那是误弹 —— owner 这几轮反复在清的正是误弹。要扩大范围得先有各页的证据。
+const CHAT_ROW_DEPTH = 4;
+const chatRowUid = (node, pathname) => {
+  if (pathname !== "/chat") return null;
+  let cursor = node;
+  for (let step = 0; cursor && step < CHAT_ROW_DEPTH; step += 1) {
+    const avatars = cursor.querySelectorAll
+      ? cursor.querySelectorAll('img[src*="/upload/usericon/"]')
+      : [];
+    if (avatars.length === 1) {
+      const uid = Number((avatars[0].getAttribute("src") || "").match(AVATAR_UID)?.[1]);
+      if (Number.isSafeInteger(uid) && uid > 0)
+        return Object.freeze({ kind: "user", key: `user:${uid}`, uid, anchor: cursor });
+    }
+    if (avatars.length > 1) return null;
+    cursor = cursor.parentElement;
+  }
+  return null;
+};
+
+export function resolveHoverTarget(node, identity, subject, pathname) {
   // 站点框架（顶栏 / 两侧抽屉）整块不参与，连解析都不必做。
   if (inSiteChrome(node)) return null;
   // 用户优先：讨论区里用户名链接常常也落在含题号的行内，先判用户不会误判。
-  const target = resolveUserAnchor(node) || resolveProblemAnchor(node, identity);
+  const target =
+    resolveUserAnchor(node) ||
+    resolveProblemAnchor(node, identity) ||
+    chatRowUid(node, pathname);
   if (!target || !subject || subject.kind !== target.kind) return target;
   if (target.kind === "user") return target.uid === subject.uid ? null : target;
   return target.pid === subject.pid ? null : target;

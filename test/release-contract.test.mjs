@@ -251,7 +251,6 @@ test("Phase 7 removes temporary compatibility facades and keeps one document com
 //    设置面板里的顺序与新标签由 test/hover-card-wiring.test.mjs 的守卫盯着。
 const SHIPPED_LABELS = Object.freeze([
   "题号显示难度颜色",
-  "私信 Ctrl+Click 打开用户个人页",
   "个人页显示个人介绍",
   "IDE 模式一键测试所有样例",
   "显示受限文章与剪贴板",

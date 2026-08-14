@@ -6,6 +6,8 @@
   "worktreeIncluded": true,
   "release": "2.14.0-canary.7",
   "artifactSha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
+  "behaviorSha256": "8d81812f2be9df4e8a16b168d0c5f88e1068e1ea66c7b86d4f5d63668987e771",
+  "behaviorSha256Note": "从本次 QA 实际跑过的那份 LuoguSP.user.js 算出：只把 @description 那一行抹成占位符，其余（含 @require/@match/@grant/@connect/@run-at/@sandbox 与脚本体）全部参与。@description 是纯展示文本，不影响运行时行为。",
   "startupMeasurements": [
     {
       "route": "/user/52918/practice",

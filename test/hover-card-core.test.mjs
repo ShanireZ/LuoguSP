@@ -548,6 +548,18 @@ test("匿名访客不请求提交记录", async () => {
   assert.equal(calls.some((c) => c.path.startsWith("/record/list")), false);
 });
 
+// ★★★ owner 2026-08-14 第五轮：AT 题（`AT_abc397_a`）卡片只有一句「拿不到这条数据」。
+//    根因是 sources.js 自己写了一份**漏掉下划线**的 pid 字符集，AT_/CF_ 这类题
+//    在数据层被当成非法 pid 直接退出 —— 而接口本身是好的（实测 200、11541 B）。
+//    现在两处共用 anchors.js 的那一份。
+test("带下划线的 pid（AT_/CF_）照样发请求", async () => {
+  const payload = { data: { problem: { pid: "AT_abc397_a", name: "[ABC397A] Thermometer", difficulty: 1, tags: [], limits: { time: [2000], memory: [1048576] } } } };
+  const { sources, calls } = sourceHarness({ "/problem/AT_abc397_a": payload, "/_lfe/tags": { tags: [{ id: 1, name: "x" }] } });
+  const card = await sources.problem("AT_abc397_a", 0);
+  assert.equal(card && card.pid, "AT_abc397_a");
+  assert.equal(calls.some((c) => c.path === "/problem/AT_abc397_a"), true);
+});
+
 test("非法 pid / uid 不发请求", async () => {
   const { sources, calls } = sourceHarness({});
   assert.equal(await sources.problem("P1/../x", 0), null);
