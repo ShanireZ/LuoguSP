@@ -1,3 +1,4 @@
+import { PID_PATTERN } from "./anchors.js";
 import {
   buildProblemCard,
   buildTagDictionary,
@@ -37,7 +38,6 @@ const LENTILLE_INIT = Object.freeze({
 });
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 60;
-const PID_PATTERN = /^[A-Za-z0-9]+$/;
 
 // 旧版页面把数据塞在 `window._feInjection = JSON.parse(decodeURIComponent("…"))` 里。
 export function parseLegacyInjection(html) {

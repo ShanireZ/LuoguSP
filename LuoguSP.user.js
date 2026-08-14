@@ -2,7 +2,7 @@
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
 // @version      2.13.10
-// @description  LuoguSP：题号显示难度颜色 / 私信 Ctrl+Click 打开用户个人页 / 个人页显示个人介绍 / IDE 模式一键测试所有样例 / 显示受限文章与剪贴板
+// @description  LuoguSP：题号显示难度颜色 / 个人页显示个人介绍 / IDE 模式一键测试所有样例 / 显示受限文章与剪贴板
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
 // @match        https://www.luogu.com.cn/*

@@ -42,7 +42,8 @@ export function createHoverCardFeature(config) {
   const identity = createProblemIdentityResolver({
     getOrigin: () => location.origin,
     voidAnchorSelector: "a[data-v-bade3303][data-v-4842157a]",
-    standalonePidSelector: ".pid[title]",
+    // ★ 不给 standalonePidSelector：`.pid[title]` 已经从锚点选择器里拿掉了
+    //   （题库的题号格靠那个 title 着色，我们碰不得）。见 anchors.js 的说明。
   });
 
   const mount = () => {
@@ -215,6 +216,7 @@ export function createHoverCardFeature(config) {
         event.target,
         identity,
         readPageSubject(location.pathname),
+        location.pathname,
       );
       if (!target || !isEnabled(target.kind)) return;
       if (target.kind === "problem") stripNativeTitle(target.anchor);

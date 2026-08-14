@@ -22,11 +22,17 @@ const read = (relative) => readFileSync(resolve(root, relative), "utf8");
 // 指针第一次碰到题号或用户链接才把块拉下来，绝大多数页面浏览根本不触发。
 
 // ---- 锚点识别（最小 DOM 替身，只实现 closest / getAttribute / tagName）----
-function node({ tag = "A", href = null, src = null, parent = null, chrome = null } = {}) {
+function node({ tag = "A", href = null, src = null, parent = null, chrome = null, title = null, cls = null, children = [] } = {}) {
   const self = {
     tagName: tag,
-    getAttribute: (name) => (name === "href" ? href : name === "src" ? src : null),
+    getAttribute: (name) =>
+      name === "href" ? href : name === "src" ? src : name === "title" ? title : null,
     parentElement: parent,
+    // 只实现测试用得到的那点查询：按 usericon 找后代头像。
+    querySelectorAll: (selector) =>
+      selector.includes("usericon")
+        ? children.filter((c) => (c.getAttribute("src") || "").includes("/upload/usericon/"))
+        : [],
     // 站点框架标记：".top-bar" / ".lside" / ".rside" 之一，模拟真机上的祖先容器。
     chrome,
   };
@@ -40,6 +46,7 @@ function node({ tag = "A", href = null, src = null, parent = null, chrome = null
       if (selector.includes('/user/') && h && h.includes("/user/")) return cursor;
       if (selector === "img" && cursor.tagName === "IMG") return cursor;
       if (selector.includes("usericon") && s && s.includes("/upload/usericon/")) return cursor;
+      if (selector.includes(".pid[title]") && cursor.getAttribute("title")) return cursor;
       cursor = cursor.parentElement;
     }
     return null;
@@ -177,6 +184,36 @@ test("页面主体解析只认真正的 uid / pid", () => {
     null,
   ])
     assert.equal(readPageSubject(path), null, String(path));
+});
+
+// ★★★ owner 2026-08-14 第五轮：题库里悬停题号不该出卡，而且它「和难度着色冲突」。
+//    同一个根因：题库每行的题号是 `div.pid[title="P1000"]`，而 problem-color
+//    正是靠这个 title 认题；我们为了灭原生浮泡会把 title 摘掉，着色当场失效。
+//    所以 `.pid[title]` 整个从锚点判据里拿掉。
+test("题号格 .pid[title] 不再出卡（题库的着色靠那个 title）", () => {
+  const cell = node({ tag: "DIV", title: "P1000", cls: "pid" });
+  assert.equal(resolveProblemAnchor(cell, identityOf("P1000")), null);
+  assert.equal(resolveHoverTarget(cell, identityOf("P1000"), null), null);
+  // 反证：同一行的**题名链接**必须照常出卡（canary.14 专门修过这条）。
+  assert.equal(
+    resolveHoverTarget(node({ href: "/problem/P1000" }), identityOf(null), null).pid,
+    "P1000",
+  );
+});
+
+// ★ owner：私信「最近联系」列表里悬停用户名没反应。真机 DOM：整行只有头像带 uid，
+//   名字是个纯 span。所以按行兜底 —— 但**只在 /chat 上**，别的页面同形状会导致误弹。
+test("私信页按行兜底取头像的 uid，且只在 /chat 生效", () => {
+  const avatar = node({
+    tag: "IMG",
+    src: "https://cdn.luogu.com.cn/upload/usericon/2020479.png",
+  });
+  const row = node({ tag: "DIV", children: [avatar] });
+  const name = node({ tag: "SPAN", parent: row });
+  assert.equal(resolveHoverTarget(name, null, null, "/chat").uid, 2020479);
+  // 反证：换个页面就不许兜底。
+  for (const path of ["/discuss", "/article/xxx", "/", undefined])
+    assert.equal(resolveHoverTarget(name, null, null, path), null, String(path));
 });
 
 test("读不到登录态就当匿名", () => {
@@ -512,6 +549,21 @@ test("滚动时指针若还在卡片里就不许关卡", () => {
   const handler = feature.slice(feature.indexOf("const onScroll"), feature.indexOf("const onKey"));
   assert.match(handler, /pointerInsideCard\(\)/, "onScroll 必须先问一句再决定关不关");
   assert.match(handler, /intent\.dismiss\(\)/);
+});
+
+// ★★ owner 第五轮：文章广场、讨论区、提交记录、题目页出题人……原生个人卡到处和
+//    我们的卡一起弹。原生那张是 teleport 到 `#app` 的 `div.dropdown`，里面装
+//    `class="float-card"` 的卡体（`DropdownWrapper` 与 `UserFloatCard` 组件原文）。
+//    用 CSS 藏掉，不去掐事件 —— 掐事件会连带影响那棵子树上别人的 mouseover。
+test("用户卡开着时屏蔽原生个人卡，关掉就还回去", () => {
+  const shell = read("src/features/hover-card/lazy-feature.js");
+  assert.match(shell, /float-card/, "得按原生卡自己的类名认");
+  assert.match(shell, /suppressNativeCard/);
+  // 只有用户卡这一类才屏蔽：题目卡开着不该动原生的个人卡。
+  const mountFor = shell.slice(shell.indexOf("const mountFor"), shell.indexOf("return Object.freeze"));
+  assert.match(mountFor, /kind === "user"/);
+  assert.match(mountFor, /suppressNativeCard\(true\)/);
+  assert.match(mountFor, /suppressNativeCard\(false\)/, "关掉开关必须把原生卡还回去");
 });
 
 // ★ 卡片永远不许出视口：高度由 placeCard 钉 max-height，内容再长也只在卡内滚。

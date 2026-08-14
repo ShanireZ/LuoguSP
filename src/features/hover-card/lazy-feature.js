@@ -16,12 +16,47 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 //      这中间指针很可能已经挪到别的锚点上了（那些 mouseover 同样没人接）。
 
 // 候选锚点选择器按**当前开着的类别**拼：只开了题目卡就别为用户名去拉块。
-const PROBLEM_CANDIDATES = 'a[href*="/problem/"], .pid[title]';
+const PROBLEM_CANDIDATES = 'a[href*="/problem/"]';
 const USER_CANDIDATES = 'a[href*="/user/"], img[src*="/upload/usericon/"]';
 // 站点框架（顶栏 + 左右抽屉）里的锚点永远不会出卡（判据在块里的 anchors.js），
 // 所以连块都不必为它们拉下来。★ 这是**纯省事**的收紧，不是判据：
 // 少拉一次块顶多慢一点，多拉一次块什么也不会坏。
 const CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
+
+// ★★★ 屏蔽洛谷原生的个人悬停卡。owner 2026-08-14 第五轮：文章广场、讨论区、
+//   提交记录、题目页出题人……到处都是原生卡和我们的卡一起弹。
+//
+// 结构取自 `DropdownWrapper` 组件原文（loader chunk）：
+//     <wrapper><trigger .../><Teleport to="#app">
+//       <div class="dropdown {shown}">{shown ? 卡片内容 : 空}</div>
+//     </Teleport></wrapper>
+//   用户卡本体是那个 `class="float-card"` 的节点（`UserFloatCard` 的根）。
+//   全站 chunk 里 `"float-card"` **只有这一处**用到，所以按它认不会误伤。
+//
+// ★ 为什么用 CSS 而不是掐事件：原生触发器的 `mouseover` 监听挂在触发元素上，
+//   要拦就得在 document 捕获阶段 `stopPropagation` —— 那会连带掐掉那棵子树上
+//   别人的一切 mouseover，代价不可控。CSS 只影响显示，坏不了任何行为。
+//   代价是原生那边照样会发一次 `/api/user/info/{uid}`（约 1 KB），可以接受。
+// ★ 只在**用户卡开关打开时**才注入：关掉我们的卡就该把原生卡还给用户。
+//   `:has()` 那条连空的下拉盒子一起藏掉；下面那条是没有 `:has()` 时的兜底。
+const NATIVE_SUPPRESS_ID = "luogusp-hc-native-suppress";
+const NATIVE_SUPPRESS_CSS =
+  ".dropdown:has(> .float-card){display:none !important;}" +
+  ".float-card{display:none !important;}";
+
+const suppressNativeCard = (on) => {
+  const head = document.head || document.documentElement;
+  const existing = document.getElementById(NATIVE_SUPPRESS_ID);
+  if (!on) {
+    if (existing) existing.remove();
+    return;
+  }
+  if (existing || !head) return;
+  const style = document.createElement("style");
+  style.id = NATIVE_SUPPRESS_ID;
+  style.textContent = NATIVE_SUPPRESS_CSS;
+  head.appendChild(style);
+};
 
 // ★ owner 2026-08-14 第四轮把开关拆成两个：「题目悬停显示预览卡」与
 //   「用户名/头像悬停显示预览卡」。两个开关**共用同一个块、同一次挂载** ——
@@ -154,10 +189,13 @@ export function createHoverCardFeatures(config) {
 
   const mountFor = (kind) => {
     active.add(kind);
+    // 我们的用户卡一上场，就把原生那张藏起来 —— 两张一起弹是 owner 报的问题。
+    if (kind === "user") suppressNativeCard(true);
     if (refs === 0) shellDispose = mountShell();
     refs += 1;
     return () => {
       active.delete(kind);
+      if (kind === "user") suppressNativeCard(false);
       refs -= 1;
       if (refs > 0) return;
       if (typeof shellDispose === "function") shellDispose();

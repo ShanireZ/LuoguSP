@@ -6,6 +6,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { behaviourHashOf } from "./artifact-behaviour-hash.mjs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
@@ -63,6 +64,10 @@ const budget = JSON.parse(budgetText);
 const browserQa = JSON.parse(browserQaText);
 const artifactText = artifact.toString("utf8");
 const artifactSha256 = createHash("sha256").update(artifact).digest("hex");
+// 真机 QA 的哈希戳用「行为哈希」比对：只豁免 `@description` 一行，
+// 其余（含每一条生效元数据与脚本体）分毫不动。理由与反证见
+// scripts/artifact-behaviour-hash.mjs 与 test/artifact-behaviour-hash.test.mjs。
+const behaviorSha256 = behaviourHashOf(artifact.toString("utf8"));
 const parseSamples = [];
 for (let index = 0; index < 25; index++) {
   const start = performance.now();
@@ -361,6 +366,7 @@ const report = {
   generatedAt: new Date().toISOString(),
   artifact: {
     sha256: artifactSha256,
+    behaviorSha256,
     bytes: artifact.length,
     gzipBytes: gzipSync(artifact, { level: 9 }).length,
     lines: artifactText.split(/\r?\n/).length,
@@ -370,6 +376,7 @@ const report = {
     status: browserQa.status || "unknown",
     checkedAt: browserQa.checkedAt,
     artifactSha256: browserQa.artifactSha256,
+    behaviorSha256: browserQa.behaviorSha256 || null,
     maxStartupMs: Math.max(
       ...browserQa.startupMeasurements.map((sample) => sample.ms),
     ),
@@ -447,9 +454,14 @@ if (check) {
           "no passing browser QA report"
         }`,
       );
-    if (report.browserQa.artifactSha256 !== report.artifact.sha256)
+    // 老报告没有行为哈希 → 退回整份文件比对（严格口径，不放水）。
+    if (
+      report.browserQa.behaviorSha256
+        ? report.browserQa.behaviorSha256 !== report.artifact.behaviorSha256
+        : report.browserQa.artifactSha256 !== report.artifact.sha256
+    )
       failures.push(
-        "browser QA artifact hash differs from the current userscript",
+        "browser QA hash differs from the current userscript",
       );
     if (report.browserQa.maxStartupMs > budget.browserQa.maxStartupMs)
       failures.push(
