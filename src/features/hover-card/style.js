@@ -16,12 +16,16 @@ export const HOVER_CARD_STYLE = `
 .luogusp-hc-avatar{width:36px;height:36px;border-radius:50%;flex:0 0 auto;background:#f0f0f0;border:1px solid #979797;box-sizing:border-box;}
 .luogusp-hc-name{text-decoration:none;font-weight:bold;}
 .luogusp-hc-name:hover{text-decoration:underline;}
-/* 原生统计块：标签在上、数字在下，横向铺开（关注/粉丝/等级分）。 */
-.luogusp-hc-stats{display:flex;flex-wrap:wrap;gap:16px;margin:8px 0 2px;}
-.luogusp-hc-stat{display:flex;flex-direction:column;line-height:1.3;}
-.luogusp-hc-stat-k{color:#8a8a8a;font-size:11px;}
-.luogusp-hc-stat-v{font-size:14px;font-weight:600;}
-.luogusp-hc-spacer{flex:1 1 auto;}
+/* 原生统计块：标签在上、数字在下，横向铺开。★ owner 2026-08-14：数值要**横向居中**
+   对齐到标签，并且咕值与「通过 / 提交」依次尾随在关注/粉丝/等级分后面。 */
+.luogusp-hc-stats{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 0 2px;}
+.luogusp-hc-stat{display:flex;flex-direction:column;align-items:center;line-height:1.3;}
+.luogusp-hc-stat-k{color:#8a8a8a;font-size:11px;white-space:nowrap;}
+.luogusp-hc-stat-v{font-size:14px;font-weight:600;white-space:nowrap;}
+/* 用户名行两端对齐：左边名字+徽章，右边贴 uid。 */
+.luogusp-hc-utitle{display:flex;align-items:baseline;gap:8px;}
+.luogusp-hc-identity{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.luogusp-hc-uid{margin-left:auto;flex:0 0 auto;color:#8a8a8a;font-size:11px;font-weight:400;}
 .luogusp-hc-extra{margin-top:2px;}
 .luogusp-hc-title{font-size:14px;font-weight:600;line-height:1.4;margin:0;word-break:break-all;}
 .luogusp-hc-sub{font-size:12px;margin-top:1px;}
