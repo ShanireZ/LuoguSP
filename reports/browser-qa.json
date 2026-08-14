@@ -1,189 +1,81 @@
 {
-  "checkedAt": "2026-08-12T22:48:00.0000000+08:00",
+  "checkedAt": "2026-08-14T05:33:18.716Z",
   "status": "passed",
-  "browser": "Playwright Chromium with local immutable canary injection",
-  "sourceCommit": "04f3bb7c73e5b461b2b759e8b1602e0934f1cdd8",
+  "browser": "Playwright + 系统 chrome 151.0.7922.138",
+  "generatedBy": "npm run qa:browser (scripts/qa/browser-qa.mjs)",
+  "sourceCommit": "ec7b30c5075077c680e7945f1d023d29cab31a27",
   "worktreeIncluded": true,
-  "release": "2.14.0-canary.7",
-  "artifactSha256": "ac0a11f484d3c07ac349045aa410ceef8fa15e95a5f257bc9d80c7b46e610579",
+  "release": "2.13.10",
+  "requireUrls": [
+    "https://luogusp.round1.cc/releases/2.13.10/compat/early-gate.702eb1cf0f84940e.js#sha256=702eb1cf0f84940ed9a9866c13314b3a7afb72b43727695d3c9d284281cc9763",
+    "https://luogusp.round1.cc/releases/2.13.10/compat/runtime.a86d47accc3a6fd1.js#sha256=a86d47accc3a6fd19da3b5e95b817e32972586b6d0511b932dd9d53b9adf9e52"
+  ],
+  "artifactSha256": "b5b2f02a297042cc31f85c4130fcf2d3b16e1d46c254ffacd8b629ad8d2c901f",
   "behaviorSha256": "8d81812f2be9df4e8a16b168d0c5f88e1068e1ea66c7b86d4f5d63668987e771",
-  "behaviorSha256Note": "从本次 QA 实际跑过的那份 LuoguSP.user.js 算出：只把 @description 那一行抹成占位符，其余（含 @require/@match/@grant/@connect/@run-at/@sandbox 与脚本体）全部参与。@description 是纯展示文本，不影响运行时行为。",
+  "behaviorSha256Note": "只把 @description 那一行抹成占位符，其余（含 @require/@match/@grant/@connect/@run-at/@sandbox 与脚本体）全部参与。",
   "startupMeasurements": [
     {
-      "route": "/user/52918/practice",
-      "ms": 0.5
+      "iteration": 1,
+      "ms": 3.899999998509884
     },
     {
-      "route": "/user/52918",
-      "ms": 0.1
+      "iteration": 2,
+      "ms": 1.9000000022351742
     },
     {
-      "route": "/problem/list",
-      "ms": 0.2
+      "iteration": 3,
+      "ms": 2.300000000745058
+    },
+    {
+      "iteration": 4,
+      "ms": 6.599999997764826
+    },
+    {
+      "iteration": 5,
+      "ms": 2.5
     }
   ],
   "console": {
     "luoguSpErrorCount": 0,
-    "siteErrorCount": 3,
-    "summary": "三条洛谷官方 vendor.js 的 WebSocket hub 报错（无头环境连不上洛谷 ws），一条是保存站回退用例主动中断评论请求产生的 ERR_FAILED；LuoguSP 自身零报错。"
-  },
-  "qaArtifact": {
-    "path": "scratchpad/inject-bundle.2.14.0-canary.7.js（本地不可变 canary 拼接的注入包）",
-    "sha256": "dcea7fe681fd470b09c2541abd3d50522f244d7d4411020638a0d354f74d4eb3",
-    "bytes": 121900
-  },
-  "canaryInstaller": {
-    "path": "canary/LuoguSP-canary.user.js",
-    "sha256": "84269a46a69f3ddfd678022d31287a48eda92d88e1b7b84d96350d7c66b8f5c7",
-    "bytes": 1094,
-    "automaticUpdateUrl": false
-  },
-  "cdnArtifact": {
-    "published": true,
-    "channel": "canary",
-    "manifestPath": "releases/2.14.0-canary.7/manifest.8558f30018927ea2.json",
-    "manifestSha256": "8558f30018927ea2d4743cabbe9c60cb3821a395cce20167c2163fad49455ad2",
-    "immutableFiles": 15,
-    "verifyExisting": "passed",
-    "productionGate": "passed",
-    "directRequires": "200 with matching SHA-256",
-    "previousCanary": "2.14.0-canary.6 removed from deployment (404)"
+    "messages": [
+      {
+        "iteration": 1,
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_FAILED"
+      },
+      {
+        "iteration": 2,
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_FAILED"
+      },
+      {
+        "iteration": 3,
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_FAILED"
+      },
+      {
+        "iteration": 4,
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_FAILED"
+      },
+      {
+        "iteration": 5,
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_FAILED"
+      }
+    ]
   },
   "checks": {
-    "restrictedArticleLiveReplies": {
-      "route": "/article/2l4x53kj",
-      "request": "GET /article/2l4x53kj/replies?sort=",
-      "status": 200,
-      "sourceHeader": null,
-      "commentsRendered": true,
-      "pageErrors": 0,
-      "statusText": "passed"
-    },
-    "restrictedArticleSaverFallback": {
-      "route": "/article/2l4x53kj",
-      "fault": "all matching Luogu reply requests aborted by Playwright routing",
-      "rendered": true,
-      "commentHeading": "50 条评论",
-      "pageErrors": 0,
-      "expectedBrowserNetworkErrors": 1,
-      "statusText": "passed"
-    },
-    "restrictedArticleInteractionLifecycle": {
-      "route": "/article/2l4x53kj",
-      "viewer": "合成 uid 4242424（改写本地壳骨架的 lentille-context.user，不登录真实账号）",
-      "officialWritesIntercepted": true,
-      "saverSnapshot": {
-        "favorCount": 17,
-        "upvote": 19
-      },
-      "firstLoad": {
-        "favored": false,
-        "voted": false
-      },
-      "firstSessionWrites": [
-        "POST /article/2l4x53kj/favor",
-        "POST /article/2l4x53kj/vote?vote=1"
-      ],
-      "afterWrite": {
-        "favorCount": 18,
-        "favorActive": true,
-        "upvote": 778,
-        "upvoteActive": true
-      },
-      "storedAfterWrite": {
-        "4242424:2l4x53kj": {
-          "voted": 1,
-          "favored": true,
-          "upvote": 778,
-          "favorCount": 18
-        }
-      },
-      "afterFullReload": {
-        "favorCount": 18,
-        "favorActive": true,
-        "upvote": 778,
-        "upvoteActive": true
-      },
-      "reloadSessionWrites": [
-        "POST /article/2l4x53kj/favor?remove=1",
-        "POST /article/2l4x53kj/vote?vote=0"
-      ],
-      "afterCancel": {
-        "favorCount": 17,
-        "favorActive": false,
-        "upvote": 777,
-        "upvoteActive": false
-      },
-      "storedAfterCancel": {
-        "4242424:2l4x53kj": {
-          "voted": 0,
-          "favored": false,
-          "upvote": 777,
-          "favorCount": 17
-        }
-      },
-      "pageErrors": 0,
-      "statusText": "passed"
-    },
-    "restrictedPasteReadOnly": {
-      "route": "/paste/40hfk7qm",
-      "template": "PasteShow",
-      "canEdit": false,
-      "commentInputs": 0,
-      "officialInteractionButtons": 0,
-      "pageErrors": 0,
-      "statusText": "passed"
-    },
-    "localCi": {
-      "commands": [
-        "npm run check",
-        "npm audit --audit-level=moderate"
-      ],
-      "tests": 195,
-      "passed": 195,
-      "failed": 0,
-      "buildCheck": "passed",
-      "qualityCheck": "passed",
-      "npmAuditModerate": "0 vulnerabilities",
-      "statusText": "passed"
-    },
-    "restrictedTransportRealm": {
-      "finding": "2026-08-12 在用户真实 Edge + Tampermonkey 上实测：管理器报告 sandboxMode=\"raw\"，但脚本的 window 不是页面 window（unsafeWindow 才是）。canary.5 把 fetch/XMLHttpRequest 包装打在了脚本沙箱的 window 上，官方写请求与评论回退都不经过它，且完全静默。",
-      "evidence": "页面主世界 __LUOGUSP_CDN_RUNTIME__=null、XMLHttpRequest/fetch 均为原生；同时 LuoguSP 的扩展按钮存在于共享 DOM。探针脚本从 unsafeWindow 写入的标记可被主世界读到。",
-      "fix": "resolveRestrictedTransportRealm 显式选中页面 realm，并把 Response/URL/Request/Headers 一并取自同一 realm（跨 realm 的 new Request(pageRequest, init) 会失败）。页面 realm 不可用时回退脚本 window 而不是安装半坏传输层。",
-      "mainWorldRegression": "passed（Playwright 注入本就在主世界，realm 解析退化为 window，行为与 canary.5 一致）",
-      "realBrowserVerification": "passed — canary.6 与 canary.7 均在 owner 的 Edge + Tampermonkey 上实测：页面主世界的 XMLHttpRequest 为 LuoguSP 包装类（含 writeUrl 字段），fetch 同样被接管。",
-      "statusText": "passed"
-    },
-    "realAccountLifecycle": {
-      "browser": "owner 本机 Edge + Tampermonkey，真实登录账号（uid 1313427），经 owner 授权",
-      "route": "/article/2l4x53kj",
-      "release": "2.14.0-canary.7",
-      "realmCheck": "页面主世界 XMLHttpRequest 与 fetch 均已被 LuoguSP 包装（xhrWrapped/fetchWrapped = true）",
-      "storageKey": "luogusp.article-interaction.v2 起始为空；canary.6 遗留的 v1 脏记录被忽略，测试后已清除",
-      "steps": [
-        "初始：收藏 17 / 点赞 19，均未激活，favored=voted=null（保存站快照，未被伪造）",
-        "点赞 → POST /article/2l4x53kj/vote?vote=1；界面 25 高亮；记录 {voted:1, upvote:25, favorCount:null, favored:null}",
-        "整页刷新 → 收藏仍 17、点赞仍 25 且高亮；ctx {favorCount:17, favored:null, upvote:25, voted:1}",
-        "再点一次 → POST /article/2l4x53kj/vote?vote=0；界面 24 取消高亮；记录 {voted:0, upvote:24}"
-      ],
-      "zeroCountRegression": "已修：favorCount 记为 null 而非 0，刷新后保存站的 17 完好（canary.6 此处会退化为「收藏」字样）",
-      "accountRestored": "是。点赞后 25、撤回后 24，差值 1 证明该账号原本未点赞，结束状态即原始状态；收藏全程未触碰。",
-      "favoriteNotWritten": "受限页无只读接口，无法先确认账号原始收藏状态从而保证还原，故未做真实收藏写入；该路径与点赞共用同一观察器与持久层。",
-      "luoguSpConsoleErrors": 0,
-      "statusText": "passed"
-    }
-  },
-  "writeSafety": {
-    "externalMutationsPerformed": false,
-    "reason": "点赞与收藏具有真实账户副作用。本轮生命周期用例把官方 favor/vote/reply 的 POST 全部由 Playwright 路由拦下并返回合成响应，请求不会到达洛谷；也没有使用任何真实登录态。",
-    "contract": "只有官方 UI 的用户点击会发起写请求；同源 Cookie 与 CSRF 被保留或补齐；界面与持久记录仅在服务器成功响应后更新。"
+    "cdnRuntimeInstalled": true,
+    "settingsEntryMounted": true,
+    "problemColourApplied": "rgb(254, 76, 97)"
   },
   "limitations": [
-    "受限 .cn 页面确认没有可读回当前账号 favored/voted 的官方只读接口：GET /article/{lid} 与其 content-only 变体都被「安全访问中心」拦截页替换；保存站也不返回这两个字段。个人状态因此只能来自官方写响应，并按 UID + 文章 ID 本地持久化。",
-    "登录态与写响应在 Playwright 轮次里是本地合成的（拦截 + 改写）；沙箱 realm 这条只能在真实 Tampermonkey 环境验证，已单列 restrictedTransportRealm。",
-    "保存站 upvote/favorCount 是存档快照；首次打开仍可能与洛谷真实计数差距很大，写入成功后才会被服务器确认值取代。",
-    "真实账号轮次只验证了点赞/撤回；收藏未写入，因为受限页无只读接口、无法先确认账号原始收藏状态从而保证还原。收藏路径与点赞共用同一套观察器与持久层，已由自动化测试与合成登录态浏览器用例覆盖。"
+    "跑在离线夹具页上，不是 www.luogu.com.cn：本门只回答「这份产物能不能跑起来、启动多久、有没有报错」，可复现是首要目标。",
+    "按需块（markdownRenderer / restrictedContent / hoverCard）要联网才拉得到，不在覆盖范围内。",
+    "保存站相关路径要 GM_xmlhttpRequest，夹具里没有，不在覆盖范围内。",
+    "一切写请求（关注 / 屏蔽 / 申请更新）一律不触发。",
+    "真站 DOM 漂移只能靠 owner 的真机验收发现，这道门看不出来。"
   ],
   "failures": []
 }

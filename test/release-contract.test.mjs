@@ -243,28 +243,46 @@ test("Phase 7 removes temporary compatibility facades and keeps one document com
   assert.equal(runtimeScript.includes("module.exports"), false);
 });
 
-// ★★★ 这条合同盯的是**已经发出去的 2.13.10**：`@description`、正式版 runtime、README
-//    三者必须与**那一版**的功能集一致 —— `reports/browser-qa.json` 钉着 `LuoguSP.user.js`
-//    的 sha256，动了描述那张真机 QA 的戳就当场失效。
-//    ⏳ 源码已经走在前面（chat-shortcut 已删、受限内容改名、hover 卡拆成两个开关），
-//    这些用户可见的文案**要到 2.14.0 转正式版时和发布一起翻**，并重跑一次真机 QA。
-//    设置面板里的顺序与新标签由 test/hover-card-wiring.test.mjs 的守卫盯着。
+// 这一组合同盯两件不同的事，别混在一起：
+//
+//  A. **当前源码**的功能集 —— `@description` 与 README 必须跟着它走。
+//     （防止再次漂移：功能改了名、加了开关，文案不跟着改就没人发现。）
+//  B. **已经发出去的 2.13.10** 的 runtime 里确实含有的标签 —— 只有这部分能对
+//     正式版产物做包含断言。
+//
+// ★ 两者现在**故意不一致**：hover 卡的两个开关与受限内容的新名字都还在 canary 里，
+//   正式版 runtime 里没有那几行字。owner 2026-08-14 要求文案先行，
+//   所以 `@description` 已经写成了源码的样子，转 2.14.0 时 B 组会自动追上。
+// ★ 改 `@description` 不会让真机 QA 的戳失效 —— 那个戳用的是**行为哈希**，
+//   只豁免这一行（见 scripts/artifact-behaviour-hash.mjs）。
+const SOURCE_LABELS = Object.freeze([
+  "题号显示难度颜色",
+  "题目悬停显示预览卡",
+  "用户名/头像悬停显示预览卡",
+  "个人页显示个人介绍",
+  "受限文章与剪贴板解限",
+  "IDE 模式一键测试所有样例",
+]);
 const SHIPPED_LABELS = Object.freeze([
   "题号显示难度颜色",
   "个人页显示个人介绍",
   "IDE 模式一键测试所有样例",
+  // ★ 正式版 runtime 里是**旧名字**。改名只在源码里，转正式版才会一起发出去。
   "显示受限文章与剪贴板",
 ]);
 
-test("shipped description, runtime and README agree on the released feature set", () => {
+test("description and README follow the current source feature set", () => {
   assert.equal(
     metadata.get("description"),
-    `LuoguSP：${SHIPPED_LABELS.join(" / ")}`,
+    `LuoguSP：${SOURCE_LABELS.join(" / ")}`,
   );
-  for (const label of SHIPPED_LABELS) {
-    assert.equal(runtimeScript.includes(label), true, label);
+  for (const label of SOURCE_LABELS)
     assert.equal(readme.includes(`**${label}**`), true, label);
-  }
+});
+
+test("the shipped runtime still contains every label it was released with", () => {
+  for (const label of SHIPPED_LABELS)
+    assert.equal(runtimeScript.includes(label), true, label);
 });
 
 // 当前源码里的描述符：键、默认值、存储键的形状不变。
@@ -300,4 +318,23 @@ test("source feature descriptors keep their shape", () => {
     assert.equal(descriptor.defaultEnabled, true);
     assert.equal(descriptor.enabled(), true);
   }
+});
+
+// ★★★ `reports/browser-qa.json` 曾经是**手写**的：仓库里没有任何东西能生成它，
+//    于是「改了产物就得重跑 QA」在操作上等于「补不回来」。现在它由
+//    `npm run qa:browser` 生成，这条守卫盯着它别再退回手写。
+test("browser QA report is machine generated and covers this artifact", () => {
+  const report = JSON.parse(
+    fs.readFileSync(path.join(root, "reports", "browser-qa.json"), "utf8"),
+  );
+  assert.match(String(report.generatedBy), /qa:browser/);
+  assert.equal(report.status, "passed");
+  // 它验的是**产物**（@require 指向的那份已发布 release），不是工作区源码 ——
+  // 所以报告里必须把那两条 URL 记下来，否则事后说不清跑的是哪一版。
+  assert.equal(Array.isArray(report.requireUrls), true);
+  assert.equal(report.requireUrls.length, 2);
+  for (const url of report.requireUrls)
+    assert.match(url, /#sha256=[0-9a-f]{64}$/, url);
+  // 覆盖范围必须写清楚，别让人误以为它验过按需块和保存站。
+  assert.equal(report.limitations.length > 0, true);
 });
