@@ -27,7 +27,7 @@
     "maxGzipBytes": 22000
   },
   "optionalHoverCard": {
-    "maxBytes": 32000,
-    "maxGzipBytes": 12000
+    "maxBytes": 40000,
+    "maxGzipBytes": 16000
   }
 }

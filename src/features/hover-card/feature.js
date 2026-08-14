@@ -73,6 +73,8 @@ export function createHoverCardFeature(config) {
         // 状态变了就地重画，别等下一次 hover。
         if (shown && shown.kind === "user" && shown.uid === uid) draw(shown.key);
       },
+      // ★ 屏蔽是替用户对第三方做的社交动作，发请求前必须让他自己点头。
+      confirm: (message) => window.confirm(message),
       logError: (error) => console.error("LuoguSP hover follow:", error),
     });
 
@@ -142,7 +144,9 @@ export function createHoverCardFeature(config) {
         card.appendChild(
           Object.assign(document.createElement("div"), {
             className: "luogusp-hc-muted",
-            textContent: "拿不到这条数据。",
+            // 洛谷自己说了原因就照搬（例如「该用户未通过实名认证」），
+            // 说不出原因才退回这句笼统的。★ 不编原因。
+            textContent: sources.lastError(target.key) || "拿不到这条数据。",
           }),
         );
       } else if (model.kind === "problem") {
@@ -151,8 +155,10 @@ export function createHoverCardFeature(config) {
         card.appendChild(
           renderUserCard(model, {
             origin: location.origin,
-            // 匿名访客不给关注按钮：点了必然被洛谷拒。
+            viewerUid: viewer,
+            // 匿名访客不给写入按钮：点了必然被洛谷拒。
             onFollow: viewer ? (next) => follow.toggle(next) : null,
+            onBlock: viewer ? (next) => follow.block(next) : null,
             followBusy: follow.isBusy(model.uid),
           }),
         );

@@ -255,9 +255,36 @@ test("上次尝试取最近一次提交", () => {
   assert.equal(pickLastAttempt([{ id: 3, score: 100 }]), null);
 });
 
-const userPayload = {
+// 用户卡现在有两个载荷：
+//   主=`/api/user/info/{uid}`（原生悬停卡自己用的那个，951 B，elo 是真值，未实名也 200）
+//   补=`/user/{uid}`（只为拿 gu / prizes / 以及**洛谷个人页口径**的 submittedProblemCount）
+const userInfoPayload = {
+  user: {
+    uid: 697932,
+    name: "Gcend",
+    color: "Red",
+    background: "https://cdn.luogu.com.cn/upload/image_hosting/x.png",
+    blogAddress: "https://www.luogu.com.cn/blog/yangyafan/",
+    ccfLevel: 7,
+    xcpcLevel: 0,
+    // ★ 主接口这个字段是**提交次数**（实测 5441），与个人页的「提交 710」不是一回事。
+    passedProblemCount: 612,
+    submittedProblemCount: 5441,
+    ranking: 560,
+    followingCount: 54,
+    followerCount: 102,
+    registerTime: 1647344053,
+    userRelationship: 0,
+    reverseUserRelationship: 1,
+    // ★ 主接口里 elo / eloValue 是真值（`/user/{uid}` 里恒 null）。
+    elo: { rating: 1478, time: 1770888600, latest: true },
+    eloValue: 1478,
+  },
+};
+
+const userPagePayload = {
   data: {
-    prizes: [{ prize: { year: 2024, contest: "CSP-J", prize: "一等奖" } }],
+    prizes: [{ prize: { year: 2024, contest: "CSP-J", event: null, prize: "一等奖" } }],
     gu: { rating: 307, scores: { social: 19, basic: 100 } },
     elo: [
       { rating: 1400, time: 1, latest: false },
@@ -269,12 +296,12 @@ const userPayload = {
       color: "Red",
       ccfLevel: 7,
       xcpcLevel: 0,
-      passedProblemCount: 611,
-      submittedProblemCount: 700,
+      passedProblemCount: 612,
+      submittedProblemCount: 710,
       ranking: 560,
-      followingCount: 86,
-      followerCount: 176,
-      registerTime: 1710633701,
+      followingCount: 54,
+      followerCount: 102,
+      registerTime: 1647344053,
       userRelationship: 0,
       reverseUserRelationship: 1,
       elo: null,
@@ -284,30 +311,70 @@ const userPayload = {
 };
 
 test("用户卡视图模型", () => {
-  const card = buildUserCard(userPayload);
+  const card = buildUserCard(userInfoPayload, userPagePayload);
   assert.equal(card.uid, 697932);
-  assert.equal(card.passedCount, 611);
+  assert.equal(card.passedCount, 612);
   assert.equal(card.ranking, 560);
   assert.equal(card.guRating, 307);
   assert.equal(card.prizes.length, 1);
   assert.equal(card.relation, "unrelated");
   assert.equal(card.reverseRelation, "following", "reverse=1 就是「他关注了我」");
-  assert.equal(buildUserCard({ data: { user: {} } }), null);
+  assert.equal(card.background, "https://cdn.luogu.com.cn/upload/image_hosting/x.png");
+  assert.equal(card.blogAddress, "https://www.luogu.com.cn/blog/yangyafan/");
+  assert.equal(buildUserCard(null, { data: { user: {} } }), null);
+  assert.equal(buildUserCard(null, null), null);
+});
+
+// ★★★ 两个接口的 `submittedProblemCount` **含义不同**：主接口是提交次数（697932 实测 5441），
+// 个人页载荷是「提交」题数（710），而洛谷个人页上写的是 710。混着用会让我们的数字大 8 倍。
+test("「提交」只认个人页口径，主接口那个同名字段不许顶替", () => {
+  const both = buildUserCard(userInfoPayload, userPagePayload);
+  assert.equal(both.submittedCount, 710);
+  assert.notEqual(both.submittedCount, 5441);
+  // 补载荷拿不到（未实名用户就是 403）→ 整个「通过 / 提交」都是未知，不许退回主接口的数。
+  const only = buildUserCard(userInfoPayload, null);
+  assert.equal(only.submittedCount, null);
+  assert.equal(only.passedCount, null);
+  // 但别的字段照常有 —— 这正是换主接口的意义。
+  assert.equal(only.name, "Gcend");
+  assert.equal(only.eloRating, 1478);
+  assert.equal(only.followerCount, 102);
+});
+
+// 未实名用户：主接口 200、补载荷 403。卡片必须照常画出来，不能变成一句错误。
+test("未通过实名认证的用户照样出卡", () => {
+  const card = buildUserCard(
+    { user: { uid: 2100000, name: "czycyr", passedProblemCount: 2, followerCount: 0 } },
+    {
+      status: 403,
+      data: { errorCode: 403, errorMessage: "该用户未通过实名认证" },
+      user: null,
+    },
+  );
+  assert.equal(card.uid, 2100000);
+  assert.equal(card.name, "czycyr");
+  assert.deepEqual(card.prizes, []);
+  assert.equal(card.guRating, null);
+  assert.equal(card.passedCount, null, "个人页口径拿不到就是未知");
 });
 
 // ★ user.elo / user.eloValue 恒为 null，真数据在顶层 data.elo。抄错地方就永远显示不出 Elo。
-test("Elo 取顶层 data.elo 的最新一场，不是 user.elo", () => {
-  const card = buildUserCard(userPayload);
-  assert.equal(card.eloRating, 1478);
-  assert.equal(card.eloTime, 1770888600);
-  const none = buildUserCard({ data: { user: { uid: 1, elo: { rating: 999 } } } });
-  assert.equal(none.eloRating, null, "user.elo 不是数据源");
+// ★ 主接口的 `user.elo` 是真值；`/user/{uid}` 的 `user.elo` 恒 null，真值在顶层 `data.elo`。
+// 两条路都要能走通。
+test("Elo：主接口读 user.elo，个人页载荷读顶层 data.elo", () => {
+  assert.equal(buildUserCard(userInfoPayload, userPagePayload).eloRating, 1478);
+  assert.equal(buildUserCard(userInfoPayload, null).eloRating, 1478);
+  const pageOnly = buildUserCard(null, userPagePayload);
+  assert.equal(pageOnly.eloRating, 1478, "只有个人页载荷时从顶层 data.elo 取");
+  assert.equal(pageOnly.eloTime, 1770888600);
+  const none = buildUserCard({ user: { uid: 1 } }, null);
+  assert.equal(none.eloRating, null);
 });
 
 // ★ ✅ 由 ccfLevel>0 驱动、气球由 xcpcLevel>0 驱动（41 用户双向零反例）；
 // user.verified 只在看自己时返回，且与 ✅ 无关，所以模型里根本不该出现它。
 test("徽章驱动字段只认 ccfLevel 与 xcpcLevel", () => {
-  const card = buildUserCard(userPayload);
+  const card = buildUserCard(userInfoPayload, userPagePayload);
   assert.equal(card.ccfLevel, 7);
   assert.equal(card.xcpcLevel, 0);
   assert.equal("verified" in card, false, "verified 与 ✅ 无关，不该进模型");
@@ -325,9 +392,9 @@ test("获奖按年份降序，最近的排在最前", () => {
   assert.deepEqual(picked.map((p) => p.prize.year), [2025, 2024, 2023]);
   // 上游给的就是升序 —— 不排序的话第一条会是 2023，反证一下别退回去。
   assert.notEqual(picked[0].prize.year, 2023);
-  // 最多 4 条，且取的是**最近**的 4 条。
+  // owner 2026-08-14 收到 3 条：最多 3 条，且取的是**最近**的 3 条。
   const many = pickPrizes([2019, 2020, 2021, 2022, 2023].map((year) => ({ prize: { year } })));
-  assert.deepEqual(many.map((p) => p.prize.year), [2023, 2022, 2021, 2020]);
+  assert.deepEqual(many.map((p) => p.prize.year), [2023, 2022, 2021]);
   // 没有年份的排最后，也不该把整条丢掉。
   const mixed = pickPrizes([{ prize: { prize: "特等奖" } }, { prize: { year: 2020 } }]);
   assert.deepEqual(mixed.map((p) => p.prize.year ?? null), [2020, null]);
@@ -335,10 +402,13 @@ test("获奖按年份降序，最近的排在最前", () => {
   assert.deepEqual(pickPrizes([null, {}, { prize: null }]), []);
 });
 
-test("关系枚举：0/1 之外一律未知", () => {
+// ★★ 枚举权威来源是 `GET /_lfe/config` 的 `UserRelationship`：0/1/2 三个值。
+// 上一轮「洛谷没有枚举字典端点」的结论作废 —— 只是名字不叫 relationships/dicts/enums。
+test("关系枚举：0/1/2 之外一律未知", () => {
   assert.equal(relationOf(0), "unrelated");
   assert.equal(relationOf(1), "following");
-  for (const bad of [2, 3, -1, null, undefined, "Following", {}])
+  assert.equal(relationOf(2), "blacklisted");
+  for (const bad of [3, -1, null, undefined, "Following", {}])
     assert.equal(relationOf(bad), "unknown", String(bad));
   // 数字强转是**故意保留**的容忍：洛谷现在发的是数字（实测 userRelationship: 0），
   // 万一改成 "1" 仍能得到正确答案；改成 "Following" 这类则 NaN → unknown，
@@ -489,7 +559,7 @@ test("非法 pid / uid 不发请求", async () => {
 // 关注成功后缓存里的关系必须跟着改，否则重新 hover 会把旧状态摆回来，
 // 看起来就像「关注没生效」。
 test("patchUser 让缓存跟上乐观更新", async () => {
-  const { sources } = sourceHarness({ "/user/697932": userPayload });
+  const { sources } = sourceHarness({ "/api/user/info/697932": userInfoPayload, "/user/697932": userPagePayload });
   const first = await sources.user(697932);
   assert.equal(first.relation, "unrelated");
   sources.patchUser(697932, { relation: "following", followerCount: 177 });
@@ -499,12 +569,13 @@ test("patchUser 让缓存跟上乐观更新", async () => {
 });
 
 test("缓存过期后重新取", async () => {
-  const { sources, calls, clock } = sourceHarness({ "/user/1": { data: { user: { uid: 1, name: "a" } } } });
+  const { sources, calls, clock } = sourceHarness({ "/api/user/info/1": { user: { uid: 1, name: "a" } } });
   await sources.user(1);
   const before = calls.length;
+  assert.equal(before, 2, "一次用户卡打两个接口：主接口 + 个人页补充载荷");
   clock.advance(5 * 60 * 1000 + 1);
   await sources.user(1);
-  assert.equal(calls.length, before + 1);
+  assert.equal(calls.length, before + 2);
 });
 
 // ---- 洛谷原生表现（全部实测取值）----

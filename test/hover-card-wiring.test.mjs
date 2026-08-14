@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { JSDOM } from "jsdom";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createHoverCardFeature } from "../src/features/hover-card/lazy-feature.js";
@@ -353,6 +354,102 @@ test("加载器没接线时报错，不静默也不抛", async () => {
   }
 });
 
+// ★★★ owner 2026-08-14：「很多时候第一次悬停不弹卡片」。根因在薄壳：块是被**这一次**
+// mouseover 拉下来的，等它挂上委托监听时那个事件早派发完了；用户停着不动就再也没有新的
+// mouseover，于是第一次悬停必然落空。挂载成功后必须照指针位置补发一次。
+test("块接管后补发一次悬停，第一次停下就该出卡", async () => {
+  const dom = new JSDOM(
+    `<!doctype html><body><a id="pid" href="/problem/P1000">P1000</a></body>`,
+    { url: "https://www.luogu.com.cn/" },
+  );
+  const saved = { document: globalThis.document, window: globalThis.window };
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  const anchor = dom.window.document.getElementById("pid");
+  dom.window.document.elementFromPoint = () => anchor;
+  const seen = [];
+  try {
+    const feature = createHoverCardFeature({
+      storage,
+      loadBundle: () =>
+        Promise.resolve({
+          apiVersion: 1,
+          createHoverCardFeature: () => ({
+            mount: () => {
+              // 正主装的就是这种委托监听 —— 补发的事件必须能被它接住。
+              const onOver = (event) =>
+                seen.push({
+                  tag: event.target.id,
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+              dom.window.document.addEventListener("mouseover", onOver, true);
+              return () =>
+                dom.window.document.removeEventListener("mouseover", onOver, true);
+            },
+          }),
+        }),
+    });
+    feature.mount();
+    anchor.dispatchEvent(
+      new dom.window.MouseEvent("mouseover", {
+        bubbles: true,
+        clientX: 40,
+        clientY: 60,
+      }),
+    );
+    await settle();
+    await settle();
+    assert.deepEqual(seen, [{ tag: "pid", x: 40, y: 60 }], "补发必须带上指针坐标");
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.window = saved.window;
+  }
+});
+
+// ★ 补发要按**指针当前落点**取元素，不是当初那个 target：块下载要几百毫秒，
+//   这中间指针很可能已经挪到别处了。挪到不是候选锚点的地方就什么都不补。
+test("块到达时指针已经离开候选锚点，就不补发", async () => {
+  const dom = new JSDOM(
+    `<!doctype html><body><a id="pid" href="/problem/P1000">P1000</a><p id="plain">x</p></body>`,
+    { url: "https://www.luogu.com.cn/" },
+  );
+  const saved = { document: globalThis.document, window: globalThis.window };
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  const anchor = dom.window.document.getElementById("pid");
+  // 指针已经移到普通段落上了。
+  dom.window.document.elementFromPoint = () => dom.window.document.getElementById("plain");
+  const seen = [];
+  try {
+    const feature = createHoverCardFeature({
+      storage,
+      loadBundle: () =>
+        Promise.resolve({
+          apiVersion: 1,
+          createHoverCardFeature: () => ({
+            mount: () => {
+              const onOver = (event) => seen.push(event.target.id);
+              dom.window.document.addEventListener("mouseover", onOver, true);
+              return () =>
+                dom.window.document.removeEventListener("mouseover", onOver, true);
+            },
+          }),
+        }),
+    });
+    feature.mount();
+    anchor.dispatchEvent(
+      new dom.window.MouseEvent("mouseover", { bubbles: true, clientX: 1, clientY: 2 }),
+    );
+    await settle();
+    await settle();
+    assert.deepEqual(seen, [], "指针已经不在锚点上就不该凭空弹一张卡");
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.window = saved.window;
+  }
+});
+
 // ---- 结构守卫 ----
 // 行为测试拦不住「声明了却没人接」：测试注入的是自己的 loadBundle，
 // 真实接线只要漏一处，功能就静默消失而测试全绿。
@@ -381,6 +478,18 @@ test("构建脚本把 hover 块写进 manifest 与 files，并注入 define", ()
   assert.match(build, /__LUOGUSP_HOVER_CARD_BUNDLE__: JSON\.stringify\(hoverCardBundle\)/);
   assert.match(build, /\[hoverCardFile\.path\]: hoverCardFile/);
   assert.match(build, /hoverCard: hoverCardBundle/);
+});
+
+// ★★★「永远红不了的门等于没有门」。这道门原先只量正式版产物，canary 的可选块
+// 完全不在测量范围内 —— 2026-08-14 因此把一个超预算 76 B 的块发了出去，
+// 而 `quality budgets passed` 照常打印。守卫盯住「canary 频道也要被量」。
+test("质量门必须把 canary 频道的可选块也量进来", () => {
+  const quality = read("scripts/quality.mjs");
+  assert.match(quality, /cdn\/channels\/canary\.json/, "不读 canary 频道就等于没量 canary");
+  assert.match(quality, /canaryOptionalBundles/);
+  assert.match(quality, /`canary \$\{name\} bytes/, "超预算必须点名是哪个块");
+  // 新增一个块却忘了配预算，必须报出来而不是静默跳过。
+  assert.match(quality, /has no budget entry/);
 });
 
 test("预算、质量门与发布校验都认识这个新块", () => {
