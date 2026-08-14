@@ -71,6 +71,10 @@ export const HOVER_CARD_STYLE = `
 .luogusp-hc-btn.is-danger{border-color:#e74c3c;color:#e74c3c;background:#fff;}
 .luogusp-hc-btn.is-danger:hover{background:rgba(231,76,60,.08);}
 .luogusp-hc-btn[disabled]{opacity:.55;cursor:default;}
+/* 卡内就地确认：整条按钮行原地换成一句问话 + 确定/取消。不弹任何层 —— 卡片本来
+   就贴在指针底下，再叠一个居中弹层反而要用户把鼠标移开，一移开卡片就收起来了。 */
+.luogusp-hc-confirm{flex-wrap:wrap;}
+.luogusp-hc-confirm-text{flex:1 1 100%;color:#e74c3c;font-size:12px;line-height:1.6;word-break:break-all;}
 .luogusp-hc-link{color:#3498db;text-decoration:none;font-size:12px;}
 .luogusp-hc-ok{color:#52c41a;}
 .luogusp-hc-warn{color:#f39c11;}

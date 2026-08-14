@@ -95,7 +95,6 @@ export function createFollowAction(config) {
     request,
     csrfToken,
     onState,
-    confirm = () => true,
     logError = () => {},
   } = config || {};
 
@@ -145,16 +144,15 @@ export function createFollowAction(config) {
     );
   };
 
-  // ★ 屏蔽是替用户对**第三方**做的社交动作，必须先确认；用户点「取消」就什么都不发。
+  // ★★ 屏蔽是替用户对**第三方**做的社交动作，必须先让他点头 —— 但**确认在视图层做**
+  //    （卡内就地确认，owner 2026-08-14 拍板），这里拿到调用就直接发。
+  //    结构守卫盯着「视图层必须先问一句」，见 test/hover-card-render.test.mjs。
   const block = async (state) => {
     const uid = Number(state && state.uid);
     if (!Number.isSafeInteger(uid) || uid <= 0) return null;
     if (inFlight.has(uid)) return null;
     const plan = planBlockToggle(state);
     if (!plan) return null;
-    const name = (state && state.name) || `用户 ${uid}`;
-    if (!confirm(plan.block ? `确定要屏蔽 ${name} 吗？` : `确定要取消屏蔽 ${name} 吗？`))
-      return null;
     return send(uid, plan, plan.relationship, plan.block ? "屏蔽" : "取消屏蔽");
   };
 

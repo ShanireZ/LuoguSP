@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import {
   finalizeCard,
@@ -507,27 +508,131 @@ test("题目卡的两个动作是按钮，文案是跳转题目 / 最佳提交",
   assert.doesNotMatch(host.textContent, /打开题目|最好的一次提交/);
 });
 
-// ★★ owner 第四轮：向下弹的卡片展开标签后顶出视口。旧判据是「下面放不下就翻上去」——
-//    下面差一点点也整张翻走，而上面同样放不下时又被压回来。
-test("上下分界线挑空间大的一边，并把高度钉在可用空间内", () => {
-  const make = (h) => ({ offsetWidth: 320, offsetHeight: h, style: {} });
-  // 下面放得下 → 就放下面。
-  const roomy = make(200);
-  const a = placeCard(roomy, { left: 100, right: 180, top: 100, bottom: 120 }, { width: 1280, height: 800 });
+// ★★★ owner 第四轮报「展开标签后顶出视口」，第七轮又报「下面放不下却还往下弹、
+//    右边出滚动条」。两次是同一处判据。现在的分界线按优先级三句话：
+//    放得下就放下面 → 下面放不下而上面放得下就翻上去 → 两边都放不下才比谁宽。
+test("上下分界：放得下优先，其次翻到放得下的那边，都放不下才比宽窄", () => {
+  const make = (h) => {
+    const node = { offsetWidth: 320, style: {} };
+    // 真元素的 offsetHeight 会被 max-height 夹住 —— 替身必须照这个规矩来，
+    // 否则「量之前先松开约束」这条修复根本测不出来。
+    Object.defineProperty(node, "offsetHeight", {
+      get: () => {
+        const cap = parseInt(node.style.maxHeight, 10);
+        return Number.isFinite(cap) ? Math.min(h, cap) : h;
+      },
+    });
+    return node;
+  };
+  const viewport = { width: 1280, height: 800 };
+
+  // 1. 下面放得下 → 放下面。
+  const a = placeCard(make(200), { left: 100, right: 180, top: 100, bottom: 120 }, viewport);
   assert.equal(a.below, true);
+  assert.equal(a.fits, true);
   assert.equal(a.top, 124);
 
-  // 下面只剩一点、上面很宽敞 → 翻上去，且高度钉在上方空间内。
-  const tight = make(600);
-  const b = placeCard(tight, { left: 100, right: 180, top: 700, bottom: 720 }, { width: 1280, height: 800 });
-  assert.equal(b.below, false);
-  assert.ok(b.top >= 4, "上边不许出界");
-  assert.ok(b.maxHeight <= 700, "高度不许超过上方可用空间");
-  assert.equal(tight.style.maxHeight, `${b.maxHeight}px`, "max-height 必须真的写到样式上");
+  // 2. ★ 下面放不下、上面放得下 → 翻上去。**即使下面的空间比上面还宽**也要翻 ——
+  //    这正是 owner 报的那种「下面差一点点却赖着不走」。
+  //    锚点 top=360 bottom=380：下面 412、上面 352，卡片高 500，两边都放不下 → 走第 3 条。
+  //    这里把卡片调到 400 高：下面 412 放得下 → 仍在下面。
+  const roomy = placeCard(make(400), { left: 100, right: 180, top: 360, bottom: 380 }, viewport);
+  assert.equal(roomy.below, true);
+  // 换成 420 高：下面 412 放不下，上面 352 也放不下 → 挑宽的（下面）。
+  const neither = placeCard(make(420), { left: 100, right: 180, top: 360, bottom: 380 }, viewport);
+  assert.equal(neither.below, true);
+  assert.equal(neither.fits, false, "两边都放不下时要如实说明");
+  // 真正的「下面放不下、上面放得下」：锚点靠下。
+  const flip = placeCard(make(400), { left: 100, right: 180, top: 500, bottom: 520 }, viewport);
+  assert.equal(flip.below, false, "上面放得下就必须翻上去，不许赖在下面出滚动条");
+  assert.equal(flip.fits, true);
+  assert.ok(flip.top >= 4);
 
-  // 上下都放不下 → 挑大的那边，仍然钉住高度，绝不出界。
-  const huge = make(2000);
-  const c = placeCard(huge, { left: 100, right: 180, top: 380, bottom: 400 }, { width: 1280, height: 800 });
-  assert.ok(c.maxHeight <= 800);
-  assert.ok(c.top >= 4);
+  // 3. 两边都放不下 → 挑宽的那边，钉住高度，绝不出界。
+  const huge = placeCard(make(2000), { left: 100, right: 180, top: 380, bottom: 400 }, viewport);
+  assert.ok(huge.maxHeight <= 800);
+  assert.ok(huge.top >= 4);
+});
+
+// ★★★ 这条是第七轮的**根因反证**：上一次定位钉下的 max-height 会把 offsetHeight 夹住，
+//    于是内容长高之后再量还是旧高度，判据以为「下面放得下」，永远不翻上去。
+//    量之前必须先把自己上一次施加的约束松开。
+test("重新定位前先松开上一次钉的 max-height，否则长高了也发现不了", () => {
+  const node = { offsetWidth: 320, style: {} };
+  let content = 200;
+  Object.defineProperty(node, "offsetHeight", {
+    get: () => {
+      const cap = parseInt(node.style.maxHeight, 10);
+      return Number.isFinite(cap) ? Math.min(content, cap) : content;
+    },
+  });
+  const viewport = { width: 1280, height: 800 };
+  const anchor = { left: 100, right: 180, top: 500, bottom: 520 };
+
+  const first = placeCard(node, anchor, viewport);
+  assert.equal(first.below, true, "200 高时下面（272）放得下");
+
+  // 用户点了「展开」，内容长到 400 —— 下面放不下了，上面（496）放得下。
+  content = 400;
+  const second = placeCard(node, anchor, viewport);
+  assert.equal(second.below, false, "长高之后必须翻上去；夹住不松开就会一直判成放得下");
+  assert.ok(second.top >= 4);
+});
+
+// ★★★ owner 2026-08-14 拍板：屏蔽的确认改成**卡内就地确认**，不弹任何层。
+//    这一条同时是**安全判据**：屏蔽是替用户对第三方做的社交动作，
+//    没点「确定」之前一个请求都不许发（follow-action 里已经没有 confirm 了，
+//    问一句的责任整个落在视图层，所以必须在这里守住）。
+test("屏蔽先在卡内问一句，没点确定不发请求", () => {
+  const blocked = [];
+  // ★ 点击处理器里还要 createElement，所以整段必须跑在 jsdom 的全局还装着的时候。
+  withDom((dom) => {
+    const host = document.createElement("div");
+    host.appendChild(
+      renderUserCard(userCard({ rel: 0 }), {
+        origin: "",
+        viewerUid: 1,
+        onFollow: () => {},
+        onBlock: (c) => blocked.push(c.uid),
+      }),
+    );
+    const click = (node) =>
+      node.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    const byText = (text, scope = host) =>
+      [...scope.querySelectorAll("button")].find((b) => b.textContent === text);
+
+    const button = byText("屏蔽");
+    assert.ok(button, "未关注的人应该给屏蔽按钮");
+    click(button);
+
+    // 按钮行原地换成了问话 —— 没有任何弹层，也还没发请求。
+    const ask = host.querySelector(".luogusp-hc-confirm");
+    assert.ok(ask, "要就地换成确认行");
+    assert.match(ask.textContent, /屏蔽 Gcend？/);
+    assert.deepEqual(blocked, [], "只是点开确认，一个请求都不许发");
+
+    // 点「取消」→ 回到原来的按钮行，仍然什么都没发。
+    click(byText("取消", ask));
+    assert.equal(host.querySelector(".luogusp-hc-confirm"), null);
+    assert.deepEqual(blocked, []);
+    assert.ok(byText("屏蔽"), "取消后按钮行要原样回来");
+
+    // 再点开，点「确定」→ 这时才发。
+    click(byText("屏蔽"));
+    click(byText("确定", host.querySelector(".luogusp-hc-confirm")));
+    assert.deepEqual(blocked, [697932]);
+    assert.equal(host.querySelector(".luogusp-hc-confirm"), null, "确认后要收回问话行");
+  });
+});
+
+// 反证：不许再退回 window.confirm —— 那是被 owner 换掉的做法。
+test("整个 hover 块里不再有 window.confirm", () => {
+  const files = ["feature.js", "follow-action.js", "card-view.js"];
+  for (const name of files) {
+    const source = readFileSync(
+      new URL(`../src/features/hover-card/${name}`, import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(source, /window\.confirm/, name);
+  }
 });

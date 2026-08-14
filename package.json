@@ -15,6 +15,7 @@
     "quality:requires": "node scripts/quality.mjs --check --fetch-requires",
     "quality:report": "node scripts/quality.mjs --fetch-requires --write-report",
     "qa:prepare": "node scripts/prepare-browser-qa.mjs",
+    "qa:browser": "node scripts/qa/browser-qa.mjs",
     "qa:hidden-intro:stage": "node scripts/qa/stage-hidden-intro.mjs",
     "qa:hidden-intro:verify": "node scripts/cdn/verify-production.mjs --qa",
     "benchmark:origins": "node scripts/benchmark-origins.mjs --write-report",
@@ -32,7 +33,8 @@
   },
   "devDependencies": {
     "esbuild": "0.27.2",
-    "jsdom": "29.1.1"
+    "jsdom": "29.1.1",
+    "playwright": "^1.62.1"
   },
   "dependencies": {
     "dompurify": "3.4.13",

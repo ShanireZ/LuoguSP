@@ -81,8 +81,6 @@ export function createHoverCardFeature(config) {
         // 状态变了就地重画，别等下一次 hover。
         if (shown && shown.kind === "user" && shown.uid === uid) draw(shown.key);
       },
-      // ★ 屏蔽是替用户对第三方做的社交动作，发请求前必须让他自己点头。
-      confirm: (message) => window.confirm(message),
       logError: (error) => console.error("LuoguSP hover follow:", error),
     });
 

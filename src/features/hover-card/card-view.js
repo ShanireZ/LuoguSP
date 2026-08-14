@@ -347,19 +347,48 @@ export function renderUserCard(card, options = {}) {
         "is-danger",
       ),
     );
-    // 屏蔽：原生要先弹确认，且**正在关注的人不能拉黑**（洛谷自己会拒）。
+    // 屏蔽：**正在关注的人不能拉黑**（洛谷自己会拒）。
+    // ★★ owner 2026-08-14 拍板：确认改成**卡内就地确认**，不弹任何层。
+    //    点一下「屏蔽」，整条按钮行原地换成「确定屏蔽 XXX？[确定] [取消]」。
+    //    悬停卡本来就贴在指针底下，再叠一个居中弹层反而要用户把鼠标移开 ——
+    //    而鼠标一移开，卡片自己就该收起来了。
     if (typeof onBlock === "function" && (card.relation === "unrelated" || card.relation === "blacklisted")) {
-      const block = el(
-        "button",
-        "luogusp-hc-btn is-ghost is-danger",
-        card.relation === "blacklisted" ? "取消屏蔽" : "屏蔽",
-      );
+      const undo = card.relation === "blacklisted";
+      const block = el("button", "luogusp-hc-btn is-ghost is-danger", undo ? "取消屏蔽" : "屏蔽");
       block.type = "button";
       if (followBusy) block.disabled = true;
       block.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        onBlock(card);
+        const ask = el("div", "luogusp-hc-actions luogusp-hc-confirm");
+        ask.appendChild(
+          el(
+            "span",
+            "luogusp-hc-confirm-text",
+            `${undo ? "取消屏蔽" : "屏蔽"} ${card.name}？`,
+          ),
+        );
+        const yes = el("button", "luogusp-hc-btn is-danger", "确定");
+        yes.type = "button";
+        yes.addEventListener("click", (accept) => {
+          accept.preventDefault();
+          accept.stopPropagation();
+          ask.replaceWith(actions);
+          if (typeof options.onResize === "function") options.onResize();
+          onBlock(card);
+        });
+        const no = el("button", "luogusp-hc-btn is-ghost", "取消");
+        no.type = "button";
+        no.addEventListener("click", (cancel) => {
+          cancel.preventDefault();
+          cancel.stopPropagation();
+          ask.replaceWith(actions);
+          if (typeof options.onResize === "function") options.onResize();
+        });
+        ask.append(yes, no);
+        actions.replaceWith(ask);
+        // 换了一行内容，高度可能变 —— 就地重定位，免得顶出视口。
+        if (typeof options.onResize === "function") options.onResize();
       });
       actions.appendChild(block);
     }
@@ -421,10 +450,26 @@ export function placeCard(cardEl, rect, viewport) {
   if (left + width > viewport.width - gap) left = viewport.width - width - gap;
   if (left < gap) left = gap;
 
+  // ★★★ 先把上一次钉的 max-height 摘掉再量。owner 2026-08-14 第七轮报
+  //    「展开之后越界」「下面明明放不下却还往下弹、右边出滚动条」——根因就在这：
+  //    上一次定位留下的 `max-height` 把 `offsetHeight` 夹住了，于是内容明明长高了，
+  //    量出来还是那个被夹住的旧高度，判据以为「下面放得下」，永远不翻上去。
+  //    **量之前必须先松开自己上一次施加的约束。**
+  cardEl.style.maxHeight = "";
+  const natural = cardEl.offsetHeight || 160;
+
   const below = viewport.height - rect.bottom - gap * 2;
   const above = rect.top - gap * 2;
-  const natural = cardEl.offsetHeight || 160;
-  const useBelow = natural <= below || below >= above;
+  // ★★ 上下分界线（owner 要的「分界比例」就是这三句，按优先级从上往下读）：
+  //   1. **下面放得下就放下面** —— 阅读顺序自然，也是原生的习惯；
+  //   2. 下面放不下、**上面放得下就翻上去** —— 这一条是本轮补的。
+  //      旧判据是「下面放不下且 below < above 才翻」，于是「下面差一点点、但仍比上面宽」
+  //      的情形会赖在下面并被 max-height 夹出滚动条，正是 owner 看到的样子；
+  //   3. 两边都放不下 —— 才比谁宽，挑宽的那边，并把 max-height 钉在那一侧。
+  //      这时候出滚动条是没办法的事（视口本来就装不下），但绝不出界。
+  const fitsBelow = natural <= below;
+  const fitsAbove = natural <= above;
+  const useBelow = fitsBelow || (!fitsAbove && below >= above);
   const room = Math.max(120, Math.round(useBelow ? below : above));
   cardEl.style.maxHeight = `${room}px`;
   const height = Math.min(cardEl.offsetHeight || natural, room);
@@ -436,5 +481,7 @@ export function placeCard(cardEl, rect, viewport) {
     top: Math.round(top),
     maxHeight: room,
     below: useBelow,
+    // 给测试与排查用：这次到底是「放得下」还是「两边都放不下只能挑大的」。
+    fits: useBelow ? fitsBelow : fitsAbove,
   };
 }
