@@ -263,13 +263,9 @@ const SOURCE_LABELS = Object.freeze([
   "受限文章与剪贴板解限",
   "IDE 模式一键测试所有样例",
 ]);
-const SHIPPED_LABELS = Object.freeze([
-  "题号显示难度颜色",
-  "个人页显示个人介绍",
-  "IDE 模式一键测试所有样例",
-  // ★ 正式版 runtime 里是**旧名字**。改名只在源码里，转正式版才会一起发出去。
-  "显示受限文章与剪贴板",
-]);
+// ★ 2.14.0 转正之后两组重新合一：hover 卡的两个开关与受限内容的新名字都随这一版发出去了。
+//   下一次开 canary 周期、源码又走在前面时，这里再拆开写死那一版 runtime 真正含有的标签。
+const SHIPPED_LABELS = SOURCE_LABELS;
 
 test("description and README follow the current source feature set", () => {
   assert.equal(
