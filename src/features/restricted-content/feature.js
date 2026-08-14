@@ -834,7 +834,7 @@ export function createRestrictedContentFeature({
   return defineConfigurableFeature({
     id: "restricted-document",
     key: "showRestrictedContent",
-    label: "显示受限文章与剪贴板",
+    label: "受限文章与剪贴板解限",
     storage,
     mount: (context) => ensureDocumentBoot().mount(context),
     onRoute: () => {

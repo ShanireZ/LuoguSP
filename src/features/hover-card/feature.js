@@ -1,4 +1,3 @@
-import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createProblemIdentityResolver } from "../problem-color/identity.js";
 import {
   readCsrfToken,
@@ -6,7 +5,12 @@ import {
   readViewerUid,
   resolveHoverTarget,
 } from "./anchors.js";
-import { placeCard, renderProblemCard, renderUserCard } from "./card-view.js";
+import {
+  finalizeCard,
+  placeCard,
+  renderProblemCard,
+  renderUserCard,
+} from "./card-view.js";
 import { createFollowAction } from "./follow-action.js";
 import { createHoverIntent } from "./hover-intent.js";
 import { createHoverCardSources } from "./sources.js";
@@ -25,7 +29,10 @@ const STYLE_ID = "luogusp-hover-card-style";
 const CARD_ID = "luogusp-hover-card";
 
 export function createHoverCardFeature(config) {
-  const { storage, fetchPage } = config || {};
+  // ★ 设置项的身份（id/key/label）在**薄壳**手里，不在这里 —— 这个块只负责干活。
+  //   `isEnabled(kind)` 是薄壳现问的：owner 把开关拆成了题目卡与用户卡两个，
+  //   改开关要**立刻生效**，不能靠重挂。
+  const { fetchPage, isEnabled = () => true } = config || {};
 
   const clock = {
     now: () => Date.now(),
@@ -150,12 +157,16 @@ export function createHoverCardFeature(config) {
           }),
         );
       } else if (model.kind === "problem") {
-        card.appendChild(renderProblemCard(model, { origin: location.origin }));
+        card.appendChild(
+          // ★ 展开标签会让卡片长高，必须就地重定位 —— 否则向下弹的卡会顶出视口。
+          renderProblemCard(model, { origin: location.origin, onResize: position }),
+        );
       } else {
         card.appendChild(
           renderUserCard(model, {
             origin: location.origin,
             viewerUid: viewer,
+            onResize: position,
             // 匿名访客不给写入按钮：点了必然被洛谷拒。
             onFollow: viewer ? (next) => follow.toggle(next) : null,
             onBlock: viewer ? (next) => follow.block(next) : null,
@@ -163,6 +174,8 @@ export function createHoverCardFeature(config) {
           }),
         );
       }
+      // 插入之后才量得到「签名有没有溢出两行」。
+      finalizeCard(card);
       position();
     };
 
@@ -203,7 +216,7 @@ export function createHoverCardFeature(config) {
         identity,
         readPageSubject(location.pathname),
       );
-      if (!target) return;
+      if (!target || !isEnabled(target.kind)) return;
       if (target.kind === "problem") stripNativeTitle(target.anchor);
       targets.set(target.key, target);
       intent.enter(target.key);
@@ -214,7 +227,20 @@ export function createHoverCardFeature(config) {
       if (to && (card === to || card.contains(to))) return;
       intent.leave();
     };
-    const onScroll = () => intent.dismiss();
+    // ★★ owner 2026-08-14 第四轮：滚轮滚动时，指针明明还在卡片里，卡片却消失了。
+    //    根因是这里无条件 dismiss。卡片自己是可滚的（内容超高时 overflow:auto），
+    //    在卡里滚本来就不该关它 —— 而且此时页面根本没动，关掉纯属误伤。
+    //    判据用**指针最后落点**去问 `elementFromPoint`：滚动事件不带坐标，
+    //    而 `pointer` 是每次 mouseover 更新的，滚动期间指针没动，它就是准的。
+    const pointerInsideCard = () => {
+      if (!pointer || !document.elementFromPoint) return false;
+      const under = document.elementFromPoint(pointer.x, pointer.y);
+      return !!under && card.contains(under);
+    };
+    const onScroll = () => {
+      if (pointerInsideCard()) return;
+      intent.dismiss();
+    };
     const onKey = (event) => {
       if (event.key === "Escape") intent.dismiss();
     };
@@ -238,11 +264,5 @@ export function createHoverCardFeature(config) {
     };
   };
 
-  return defineConfigurableFeature({
-    id: "hover-card",
-    key: "showHoverCards",
-    label: "题号与用户悬停预览卡",
-    storage,
-    mount,
-  });
+  return Object.freeze({ mount });
 }

@@ -60,7 +60,7 @@ test("功能描述符不加载重机械就能给设置页用", () => {
   const { feature, calls } = harness();
   assert.equal(feature.id, "restricted-document");
   assert.equal(feature.key, "showRestrictedContent");
-  assert.equal(feature.label, "显示受限文章与剪贴板");
+  assert.equal(feature.label, "受限文章与剪贴板解限");
   assert.equal(feature.storageKey, "LuoguSP.showRestrictedContent");
   assert.equal(calls.load, 0);
 });

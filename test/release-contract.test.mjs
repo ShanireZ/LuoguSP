@@ -4,11 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  createChatShortcutFeature,
-} from "../src/features/chat-shortcut/feature.js";
-import {
   createHiddenIntroFeature,
 } from "../src/features/hidden-intro/feature.js";
+import {
+  createHoverCardFeatures,
+} from "../src/features/hover-card/lazy-feature.js";
 import {
   createIdeBatchFeature,
 } from "../src/features/ide-batch/feature.js";
@@ -243,43 +243,62 @@ test("Phase 7 removes temporary compatibility facades and keeps one document com
   assert.equal(runtimeScript.includes("module.exports"), false);
 });
 
-test("feature labels and lifecycle gates keep the same five setting keys", () => {
+// ★★★ 这条合同盯的是**已经发出去的 2.13.10**：`@description`、正式版 runtime、README
+//    三者必须与**那一版**的功能集一致 —— `reports/browser-qa.json` 钉着 `LuoguSP.user.js`
+//    的 sha256，动了描述那张真机 QA 的戳就当场失效。
+//    ⏳ 源码已经走在前面（chat-shortcut 已删、受限内容改名、hover 卡拆成两个开关），
+//    这些用户可见的文案**要到 2.14.0 转正式版时和发布一起翻**，并重跑一次真机 QA。
+//    设置面板里的顺序与新标签由 test/hover-card-wiring.test.mjs 的守卫盯着。
+const SHIPPED_LABELS = Object.freeze([
+  "题号显示难度颜色",
+  "私信 Ctrl+Click 打开用户个人页",
+  "个人页显示个人介绍",
+  "IDE 模式一键测试所有样例",
+  "显示受限文章与剪贴板",
+]);
+
+test("shipped description, runtime and README agree on the released feature set", () => {
+  assert.equal(
+    metadata.get("description"),
+    `LuoguSP：${SHIPPED_LABELS.join(" / ")}`,
+  );
+  for (const label of SHIPPED_LABELS) {
+    assert.equal(runtimeScript.includes(label), true, label);
+    assert.equal(readme.includes(`**${label}**`), true, label);
+  }
+});
+
+// 当前源码里的描述符：键、默认值、存储键的形状不变。
+test("source feature descriptors keep their shape", () => {
   const storage = Object.freeze({
     get: () => true,
     set: () => {},
     has: () => true,
   });
+  const hoverCards = createHoverCardFeatures({ storage });
   const descriptors = [
     createProblemColorFeature({ storage }),
-    createChatShortcutFeature({ storage }),
+    hoverCards.problem,
+    hoverCards.user,
     createHiddenIntroFeature({ storage }),
-    createIdeBatchFeature({ storage }),
     createRestrictedContentFeature({
       storage,
       restrictedLoadingGate: null,
       getPageLifecycle: () => null,
     }),
+    createIdeBatchFeature({ storage }),
   ];
-  const features = new Map(
-    descriptors.map((feature) => [feature.key, feature.label]),
-  );
-  assert.deepEqual([...features], [
+  assert.deepEqual(descriptors.map((feature) => [feature.key, feature.label]), [
     ["addProblemsColor", "题号显示难度颜色"],
-    ["addMessageLink", "私信 Ctrl+Click 打开用户个人页"],
+    ["showProblemHoverCards", "题目悬停显示预览卡"],
+    ["showUserHoverCards", "用户名/头像悬停显示预览卡"],
     ["showIntro", "个人页显示个人介绍"],
+    ["showRestrictedContent", "受限文章与剪贴板解限"],
     ["ideBatchSampleTest", "IDE 模式一键测试所有样例"],
-    ["showRestrictedContent", "显示受限文章与剪贴板"],
   ]);
-  assert.equal(
-    metadata.get("description"),
-    `LuoguSP：${[...features.values()].join(" / ")}`,
-  );
   for (const descriptor of descriptors) {
-    const { key, label } = descriptor;
-    assert.equal(descriptor.storageKey, `LuoguSP.${key}`);
+    assert.equal(descriptor.storageKey, `LuoguSP.${descriptor.key}`);
     assert.equal(descriptor.defaultEnabled, true);
     assert.equal(descriptor.enabled(), true);
-    assert.equal(runtimeScript.includes(label), true, label);
-    assert.equal(readme.includes(`**${label}**`), true, label);
   }
 });

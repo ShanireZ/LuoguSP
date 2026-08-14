@@ -241,7 +241,6 @@ const esmEntryPoints = {
   "app-core": "src/cdn/app-core.js",
   settings: "src/features/settings/feature.js",
   "problem-color": "src/features/problem-color/feature.js",
-  "chat-shortcut": "src/features/chat-shortcut/feature.js",
   "hidden-intro": "src/features/hidden-intro/feature.js",
   "ide-batch": "src/features/ide-batch/feature.js",
   "restricted-content": "src/features/restricted-content/feature.js",

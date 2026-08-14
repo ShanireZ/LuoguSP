@@ -59,7 +59,6 @@ test("CDN release manifest pins every compatibility and ESM artifact", () => {
     "app-core",
     "settings",
     "problem-color",
-    "chat-shortcut",
     "hidden-intro",
     "ide-batch",
     "restricted-content",

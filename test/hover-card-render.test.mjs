@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { renderProblemCard, renderUserCard } from "../src/features/hover-card/card-view.js";
+import {
+  finalizeCard,
+  placeCard,
+  renderProblemCard,
+  renderUserCard,
+} from "../src/features/hover-card/card-view.js";
 import { buildProblemCard, buildUserCard } from "../src/features/hover-card/models.js";
 
 // 卡片渲染。★ 这一组全是 owner 2026-08-14 逐条提的口径，每条都配一句**反证**：
@@ -61,7 +66,8 @@ const userCard = (over = {}) =>
       user: {
         uid: 697932,
         name: "Gcend",
-        color: "Red",
+        color: over.color ?? "Red",
+        isAdmin: over.isAdmin ?? false,
         avatar: "https://cdn.luogu.com.cn/upload/usericon/697932.png",
         background: over.background ?? null,
         blogAddress: over.blogAddress ?? null,
@@ -280,7 +286,13 @@ test("举报是链接、屏蔽是按钮，都摊在操作行里", () => {
   // ★ owner 第三轮：举报与屏蔽不再靠右，紧跟私信 —— 中间那个撑开的空隙要没有。
   assert.equal(actions.querySelector(".luogusp-hc-spacer"), null);
   const labels = [...actions.children].map((n) => n.textContent).filter(Boolean);
-  assert.deepEqual(labels, ["关注", "私信", "举报", "屏蔽"]);
+  // ★ owner 第四轮：私信与举报之间多了「专栏」。
+  assert.deepEqual(labels, ["关注", "私信", "专栏", "举报", "屏蔽"]);
+  const column = [...actions.querySelectorAll("a")].find((a) => a.textContent === "专栏");
+  assert.equal(
+    column.getAttribute("href"),
+    "https://www.luogu.com.cn/user/697932/article",
+  );
   const report = [...actions.querySelectorAll("a")].find((a) => a.textContent === "举报");
   // 原生就是一个到工单页的链接（路由 ticket.create → /ticket/new），不发任何请求。
   assert.equal(
@@ -375,4 +387,147 @@ test("用户名行最右侧显示 uid", () => {
   assert.equal(title.lastElementChild, uid);
   assert.ok(title.querySelector(".luogusp-hc-identity .luogusp-hc-name"));
   assert.ok(title.querySelector(".luogusp-hc-identity svg.luogusp-hc-fa"));
+});
+
+// ★★ owner 2026-08-14 第四轮报「管理员、作弊者没显示」。规则照抄 UserName 组件原文，
+//    两个字面量取自洛谷自己的 i18n（Cheat / Admin 的 zh-CN 值）。
+test("称号覆盖作弊者与管理员，优先级照原生", () => {
+  const badgeOf = (over) => {
+    const host = mount(() => renderUserCard(userCard(over), { origin: "" }));
+    const node = host.querySelector(".luogusp-hc-badge:not(.luogusp-hc-fa)");
+    return node ? node.textContent : null;
+  };
+  assert.equal(badgeOf({ color: "Cheater", badge: "扶咕咕", isAdmin: true }), "作弊者", "Cheater 压过一切");
+  assert.equal(badgeOf({ badge: "扶咕咕", isAdmin: true }), "扶咕咕", "自定义称号压过管理员");
+  assert.equal(badgeOf({ isAdmin: true }), "管理员");
+  assert.equal(badgeOf({}), null, "什么都没有就不画");
+});
+
+// ★ owner：超两行时第二行末尾出现展开按钮，展开到 6 行封顶。
+//   按钮**只在真的溢出时**才露 —— 露不露由 finalizeCard 量完实际高度决定。
+test("签名溢出才给展开按钮，展开后限 6 行", () => {
+  const dom = new JSDOM("<!doctype html><body></body>", { url: "https://www.luogu.com.cn/" });
+  const saved = { document: globalThis.document, window: globalThis.window };
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  try {
+    const host = dom.window.document.createElement("div");
+    host.appendChild(renderUserCard(userCard({ slogan: "很长的签名".repeat(60) }), { origin: "" }));
+    dom.window.document.body.appendChild(host);
+    const box = host.querySelector(".luogusp-hc-slogan");
+    const expand = host.querySelector(".luogusp-hc-expand");
+    assert.ok(box && expand, "签名要包在可展开的容器里");
+    assert.equal(expand.hidden, true, "量之前先藏着");
+
+    // jsdom 不排版，手动伪造「溢出」与「没溢出」两种量测结果。
+    Object.defineProperty(box.querySelector(".luogusp-hc-clamp"), "scrollHeight", { value: 90 });
+    Object.defineProperty(box.querySelector(".luogusp-hc-clamp"), "clientHeight", { value: 40 });
+    finalizeCard(host);
+    assert.equal(expand.hidden, false, "溢出了就该露出来");
+
+    expand.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    assert.equal(box.classList.contains("is-open"), true);
+    assert.equal(expand.textContent, "收起");
+    expand.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    assert.equal(box.classList.contains("is-open"), false);
+    assert.equal(expand.textContent, "展开");
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.window = saved.window;
+  }
+});
+
+test("签名没溢出就不给展开按钮", () => {
+  const dom = new JSDOM("<!doctype html><body></body>", { url: "https://www.luogu.com.cn/" });
+  const saved = { document: globalThis.document, window: globalThis.window };
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  try {
+    const host = dom.window.document.createElement("div");
+    host.appendChild(renderUserCard(userCard({ slogan: "短" }), { origin: "" }));
+    const clamp = host.querySelector(".luogusp-hc-clamp");
+    Object.defineProperty(clamp, "scrollHeight", { value: 20 });
+    Object.defineProperty(clamp, "clientHeight", { value: 40 });
+    finalizeCard(host);
+    assert.equal(host.querySelector(".luogusp-hc-expand").hidden, true);
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.window = saved.window;
+  }
+});
+
+// ★ owner 第四轮：获奖改叫「最近奖项」，博客整行移除。
+test("获奖改叫最近奖项，博客不再单列", () => {
+  const host = mount(() =>
+    renderUserCard(
+      userCard({
+        blogAddress: "https://www.luogu.com.cn/blog/x/",
+        prizes: [{ prize: { year: 2025, contest: "CSP-S", prize: "一等奖" } }],
+      }),
+      { origin: "" },
+    ),
+  );
+  const keys = [...host.querySelectorAll(".luogusp-hc-key")].map((n) => n.textContent);
+  assert.ok(keys.includes("最近奖项"));
+  assert.equal(keys.includes("获奖"), false);
+  assert.equal(keys.includes("博客"), false);
+  assert.doesNotMatch(host.textContent, /个人博客/);
+});
+
+// ★ owner 第四轮：题目卡那两个链接改成和用户卡一样的按钮，文案也换。
+test("题目卡的两个动作是按钮，文案是跳转题目 / 最佳提交", () => {
+  const card = buildProblemCard({
+    payload: {
+      data: {
+        problem: {
+          pid: "P2911",
+          name: "x",
+          difficulty: 1,
+          tags: [],
+          limits: { time: [1000], memory: [128000] },
+          accepted: true,
+          bestRecord: { id: 179363526, score: 100, status: 12 },
+        },
+      },
+    },
+    tagDictionary: null,
+  });
+  const host = mount(() =>
+    renderProblemCard(card, { origin: "https://www.luogu.com.cn" }),
+  );
+  const actions = [...host.querySelectorAll(".luogusp-hc-actions a")];
+  assert.deepEqual(actions.map((a) => a.textContent), ["跳转题目", "最佳提交"]);
+  for (const node of actions)
+    assert.equal(node.classList.contains("luogusp-hc-btn"), true, node.textContent);
+  assert.equal(
+    actions[1].getAttribute("href"),
+    "https://www.luogu.com.cn/record/179363526",
+  );
+  // 反证：旧文案一个都不许留。
+  assert.doesNotMatch(host.textContent, /打开题目|最好的一次提交/);
+});
+
+// ★★ owner 第四轮：向下弹的卡片展开标签后顶出视口。旧判据是「下面放不下就翻上去」——
+//    下面差一点点也整张翻走，而上面同样放不下时又被压回来。
+test("上下分界线挑空间大的一边，并把高度钉在可用空间内", () => {
+  const make = (h) => ({ offsetWidth: 320, offsetHeight: h, style: {} });
+  // 下面放得下 → 就放下面。
+  const roomy = make(200);
+  const a = placeCard(roomy, { left: 100, right: 180, top: 100, bottom: 120 }, { width: 1280, height: 800 });
+  assert.equal(a.below, true);
+  assert.equal(a.top, 124);
+
+  // 下面只剩一点、上面很宽敞 → 翻上去，且高度钉在上方空间内。
+  const tight = make(600);
+  const b = placeCard(tight, { left: 100, right: 180, top: 700, bottom: 720 }, { width: 1280, height: 800 });
+  assert.equal(b.below, false);
+  assert.ok(b.top >= 4, "上边不许出界");
+  assert.ok(b.maxHeight <= 700, "高度不许超过上方可用空间");
+  assert.equal(tight.style.maxHeight, `${b.maxHeight}px`, "max-height 必须真的写到样式上");
+
+  // 上下都放不下 → 挑大的那边，仍然钉住高度，绝不出界。
+  const huge = make(2000);
+  const c = placeCard(huge, { left: 100, right: 180, top: 380, bottom: 400 }, { width: 1280, height: 800 });
+  assert.ok(c.maxHeight <= 800);
+  assert.ok(c.top >= 4);
 });
