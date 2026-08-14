@@ -97,9 +97,18 @@ export function abbreviateCount(value) {
   const abs = Math.abs(n);
   if (abs < 1000) return `${sign}${abs}`;
   const scale = abs < 1000000 ? { div: 1000, unit: "k" } : { div: 1000000, unit: "m" };
-  const scaled = abs / scale.div;
-  const text = scaled >= 100 ? String(Math.round(scaled)) : scaled.toFixed(1).replace(/\.0$/, "");
-  return `${sign}${text}${scale.unit}`;
+  // ★★★ **向下截断，不是四舍五入**，而且两位小数一位都不省。
+  //   判据是 owner 2026-08-14 亲自给的 `999999 -> 999.99k` —— 四舍五入会得到
+  //   `1000.00k`，既多一位又翻过 k/m 的分界线。★ 这条对**所有**值生效，不只是边界：
+  //   `1237` 截断成 `1.23k`，四舍五入会是 `1.24k`。
+  // ★★ 全程整数运算：先乘 100 再除，而不是「先除再乘 100」。后者会踩浮点，
+  //   于是偶发地少一分 —— **实测最小的发散值是 1130**：`1130/1000*100` 是
+  //   `112.99999999999999`，`Math.floor` 之后成了 `1.12k`，正确答案是 `1.13k`。
+  //   （1000~999999 全扫过一遍，发散的还有 1140/1150/1160/2010/2030…）
+  const hundredths = Math.floor((abs * 100) / scale.div);
+  const whole = Math.floor(hundredths / 100);
+  const frac = String(hundredths % 100).padStart(2, "0");
+  return `${sign}${whole}.${frac}${scale.unit}`;
 }
 
 // FA duotone 的两段 path，逐字节抄自洛谷加载的 `fontawsm~*.js`

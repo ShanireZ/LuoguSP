@@ -1,5 +1,9 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
-import { makeCopyButton } from "../../browser/copy-button.js";
+import {
+  diffLineNumbers,
+  idePane,
+  normalizeIdeOut,
+} from "./result-view.js";
 import { createIdeBatchRunner } from "./runner.js";
 import { IDE_BATCH_STYLE } from "./style.js";
 
@@ -260,43 +264,6 @@ export function createIdeBatchFeature({
 
   // 判定口径同洛谷：CRLF 归一、去行尾空格、去末尾空行。仅用于 diff 渲染与交叉校验，
   // 最终判定以原生胶囊为准（AC/WA 由洛谷前端本地比较）。
-  function normalizeIdeOut(s) {
-    return String(s == null ? "" : s)
-      .replace(/\r\n?/g, "\n")
-      .split("\n")
-      .map((l) => l.replace(/[ \t]+$/, ""))
-      .join("\n")
-      .replace(/\n+$/, "");
-  }
-  function idePane(title, lines, badSet, emptyNote) {
-    const pre = document.createElement("pre");
-    if (!lines.length || (lines.length === 1 && lines[0] === "")) {
-      if (emptyNote) {
-        const span = document.createElement("span");
-        span.className = "luogusp-ide-empty";
-        span.textContent = emptyNote;
-        pre.appendChild(span);
-      }
-    } else {
-      lines.forEach((l, k) => {
-        const span = document.createElement("span");
-        if (badSet && badSet.has(k)) span.className = "luogusp-ide-diffline";
-        span.textContent = l;
-        pre.appendChild(span);
-        if (k < lines.length - 1)
-          pre.appendChild(document.createTextNode("\n"));
-      });
-    }
-    const box = document.createElement("div");
-    box.className = "code-container";
-    box.append(pre, makeCopyButton(pre));
-    const pane = document.createElement("div");
-    pane.className = "luogusp-ide-pane";
-    const h = document.createElement("h5");
-    h.textContent = title;
-    pane.append(h, box);
-    return pane;
-  }
   function applyIdeResult(i, r, sample) {
     const p = ideRowParts(i);
     if (!p) return;
@@ -341,12 +308,8 @@ export function createIdeBatchFeature({
     }
     const expLines = normalizeIdeOut(sample[1]).split("\n");
     const actLines = normalizeIdeOut(r.output).split("\n");
-    const bad = new Set();
-    if (r.verdict !== "AC") {
-      const m = Math.max(expLines.length, actLines.length);
-      for (let k = 0; k < m; k++)
-        if ((expLines[k] || "") !== (actLines[k] || "")) bad.add(k);
-    }
+    const bad =
+      r.verdict === "AC" ? new Set() : diffLineNumbers(expLines, actLines);
     p.detail.append(
       idePane("输入", normalizeIdeOut(sample[0]).split("\n"), null, "（空）"),
       idePane("期望输出", expLines, bad, "（空）"),
