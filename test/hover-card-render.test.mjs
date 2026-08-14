@@ -191,7 +191,7 @@ test("拿不到的数据不画那一行，绝不用 0 顶替", () => {
 
   // 只有一半数据时该行仍要画，缺的那半写 `?`。
   const half = mount(() => renderUserCard(userCard({ submitted: 1234 }), { origin: "" }));
-  assert.match(half.textContent, /\? \/ 1\.2k/);
+  assert.match(half.textContent, /\? \/ 1\.23k/);
 });
 
 // ★ owner 2026-08-14 第三轮：「关系」整行移除 —— 关注按钮已经把关系说清楚了
@@ -634,5 +634,190 @@ test("整个 hover 块里不再有 window.confirm", () => {
       "utf8",
     );
     assert.doesNotMatch(source, /window\.confirm/, name);
+  }
+});
+
+// ★★★ 2.14.1「卡片跳走」。开卡时卡里只有一个 16px 转圈（连内边距 ≈42px），
+//    内容一到是 ≈320px。两次定位量到的高度差近 8 倍，于是**锚点下方余量
+//    44~320px 时必然**先落下方、内容一落地又翻上方 —— 那是视口下部一大片区域。
+//    下面第一条先把这个 BUG 原样复现出来（反证必须重现原始缺陷形态），
+//    第二条再证明修法把它消掉了。
+const jumpProbe = (height) => {
+  const node = { offsetWidth: 320, style: {} };
+  Object.defineProperty(node, "offsetHeight", {
+    get: () => {
+      const cap = parseInt(node.style.maxHeight, 10);
+      return Number.isFinite(cap) ? Math.min(height, cap) : height;
+    },
+  });
+  return node;
+};
+const SPINNER_H = 42;
+const CONTENT_H = 320;
+
+test("不给占位高度，转圈与内容会落在两边 —— 这就是「卡片跳走」", () => {
+  const viewport = { width: 1280, height: 900 };
+  // 锚点下方余量 200px：转圈（42）放得下，内容（320）放不下而上面放得下。
+  const anchor = { left: 400, right: 480, top: 680, bottom: 700 };
+  const spinner = placeCard(jumpProbe(SPINNER_H), anchor, viewport);
+  const content = placeCard(jumpProbe(CONTENT_H), anchor, viewport);
+  assert.equal(spinner.below, true, "转圈落在下方");
+  assert.equal(content.below, false, "内容翻到上方 —— 缺陷就是这一下");
+  assert.notEqual(spinner.below, content.below);
+});
+
+test("加载态按「内容将会有多高」定边，转圈与内容同边", () => {
+  const viewport = { width: 1280, height: 900 };
+  const anchor = { left: 400, right: 480, top: 680, bottom: 700 };
+  // 开卡：卡里只有转圈，但按内容的高度定边。
+  const opened = placeCard(jumpProbe(SPINNER_H), anchor, viewport, {
+    assumeMinHeight: CONTENT_H,
+  });
+  assert.equal(opened.below, false, "按 320 判：下面放不下、上面放得下 → 上方");
+  // 内容落地：沿用开卡定的那一边。
+  const settled = placeCard(jumpProbe(CONTENT_H), anchor, viewport, {
+    forceBelow: opened.below,
+  });
+  assert.equal(settled.below, opened.below, "内容必须和转圈同边");
+});
+
+test("forceBelow 钉得住，且钉住时绝不出界", () => {
+  const viewport = { width: 1280, height: 900 };
+  const anchor = { left: 400, right: 480, top: 680, bottom: 700 };
+  // 硬钉在下方：下面只有 ~192px，卡片 320px —— 必须靠 max-height 收在卡内滚，不许出界。
+  const pinned = placeCard(jumpProbe(CONTENT_H), anchor, viewport, {
+    forceBelow: true,
+  });
+  assert.equal(pinned.below, true);
+  assert.ok(pinned.top + pinned.maxHeight <= viewport.height, "钉住也不许出视口下沿");
+  const up = placeCard(jumpProbe(CONTENT_H), anchor, viewport, { forceBelow: false });
+  assert.equal(up.below, false);
+  assert.ok(up.top >= 4);
+});
+
+test("不传新选项时，第七轮定的三句话一字不变", () => {
+  const viewport = { width: 1280, height: 800 };
+  const anchor = { left: 100, right: 180, top: 500, bottom: 520 };
+  const bare = placeCard(jumpProbe(400), anchor, viewport);
+  const empty = placeCard(jumpProbe(400), anchor, viewport, {});
+  assert.equal(bare.below, false);
+  assert.deepEqual(empty, bare, "空选项对象不许改变任何结果");
+});
+
+// ★★ 结构守卫。行为测试只证明「placeCard 会照选项办事」，证明不了**有人真的传了**
+//    —— 本项目记过这条：「声明了却没人接」得靠结构门拦。
+test("hover feature 真的把两个选项都接上了", () => {
+  const source = readFileSync(
+    new URL("../src/features/hover-card/feature.js", import.meta.url),
+    "utf8",
+  );
+  // ★★★ 这里必须钉**整条表达式**，不能只钉字段名 ——
+  //   把它改回 `assumeMinHeight: 0`（也就是退回会跳的写法）时，
+  //   「含不含 assumeMinHeight 这几个字」的断言照样是绿的。**那种门永远红不了。**
+  //   我第一版就是这么写的，反证当场发现它拦不住。
+  assert.ok(
+    source.includes("assumeMinHeight: loading ? LOADING_MIN_HEIGHT : 0"),
+    "feature 没把占位高度接在加载态上",
+  );
+  assert.ok(source.includes("forceBelow: openSide"), "feature 没把定好的那一边接上");
+  // 加载态必须真的进得去、也真的摘得掉，否则内容落地后还按占位高度定位。
+  assert.ok(source.includes("loading = true"), "feature 从不进入加载态");
+  assert.ok(source.includes("loading = false"), "feature 从不摘掉加载态");
+  assert.ok(source.includes("openSide = loading ?"), "feature 没在内容落地时交还自由");
+});
+
+// ★★★ 上面那条是**文本门**：它只证明 feature.js 里写着那行字。这一条是**行为门** ——
+//    把真的 feature 挂进 jsdom，走完「悬停 → 转圈 → 内容落地」，看卡片有没有换边。
+//    ★ 高度替身按**卡片当前装的是什么**给值（有转圈就 42，没有就 320），
+//      所以内容是真数据还是「拿不到这条数据」都不影响这条判据。
+test("行为门：悬停到内容落地，卡片不许换边", async () => {
+  const dom = new JSDOM(
+    '<!doctype html><body><p><a id="who" href="/user/116524">某人</a></p></body>',
+    { url: "https://www.luogu.com.cn/problem/P1001" },
+  );
+  const saved = {
+    document: globalThis.document,
+    window: globalThis.window,
+    location: globalThis.location,
+  };
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  globalThis.location = dom.window.location;
+  try {
+    const viewportHeight = dom.window.innerHeight; // jsdom 默认 768
+    // 锚点靠下：下方只剩 200px，够转圈（42）不够内容（320）—— 正是会跳的那一带。
+    const rect = {
+      left: 400,
+      right: 480,
+      top: viewportHeight - 220,
+      bottom: viewportHeight - 200,
+      width: 80,
+      height: 20,
+    };
+    const anchor = dom.window.document.getElementById("who");
+    anchor.getBoundingClientRect = () => rect;
+    anchor.getClientRects = () => [rect];
+
+    const { createHoverCardFeature } = await import(
+      "../src/features/hover-card/feature.js"
+    );
+    // ★ 闸门：不闸住的话 fetch 立刻 resolve，转圈在我们看之前就被内容替掉了，
+    //   这条判据就永远量不到「开卡那一刻」。
+    let release = () => {};
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const feature = createHoverCardFeature({
+      // 一律失败 → 走「拿不到这条数据」那条渲染路径，不必造任何载荷。
+      fetchPage: async () => {
+        await gate;
+        return { ok: false };
+      },
+    });
+    const dispose = feature.mount();
+
+    const card = dom.window.document.getElementById("luogusp-hover-card");
+    assert.ok(card, "卡片容器没挂上");
+    Object.defineProperty(card, "offsetWidth", { get: () => 320 });
+    Object.defineProperty(card, "offsetHeight", {
+      get: () => {
+        const cap = parseInt(card.style.maxHeight, 10);
+        const natural = card.querySelector(".luogusp-hc-spin") ? 42 : 320;
+        return Number.isFinite(cap) ? Math.min(natural, cap) : natural;
+      },
+    });
+
+    const sideNow = () => parseInt(card.style.top, 10) >= rect.bottom;
+
+    anchor.dispatchEvent(
+      new dom.window.MouseEvent("mouseover", {
+        bubbles: true,
+        clientX: 440,
+        clientY: rect.top + 10,
+      }),
+    );
+    // 停留计时 300ms，之后是转圈。
+    await new Promise((r) => setTimeout(r, 360));
+    assert.ok(!card.hidden, "停留够久之后卡片应该出来了");
+    assert.ok(card.querySelector(".luogusp-hc-spin"), "这时卡里应该是转圈");
+    const spinnerSide = sideNow();
+
+    // 放闸，让 draw() 的 promise 链跑完，内容落地。
+    release();
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(!card.querySelector(".luogusp-hc-spin"), "内容应该已经替掉转圈");
+    const contentSide = sideNow();
+
+    assert.equal(
+      contentSide,
+      spinnerSide,
+      "转圈与内容落在了不同的边 —— 这就是 owner 看到的「卡片跳走」",
+    );
+    dispose();
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.window = saved.window;
+    globalThis.location = saved.location;
   }
 });

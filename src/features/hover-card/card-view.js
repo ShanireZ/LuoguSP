@@ -443,7 +443,7 @@ export function finalizeCard(cardEl) {
 //   现在改成两步：**放得下就放下面，放不下挑空间大的那一边**，
 //   并且把 `max-height` 钉在那一侧的可用空间上（配合 CSS 的 `overflow:auto`），
 //   于是内容再长也只是卡片内部出滚动条，永远不出界。
-export function placeCard(cardEl, rect, viewport) {
+export function placeCard(cardEl, rect, viewport, options = {}) {
   const gap = 4;
   const width = cardEl.offsetWidth || 320;
   let left = rect.left;
@@ -456,7 +456,15 @@ export function placeCard(cardEl, rect, viewport) {
   //    量出来还是那个被夹住的旧高度，判据以为「下面放得下」，永远不翻上去。
   //    **量之前必须先松开自己上一次施加的约束。**
   cardEl.style.maxHeight = "";
-  const natural = cardEl.offsetHeight || 160;
+  // ★★★ 2.14.1「卡片跳走」。加载态的卡片里只有一个 16px 的转圈，连内边距才 ≈42px；
+  //   内容一到就是 ≈320px。拿转圈的真高去定边，**锚点下方余量 44~320px 时必然**
+  //   先落下方、内容一落地又翻到上方 —— 那是视口下部一大片区域，不是边角情形，
+  //   而且指针正朝原来那个位置移动，卡片从它底下跳走。
+  //   修法：加载态传 `assumeMinHeight`，用「内容将会有多高」去定边，而不是用转圈的高。
+  const natural = Math.max(
+    cardEl.offsetHeight || 160,
+    Number(options.assumeMinHeight) || 0,
+  );
 
   const below = viewport.height - rect.bottom - gap * 2;
   const above = rect.top - gap * 2;
@@ -469,7 +477,13 @@ export function placeCard(cardEl, rect, viewport) {
   //      这时候出滚动条是没办法的事（视口本来就装不下），但绝不出界。
   const fitsBelow = natural <= below;
   const fitsAbove = natural <= above;
-  const useBelow = fitsBelow || (!fitsAbove && below >= above);
+  // ★★ `forceBelow` 只在**内容落地那一次**由调用方钉住，沿用开卡时定的那一边，
+  //   保证「转圈在哪一边，内容就在哪一边」。之后（用户点展开标签/展开签名）
+  //   一律传 null，仍按上面那三句话重新判 —— owner 第七轮要的翻边行为一字不动。
+  const useBelow =
+    typeof options.forceBelow === "boolean"
+      ? options.forceBelow
+      : fitsBelow || (!fitsAbove && below >= above);
   const room = Math.max(120, Math.round(useBelow ? below : above));
   cardEl.style.maxHeight = `${room}px`;
   const height = Math.min(cardEl.offsetHeight || natural, room);

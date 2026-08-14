@@ -631,22 +631,53 @@ import {
   xcpcBadge,
 } from "../src/features/hover-card/luogu-native.js";
 
-// owner 拍板：小于 1000 全显示，小于 1000000 用 k，否则用 m。
-test("计数缩写按 owner 的口径", () => {
+// owner 2026-08-14 最终拍板（★ 同日改过两次口径，只认这一版）：
+//   <1000 无单位无小数；1000~999999 用 k 保留两位小数；>=1000000 用 m 保留两位小数。
+//   四个调用点共用这一套（用户卡通过/提交、关注、粉丝、题目卡通过/提交）。
+test("计数缩写按 owner 的口径：k / m 一律两位小数", () => {
   assert.equal(abbreviateCount(0), "0");
   assert.equal(abbreviateCount(999), "999");
-  assert.equal(abbreviateCount(1000), "1k");
-  assert.equal(abbreviateCount(1234), "1.2k");
-  assert.equal(abbreviateCount(259644), "260k");
-  assert.equal(abbreviateCount(999999), "1000k");
-  assert.equal(abbreviateCount(1000000), "1m");
-  assert.equal(abbreviateCount(1234567), "1.2m");
-  assert.equal(abbreviateCount(12345678), "12.3m");
-  // 不留 `1.0k` 这种尾巴
-  assert.equal(abbreviateCount(2000), "2k");
+  assert.equal(abbreviateCount(1000), "1.00k");
+  assert.equal(abbreviateCount(1234), "1.23k");
+  assert.equal(abbreviateCount(259644), "259.64k");
+  assert.equal(abbreviateCount(1000000), "1.00m");
+  assert.equal(abbreviateCount(1234567), "1.23m");
+  assert.equal(abbreviateCount(12345678), "12.34m");
+  // ★ 两位小数一位都不省 —— 旧口径会把这个写成 `2k`。
+  assert.equal(abbreviateCount(2000), "2.00k");
   // ★ Number(null) === 0 且 isFinite(0) 为真：只判 isFinite 会把「没有计数」变成 0。
   for (const bad of [null, undefined, "", "x", NaN])
     assert.equal(abbreviateCount(bad), null, String(bad));
+});
+
+// ★★★ owner 亲自给的那个判据。它同时钉死了「截断而不是四舍五入」：
+//   四舍五入会得到 `1000.00k` —— 多一位，还翻过了 k/m 的分界线。
+test("999999 是 999.99k —— 取整方式是向下截断，不是四舍五入", () => {
+  assert.equal(abbreviateCount(999999), "999.99k");
+  assert.notEqual(abbreviateCount(999999), "1000.00k");
+  // 这条对所有值生效，不只是边界：四舍五入会把它写成 1.24k。
+  assert.equal(abbreviateCount(1237), "1.23k");
+  assert.equal(abbreviateCount(1239), "1.23k");
+});
+
+// ★★ 浮点反证。实测 1130 是最小的发散值：`1130/1000*100` 是 112.99999999999999，
+//    「先除再乘」的写法会 floor 成 1.12k。整数运算才拿得到 1.13k。
+test("先乘后除，不许被浮点少算一分", () => {
+  for (const [input, expected] of [
+    [1130, "1.13k"],
+    [1140, "1.14k"],
+    [1150, "1.15k"],
+    [1160, "1.16k"],
+    [2010, "2.01k"],
+    [2030, "2.03k"],
+  ])
+    assert.equal(abbreviateCount(input), expected, String(input));
+});
+
+test("负数保留符号", () => {
+  assert.equal(abbreviateCount(-1), "-1");
+  assert.equal(abbreviateCount(-1234), "-1.23k");
+  assert.equal(abbreviateCount(-1234567), "-1.23m");
 });
 
 // 等级色是在 /discuss 上把每个用户的 color 字段与用户名的 computed color 配对得到的。

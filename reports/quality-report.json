@@ -1,83 +1,83 @@
 {
-  "generatedAt": "2026-08-14T05:48:32.108Z",
+  "generatedAt": "2026-08-14T07:26:30.207Z",
   "artifact": {
-    "sha256": "6087da47794bece1535948017af340ea7e2784624b7668df8339b3b73eb4a61b",
-    "behaviorSha256": "09dff98a94350e65620df7c116a4637854973c630054f10f2ec36fe52c6d0d12",
+    "sha256": "105d21d1c85d8d30323e0b422735e8a8fefc82b8285b1c6143b0d5698a389bf4",
+    "behaviorSha256": "48020454d5ce92657f2ea71fd2565abea1f0587a6b6225face287ee3862dce9d",
     "bytes": 1385,
-    "gzipBytes": 823,
+    "gzipBytes": 825,
     "lines": 21,
-    "parseMedianMs": 0.0016999999999995907
+    "parseMedianMs": 0.0017999999999993577
   },
   "browserQa": {
     "status": "passed",
-    "checkedAt": "2026-08-14T05:33:18.716Z",
-    "artifactSha256": "b5b2f02a297042cc31f85c4130fcf2d3b16e1d46c254ffacd8b629ad8d2c901f",
-    "behaviorSha256": "8d81812f2be9df4e8a16b168d0c5f88e1068e1ea66c7b86d4f5d63668987e771",
-    "maxStartupMs": 6.599999997764826,
+    "checkedAt": "2026-08-14T07:25:44.906Z",
+    "artifactSha256": "6087da47794bece1535948017af340ea7e2784624b7668df8339b3b73eb4a61b",
+    "behaviorSha256": "09dff98a94350e65620df7c116a4637854973c630054f10f2ec36fe52c6d0d12",
+    "maxStartupMs": 1.300000000745058,
     "luoguSpConsoleErrorCount": 0,
     "failures": []
   },
   "startupRequires": {
     "count": 2,
-    "totalBytes": 86062,
-    "totalGzipBytes": 30136,
+    "totalBytes": 86385,
+    "totalGzipBytes": 30309,
     "resources": [
       {
-        "url": "https://luogusp.round1.cc/releases/2.14.0/compat/early-gate.d4f808cc2d8ab1a5.js#sha256=d4f808cc2d8ab1a5dd159031555788497054a85280c4818ab168c1c0c7e1cc3a",
+        "url": "https://luogusp.round1.cc/releases/2.14.1/compat/early-gate.df3db0761fcb68c4.js#sha256=df3db0761fcb68c44498c96d7b0f983872bf89b39f8ded75811b76876b45cb25",
         "bytes": 3312,
         "gzipBytes": 1586,
-        "sha256": "d4f808cc2d8ab1a5dd159031555788497054a85280c4818ab168c1c0c7e1cc3a"
+        "sha256": "df3db0761fcb68c44498c96d7b0f983872bf89b39f8ded75811b76876b45cb25"
       },
       {
-        "url": "https://luogusp.round1.cc/releases/2.14.0/compat/runtime.ad9176abd0c867c9.js#sha256=ad9176abd0c867c9497ab1858ee8b64e3590b0f76df81e9618b3c2003969cbb3",
-        "bytes": 82750,
-        "gzipBytes": 28550,
-        "sha256": "ad9176abd0c867c9497ab1858ee8b64e3590b0f76df81e9618b3c2003969cbb3"
+        "url": "https://luogusp.round1.cc/releases/2.14.1/compat/runtime.c278400c4645caee.js#sha256=c278400c4645caee5ae1d67d60321ec62135e3beecf2660f373d6ee77bff8116",
+        "bytes": 83073,
+        "gzipBytes": 28723,
+        "sha256": "c278400c4645caee5ae1d67d60321ec62135e3beecf2660f373d6ee77bff8116"
       }
     ],
     "measuredOnline": true
   },
   "optionalRestrictedContent": {
-    "url": "https://luogusp.round1.cc/releases/2.14.0/feature/restricted-content.4cc627f83d773f91.js",
-    "bytes": 44475,
-    "gzipBytes": 16368,
-    "sha256": "4cc627f83d773f91fb43bd65c561c008e6fc4b6a7e746439baa4e76f6206ca43",
+    "url": "https://luogusp.round1.cc/releases/2.14.1/feature/restricted-content.ec347170dd8f76fe.js",
+    "bytes": 44465,
+    "gzipBytes": 16352,
+    "sha256": "ec347170dd8f76fe8288b74a817bf74f9695c41c13e1c5171a0b52a9a43e5e93",
     "apiVersion": 1,
-    "declaredGzipBytes": 16368
+    "declaredGzipBytes": 16352
   },
   "optionalHoverCard": {
-    "url": "https://luogusp.round1.cc/releases/2.14.0/feature/hover-card.5566b15318a7bfd4.js",
-    "bytes": 34924,
-    "gzipBytes": 13878,
-    "sha256": "5566b15318a7bfd440102a16f11fdcfc161d9d992566844817183370e4cfae4d",
+    "url": "https://luogusp.round1.cc/releases/2.14.1/feature/hover-card.c58d86b2e861d67c.js",
+    "bytes": 35245,
+    "gzipBytes": 14050,
+    "sha256": "c58d86b2e861d67cb21c2deeee0d9d003562a8f53d486eed844c48a0d9661e5f",
     "apiVersion": 1,
-    "declaredGzipBytes": 13878
+    "declaredGzipBytes": 14050
   },
   "canaryOptionalBundles": {
-    "release": "2.14.0",
+    "release": "2.14.1",
     "bundles": {
       "markdownRenderer": {
-        "url": "https://luogusp.round1.cc/releases/2.14.0/render/markdown-renderer.1e3542bb7ec67cf3.js",
+        "url": "https://luogusp.round1.cc/releases/2.14.1/render/markdown-renderer.1e3542bb7ec67cf3.js",
         "bytes": 412941,
         "gzipBytes": 126917,
         "sha256": "1e3542bb7ec67cf316e94db6213fb4a894cd7ca33ba7c6a19899d08936457afe"
       },
       "restrictedContent": {
-        "url": "https://luogusp.round1.cc/releases/2.14.0/feature/restricted-content.4cc627f83d773f91.js",
-        "bytes": 44475,
-        "gzipBytes": 16368,
-        "sha256": "4cc627f83d773f91fb43bd65c561c008e6fc4b6a7e746439baa4e76f6206ca43"
+        "url": "https://luogusp.round1.cc/releases/2.14.1/feature/restricted-content.ec347170dd8f76fe.js",
+        "bytes": 44465,
+        "gzipBytes": 16352,
+        "sha256": "ec347170dd8f76fe8288b74a817bf74f9695c41c13e1c5171a0b52a9a43e5e93"
       },
       "hoverCard": {
-        "url": "https://luogusp.round1.cc/releases/2.14.0/feature/hover-card.5566b15318a7bfd4.js",
-        "bytes": 34924,
-        "gzipBytes": 13878,
-        "sha256": "5566b15318a7bfd440102a16f11fdcfc161d9d992566844817183370e4cfae4d"
+        "url": "https://luogusp.round1.cc/releases/2.14.1/feature/hover-card.c58d86b2e861d67c.js",
+        "bytes": 35245,
+        "gzipBytes": 14050,
+        "sha256": "c58d86b2e861d67cb21c2deeee0d9d003562a8f53d486eed844c48a0d9661e5f"
       }
     }
   },
   "optionalRenderer": {
-    "url": "https://luogusp.round1.cc/releases/2.14.0/render/markdown-renderer.1e3542bb7ec67cf3.js",
+    "url": "https://luogusp.round1.cc/releases/2.14.1/render/markdown-renderer.1e3542bb7ec67cf3.js",
     "bytes": 412941,
     "gzipBytes": 126917,
     "sha256": "1e3542bb7ec67cf316e94db6213fb4a894cd7ca33ba7c6a19899d08936457afe",
@@ -93,7 +93,7 @@
   },
   "architecture": {
     "createAppLines": 140,
-    "maxFeatureFileLines": 846,
+    "maxFeatureFileLines": 763,
     "coreBrowserGlobalReferences": [],
     "featureDirectories": {
       "hidden-intro": {
@@ -106,33 +106,33 @@
       },
       "hover-card": {
         "files": 11,
-        "bytes": 102619,
-        "lines": 2220,
-        "nonBlankLines": 2082,
+        "bytes": 104933,
+        "lines": 2240,
+        "nonBlankLines": 2102,
         "functions": 178,
-        "branchPoints": 511
+        "branchPoints": 514
       },
       "ide-batch": {
-        "files": 3,
-        "bytes": 37962,
-        "lines": 1064,
-        "nonBlankLines": 1038,
-        "functions": 131,
+        "files": 4,
+        "bytes": 38697,
+        "lines": 1084,
+        "nonBlankLines": 1054,
+        "functions": 132,
         "branchPoints": 277
       },
       "problem-color": {
         "files": 5,
-        "bytes": 25663,
-        "lines": 711,
-        "nonBlankLines": 679,
+        "bytes": 25759,
+        "lines": 703,
+        "nonBlankLines": 671,
         "functions": 83,
         "branchPoints": 219
       },
       "restricted-content": {
-        "files": 23,
-        "bytes": 110763,
-        "lines": 2920,
-        "nonBlankLines": 2796,
+        "files": 24,
+        "bytes": 111505,
+        "lines": 2949,
+        "nonBlankLines": 2816,
         "functions": 312,
         "branchPoints": 771
       },
@@ -284,6 +284,14 @@
       "branchPoints": 38
     },
     {
+      "path": "src/core/luogu-difficulty.js",
+      "bytes": 2668,
+      "lines": 61,
+      "nonBlankLines": 57,
+      "functions": 0,
+      "branchPoints": 0
+    },
+    {
       "path": "src/core/page-lifecycle.js",
       "bytes": 5958,
       "lines": 211,
@@ -365,27 +373,27 @@
     },
     {
       "path": "src/features/hover-card/card-view.js",
-      "bytes": 22476,
-      "lines": 488,
-      "nonBlankLines": 461,
+      "bytes": 23512,
+      "lines": 502,
+      "nonBlankLines": 475,
       "functions": 26,
-      "branchPoints": 108
+      "branchPoints": 110
     },
     {
       "path": "src/features/hover-card/difficulty.js",
-      "bytes": 1505,
-      "lines": 46,
-      "nonBlankLines": 40,
+      "bytes": 959,
+      "lines": 22,
+      "nonBlankLines": 17,
       "functions": 3,
       "branchPoints": 4
     },
     {
       "path": "src/features/hover-card/feature.js",
-      "bytes": 11800,
-      "lines": 293,
-      "nonBlankLines": 275,
+      "bytes": 12832,
+      "lines": 314,
+      "nonBlankLines": 295,
       "functions": 31,
-      "branchPoints": 60
+      "branchPoints": 62
     },
     {
       "path": "src/features/hover-card/follow-action.js",
@@ -413,11 +421,11 @@
     },
     {
       "path": "src/features/hover-card/luogu-native.js",
-      "bytes": 8546,
-      "lines": 158,
-      "nonBlankLines": 145,
+      "bytes": 9338,
+      "lines": 167,
+      "nonBlankLines": 154,
       "functions": 8,
-      "branchPoints": 19
+      "branchPoints": 18
     },
     {
       "path": "src/features/hover-card/models.js",
@@ -445,11 +453,19 @@
     },
     {
       "path": "src/features/ide-batch/feature.js",
-      "bytes": 28196,
-      "lines": 794,
-      "nonBlankLines": 774,
-      "functions": 94,
-      "branchPoints": 194
+      "bytes": 26824,
+      "lines": 757,
+      "nonBlankLines": 737,
+      "functions": 90,
+      "branchPoints": 181
+    },
+    {
+      "path": "src/features/ide-batch/result-view.js",
+      "bytes": 2107,
+      "lines": 57,
+      "nonBlankLines": 53,
+      "functions": 5,
+      "branchPoints": 13
     },
     {
       "path": "src/features/ide-batch/runner.js",
@@ -469,9 +485,9 @@
     },
     {
       "path": "src/features/problem-color/feature.js",
-      "bytes": 10439,
-      "lines": 293,
-      "nonBlankLines": 284,
+      "bytes": 10535,
+      "lines": 285,
+      "nonBlankLines": 276,
       "functions": 36,
       "branchPoints": 60
     },
@@ -581,11 +597,11 @@
     },
     {
       "path": "src/features/restricted-content/feature.js",
-      "bytes": 38559,
-      "lines": 846,
-      "nonBlankLines": 829,
-      "functions": 85,
-      "branchPoints": 166
+      "bytes": 32892,
+      "lines": 763,
+      "nonBlankLines": 746,
+      "functions": 76,
+      "branchPoints": 147
     },
     {
       "path": "src/features/restricted-content/lazy-feature.js",
@@ -626,6 +642,14 @@
       "nonBlankLines": 45,
       "functions": 2,
       "branchPoints": 12
+    },
+    {
+      "path": "src/features/restricted-content/presentation.js",
+      "bytes": 6409,
+      "lines": 112,
+      "nonBlankLines": 103,
+      "functions": 9,
+      "branchPoints": 19
     },
     {
       "path": "src/features/restricted-content/reply-fetch-adapter.js",

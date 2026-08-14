@@ -125,14 +125,29 @@ export function createHoverCardFeature(config) {
       return rects[0] || anchor.getBoundingClientRect();
     };
 
+    // ★★★ 2.14.1「卡片跳走」。开卡时卡里只有一个转圈（≈42px），内容一到是 ≈320px，
+    //   两次定位量到的高度差近 8 倍 —— 锚点下方余量 44~320px 时必然翻边。
+    //   所以开卡那一次按「内容将会有多高」定边，内容落地那一次沿用同一边。
+    //   ★ 之后（用户点展开）`openSide` 已经交还成 null，仍按第七轮的三句话自由重判。
+    const LOADING_MIN_HEIGHT = 320;
+    let loading = false;
+    let openSide = null;
+
     const position = () => {
       if (!shown || card.hidden) return;
       const anchor = shown.anchor;
       if (!anchor || !anchor.getBoundingClientRect) return;
-      placeCard(card, rectForPointer(anchor), {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
+      const placement = placeCard(
+        card,
+        rectForPointer(anchor),
+        { width: window.innerWidth, height: window.innerHeight },
+        {
+          assumeMinHeight: loading ? LOADING_MIN_HEIGHT : 0,
+          forceBelow: openSide,
+        },
+      );
+      // 加载态记住这一边；内容一落地就交还自由。
+      openSide = loading ? placement.below : null;
     };
 
     const draw = async (key) => {
@@ -174,6 +189,8 @@ export function createHoverCardFeature(config) {
         );
       }
       // 插入之后才量得到「签名有没有溢出两行」。
+      // ★ 先摘掉加载态：这一次定位要用内容的真高，并沿用开卡时定的那一边。
+      loading = false;
       finalizeCard(card);
       position();
     };
@@ -183,6 +200,8 @@ export function createHoverCardFeature(config) {
       onOpen: (key) => {
         shown = targets.get(key) || null;
         if (!shown) return;
+        loading = true;
+        openSide = null;
         card.textContent = "";
         card.appendChild(
           Object.assign(document.createElement("div"), {
@@ -195,6 +214,8 @@ export function createHoverCardFeature(config) {
       },
       onClose: () => {
         shown = null;
+        loading = false;
+        openSide = null;
         card.hidden = true;
         card.textContent = "";
       },

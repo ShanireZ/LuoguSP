@@ -251,3 +251,25 @@ test("IDE Batch Runner remounts only when the document generation changes", () =
   runner.dispose();
   assert.equal(unmounts, 2);
 });
+
+// ★ `diffLineNumbers` / `normalizeIdeOut` 是 2.14.1 减肥时从 feature.js 里拎出来的。
+//   拎出来之前它内联在 applyIdeResult 里、没有直接覆盖，而它是「哪几行标红」的**唯一**判据。
+//   顺手把它钉住 —— 减肥是零行为变化的重构，这几条就是那个「零」的凭据。
+test("逐行差异：只标出真正不同的行，长度不齐也算差异", async () => {
+  const { diffLineNumbers, normalizeIdeOut } = await import(
+    "../src/features/ide-batch/result-view.js"
+  );
+  assert.deepEqual([...diffLineNumbers(["a", "b"], ["a", "b"])], []);
+  assert.deepEqual([...diffLineNumbers(["a", "b"], ["a", "c"])], [1]);
+  // 实际比期望短：缺的那几行也要算差异。
+  assert.deepEqual([...diffLineNumbers(["a", "b", "c"], ["a"])], [1, 2]);
+  // 实际比期望长：多出来的同样算。
+  assert.deepEqual([...diffLineNumbers(["a"], ["a", "b"])], [1]);
+
+  // 归一化：CRLF、行尾空白、末尾多余空行都要抹平 —— 否则整屏标红。
+  assert.equal(normalizeIdeOut("a\r\nb\r\n"), "a\nb");
+  assert.equal(normalizeIdeOut("a  \t\nb"), "a\nb");
+  assert.equal(normalizeIdeOut("a\n\n\n"), "a");
+  assert.equal(normalizeIdeOut(null), "");
+  assert.equal(normalizeIdeOut(undefined), "");
+});

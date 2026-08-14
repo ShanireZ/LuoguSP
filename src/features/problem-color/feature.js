@@ -1,5 +1,6 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createGetRequestScheduler } from "../../core/get-request-scheduler.js";
+import { DIFFICULTY_COLORS } from "../../core/luogu-difficulty.js";
 import { createProblemIdentityResolver } from "./identity.js";
 import {
   collectDifficultyBatches,
@@ -9,18 +10,9 @@ import { createProblemPipeline } from "./pipeline.js";
 import { isProblemAnchorColorable } from "./practice-policy.js";
 
 export function createProblemColorFeature({ storage }) {
-  const DIFFICULTY_COLORS = [
-    "#bfbfbf",
-    "#fe4c61",
-    "#f39c11",
-    "#ffc116",
-    "#52c41a",
-    "#14b8a6",
-    "#3498db",
-    "#9d3dcf",
-    "#0f172a",
-  ];
-  const FALLBACK_COLOR = "#bfbfbf";
+  // ★ 色表**不在这里** —— 唯一一份在 `core/luogu-difficulty.js`。
+  //   它以前在这里另存了一份，和悬停卡那份同时错了两档（2.14.1 修正）。
+  const FALLBACK_COLOR = DIFFICULTY_COLORS[0];
   const diffColor = (difficulty) =>
     DIFFICULTY_COLORS[difficulty] || FALLBACK_COLOR;
   const SELECTORS = {
