@@ -9,6 +9,10 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 
 const CANDIDATE_SELECTOR =
   'a[href*="/problem/"], a[href*="/user/"], .pid[title], img[src*="/upload/usericon/"]';
+// 站点框架（顶栏 + 左右抽屉）里的锚点永远不会出卡（判据在块里的 anchors.js），
+// 所以连块都不必为它们拉下来。★ 这是**纯省事**的收紧，不是判据：
+// 少拉一次块顶多慢一点，多拉一次块什么也不会坏。
+const CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
 
 export function createHoverCardFeature(config) {
   const {
@@ -64,6 +68,7 @@ export function createHoverCardFeature(config) {
       const node = event.target;
       if (!node || typeof node.closest !== "function") return;
       if (!node.closest(CANDIDATE_SELECTOR)) return;
+      if (node.closest(CHROME_SELECTOR)) return;
       document.removeEventListener("mouseover", probe, true);
       ensureFeature().then((loaded) => {
         if (released || !loaded) return;

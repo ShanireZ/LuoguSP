@@ -56,8 +56,19 @@ export function createHoverIntent(config) {
     enter(target) {
       if (target == null) return;
       cancelClose();
-      // 同一个目标已经开着 → 什么都不做，别重复请求。
-      if (current !== null && current === target) return;
+      // 同一个目标已经开着 → 别重复请求。
+      // ★★ 但**必须先把待打开的别的目标掐掉**。canary.15 真机复现过：练习页的题号是
+      //    零间距铺开的，下一行题号就贴在上一行下沿（实测 A.bottom=193，B.top=193），
+      //    而卡片落在 bottom+4 —— 指针从题号挪到卡片，**必然横穿一个别的题号**。
+      //    那一穿会排一个 300ms 的待打开；紧接着指针进了卡片，走 `onOut` 里
+      //    「移到卡片上不算离开」的快路径**跳过了 leave()**（leave 本来会 cancelOpen），
+      //    然后这里又早退，于是那个待打开活着走完 300ms，把当前卡关掉、换成隔壁那道题。
+      //    症状就是 owner 说的「鼠标移到卡片过程中卡片就消失」。
+      //    修法是一行 cancelOpen()：回到已开着的目标，等于放弃一切别的候选。
+      if (current !== null && current === target) {
+        cancelOpen();
+        return;
+      }
       if (pendingTarget === target) return;
       cancelOpen();
       pendingTarget = target;

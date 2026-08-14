@@ -1,13 +1,13 @@
 {
-  "checkedAt": "2026-08-13T07:52:48.455Z",
+  "checkedAt": "2026-08-14T00:53:31.126Z",
   "status": "ready",
-  "release": "2.14.0-canary.15",
-  "manifestPath": "releases/2.14.0-canary.15/manifest.fab20147433d4582.json",
-  "manifestSha256": "fab20147433d4582adb5062ae3629e2e222458668fd85741509ae4919f45f31a",
+  "release": "2.14.0-canary.16",
+  "manifestPath": "releases/2.14.0-canary.16/manifest.5a9af96edc24af71.json",
+  "manifestSha256": "5a9af96edc24af71229905fb6494d1421a7fd932b8b059e81174501861c5dce3",
   "optionalBundles": {
     "markdownRenderer": {
       "apiVersion": 1,
-      "path": "releases/2.14.0-canary.15/render/markdown-renderer.1e3542bb7ec67cf3.js",
+      "path": "releases/2.14.0-canary.16/render/markdown-renderer.1e3542bb7ec67cf3.js",
       "bytes": 412941,
       "gzipBytes": 126917,
       "sha256": "1e3542bb7ec67cf316e94db6213fb4a894cd7ca33ba7c6a19899d08936457afe",
@@ -21,7 +21,7 @@
     },
     "restrictedContent": {
       "apiVersion": 1,
-      "path": "releases/2.14.0-canary.15/feature/restricted-content.6a68ffca3435324f.js",
+      "path": "releases/2.14.0-canary.16/feature/restricted-content.6a68ffca3435324f.js",
       "bytes": 44475,
       "gzipBytes": 16366,
       "sha256": "6a68ffca3435324f66e71109cbf69f8e2cfe90a1000e88266f65b34341b21e84",
@@ -29,11 +29,11 @@
     },
     "hoverCard": {
       "apiVersion": 1,
-      "path": "releases/2.14.0-canary.15/feature/hover-card.4d14a544250474ad.js",
-      "bytes": 23969,
-      "gzipBytes": 9529,
-      "sha256": "4d14a544250474adc36737089afec4509850e9699d2ec8ed1ee088e8eb62e7d9",
-      "sri": "sha256-TRSlRCUEdK3DZzcImv7EUJhQ6WmdLsjtHuCI6Oti59k="
+      "path": "releases/2.14.0-canary.16/feature/hover-card.f24d68b17b3b2cc4.js",
+      "bytes": 27629,
+      "gzipBytes": 11178,
+      "sha256": "f24d68b17b3b2cc455879806addc358ad5d8535dd000fec518a3a5cc4394e660",
+      "sri": "sha256-8k1osXs7LMRVh5gGrdw1itXYU13QAP7FGKOlzEOU5mA="
     }
   },
   "origin": "https://luogusp.round1.cc",
@@ -42,10 +42,10 @@
   "results": [
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/manifest.fab20147433d4582.json",
+      "path": "releases/2.14.0-canary.16/manifest.5a9af96edc24af71.json",
       "status": 200,
-      "bytes": 8556,
-      "sha256": "fab20147433d4582adb5062ae3629e2e222458668fd85741509ae4919f45f31a",
+      "bytes": 8557,
+      "sha256": "5a9af96edc24af71229905fb6494d1421a7fd932b8b059e81174501861c5dce3",
       "contentType": "application/json",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -54,10 +54,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/compat/early-gate.5e31745dd11f7d93.js",
+      "path": "releases/2.14.0-canary.16/compat/early-gate.603fe5486b8c48e5.js",
       "status": 200,
       "bytes": 3322,
-      "sha256": "5e31745dd11f7d937aebeb525824a56bdc4ecb248a255aaccf8e662b5bcf4f3b",
+      "sha256": "603fe5486b8c48e57d4a43c2f15ade844cceff981c0fe30a2b124c08422b1f2b",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -66,10 +66,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/compat/runtime.73fbd496f70c3988.js",
+      "path": "releases/2.14.0-canary.16/compat/runtime.693c4fd93809b428.js",
       "status": 200,
-      "bytes": 83670,
-      "sha256": "73fbd496f70c3988ba4c78f8dee50302c48723bb4839eab4b8da06aa90833fd6",
+      "bytes": 83729,
+      "sha256": "693c4fd93809b428ab3d27585bc85863cc81912b701709c4a85bb824ba0539b6",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -78,7 +78,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/render/markdown-renderer.1e3542bb7ec67cf3.js",
+      "path": "releases/2.14.0-canary.16/render/markdown-renderer.1e3542bb7ec67cf3.js",
       "status": 200,
       "bytes": 412941,
       "sha256": "1e3542bb7ec67cf316e94db6213fb4a894cd7ca33ba7c6a19899d08936457afe",
@@ -90,7 +90,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/feature/restricted-content.6a68ffca3435324f.js",
+      "path": "releases/2.14.0-canary.16/feature/restricted-content.6a68ffca3435324f.js",
       "status": 200,
       "bytes": 44475,
       "sha256": "6a68ffca3435324f66e71109cbf69f8e2cfe90a1000e88266f65b34341b21e84",
@@ -102,10 +102,10 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/feature/hover-card.4d14a544250474ad.js",
+      "path": "releases/2.14.0-canary.16/feature/hover-card.f24d68b17b3b2cc4.js",
       "status": 200,
-      "bytes": 23969,
-      "sha256": "4d14a544250474adc36737089afec4509850e9699d2ec8ed1ee088e8eb62e7d9",
+      "bytes": 27629,
+      "sha256": "f24d68b17b3b2cc455879806addc358ad5d8535dd000fec518a3a5cc4394e660",
       "contentType": "text/javascript",
       "cacheControl": "public, max-age=31536000, immutable",
       "cors": "*",
@@ -114,7 +114,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/restricted-content-HQONP7LJ.js",
+      "path": "releases/2.14.0-canary.16/esm/restricted-content-HQONP7LJ.js",
       "status": 200,
       "bytes": 43448,
       "sha256": "042a852a599940578b722258a6ef065ab7527ac7625a11c5f9072e440701d2b6",
@@ -126,7 +126,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/canary-loader-BTLX3PLI.js",
+      "path": "releases/2.14.0-canary.16/esm/canary-loader-BTLX3PLI.js",
       "status": 200,
       "bytes": 173,
       "sha256": "b9279332f7a9ae376535bc4a2170496a787ff3e8a9e77171681a614cf7ec43ed",
@@ -138,7 +138,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/early-gate-api-YXBXAWUG.js",
+      "path": "releases/2.14.0-canary.16/esm/early-gate-api-YXBXAWUG.js",
       "status": 200,
       "bytes": 2524,
       "sha256": "b07f9e0158562e912be0953b643f62856ddb6bc26c84c462502274234b437ca4",
@@ -150,7 +150,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/chunks/chunk-YYMBI4BU.js",
+      "path": "releases/2.14.0-canary.16/esm/chunks/chunk-YYMBI4BU.js",
       "status": 200,
       "bytes": 805,
       "sha256": "2e07600ad2debd91bd54fc3c6f88bb1b11d9d3810b67aa047c4eb1b2267b00af",
@@ -162,7 +162,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/app-core-3TBGMHL4.js",
+      "path": "releases/2.14.0-canary.16/esm/app-core-3TBGMHL4.js",
       "status": 200,
       "bytes": 3611,
       "sha256": "522f59b8c723d19368aa9fcea403ba14747359e6cf1e4a251ddf1c74846d5321",
@@ -174,7 +174,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/settings-C6PJ2FWE.js",
+      "path": "releases/2.14.0-canary.16/esm/settings-C6PJ2FWE.js",
       "status": 200,
       "bytes": 7085,
       "sha256": "c434651d058433930b1ef3aaa90521b8487e0d8004fa1885e4ed0c22e03caba3",
@@ -186,7 +186,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/problem-color-TMB7HDGF.js",
+      "path": "releases/2.14.0-canary.16/esm/problem-color-TMB7HDGF.js",
       "status": 200,
       "bytes": 11336,
       "sha256": "a328bf06b1b82196da655481a64c81c7e05ca0f1b7f38d86d94af8d75646e295",
@@ -198,7 +198,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/chat-shortcut-3SB6G7HS.js",
+      "path": "releases/2.14.0-canary.16/esm/chat-shortcut-3SB6G7HS.js",
       "status": 200,
       "bytes": 2049,
       "sha256": "1742fab67854c901a23ef0740347831c28d62cccde4b79690dcc4f78250dcf3c",
@@ -210,7 +210,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/hidden-intro-L73RKAFC.js",
+      "path": "releases/2.14.0-canary.16/esm/hidden-intro-L73RKAFC.js",
       "status": 200,
       "bytes": 22643,
       "sha256": "ba5dd4303be1c2a0b0bc35a1e00af2f63b2863c11e66e78be698f9428791417d",
@@ -222,7 +222,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/chunks/chunk-WFSUDTKV.js",
+      "path": "releases/2.14.0-canary.16/esm/chunks/chunk-WFSUDTKV.js",
       "status": 200,
       "bytes": 3920,
       "sha256": "1fc8be58f33138442d809731eec3ba4d5b1412fba8f8735fed950a8092519e95",
@@ -234,7 +234,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/ide-batch-JTBEEUH4.js",
+      "path": "releases/2.14.0-canary.16/esm/ide-batch-JTBEEUH4.js",
       "status": 200,
       "bytes": 20052,
       "sha256": "5203f5e33a53e36e08e7dc42cc9f6475b932fba479e5430f78ad8a2bb273f6ef",
@@ -246,7 +246,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/chunks/chunk-PQ6PWWZS.js",
+      "path": "releases/2.14.0-canary.16/esm/chunks/chunk-PQ6PWWZS.js",
       "status": 200,
       "bytes": 1314,
       "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
@@ -258,7 +258,7 @@
     },
     {
       "attempt": 1,
-      "path": "releases/2.14.0-canary.15/esm/chunks/chunk-V7FYNATP.js",
+      "path": "releases/2.14.0-canary.16/esm/chunks/chunk-V7FYNATP.js",
       "status": 200,
       "bytes": 342,
       "sha256": "8cbdb457fff355ba763f8e8606f5a48903a7dba84377787a34a5ff0583c7936f",
@@ -273,7 +273,7 @@
       "path": "channels/canary.json",
       "status": 200,
       "bytes": 331,
-      "sha256": "284241dbdee4df3f5cb66d37f32b1bf7ca41d39bd5c57aeaab8ea6163f1f7d39",
+      "sha256": "c5f83e3e7245e36f4e1d84102bc22c27d8cc14569f9deb06db6d56fb5217a058",
       "contentType": "application/json",
       "cacheControl": "no-cache, no-store, must-revalidate",
       "cors": "*",

@@ -9,14 +9,20 @@ export const HOVER_CARD_STYLE = `
 .luogusp-hc-title{font-size:14px;font-weight:600;line-height:1.4;margin:0;word-break:break-all;}
 .luogusp-hc-sub{font-size:12px;margin-top:1px;}
 .luogusp-hc-badges{display:inline-flex;align-items:center;gap:4px;margin-left:4px;vertical-align:middle;}
-/* 原生徽章实测：✅(fa-badge-check) 与 🎈(fa-balloon) 的 computed color 都是 #3498db、1em；
+/* 原生徽章实测：✅(fa-badge-check) 与 🎈(fa-balloon) 都是 1em 见方的 duotone SVG，
+   配色由 luogu-native 按等级给出（写在 path 的 fill 上，不吃 currentColor）；
    称号是白字 + 等级色底 + 圆角 2px + .765em + 左右 .383em 内边距（底色跟随用户等级色）。 */
 .luogusp-hc-badge{font-size:.765em;line-height:1.5;white-space:nowrap;}
-.luogusp-hc-badge-icon{color:#3498db;font-size:1em;}
+.luogusp-hc-fa{width:1em;height:1em;display:inline-block;vertical-align:-.125em;overflow:visible;}
 .luogusp-hc-status{font-size:.9em;font-weight:600;}
 .luogusp-hc-row{display:flex;justify-content:space-between;gap:10px;padding:2px 0;}
 .luogusp-hc-key{color:#8a8a8a;flex:0 0 auto;}
-.luogusp-hc-val{text-align:right;word-break:break-all;}
+.luogusp-hc-val{text-align:right;word-break:break-all;min-width:0;}
+/* 获奖等可能有多条，右对齐竖着码；别让它们挤成一行。 */
+.luogusp-hc-stack{display:flex;flex-direction:column;align-items:flex-end;}
+/* 个人签名过长时压成两行 + 省略号。webkit-box 是唯一跨浏览器可用的多行截断，
+   Firefox 也实现了这套前缀属性。 */
+.luogusp-hc-clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
 .luogusp-hc-sep{border-top:1px solid #f0f0f0;margin:8px 0 6px;}
 .luogusp-hc-tags{margin-top:2px;}
 .luogusp-hc-tagbtn{background:none;border:0;padding:0;color:#3498db;cursor:pointer;font:inherit;}

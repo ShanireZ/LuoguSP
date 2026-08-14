@@ -126,6 +126,30 @@ export const relationOf = (value) => {
   return "unknown";
 };
 
+// 获奖。★ 形状实测是**套了一层**的：`data.prizes[i] = { prize: {year, contest, event, prize} }`，
+// 而且**按年份升序**（697932 实测 2024 CSP-J 在前、2025 CSP-S 在后，洛谷个人页也照这个顺序列）。
+// 旧代码 `slice(0, 4)` 取的是最早的 4 条、视图又只画第一条 ——
+// 于是**永远只显示最早那一个奖**，最近拿的反而看不见（owner 追问过两次的就是这个）。
+// 这里改成按年份**降序**并保留最近 4 条；没有年份的排在最后，不参与比较。
+const PRIZE_LIMIT = 4;
+export function pickPrizes(prizes) {
+  const rows = Array.isArray(prizes) ? prizes.filter((row) => row && row.prize) : [];
+  const year = (row) => numberOrNull(row.prize.year);
+  return Object.freeze(
+    rows
+      .slice()
+      .sort((a, b) => {
+        const left = year(a);
+        const right = year(b);
+        if (left === right) return 0;
+        if (left === null) return 1;
+        if (right === null) return -1;
+        return right - left;
+      })
+      .slice(0, PRIZE_LIMIT),
+  );
+}
+
 export function buildUserCard(payload) {
   const data = payload && payload.data;
   const user = data && data.user;
@@ -161,7 +185,7 @@ export function buildUserCard(payload) {
     // ★ 顶层 data.elo，不是 user.elo（后者恒 null）。
     eloRating: latestElo ? numberOrNull(latestElo.rating) : null,
     eloTime: latestElo ? numberOrNull(latestElo.time) : null,
-    prizes: Object.freeze(Array.isArray(data.prizes) ? data.prizes.slice(0, 4) : []),
+    prizes: pickPrizes(data.prizes),
     relation: relationOf(user.userRelationship),
     reverseRelation: relationOf(user.reverseUserRelationship),
   });
