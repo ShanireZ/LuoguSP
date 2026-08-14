@@ -247,8 +247,12 @@ function shellHarness(options = {}) {
   const calls = { load: 0, mount: 0, dispose: 0 };
   const errors = [];
   const originalDocument = globalThis.document;
+  // ★ 薄壳现在**按页面**决定加不加载，所以替身要能回答「这一页上有什么」。
+  //   `pageNodes` 里每个元素都带一个 `chrome` 标记（在不在站点框架里）。
+  const pageNodes = options.pageNodes === undefined ? [candidate()] : options.pageNodes;
   globalThis.document = {
     body: {},
+    querySelectorAll: () => pageNodes,
     addEventListener: (type, fn) => listeners.set(type, fn),
     removeEventListener: (type) => listeners.delete(type),
   };
@@ -264,8 +268,9 @@ function shellHarness(options = {}) {
             return Promise.resolve({
               apiVersion: 1,
               createHoverCardFeature: () => ({
-                mount: () => {
+                mount: (mountOptions) => {
                   calls.mount += 1;
+                  calls.mountOptions = mountOptions;
                   return () => void (calls.dispose += 1);
                 },
               }),
@@ -277,9 +282,9 @@ function shellHarness(options = {}) {
     features,
     calls,
     errors,
-    fire: (target) => {
+    fire: (target, point = { clientX: 12, clientY: 34 }) => {
       const probe = listeners.get("mouseover");
-      if (probe) probe({ target });
+      if (probe) probe({ target, ...point });
     },
     hasProbe: () => listeners.has("mouseover"),
     restore: () => {
@@ -296,6 +301,8 @@ const candidate = () => ({
 });
 // 顶栏里的锚点替身：两个选择器都命中。
 const chromeCandidate = () => ({ closest: () => ({}) });
+// candidate() 的 closest 只对候选选择器命中、对框架选择器返回 null，
+// 所以它同时充当「正文里的候选元素」。
 
 test("描述符不加载块就能给设置页用", () => {
   const h = shellHarness();
@@ -311,15 +318,47 @@ test("描述符不加载块就能给设置页用", () => {
   }
 });
 
-// ★ 这就是拆成按需块的意义：指针没碰到候选锚点，一个字节都不拉。
-test("指针没碰到候选锚点就不拉块", async () => {
+// ★★★ owner 报了两轮「悬停用户名不弹，蹭一下头像才弹」。根因不在解析层，在这里：
+//    薄壳看不见的元素，块**永远没机会加载**。私信页的用户名就是个裸 span。
+//    所以判据从「指针压在候选上」改成「**这一页有没有可预览的东西**」。
+test("指针压在裸元素上也照拉：只要这一页有可预览的东西", async () => {
   const h = shellHarness();
+  try {
+    h.feature.mount();
+    // 私信页的用户名替身：什么选择器都不匹配。
+    h.fire({ closest: () => null });
+    await settle();
+    assert.equal(h.calls.load, 1, "裸 span 也必须能把块拉下来");
+    assert.equal(h.calls.mount, 1);
+  } finally {
+    h.restore();
+  }
+});
+
+// 反过来：这一页压根没有可预览的东西，就一个字节都不拉 —— 按需加载的意义还在。
+test("整页没有可预览的东西就不拉块", async () => {
+  const h = shellHarness({ pageNodes: [] });
   try {
     h.feature.mount();
     h.fire({ closest: () => null });
     await settle();
     assert.equal(h.calls.load, 0);
     assert.equal(h.calls.mount, 0);
+    assert.equal(h.hasProbe(), true, "探针要留着，内容是后到的");
+  } finally {
+    h.restore();
+  }
+});
+
+// ★ 每页顶栏都有我自己的头像。拿它当依据就等于「所有页面都加载」，
+//   所以整页只有框架里的候选时同样不拉。
+test("整页只有站点框架里的候选也不拉块", async () => {
+  const h = shellHarness({ pageNodes: [chromeCandidate()] });
+  try {
+    h.feature.mount();
+    h.fire(chromeCandidate());
+    await settle();
+    assert.equal(h.calls.load, 0);
   } finally {
     h.restore();
   }
@@ -342,19 +381,16 @@ test("碰到候选锚点才拉块，并且只拉一次", async () => {
   }
 });
 
-// ★ 站点框架里的锚点永远不会出卡，连块都不该为它们拉下来。
-test("顶栏 / 抽屉里的锚点不触发拉块", async () => {
+// ★★ 块接不到「把它拉下来的那一次」mouseover，所以薄壳必须把**指针坐标**交过去，
+//    由块自己解析并立刻开卡。合成事件那条路已经废弃：跨 realm 造事件脆，
+//    而且合成事件还要再等 300ms 停留，体感仍然是「第一次悬停不弹」。
+test("挂载时把指针坐标交给块", async () => {
   const h = shellHarness();
   try {
     h.feature.mount();
-    h.fire(chromeCandidate());
+    h.fire(candidate(), { clientX: 210, clientY: 87 });
     await settle();
-    assert.equal(h.calls.load, 0);
-    assert.equal(h.hasProbe(), true, "探针不能被框架锚点白白摘掉");
-    // 换成正文里的锚点，仍然要拉。
-    h.fire(candidate());
-    await settle();
-    assert.equal(h.calls.load, 1);
+    assert.deepEqual(h.calls.mountOptions, { replayAt: { x: 210, y: 87 } });
   } finally {
     h.restore();
   }
@@ -395,10 +431,10 @@ test("加载器没接线时报错，不静默也不抛", async () => {
   }
 });
 
-// ★★★ owner 2026-08-14：「很多时候第一次悬停不弹卡片」。根因在薄壳：块是被**这一次**
-// mouseover 拉下来的，等它挂上委托监听时那个事件早派发完了；用户停着不动就再也没有新的
-// mouseover，于是第一次悬停必然落空。挂载成功后必须照指针位置补发一次。
-test("块接管后补发一次悬停，第一次停下就该出卡", async () => {
+// ★★★ owner 报了两轮「第一次悬停不弹卡」。用**真 DOM** 端到端验：薄壳把指针坐标
+//    交给块，块自己解析并**立刻**开卡 —— 不再补发合成事件（跨 realm 造事件脆，
+//    而且合成事件仍要再等 300ms 停留，体感还是不弹）。
+test("块接管时拿到的是指针坐标，不是补发的事件", async () => {
   const dom = new JSDOM(
     `<!doctype html><body><a id="pid" href="/problem/P1000">P1000</a></body>`,
     { url: "https://www.luogu.com.cn/" },
@@ -409,6 +445,7 @@ test("块接管后补发一次悬停，第一次停下就该出卡", async () =>
   const anchor = dom.window.document.getElementById("pid");
   dom.window.document.elementFromPoint = () => anchor;
   const seen = [];
+  let mountedWith = null;
   try {
     const features = createHoverCardFeatures({
       storage,
@@ -416,14 +453,9 @@ test("块接管后补发一次悬停，第一次停下就该出卡", async () =>
         Promise.resolve({
           apiVersion: 1,
           createHoverCardFeature: () => ({
-            mount: () => {
-              // 正主装的就是这种委托监听 —— 补发的事件必须能被它接住。
-              const onOver = (event) =>
-                seen.push({
-                  tag: event.target.id,
-                  x: event.clientX,
-                  y: event.clientY,
-                });
+            mount: (options) => {
+              mountedWith = options;
+              const onOver = (event) => seen.push(event.target.id);
               dom.window.document.addEventListener("mouseover", onOver, true);
               return () =>
                 dom.window.document.removeEventListener("mouseover", onOver, true);
@@ -433,15 +465,13 @@ test("块接管后补发一次悬停，第一次停下就该出卡", async () =>
     });
     features.problem.mount();
     anchor.dispatchEvent(
-      new dom.window.MouseEvent("mouseover", {
-        bubbles: true,
-        clientX: 40,
-        clientY: 60,
-      }),
+      new dom.window.MouseEvent("mouseover", { bubbles: true, clientX: 40, clientY: 60 }),
     );
     await settle();
     await settle();
-    assert.deepEqual(seen, [{ tag: "pid", x: 40, y: 60 }], "补发必须带上指针坐标");
+    assert.deepEqual(mountedWith, { replayAt: { x: 40, y: 60 } });
+    // 反证：不该再有合成事件打到委托监听上。
+    assert.deepEqual(seen, [], "已经不走补发事件那条路了");
   } finally {
     globalThis.document = saved.document;
     globalThis.window = saved.window;
