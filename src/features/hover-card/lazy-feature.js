@@ -6,6 +6,14 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 // ★ 设置项必须在不加载块的前提下就能列出来，所以 id / key / label 由本壳持有。
 // ★ 这里不做锚点解析（那是块里的事），只做一件最便宜的判断：指针下面有没有可能是
 //   题号或用户链接。判断错了顶多多拉一次块（一次，之后就常驻），判断漏了才是缺陷。
+//
+// ★★★ owner 2026-08-14 报「很多时候第一次悬停不弹卡」。根因就在这层：
+//    块是**被这一次 mouseover 拉下来的**，等它加载完挂上委托监听时，
+//    那个事件早就派发完了 —— 而用户如果停着不动，**再也不会有新的 mouseover**，
+//    于是第一次悬停必然落空，非得晃一下鼠标才出卡。
+//    修法=挂载成功后**照着指针当前位置补发一次 mouseover**。
+//    ★ 用 `elementFromPoint` 现取元素，而不是复用当初那个 target：块下载要几百毫秒，
+//      这中间指针很可能已经挪到别的锚点上了（那些 mouseover 同样没人接）。
 
 const CANDIDATE_SELECTOR =
   'a[href*="/problem/"], a[href*="/user/"], .pid[title], img[src*="/upload/usericon/"]';
@@ -58,31 +66,59 @@ export function createHoverCardFeature(config) {
     return pending;
   };
 
+  // 指针当前位置上补发一次 mouseover，让刚挂上的委托监听接住它。
+  // ★ 事件对象必须用**文档自己那个 realm** 的构造器：块是经 blob 动态 import 在页面
+  //   realm 执行的，拿错 realm 的构造器造出来的事件派发不进去（仓库里已经因为
+  //   「搬进另一个 realm 等于换了一套宿主对象」栽过一次）。
+  const replayHover = (point) => {
+    const view = document.defaultView;
+    const Ctor = view && view.MouseEvent;
+    if (!point || typeof Ctor !== "function" || !document.elementFromPoint) return;
+    const node = document.elementFromPoint(point.x, point.y);
+    if (!node || typeof node.closest !== "function") return;
+    if (!node.closest(CANDIDATE_SELECTOR) || node.closest(CHROME_SELECTOR)) return;
+    node.dispatchEvent(
+      new Ctor("mouseover", {
+        bubbles: true,
+        cancelable: true,
+        clientX: point.x,
+        clientY: point.y,
+      }),
+    );
+  };
+
   const mount = () => {
     if (!document.body) return () => {};
     let released = false;
     let innerDispose = null;
-    // 第一次碰到候选锚点就换正主接管：块自己会重新装委托监听，
-    // 所以这里把探针拆掉即可，不必转发这一次事件。
-    const probe = (event) => {
+    // 指针最后落在哪儿。★ 探针**一直挂到块真正接管为止**，就是为了让这个坐标保持新鲜：
+    //   块在路上时用户还在移动，补发要按最新位置来。
+    let point = null;
+    const detach = () => document.removeEventListener("mouseover", probe, true);
+    function probe(event) {
       const node = event.target;
       if (!node || typeof node.closest !== "function") return;
       if (!node.closest(CANDIDATE_SELECTOR)) return;
       if (node.closest(CHROME_SELECTOR)) return;
-      document.removeEventListener("mouseover", probe, true);
+      if (typeof event.clientX === "number")
+        point = { x: event.clientX, y: event.clientY };
       ensureFeature().then((loaded) => {
-        if (released || !loaded) return;
+        if (released || !loaded || innerDispose) return;
         try {
           innerDispose = loaded.mount();
         } catch (error) {
           logError(error);
+          return;
         }
+        // 正主接管了：拆掉探针，再把它错过的那一次悬停补上。
+        detach();
+        replayHover(point);
       });
-    };
+    }
     document.addEventListener("mouseover", probe, true);
     return () => {
       released = true;
-      document.removeEventListener("mouseover", probe, true);
+      detach();
       if (typeof innerDispose === "function") innerDispose();
       innerDispose = null;
     };

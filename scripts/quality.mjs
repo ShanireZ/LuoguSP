@@ -251,6 +251,43 @@ if (
 )
   throw new Error("Optional hover card gzip size drift");
 
+// ★★★ 这道门原先**只量正式版产物**（按 `LuoguSP.user.js` 的 @version 取 manifest），
+// canary 完全不在测量范围内。后果在 2026-08-14 真实发生过两次：
+//   一次是启动 @require 超预算 4601 B 零症状地过了两轮；
+//   一次是 hover 块超预算 76 B 发出去了，`quality budgets passed` 照样打印。
+// 「永远红不了的门等于没有门」—— 所以这里把**当前 canary 频道**的可选块也量进来。
+// ★ 判据仍是「清单声明了就必须钉全」而不是「必须存在」：没有 canary 频道就跳过。
+const canaryOptionalBundles = await (async () => {
+  let channel;
+  try {
+    channel = JSON.parse(
+      await readFile(resolve(root, "cdn/channels/canary.json"), "utf8"),
+    );
+  } catch (error) {
+    return null;
+  }
+  if (!channel || typeof channel.manifestPath !== "string") return null;
+  let canaryManifest;
+  try {
+    canaryManifest = JSON.parse(
+      await readFile(resolve(root, "cdn", channel.manifestPath), "utf8"),
+    );
+  } catch (error) {
+    return null;
+  }
+  const bundles = canaryManifest.optionalBundles || {};
+  const measured = {};
+  for (const [name, descriptor] of Object.entries(bundles)) {
+    const file = descriptor?.path && canaryManifest.files?.[descriptor.path];
+    if (!file)
+      throw new Error(
+        `Canary manifest declares a ${name} bundle it does not pin`,
+      );
+    measured[name] = await localResource(file, { integrityFragment: false });
+  }
+  return { release: channel.release, bundles: measured };
+})();
+
 const expectedOptionalRenderer = {
   ...(await localResource(rendererFile, {
     integrityFragment: false,
@@ -358,6 +395,7 @@ const report = {
   },
   optionalRestrictedContent: expectedOptionalRestrictedContent,
   optionalHoverCard: expectedOptionalHoverCard,
+  canaryOptionalBundles,
   optionalRenderer: {
     ...optionalRenderer,
     measuredOnline: fetchRequires,
@@ -515,6 +553,32 @@ if (check) {
       failures.push(
         `optional hover card gzip bytes ${report.optionalHoverCard.gzipBytes} > ${budget.optionalHoverCard.maxGzipBytes}`,
       );
+  }
+  // canary 的可选块走同一套预算。名字→预算键的映射写死，映射不到的块**要报出来**，
+  // 否则新增一个块又会变成「没人量」。
+  if (report.canaryOptionalBundles) {
+    const budgetKeys = {
+      markdownRenderer: "optionalRenderer",
+      restrictedContent: "optionalRestrictedContent",
+      hoverCard: "optionalHoverCard",
+    };
+    for (const [name, measured] of Object.entries(
+      report.canaryOptionalBundles.bundles,
+    )) {
+      const key = budgetKeys[name];
+      if (!key || !budget[key]) {
+        failures.push(`canary bundle ${name} has no budget entry`);
+        continue;
+      }
+      if (measured.bytes > budget[key].maxBytes)
+        failures.push(
+          `canary ${name} bytes ${measured.bytes} > ${budget[key].maxBytes}`,
+        );
+      if (measured.gzipBytes > budget[key].maxGzipBytes)
+        failures.push(
+          `canary ${name} gzip bytes ${measured.gzipBytes} > ${budget[key].maxGzipBytes}`,
+        );
+    }
   }
   if (fetchRequires) {
     for (const actual of startupResources) {

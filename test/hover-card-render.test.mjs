@@ -54,31 +54,46 @@ const problemCard = (over = {}) =>
     tagDictionary: { resolve: () => ["模拟"] },
   });
 
+// 用户卡的两个载荷：主=/api/user/info/{uid}，补=/user/{uid}。
 const userCard = (over = {}) =>
-  buildUserCard({
-    data: {
-      prizes: over.prizes ?? [],
-      gu: over.gu ?? null,
-      elo: over.elo ?? [],
+  buildUserCard(
+    {
       user: {
         uid: 697932,
         name: "Gcend",
         color: "Red",
+        avatar: "https://cdn.luogu.com.cn/upload/usericon/697932.png",
+        background: over.background ?? null,
+        blogAddress: over.blogAddress ?? null,
         slogan: over.slogan ?? "",
         badge: over.badge ?? null,
         ccfLevel: over.ccfLevel ?? null,
         xcpcLevel: over.xcpcLevel ?? null,
-        passedProblemCount: over.passed ?? null,
-        submittedProblemCount: over.submitted ?? null,
         ranking: over.ranking ?? 560,
         followingCount: over.following ?? null,
         followerCount: over.follower ?? null,
         registerTime: over.registerTime ?? null,
         userRelationship: over.rel,
         reverseUserRelationship: over.rev,
+        elo: over.elo ?? null,
+        eloValue: over.elo ? over.elo.rating : null,
       },
     },
-  });
+    over.noPage
+      ? null
+      : {
+          data: {
+            prizes: over.prizes ?? [],
+            gu: over.gu ?? null,
+            elo: [],
+            user: {
+              uid: 697932,
+              passedProblemCount: over.passed ?? null,
+              submittedProblemCount: over.submitted ?? null,
+            },
+          },
+        },
+  );
 
 // ---- 题目卡 ----
 // ★ owner：难度用**题号的颜色**表达，不再单占一行文字。
@@ -184,4 +199,127 @@ test("长签名交给 CSS 截断，文本本身一个字不少", () => {
   const node = host.querySelector(".luogusp-hc-clamp");
   assert.ok(node, "长签名要挂上截断类");
   assert.equal(node.textContent, slogan, "不许在 JS 里截字符串");
+});
+
+// ---- 用户卡：原生骨架的复刻（owner 2026-08-14「复刻 + 扩展」）----
+// ★ 背景图抄自 UserFloatCard 组件原文：`user.background || <那张固定图>`。
+test("页头有背景图，用户没设就用洛谷自己的兜底图", () => {
+  const mine = mount(() =>
+    renderUserCard(userCard({ background: "https://cdn.luogu.com.cn/upload/image_hosting/x.png" }), {
+      origin: "",
+    }),
+  );
+  const head = mine.querySelector(".luogusp-hc-userhead");
+  assert.ok(head, "页头必须存在 —— owner 报的「缺背景」就是它");
+  assert.match(head.style.backgroundImage, /image_hosting\/x\.png/);
+  const bare = mount(() => renderUserCard(userCard({}), { origin: "" }));
+  assert.match(
+    bare.querySelector(".luogusp-hc-userhead").style.backgroundImage,
+    /DSCF0530-shrink\.jpg/,
+    "兜底图要和洛谷用的是同一张",
+  );
+  // 头像压在页头里（原生就是 user-header-top > img.avatar），不再是原来那种并排小图。
+  assert.ok(
+    bare.querySelector(".luogusp-hc-userhead .luogusp-hc-avatar"),
+    "头像必须在页头内，否则背景图会被它挤开",
+  );
+});
+
+// ★ owner：举报、屏蔽要**直接摆在按钮行右侧**，不折叠进「更多」。
+test("举报是链接、屏蔽是按钮，都摊在操作行里", () => {
+  const host = mount(() =>
+    renderUserCard(userCard({ rel: 0, rev: 0 }), {
+      origin: "https://www.luogu.com.cn",
+      onFollow: () => {},
+      onBlock: () => {},
+      viewerUid: 1,
+    }),
+  );
+  const actions = host.querySelector(".luogusp-hc-actions");
+  const labels = [...actions.children].map((n) => n.textContent).filter(Boolean);
+  assert.deepEqual(labels, ["关注", "私信", "举报", "屏蔽"]);
+  const report = [...actions.querySelectorAll("a")].find((a) => a.textContent === "举报");
+  // 原生就是一个到工单页的链接（路由 ticket.create → /ticket/new），不发任何请求。
+  assert.equal(
+    report.getAttribute("href"),
+    "https://www.luogu.com.cn/ticket/new?type=report.user&related=697932",
+  );
+  const chat = [...actions.querySelectorAll("a")].find((a) => a.textContent === "私信");
+  assert.equal(chat.getAttribute("href"), "https://www.luogu.com.cn/chat?uid=697932");
+});
+
+// ★ 原生的两条硬规则：看自己时整个操作区不画；正在关注的人不能拉黑。
+test("看自己不画操作区，关注中的人不给屏蔽按钮", () => {
+  const self = mount(() =>
+    renderUserCard(userCard({ rel: 0 }), {
+      origin: "",
+      onFollow: () => {},
+      onBlock: () => {},
+      viewerUid: 697932,
+    }),
+  );
+  assert.equal(self.querySelector(".luogusp-hc-actions"), null);
+
+  // 「我和我自己未关注」是句废话，关系那一行也不画。
+  assert.doesNotMatch(self.textContent, /关系/);
+
+  const following = mount(() =>
+    renderUserCard(userCard({ rel: 1 }), {
+      origin: "",
+      onFollow: () => {},
+      onBlock: () => {},
+      viewerUid: 1,
+    }),
+  );
+  const labels = [...following.querySelector(".luogusp-hc-actions").children]
+    .map((n) => n.textContent)
+    .filter(Boolean);
+  assert.equal(labels.includes("屏蔽"), false, "洛谷自己就拒绝拉黑正在关注的人");
+});
+
+// 已拉黑：关注按钮写「已拉黑」且禁用（原生就是这么画的）。
+test("已拉黑时关注按钮禁用并写「已拉黑」", () => {
+  const host = mount(() =>
+    renderUserCard(userCard({ rel: 2, rev: 0 }), {
+      origin: "",
+      onFollow: () => {},
+      onBlock: () => {},
+      viewerUid: 1,
+    }),
+  );
+  const follow = host.querySelector("button.luogusp-hc-btn");
+  assert.equal(follow.textContent, "已拉黑");
+  assert.equal(follow.disabled, true);
+  assert.match(host.textContent, /我已屏蔽/);
+  const labels = [...host.querySelector(".luogusp-hc-actions").children].map((n) => n.textContent);
+  assert.ok(labels.includes("取消屏蔽"));
+});
+
+// ★★ owner 2026-08-14：XCPC 类奖项的名字过长。根因是我上一轮把 `event` 也拼了上去 ——
+//    `contest` 本身已经是简称（"ICPC Regional" / "CCPC 分站赛"），洛谷个人页也只显示它。
+test("获奖只用简称，不拼那段又臭又长的 event", () => {
+  const host = mount(() =>
+    renderUserCard(
+      userCard({
+        prizes: [
+          {
+            prize: {
+              year: 2025,
+              contest: "ICPC Regional",
+              event: "被认为是第 50 届 ICPC 国际大学生程序设计竞赛亚洲区域赛上海站",
+              prize: "铜牌",
+            },
+          },
+          { prize: { year: 2024, contest: "NOIP", event: null, prize: "一等奖" } },
+          { prize: { year: 2023, contest: "CSP-S", event: null, prize: "一等奖" } },
+          { prize: { year: 2021, contest: "CSP-S", event: null, prize: "二等奖" } },
+        ],
+      }),
+      { origin: "" },
+    ),
+  );
+  const lines = [...host.querySelectorAll(".luogusp-hc-stack span")].map((n) => n.textContent);
+  // 最近 3 条，年份降序，一条都不带 event。
+  assert.deepEqual(lines, ["2025 ICPC Regional 铜牌", "2024 NOIP 一等奖", "2023 CSP-S 一等奖"]);
+  assert.doesNotMatch(host.textContent, /国际大学生程序设计竞赛/);
 });

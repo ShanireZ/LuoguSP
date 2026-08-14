@@ -187,6 +187,9 @@ export function renderProblemCard(card, options = {}) {
 // 关系文案。★ 两个方向各自可能是「未知」（响应里没这个字段），所以不能只判 following ——
 // 一边未知时只说得出确定的那一半，说满了就是伪造。两边都未知时调用方根本不画这一行。
 export function relationText(card) {
+  // 拉黑压过一切：既然已经拉黑，说「未关注」是废话。
+  if (card.relation === "blacklisted") return "我已屏蔽";
+  if (card.reverseRelation === "blacklisted") return "他屏蔽了我";
   const mine = card.relation === "following";
   const theirs = card.reverseRelation === "following";
   if (mine && theirs) return "互相关注";
@@ -197,26 +200,56 @@ export function relationText(card) {
   return card.relation === "unrelated" ? "我未关注" : "他未关注我";
 }
 
+// 洛谷原生页头背景图的兜底。★ 抄自 UserFloatCard 组件原文：
+// `user.background || "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg"`。
+const DEFAULT_HEADER_BACKGROUND =
+  "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg";
+
+// 原生统计块：一个标签一个数字，横着铺。原生四项是 关注 / 粉丝 / 排名 / 等级分，
+// 其中等级分**只在 eloValue 有值时才出现**（组件原文里就是 `...e.eloValue?[…]:[]`）。
+// ★ 「排名」按 owner 2026-08-14 上一轮的明确要求移除，其余照原生。
+const statTile = (name, value) => {
+  const tile = el("div", "luogusp-hc-stat");
+  tile.appendChild(el("span", "luogusp-hc-stat-k", name));
+  tile.appendChild(el("span", "luogusp-hc-stat-v", value));
+  return tile;
+};
+
+const linkButton = (text, href, extraClass) => {
+  const node = el("a", `luogusp-hc-btn is-ghost${extraClass ? " " + extraClass : ""}`, text);
+  node.href = href;
+  node.target = "_blank";
+  node.rel = "noopener noreferrer";
+  return node;
+};
+
 export function renderUserCard(card, options = {}) {
-  const { origin = "", onFollow, followBusy = false } = options;
+  const { origin = "", onFollow, onBlock, followBusy = false, viewerUid = null } = options;
   const box = document.createDocumentFragment();
 
-  const head = el("div", "luogusp-hc-head");
+  // ---- 原生卡的页头：背景图 + 压在上面的头像 ----
+  const header = el("div", "luogusp-hc-userhead");
+  header.style.backgroundImage = `url("${(card.background || DEFAULT_HEADER_BACKGROUND).replace(/"/g, "%22")}")`;
   if (card.avatar) {
     const avatar = el("img", "luogusp-hc-avatar");
     avatar.src = card.avatar;
     avatar.alt = "";
     avatar.loading = "lazy";
-    head.appendChild(avatar);
+    header.appendChild(avatar);
   }
-  const titles = el("div");
-  titles.style.minWidth = "0";
-  const title = el("p", "luogusp-hc-title", card.name);
-  // 原生用户名就是按等级色渲染的（实测 6 档配对）。
-  title.style.color = levelColor(card.color);
-  // ★ ✅ 与 🎈 现在是**真图标**：FA duotone 的两段 path 照抄自洛谷的 fontawsm 块，
-  //   分档与配色照抄自 OiLevel / XcpcLevel 组件（见 luogu-native.js 的注释）。
-  //   上一版渲染成 "CCF 7" / "XCPC 3" 这样的文字 —— owner 报的就是这条。
+  box.appendChild(header);
+
+  const body = el("div", "luogusp-hc-userbody");
+  const title = el("p", "luogusp-hc-title");
+  const nameLink = el("a", "luogusp-hc-name", card.name);
+  // 原生用户名就是按等级色渲染的，并且是加粗的（UserName 组件默认 noBold=false）。
+  nameLink.style.color = levelColor(card.color);
+  nameLink.href = `${origin}/user/${card.uid}`;
+  nameLink.target = "_blank";
+  nameLink.rel = "noopener noreferrer";
+  title.appendChild(nameLink);
+  // ★ ✅ 与 🎈 是真图标：两段 duotone path 抄自洛谷的 fontawsm 块，
+  //   分档与配色抄自 OiLevel / XcpcLevel 组件（见 luogu-native.js）。
   const badges = el("span", "luogusp-hc-badges");
   for (const badge of [ccfBadge(card.ccfLevel), xcpcBadge(card.xcpcLevel)])
     if (badge) badges.appendChild(badgeIcon(badge));
@@ -227,117 +260,133 @@ export function renderUserCard(card, options = {}) {
     badges.appendChild(badge);
   }
   if (badges.childNodes.length) title.appendChild(badges);
-  titles.appendChild(title);
-  // ★ owner：个人签名可能很长。截断交给 CSS（-webkit-line-clamp，最多两行后省略号），
-  //   不在这里截字符串 —— 按码位截会把 emoji / 组合字符劈成两半。
-  if (card.slogan)
-    titles.appendChild(
-      el("div", "luogusp-hc-sub luogusp-hc-muted luogusp-hc-clamp", card.slogan),
-    );
-  head.appendChild(titles);
-  box.appendChild(head);
+  body.appendChild(title);
 
-  // ★★ owner 2026-08-14 的两条口径，合成一条：改叫「通过 / 提交」（去掉「尝试」二字，
-  //    与题目卡同一个说法），并且**用户把做题情况设为隐藏时这两个字段就没有** ——
-  //    两个都缺就整行不画，只缺一个就把缺的那半写 `?`。
-  //    绝不能拿 0 顶替：`Number(null) === 0` 这个坑本项目已经咬过三次。
+  // slogan。原生在空的时候回落到「这个人很懒，什么也没有留下。」，我们照做。
+  // ★ 过长交给 CSS 截（-webkit-line-clamp 两行），不在 JS 里切字符串 —— 会劈开 emoji。
+  body.appendChild(
+    el(
+      "div",
+      "luogusp-hc-sub luogusp-hc-muted luogusp-hc-clamp",
+      card.slogan || "这个人很懒，什么也没有留下。",
+    ),
+  );
+
+  const stats = el("div", "luogusp-hc-stats");
+  if (card.followingCount !== null)
+    stats.appendChild(statTile("关注", fmtCount(card.followingCount)));
+  if (card.followerCount !== null)
+    stats.appendChild(statTile("粉丝", fmtCount(card.followerCount)));
+  // ★ 等级分：原生取 `user.eloValue`。注意「eloValue 恒为 null」那条旧结论
+  //   **只对 `/user/{uid}` 成立**；主接口 `/api/user/info/{uid}` 里是真值，原生卡读的就是它。
+  if (card.eloRating !== null)
+    stats.appendChild(statTile("等级分", String(card.eloRating)));
+  if (stats.childNodes.length) body.appendChild(stats);
+
+  // ---- 操作区。原生是「关注 / 私信 / 更多(拉黑·举报·管理用户)」，
+  //      owner 要求把举报与屏蔽**摊开放在按钮行右侧**，不折叠。 ----
+  // ★ 看自己时原生整个操作区都不画（组件里的 `x.value || M.value`），我们照做。
+  const isSelf = viewerUid !== null && viewerUid === card.uid;
+  if (!isSelf) {
+    const actions = el("div", "luogusp-hc-actions");
+    // 关注：拉黑状态下原生是禁用的（写着「已拉黑」），未知关系一律不给可点按钮。
+    if (typeof onFollow === "function" && card.relation !== "unknown") {
+      const blacklisted = card.relation === "blacklisted";
+      const following = card.relation === "following";
+      const follow = el(
+        "button",
+        `luogusp-hc-btn${following || blacklisted ? " is-off" : ""}`,
+        blacklisted
+          ? "已拉黑"
+          : following
+            ? card.reverseRelation === "following"
+              ? "互相关注"
+              : "已关注"
+            : "关注",
+      );
+      follow.type = "button";
+      if (followBusy || blacklisted) follow.disabled = true;
+      follow.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onFollow(card);
+      });
+      actions.appendChild(follow);
+    }
+    // 私信：原生就是一个到 /chat?uid= 的链接（路由名 chat.list）。
+    actions.appendChild(linkButton("私信", `${origin}/chat?uid=${card.uid}`));
+    actions.appendChild(el("span", "luogusp-hc-spacer"));
+    // 举报：原生也只是个链接，路由 ticket.create → /ticket/new。不发任何请求。
+    actions.appendChild(
+      linkButton(
+        "举报",
+        `${origin}/ticket/new?type=report.user&related=${card.uid}`,
+        "is-danger",
+      ),
+    );
+    // 屏蔽：原生要先弹确认，且**正在关注的人不能拉黑**（洛谷自己会拒）。
+    if (typeof onBlock === "function" && (card.relation === "unrelated" || card.relation === "blacklisted")) {
+      const block = el(
+        "button",
+        "luogusp-hc-btn is-ghost is-danger",
+        card.relation === "blacklisted" ? "取消屏蔽" : "屏蔽",
+      );
+      block.type = "button";
+      if (followBusy) block.disabled = true;
+      block.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onBlock(card);
+      });
+      actions.appendChild(block);
+    }
+    body.appendChild(actions);
+  }
+
+  // ---- 到这里为止是「复刻」，下面是我们的扩展 ----
+  const extras = el("div", "luogusp-hc-extra");
+  // ★★ 「通过 / 提交」只认 `/user/{uid}` 的口径（主接口同名字段含义不同，会大 8 倍）。
+  //    隐藏了做题情况的账号两个都拿不到（实测 397982），整行不画。
   if (card.passedCount !== null || card.submittedCount !== null)
-    box.appendChild(
+    extras.appendChild(
       row(
         "通过 / 提交",
         `${fmtCount(card.passedCount) || "?"} / ${fmtCount(card.submittedCount) || "?"}`,
       ),
     );
-  // ★ owner 要求移除「排名」一行（原生悬停卡里有，我们不重复）。
-  if (card.guRating !== null) box.appendChild(row("咕值", card.guRating));
-  // ★ Elo 取顶层 data.elo 的最新一场；user.elo 恒为 null。
-  if (card.eloRating !== null)
-    box.appendChild(
-      row(
-        "比赛 Elo",
-        card.eloTime
-          ? `${card.eloRating}（${fmtDate(card.eloTime)}）`
-          : String(card.eloRating),
-      ),
-    );
-  // 获奖。★ owner 问过两次「显示的是最后一条吗」——查清了：`data.prizes` 是
-  //   **按年份升序**的（实测 697932：2024 CSP-J 在前、2025 CSP-S 在后，洛谷个人页也是这个顺序），
-  //   而旧代码取 `prizes[0]`，等于**永远只显示最早那一条**，最近的奖反而看不到。
-  //   现在按年份**降序**把拿到的都摆出来（模型层已截到 4 条），每条一行。
+  if (card.guRating !== null) extras.appendChild(row("咕值", card.guRating));
+  // 获奖：最近 3 条，年份降序。★ 只取 `contest`（已经是简称），**不取 `event`** ——
+  // 那是「被认为是第 50 届 ICPC…上海站」这种全称，会把整行撑爆。
   if (card.prizes.length) {
     const entries = card.prizes
       .map((item) => item && item.prize)
       .filter(Boolean)
-      .map((prize) =>
-        [prize.year, prize.contest, prize.event, prize.prize]
-          .filter(Boolean)
-          .join(" "),
-      )
+      .map((prize) => [prize.year, prize.contest, prize.prize].filter(Boolean).join(" "))
       .filter((text) => text);
     if (entries.length) {
       const list = el("span", "luogusp-hc-stack");
       for (const text of entries) list.appendChild(el("span", null, text));
-      box.appendChild(row("获奖", list));
+      extras.appendChild(row("获奖", list));
     }
   }
-
-  const separator = el("div", "luogusp-hc-sep");
-  let separated = false;
-  const separate = () => {
-    if (separated) return;
-    separated = true;
-    box.appendChild(separator);
-  };
-  // ★ 关注/粉丝：两个都拿不到就不画这一行（隐藏了社交信息的账号就是这样）。
-  if (card.followingCount !== null || card.followerCount !== null) {
-    separate();
-    box.appendChild(
-      row(
-        "关注 / 粉丝",
-        `${card.followingCount === null ? "?" : card.followingCount} / ${card.followerCount === null ? "?" : card.followerCount}`,
-      ),
-    );
+  // ★★ 关系：两边都未知就不画 —— 匿名访客拿不到这两个字段，写「未关注」是伪造。
+  //    看自己时也不画：「我和我自己未关注」是句废话（原生连整个操作区都不画）。
+  if (!isSelf && (card.relation !== "unknown" || card.reverseRelation !== "unknown"))
+    extras.appendChild(row("关系", relationText(card)));
+  if (card.registerTime !== null)
+    extras.appendChild(row("注册于", fmtDate(card.registerTime) || "?"));
+  if (card.blogAddress) {
+    const blog = el("a", "luogusp-hc-link", "个人博客");
+    blog.href = card.blogAddress;
+    blog.target = "_blank";
+    blog.rel = "noopener noreferrer";
+    extras.appendChild(row("博客", blog));
   }
-  // ★★ 关系那一行以前**恒画**，两边都未知时写成「未关注」—— 那是在伪造未知：
-  //    匿名访客（以及看自己时）的响应里根本没有 userRelationship / reverseUserRelationship
-  //    （实测：匿名取 /user/697932，两个字段都不返回），却被断言成「没关注他」。
-  //    现在两边都未知就不画这一行。
-  if (card.relation !== "unknown" || card.reverseRelation !== "unknown") {
-    separate();
-    box.appendChild(row("关系", relationText(card)));
+  if (extras.childNodes.length) {
+    body.appendChild(el("div", "luogusp-hc-sep"));
+    body.appendChild(extras);
   }
-  if (card.registerTime !== null) {
-    separate();
-    box.appendChild(row("注册于", fmtDate(card.registerTime) || "?"));
-  }
-
-  const actions = el("div", "luogusp-hc-actions");
-  // 关系未知（0/1 之外，例如黑名单）就不给可点的按钮 —— 猜错方向会替用户做错事。
-  if (typeof onFollow === "function" && card.relation !== "unknown") {
-    const follow = el(
-      "button",
-      `luogusp-hc-btn${card.relation === "following" ? " is-off" : ""}`,
-      card.relation === "following"
-        ? card.reverseRelation === "following"
-          ? "互相关注"
-          : "已关注"
-        : "关注",
-    );
-    follow.type = "button";
-    if (followBusy) follow.disabled = true;
-    follow.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onFollow(card);
-    });
-    actions.appendChild(follow);
-  }
-  const home = el("a", "luogusp-hc-link", "个人主页");
-  home.href = `${origin}/user/${card.uid}`;
-  home.target = "_blank";
-  home.rel = "noopener noreferrer";
-  actions.appendChild(home);
-  box.appendChild(actions);
+  box.appendChild(body);
   return box;
 }
 
