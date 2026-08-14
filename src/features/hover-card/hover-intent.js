@@ -93,6 +93,18 @@ export function createHoverIntent(config) {
         closeNow();
       }, closeGraceMs);
     },
+    // 立即打开，不走 300ms 停留。★ 只给一种情况用：块是被用户这一次悬停**拉下来的**，
+    // 等它加载完，用户其实已经停了几百毫秒了 —— 再要求他重新停 300ms，
+    // 体感就是「第一次悬停不弹」（owner 报过两轮）。
+    open(target) {
+      if (target == null) return;
+      cancelOpen();
+      cancelClose();
+      if (current === target) return;
+      if (current !== null) closeNow();
+      current = target;
+      if (typeof onOpen === "function") onOpen(target);
+    },
     // 立即关闭（滚动、路由切换、Esc、功能被卸载）。
     dismiss: closeNow,
     getState: () =>

@@ -7,13 +7,21 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 // ★ 这里不做锚点解析（那是块里的事），只做一件最便宜的判断：指针下面有没有可能是
 //   题号或用户链接。判断错了顶多多拉一次块（一次，之后就常驻），判断漏了才是缺陷。
 //
-// ★★★ owner 2026-08-14 报「很多时候第一次悬停不弹卡」。根因就在这层：
-//    块是**被这一次 mouseover 拉下来的**，等它加载完挂上委托监听时，
-//    那个事件早就派发完了 —— 而用户如果停着不动，**再也不会有新的 mouseover**，
-//    于是第一次悬停必然落空，非得晃一下鼠标才出卡。
-//    修法=挂载成功后**照着指针当前位置补发一次 mouseover**。
-//    ★ 用 `elementFromPoint` 现取元素，而不是复用当初那个 target：块下载要几百毫秒，
-//      这中间指针很可能已经挪到别的锚点上了（那些 mouseover 同样没人接）。
+// ★★★ owner 报过两轮「第一次悬停不弹卡」。这一层有**两个**独立原因，都修了：
+//
+//  1. 块是**被这一次 mouseover 拉下来的**，等它加载完挂上委托监听时，那个事件早就
+//     派发完了；用户停着不动就再也没有新事件。→ 挂载时把**指针当时的坐标**交给块，
+//     由块自己解析并**立刻开卡**（`mount({ replayAt })`）。
+//     ★ 不再补发合成事件：跨 realm 造事件脆，而且合成事件还要再等 300ms 停留，
+//       体感仍然是「第一次悬停不弹」。
+//
+//  2. ★★★ **薄壳看不见的元素，块永远没机会加载。** 私信页的联系人行里，用户名是个
+//     **裸 span**（整行只有头像带 uid），压根不匹配候选选择器 —— 于是悬停名字毫无反应，
+//     非得先蹭一下头像把块拉下来，之后名字才开始工作。owner 报的就是这个。
+//     真机扫过 /chat · /record/list · /article · /discuss · /problem/list 五类页面，
+//     **只有 /chat 是裸 span**，其余的用户名都在 `a[href*="/user/"]` 里。
+//     但「按元素猜」这条路本身就会一直漏 —— 所以判据换成**按页面**：
+//     这一页只要有可预览的东西，指针一动就把块拉下来。
 
 // 候选锚点选择器按**当前开着的类别**拼：只开了题目卡就别为用户名去拉块。
 const PROBLEM_CANDIDATES = 'a[href*="/problem/"]';
@@ -111,31 +119,24 @@ export function createHoverCardFeatures(config) {
     return pending;
   };
 
-  // 指针当前位置上补发一次 mouseover，让刚挂上的委托监听接住它。
-  // ★ 事件对象必须用**文档自己那个 realm** 的构造器：块是经 blob 动态 import 在页面
-  //   realm 执行的，拿错 realm 的构造器造出来的事件派发不进去（仓库里已经因为
-  //   「搬进另一个 realm 等于换了一套宿主对象」栽过一次）。
-  const replayHover = (point) => {
-    const view = document.defaultView;
-    const Ctor = view && view.MouseEvent;
-    if (!point || typeof Ctor !== "function" || !document.elementFromPoint) return;
-    const node = document.elementFromPoint(point.x, point.y);
-    if (!node || typeof node.closest !== "function") return;
-    const selector = candidateSelector();
-    if (!selector) return;
-    if (!node.closest(selector) || node.closest(CHROME_SELECTOR)) return;
-    node.dispatchEvent(
-      new Ctor("mouseover", {
-        bubbles: true,
-        cancelable: true,
-        clientX: point.x,
-        clientY: point.y,
-      }),
-    );
-  };
-
   // 当前开着的类别。块通过 `isEnabled` 现问，所以在设置里改开关**立刻生效**，不必重挂。
   const active = new Set();
+  // 这一页上到底有没有可预览的东西（站点框架里的不算 —— 每页顶栏都有我自己的头像，
+  // 拿它当依据就等于「所有页面都加载」）。★ 只缓存**肯定**的结论：SPA 的内容是后到的，
+  // 一开始没有不代表以后没有；扫一次要遍历全页，所以没结论时按 500ms 限流。
+  let pageHasTargets = false;
+  let lastScanAt = 0;
+  const pageWorthLoading = (selector, now) => {
+    if (pageHasTargets) return true;
+    if (now - lastScanAt < 500) return false;
+    lastScanAt = now;
+    for (const node of document.querySelectorAll(selector))
+      if (!node.closest(CHROME_SELECTOR)) {
+        pageHasTargets = true;
+        return true;
+      }
+    return false;
+  };
   const candidateSelector = () =>
     [
       active.has("problem") ? PROBLEM_CANDIDATES : null,
@@ -161,21 +162,23 @@ export function createHoverCardFeatures(config) {
       if (!node || typeof node.closest !== "function") return;
       const selector = candidateSelector();
       if (!selector) return;
-      if (!node.closest(selector)) return;
-      if (node.closest(CHROME_SELECTOR)) return;
       if (typeof event.clientX === "number")
         point = { x: event.clientX, y: event.clientY };
+      // 指针**正压在**候选上 → 一定要拉；否则看这一页值不值得拉。
+      // ★ 后一条才是关键：它把「薄壳看不见某个元素」这一整类 bug 从根上去掉了 ——
+      //   块由**页面**决定加不加载，不再由「指针碰巧压在什么上」决定。
+      const onCandidate = !node.closest(CHROME_SELECTOR) && !!node.closest(selector);
+      if (!onCandidate && !pageWorthLoading(selector, Date.now())) return;
       ensureFeature().then((loaded) => {
         if (released || !loaded || innerDispose) return;
         try {
-          innerDispose = loaded.mount();
+          // 把指针坐标交给块：那一次悬停的事件它接不到，只能靠坐标自己补。
+          innerDispose = loaded.mount({ replayAt: point });
         } catch (error) {
           logError(error);
           return;
         }
-        // 正主接管了：拆掉探针，再把它错过的那一次悬停补上。
         detach();
-        replayHover(point);
       });
     }
     document.addEventListener("mouseover", probe, true);

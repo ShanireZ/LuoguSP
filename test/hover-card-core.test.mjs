@@ -131,6 +131,34 @@ test("从题号横穿隔壁题号移到卡片上，卡片不许被换掉", () =>
   assert.equal(clock.pending(), 0, "不能留下任何还会开卡的定时器");
 });
 
+// ★★ 块是被这一次悬停**拉下来的**，等它加载完用户其实已经停了几百毫秒；
+//    再要求他重新停 300ms，体感就是「第一次悬停不弹」（owner 报过两轮）。
+test("open 立刻打开，不走停留计时", () => {
+  const clock = manualClock();
+  const events = [];
+  const intent = createHoverIntent({
+    clock,
+    openDelayMs: 300,
+    onOpen: (t) => events.push(`open:${t}`),
+    onClose: (t) => events.push(`close:${t}`),
+  });
+  intent.open("problem:P1000");
+  assert.deepEqual(events, ["open:problem:P1000"], "一个 tick 都不许等");
+  assert.equal(intent.getState().open, true);
+  assert.equal(clock.pending(), 0, "不该留下待打开的定时器");
+  // 已经开着同一个目标就什么都不做，别重复请求。
+  intent.open("problem:P1000");
+  assert.deepEqual(events, ["open:problem:P1000"]);
+  // 换目标时仍然保证同时只有一张卡。
+  intent.open("user:1");
+  assert.deepEqual(events, ["open:problem:P1000", "close:problem:P1000", "open:user:1"]);
+  // 待打开的候选也要被掐掉 —— 否则它会在 300ms 后把刚开的卡换走。
+  intent.enter("problem:P2000");
+  intent.open("user:2");
+  clock.advance(2000);
+  assert.equal(intent.getState().target, "user:2");
+});
+
 test("切换目标时同时只有一张卡", () => {
   const clock = manualClock();
   const events = [];

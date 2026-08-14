@@ -46,7 +46,7 @@ export function createHoverCardFeature(config) {
     //   （题库的题号格靠那个 title 着色，我们碰不得）。见 anchors.js 的说明。
   });
 
-  const mount = () => {
+  const mount = (options = {}) => {
     if (!document.body) return () => {};
     if (!document.getElementById(STYLE_ID)) {
       const style = document.createElement("style");
@@ -246,6 +246,30 @@ export function createHoverCardFeature(config) {
     const onKey = (event) => {
       if (event.key === "Escape") intent.dismiss();
     };
+
+    // ★★ 块是被用户那一次悬停拉下来的，而那个事件早就派发完了 —— 委托监听接不到。
+    //    所以薄壳把「指针当时在哪」交过来，这里自己解析一次并**立刻打开**。
+    //    ★ 不用补发合成事件：跨 realm 造事件脆，而且合成事件仍要再等 300ms 停留，
+    //      体感还是「第一次悬停不弹」。
+    if (options.replayAt && document.elementFromPoint) {
+      const { x, y } = options.replayAt;
+      const node = document.elementFromPoint(x, y);
+      const primed =
+        node && typeof node.closest === "function"
+          ? resolveHoverTarget(
+              node,
+              identity,
+              readPageSubject(location.pathname),
+              location.pathname,
+            )
+          : null;
+      if (primed && isEnabled(primed.kind)) {
+        pointer = { x, y };
+        if (primed.kind === "problem") stripNativeTitle(primed.anchor);
+        targets.set(primed.key, primed);
+        intent.open(primed.key);
+      }
+    }
 
     document.addEventListener("mouseover", onOver, true);
     document.addEventListener("mouseout", onOut, true);
