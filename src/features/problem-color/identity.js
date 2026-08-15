@@ -1,3 +1,19 @@
+// ★★★ pid 的字符集判据，全仓**唯一**一份（hover 卡那边由 anchors.js 再导出）。
+//   放在这里而不是 anchors.js：本文件同时进启动包（problem-color）与 hover 卡按需块，
+//   而 anchors.js 只在后者里。`sources.js` 曾经自己写过一份漏掉下划线的，
+//   于是 `AT_abc397_a` 这类题在数据层被当成非法 pid 直接退出（owner 2026-08-14 第五轮）。
+//
+// ★★ 为什么它必须参与 `isProblemId`（2026-08-15 实测复现）：pid 的两个来源
+//   —— void 锚点的**可见文本**与 `?forum=` 的**取值** —— 都是页面内容，攻击者可控
+//   （讨论区是用户生成内容），而 pipeline.js 会把它原样拼进 `/problem/${pid}?_contentOnly=1`。
+//   旧判据只要求「含字母且含数字」，于是：
+//     `P1000#zzz`               → 井号截断，实际请求 `/problem/P1000`（连 query 都被吃掉），
+//                                 于是**把别的题的难度染到这个锚点上**；
+//     `a1/../../api/user/search` → 实际请求 `https://www.luogu.com.cn/api/user/search`，
+//                                 带着同源 Cookie 打到一个完全不相干的接口。
+//   两条都是真机可构造的，不是理论风险。字符集守卫把它们整类关死。
+export const PID_PATTERN = /^[A-Za-z0-9_]+$/;
+
 export function createProblemIdentityResolver(config) {
   const {
     getOrigin,
@@ -8,7 +24,7 @@ export function createProblemIdentityResolver(config) {
     throw new TypeError("Problem Identity requires an origin adapter");
 
   const isProblemId = (id) => {
-    if (typeof id !== "string" || !id) return false;
+    if (typeof id !== "string" || !id || !PID_PATTERN.test(id)) return false;
     if (id.startsWith("AT_")) return true;
     return /[a-zA-Z]/.test(id) && /[0-9]/.test(id);
   };

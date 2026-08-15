@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  IDE_BATCH_LABEL,
+  createBatchButtonHint,
+} from "../src/features/ide-batch/batch-hint.js";
+import {
   createIdeBatchRunner,
 } from "../src/features/ide-batch/runner.js";
 import {
@@ -272,4 +276,64 @@ test("逐行差异：只标出真正不同的行，长度不齐也算差异", as
   assert.equal(normalizeIdeOut("a\n\n\n"), "a");
   assert.equal(normalizeIdeOut(null), "");
   assert.equal(normalizeIdeOut(undefined), "");
+});
+
+// ★ 一次性提示的恢复目标必须是**固定文案**。旧写法拿当时的 `textContent` 当快照，
+//   1500ms 内的第二条提示会把第一条提示存成「原文案」，按钮从此再也变不回「一键测试」。
+//   「重新测试」按钮从不禁用（提示只禁用「一键测试」那一枚），连点两下就能复现。
+test("批测提示连发两条后仍然恢复成「一键测试」", () => {
+  const timers = new Map();
+  let nextId = 1;
+  const clock = {
+    setTimeout: (fn) => {
+      const id = nextId++;
+      timers.set(id, fn);
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  const button = { textContent: IDE_BATCH_LABEL, disabled: false };
+  const hint = createBatchButtonHint({ findButton: () => button, clock });
+
+  assert.equal(hint.show("本题无样例"), true);
+  assert.equal(button.textContent, "本题无样例");
+  assert.equal(button.disabled, true);
+  // 第一条还没到点，第二条就来了。
+  assert.equal(hint.show("页面已切换"), true);
+  assert.equal(button.textContent, "页面已切换");
+  // 只剩最后那一个定时器；先前那个必须已被取消，否则它到点会写回错的文案。
+  assert.equal(timers.size, 1);
+
+  for (const fire of [...timers.values()]) fire();
+  assert.equal(button.textContent, IDE_BATCH_LABEL);
+  assert.equal(button.disabled, false);
+  assert.equal(hint.isPending(), false);
+});
+
+test("批测提示到点时重新定位按钮，并尊重仍在运行的状态", () => {
+  const timers = [];
+  const clock = {
+    setTimeout: (fn) => {
+      timers.push(fn);
+      return timers.length;
+    },
+    clearTimeout: () => {},
+  };
+  // Vue 在提示期间把按钮重种了一枚 —— 恢复必须落在新节点上。
+  let button = { textContent: IDE_BATCH_LABEL, disabled: false };
+  const stale = button;
+  const hint = createBatchButtonHint({ findButton: () => button, clock });
+  hint.show("提交失败 HTTP 429", true);
+  button = { textContent: "一键测试", disabled: false };
+  timers.forEach((fire) => fire());
+
+  assert.equal(stale.textContent, "提交失败 HTTP 429");
+  assert.equal(button.textContent, IDE_BATCH_LABEL);
+  assert.equal(button.disabled, true, "批测仍在跑时不该把按钮放开");
+});
+
+test("批测提示找不到按钮时安然返回 false，不排定时器", () => {
+  const hint = createBatchButtonHint({ findButton: () => null });
+  assert.equal(hint.show("本题无样例"), false);
+  assert.equal(hint.isPending(), false);
 });

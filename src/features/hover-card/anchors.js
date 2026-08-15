@@ -9,7 +9,10 @@
 //    于是 `AT_abc397_a` / `CF_...` 这类题在数据层被当成非法 pid 直接退出，
 //    卡片只剩一句「拿不到这条数据」—— 而接口本身是好的（实测 200、11541 B）。
 //    owner 2026-08-14 第五轮报的就是它。同一个判据不许有第二份。
-export const PID_PATTERN = /^[A-Za-z0-9_]+$/;
+// ★ 定义已下沉到 `problem-color/identity.js`（那边同时进启动包与本块，而本文件只在本块里），
+//   这里只是**再导出**，好让既有引用方不必改路径 —— 判据仍然只有一份。
+import { PID_PATTERN } from "../problem-color/identity.js";
+export { PID_PATTERN };
 // 头像 URL 形如 https://cdn.luogu.com.cn/upload/usericon/1313427.png
 const AVATAR_UID = /\/upload\/usericon\/(\d+)\./;
 

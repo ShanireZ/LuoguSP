@@ -78,12 +78,18 @@ export function createProblemPipeline(config) {
       harvestedLists.add(batch.source);
     }
   };
+  // ★ pid 已经过 identity.js 的字符集守卫，编码后逐字节不变；这里编码是**第二道闸**：
+  //   pid 的来源里有页面可控文本，一个 `#` 就能把 query 连同后半段路径吃掉、
+  //   一个 `/` 就能把请求打到别的同源接口去（2026-08-15 实测复现，见 identity.js）。
+  //   判据坏掉时应当请求不到东西，而不是请求到别的东西。
+  const problemPath = (pid, query = "") =>
+    `/problem/${encodeURIComponent(pid)}${query}`;
   const fetchDifficulty = async (pid, signal) => {
     if (contentOnlySupport !== false) {
       let text;
       try {
         text = await difficultySource.text(
-          `/problem/${pid}?_contentOnly=1`,
+          problemPath(pid, "?_contentOnly=1"),
           { signal },
         );
       } catch (error) {
@@ -112,7 +118,7 @@ export function createProblemPipeline(config) {
     }
     if (signal.aborted) return null;
     try {
-      const html = await difficultySource.text(`/problem/${pid}`, { signal });
+      const html = await difficultySource.text(problemPath(pid), { signal });
       const match = html.match(DIFFICULTY_RE);
       return match ? Number(match[1]) : null;
     } catch (error) {
