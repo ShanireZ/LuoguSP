@@ -141,3 +141,56 @@ test("保存后的刷新提示是页内居中对话框，不是原生 confirm", 
   assert.match(style, /luogusp-panel\{position:absolute;top:50%;left:50%;transform:translate\(-50%,-50%\)/);
   assert.match(style, /luogusp-confirm/);
 });
+
+// ★★ 设置面板与保存后的「是否立即刷新」确认框**共用 `#luogusp-settings` 这个 id**
+//    （CSS 作用域全挂在它上面）。此前只有设置面板登记了关闭回调，确认框没有，
+//    于是路由切换时它会连同那个 document 级 keydown 监听（Enter = location.reload()）
+//    一起留在页面上；而它顶着的 id 又会把 openSettings 的防重入判据挡下 ——
+//    重挂之后齿轮点了没反应。2026-08-15 在 jsdom 里逐步复现过。
+test("路由切换时刷新确认框跟着收走，齿轮不会变成哑巴", () => {
+  const restore = installDom("lfe-body");
+  try {
+    let dispose = mountSettings();
+    const click = (node) =>
+      node.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const gear = () => document.querySelector(".luogusp-setting-entry");
+
+    click(gear());
+    assert.ok(document.querySelector(".luogusp-list"), "设置面板没打开");
+    click(document.querySelector('[data-act="save"]'));
+    assert.ok(document.querySelector(".luogusp-confirm"), "确认框没出现");
+
+    // page-lifecycle 在每次路由切换时都会 dispose 再 remount。
+    dispose();
+    assert.equal(
+      document.getElementById("luogusp-settings"),
+      null,
+      "确认框必须随功能一起收走",
+    );
+
+    dispose = mountSettings();
+    click(gear());
+    assert.ok(
+      document.querySelector(".luogusp-list"),
+      "重挂之后齿轮必须还能打开设置面板",
+    );
+    dispose();
+    assert.equal(document.getElementById("luogusp-settings"), null);
+  } finally {
+    restore();
+  }
+});
+
+// ★ 卸载只能是「收起」。替用户按下「立即刷新」是我们无权做的事，
+// 而 jsdom 的 location.reload 不可重定义，只能盯住登记进去的那个回调本身。
+test("卸载确认框走的是「不刷新」那一支", () => {
+  const source = readFileSync(
+    new URL("../src/features/settings/feature.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /const dismiss = \(\) => finish\(false\);\s+openOverlays\.add\(dismiss\);/,
+    "登记给卸载用的必须是 finish(false)",
+  );
+});
