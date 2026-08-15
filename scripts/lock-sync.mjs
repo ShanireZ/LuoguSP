@@ -99,3 +99,10 @@ function runNpm(args, { cwd }) {
 export async function inspectLockSync({ cwd, run = runNpm } = {}) {
   return classifyLockSync(await run(LOCK_SYNC_ARGS, { cwd }));
 }
+
+// 这道门跑的是 `npm ci`，所以它只有在本地与 CI 的 npm 同一个大版本时才是同构的
+// —— 否则「本地先红」的承诺就落空了。要求写在 package.json 的 `engines.npm`。
+export async function readNpmVersion({ cwd, run = runNpm } = {}) {
+  const { output } = await run(["--version"], { cwd });
+  return output;
+}

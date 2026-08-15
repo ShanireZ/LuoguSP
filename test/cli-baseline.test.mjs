@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertCliBaseline,
+  assertCliMajor,
   parseCliVersion,
   satisfiesMinimum,
 } from "../scripts/cdn/cli-baseline.mjs";
@@ -79,4 +80,42 @@ test("cdn.json 把 wrangler 基线声明成下限，而不是精确版本", () =
   assert.deepEqual(Object.keys(config.cli), ["wrangler"]);
   assert.deepEqual(Object.keys(config.cli.wrangler), ["minimum"]);
   assert.match(config.cli.wrangler.minimum, /^\d+\.\d+\.\d+$/);
+});
+
+// ★ npm 的要求是「与 CI 同一个大版本」，用 assertCliMajor 而不是下限。
+//   为什么不交给 npm 自己的 devEngines：`actions/setup-node` 装完 Node 会立刻
+//   在仓库目录调一次 npm（用镜像自带的版本），devEngines 会在「Set up Node」
+//   那一步就 EBADDEVENGINES，升级步骤根本轮不到跑 —— 2026-08-15 连挂两次实测。
+test("npm 大版本对不上必须拦下，并说清两边怎么改", () => {
+  assert.equal(
+    assertCliMajor({ name: "npm", output: "12.0.2", range: "^12" }),
+    "12.0.2",
+  );
+  assert.throws(
+    () => assertCliMajor({ name: "npm", output: "11.19.0", range: "^12" }),
+    (error) => {
+      assert.match(error.message, /11\.19\.0/);
+      assert.match(error.message, /\^12/);
+      assert.match(error.message, /pnpm add -g npm@12/);
+      assert.match(error.message, /ci\.yml/);
+      return true;
+    },
+  );
+  // 下限语义会把 11.19.0 判成「够老但可接受」，这里刻意不是那个语义。
+  assert.throws(
+    () => assertCliMajor({ name: "npm", output: "13.0.0", range: "^12" }),
+    /requires \^12/,
+  );
+  // 要求本身写错也要立刻炸，不许静默放行。
+  assert.throws(
+    () => assertCliMajor({ name: "npm", output: "12.0.2", range: ">=12" }),
+    /must be written as \^<major>/,
+  );
+});
+
+// 门必须真的挂在 --check 上。
+test("quality.mjs 的 --check 真的断言了 npm 大版本", () => {
+  const quality = fs.readFileSync(path.join(root, "scripts", "quality.mjs"), "utf8");
+  assert.match(quality, /assertCliMajor/);
+  assert.match(quality, /engines\?\.npm|engines\.npm/);
 });

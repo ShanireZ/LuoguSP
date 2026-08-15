@@ -34,6 +34,34 @@ export function satisfiesMinimum(actual, minimum) {
   return true;
 }
 
+// npm 的要求是「与 CI 同一个大版本」而不是下限，所以单独一条。
+// ★ 这条**不能**用 npm 自己的 `devEngines.packageManager` 来强制：
+//   `actions/setup-node` 装完 Node 后会立刻在仓库目录里调一次 npm，用的是镜像
+//   自带的那个版本，于是 devEngines 会在「Set up Node」这一步就 EBADDEVENGINES
+//   而整个 job 失败，我们升级 npm 的步骤根本轮不到跑（2026-08-15 实测两次）。
+//   放在质量门里断言则是在装配完成之后，没有这个自举冲突，而且照样是硬失败。
+//   `package.json` 的 `engines.npm` 只是声明（npm 自身仅给警告），这里让它生效。
+export function assertCliMajor({ name, output, range }) {
+  const wanted = /^\^(\d+)$/.exec(String(range || ""));
+  if (!wanted)
+    throw new Error(
+      `The ${name} requirement must be written as ^<major>, got: ${range}`,
+    );
+  const actual = parseCliVersion(output);
+  if (!actual)
+    throw new Error(
+      `Unable to read the ${name} version — got: ${String(output).trim().slice(0, 200)}`,
+    );
+  if (actual.split(".")[0] !== wanted[1])
+    throw new Error(
+      `${name} is ${actual}, but this repository requires ${range}. ` +
+        `CI installs it explicitly (see .github/workflows/ci.yml and .cnb.yml); ` +
+        `locally run \`pnpm add -g ${name}@${wanted[1]}\`. ` +
+        `Both sides must share a major so the lock-sync gate stays isomorphic.`,
+    );
+  return actual;
+}
+
 export function assertCliBaseline({ name, output, minimum }) {
   const actual = parseCliVersion(output);
   if (!actual)

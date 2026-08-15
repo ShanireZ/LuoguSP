@@ -4,12 +4,8 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.18.0",
-  "devEngines": {
-    "packageManager": {
-      "name": "npm",
-      "version": "^12",
-      "onFail": "error"
-    }
+  "engines": {
+    "npm": "^12"
   },
   "scripts": {
     "release": "node scripts/publish.mjs",
