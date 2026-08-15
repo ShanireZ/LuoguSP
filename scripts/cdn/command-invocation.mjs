@@ -1,27 +1,25 @@
-import path from "node:path";
-
-// pnpm 在 Windows 上会把 npx / npm 解析成 .cmd shim，spawnSync 不带 shell 时跑不起来
-//（Node 20 起更是直接拒绝不带 shell 地 spawn .cmd），
-// 所以直接用当前 node 去执行 npm 自带的 npx-cli.js / npm-cli.js。
-// ★ 路径拼接必须用调用方声明的 platform 的语义，而且要用纯词法的 join：
-//   用宿主平台的 resolve 会让结果依赖宿主平台和 process.cwd()，
-//   同一份代码就会在 Windows 通过、在 Linux CI 上失败（2026-08-12 实际发生过）。
-const WINDOWS_CLI_SHIMS = {
-  npx: "npx-cli.js",
-  npm: "npm-cli.js",
-};
-
-// 发布 CLI 按工作区约定**全局安装**（见根 AGENTS.md「全局发布 CLI」），从 PATH 解析。
-// 但 pnpm 全局装出来的只有 `wrangler.CMD` / `wrangler.ps1`，**没有 .exe**：
-// `spawnSync("wrangler", …, { shell: false })` 得到 ENOENT，直接指 `.CMD` 则
-// 被 Node 20+ 拒绝（EINVAL）。两条都实测过（2026-08-15）。
-// ★ 解法是 `cmd.exe /d /s /c wrangler <args>` 而**不是** `shell: true`：
+// Windows 上除 `node` 以外的命令行工具，一律通过 ComSpec 调用。
+//
+// 起因：这些工具在 PATH 上的入口是 `.CMD` / `.ps1` shim，**没有 `.exe`**。
+// `spawnSync("npm", …, { shell: false })` 得到 ENOENT，直接指 `.CMD` 则被
+// Node 20+ 拒绝（EINVAL）。两条都实测过（2026-08-15）。
+//
+// ★ 这里原先对 npm / npx 用的是另一套办法：拼出 `<node 所在目录>/node_modules/
+//   npm/bin/npm-cli.js` 再用当前 node 去跑。**那套办法在 2026-08-15 失效了** ——
+//   本机 Node 改由 pnpm 管理（`pnpm runtime set node -g`），而 pnpm 装的 Node
+//   运行时**不附带 npm**，`node.EXE` 旁边根本没有 `node_modules/`，算出来的是一个
+//   不存在的路径。npm 现在也是 pnpm 全局装的 shim，与 wrangler 同一形态。
+//   ComSpec 这条路对三种情况都成立（pnpm 全局 shim、官方安装包的 npm.cmd、
+//   以及任何 PATH 上的 .CMD），所以合并成一条规则，不再按工具分叉。
+//
+// ★ 解法是 `cmd.exe /d /s /c <cmd> <args>` 而**不是** `shell: true`：
 //   shell:true 虽然能跑，但要把 args 拼进命令行，既触发 DEP0190 弃用警告，
 //   也让带空格的路径变得不安全；走 ComSpec 则 args 仍是数组，由 Node 自己做
-//   Windows 参数转义，`shell: false` 保持不变。
+//   Windows 参数转义，调用方的 `shell: false` 保持不变。
 //   /d 跳过 AutoRun 注册表脚本，/s 规范引号处理，/c 执行完退出。
-const GLOBAL_PATH_CLIS = new Set(["wrangler", "edgeone"]);
-
+//
+// 非 Windows 平台上这些入口都是带 shebang 的可执行脚本，直接 spawn 即可 ——
+// CI 全在 Linux 上跑，那条路径必须保持零包装。
 export function commandInvocation(
   command,
   args,
@@ -32,25 +30,7 @@ export function commandInvocation(
   } = {},
 ) {
   if (command === "node") return [nodeExecutable, args];
-  if (GLOBAL_PATH_CLIS.has(command) && platform === "win32")
+  if (platform === "win32")
     return [comSpec, ["/d", "/s", "/c", command, ...args]];
-  const shim = WINDOWS_CLI_SHIMS[command];
-  if (shim && platform === "win32") {
-    const windows = path.win32;
-    return [
-      nodeExecutable,
-      [
-        windows.join(
-          windows.dirname(nodeExecutable),
-          "node_modules",
-          "npm",
-          "bin",
-          shim,
-        ),
-        ...args,
-      ],
-    ];
-  }
-  if (shim) return [command, args];
   return [command, args];
 }
