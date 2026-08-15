@@ -2,7 +2,7 @@ main:
   push:
     - name: LuoguSP CI
       docker:
-        image: node:24.18.1-bookworm
+        image: node:26.7.0-bookworm
       stages:
         - name: Install locked dependencies
           script: npm ci
@@ -12,7 +12,7 @@ main:
   pull_request:
     - name: LuoguSP CI
       docker:
-        image: node:24.18.1-bookworm
+        image: node:26.7.0-bookworm
       stages:
         - name: Install locked dependencies
           script: npm ci
