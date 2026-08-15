@@ -1,38 +1,38 @@
 {
-  "checkedAt": "2026-08-14T07:26:48.317Z",
+  "checkedAt": "2026-08-15T13:43:39.965Z",
   "status": "passed",
   "browser": "Playwright + 系统 chrome 151.0.7922.138",
   "generatedBy": "npm run qa:browser (scripts/qa/browser-qa.mjs)",
-  "sourceCommit": "82017b1ab0744bf9b1f7ceb9bd60f84fc59531b4",
+  "sourceCommit": "27bd024426508d62a97f078aacc612e0cd36c816",
   "worktreeIncluded": true,
-  "release": "2.14.1",
+  "release": "2.14.2",
   "requireUrls": [
-    "https://luogusp.round1.cc/releases/2.14.1/compat/early-gate.df3db0761fcb68c4.js#sha256=df3db0761fcb68c44498c96d7b0f983872bf89b39f8ded75811b76876b45cb25",
-    "https://luogusp.round1.cc/releases/2.14.1/compat/runtime.c278400c4645caee.js#sha256=c278400c4645caee5ae1d67d60321ec62135e3beecf2660f373d6ee77bff8116"
+    "https://luogusp.round1.cc/releases/2.14.2/compat/early-gate.224ee89f7d716736.js#sha256=224ee89f7d716736325b31d5970e14cee4707250d2383097456577ab97f81c1b",
+    "https://luogusp.round1.cc/releases/2.14.2/compat/runtime.577676e298d92fb7.js#sha256=577676e298d92fb7e5ae98bcc2e8b2e2615116d82ac0fd7cda4defd407d3d07a"
   ],
-  "artifactSha256": "105d21d1c85d8d30323e0b422735e8a8fefc82b8285b1c6143b0d5698a389bf4",
-  "behaviorSha256": "48020454d5ce92657f2ea71fd2565abea1f0587a6b6225face287ee3862dce9d",
+  "artifactSha256": "e8378ca3ccb2697345d79810a63fe9f89d1336c995099a65f4c66f53380e11fa",
+  "behaviorSha256": "299c9dbf5a7f849eaaa8decad9ac429a124fe62bce561a3e3f38f6a7350398e0",
   "behaviorSha256Note": "只把 @description 那一行抹成占位符，其余（含 @require/@match/@grant/@connect/@run-at/@sandbox 与脚本体）全部参与。",
   "startupMeasurements": [
     {
       "iteration": 1,
-      "ms": 1.199999999254942
+      "ms": 1.200000001117587
     },
     {
       "iteration": 2,
-      "ms": 1.3999999985098839
+      "ms": 1.300000000745058
     },
     {
       "iteration": 3,
-      "ms": 1.199999999254942
+      "ms": 1
     },
     {
       "iteration": 4,
-      "ms": 1.1000000014901161
+      "ms": 1.199999999254942
     },
     {
       "iteration": 5,
-      "ms": 0.8999999985098839
+      "ms": 1.099999999627471
     }
   ],
   "console": {

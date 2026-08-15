@@ -162,11 +162,14 @@ export function createSaverWorkflow(config, policy) {
   const requestRefresh = (type, id, options) => {
     if (!validateTarget(type, id)) return Promise.resolve(invalidTarget());
     return withTask(options && options.signal, (signal) =>
+      // ★ 只发 targetId。曾经给 article 额外发过强制更新标志，撤掉的原因有两条：
+      //   1. 上游维护者明确说没打算把这个权限交给公开不鉴权的入口（luogu-saver#85），
+      //      与其等他收口，不如我们先撤；
+      //   2. 我们要它的唯一理由是补真实发表时间，而 luogu-saver#84 之后保存站会在
+      //      「内容没变、整条跳过」那条路上自己回填，不再需要强制重写。
       postRaw(
         `/workflow/create/template/${type}-save-pipeline`,
-        type === "article"
-          ? { targetId: id, forceUpdate: true }
-          : { targetId: id },
+        { targetId: id },
         signal,
         "保存站拒绝更新请求",
       ),

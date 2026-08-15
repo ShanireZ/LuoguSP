@@ -343,14 +343,17 @@ test("Saver Workflow manual refresh locks only on business success", async () =>
   assert.deepEqual(await workflow.requestRefresh("article", "abc"), {
     kind: "accepted",
   });
+  // ★ 不发 forceUpdate。上游维护者明确表示没打算把这个权限交给公开不鉴权的入口
+  // （laikit-dev/luogu-saver#85），而我们要它的唯一理由——补真实发表时间——在
+  // 上游 #84 之后已由保存站在跳过路径上自己完成，不再需要强制重写。
   assert.deepEqual(requests, [
     {
       path: "/workflow/create/template/article-save-pipeline",
-      body: { targetId: "abc", forceUpdate: true },
+      body: { targetId: "abc" },
     },
     {
       path: "/workflow/create/template/article-save-pipeline",
-      body: { targetId: "abc", forceUpdate: true },
+      body: { targetId: "abc" },
     },
   ]);
 

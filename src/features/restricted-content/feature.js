@@ -23,6 +23,7 @@ import {
 } from "./presentation.js";
 import { createRestrictedPageDetector } from "./page-detector.js";
 import { parseRestrictedPasteScaffold } from "./paste-scaffold.js";
+import { pickPublishTime } from "./publish-time.js";
 import { createRestrictedReplyFetchInstaller } from "./reply-fetch-installer.js";
 import { resolveRestrictedTransportRealm } from "./transport-realm.js";
 import { createRestrictedUrlPolicy } from "./url-policy.js";
@@ -327,8 +328,11 @@ export function createRestrictedContentFeature({
           lid: data.id,
           title: data.title || "",
           category: data.category != null ? data.category : 1,
-          // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
-          time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
+          // 真实发表时间：保存站 publishTime → 作者专栏列表现扫 → 都没有才退回入档时间，
+          // 而那种情况下时间栏的文案会被改成「存档时间」（见 rstMountArticleButtons）。
+          time:
+            pickPublishTime(data, live) ??
+            (Math.floor(new Date(data.createdAt).getTime() / 1000) || 0),
           author: rstUserSummary(cnUser, data.author, data.authorId),
           upvote: Number(data.upvote) || 0,
           replyCount: comments.length,
@@ -408,8 +412,11 @@ export function createRestrictedContentFeature({
         paste: {
           id: data.id,
           user: rstUserSummary(cnUser, data.author, data.authorId),
-          // ★保存站只有入档时间（无原文发布时间接口），此处为已知近似
-          time: Math.floor(new Date(data.createdAt).getTime() / 1000) || 0,
+          // 剪贴板没有作者专栏列表那条路，真值只可能来自保存站的 publishTime；
+          // 没有就退回入档时间，并把文案改成「存档时间」（见 rstMountPasteButtons）。
+          time:
+            pickPublishTime(data, null) ??
+            (Math.floor(new Date(data.createdAt).getTime() / 1000) || 0),
           public: true,
           data: String(data.content || ""),
         },
@@ -538,7 +545,8 @@ export function createRestrictedContentFeature({
           else bar.append(sep, span);
         });
       // 取不到真实发表时间时，这一行其实是保存站入档时间，别标成「创建时间」。
-      if (!(live && live.time)) relabelArchiveTime(updateBars, "创建时间");
+      if (pickPublishTime(data, live) === null)
+        relabelArchiveTime(updateBars, "创建时间");
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
       if (actionBars.length && updateBars.length) rstHideLoader();
     };
@@ -597,8 +605,9 @@ export function createRestrictedContentFeature({
         row.appendChild(span);
         pubRow.after(row);
       }
-      // 剪贴板永远拿不到真实发表时间（.cn 无来源），这一行只能是存档时间。
-      if (pubRow) relabelArchiveTime([pubRow], "发表时间");
+      // 保存站给不出真实发表时间时（.cn 这边他人剪贴板无来源），这一行只能是存档时间。
+      if (pubRow && pickPublishTime(data, null) === null)
+        relabelArchiveTime([pubRow], "发表时间");
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
       if (author && pubRow) rstHideLoader();
     };
