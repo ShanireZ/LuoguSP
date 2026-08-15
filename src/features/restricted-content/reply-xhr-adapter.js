@@ -162,6 +162,14 @@ export function createRestrictedReplyXhrAdapter(config) {
       } catch (error) {
         /* 无法解析的请求按普通 XHR 透传 */
       }
+      // ★ XHR 实例是可以复用的（同一个对象再 open 一次）。不在这里复位，
+      //   上一次留下的 `completed` 会让 handleNative 对新请求的所有事件早退，
+      //   `fallback` 还会让 readyState 恒为 4、responseText 恒是上一次的回退体 ——
+      //   等于第二次请求彻底哑掉。官方前端走 axios、每次新建实例，所以踩不到；
+      //   但我们换掉的是**全局** XMLHttpRequest，页面上任何别的代码都可能复用。
+      this.completed = false;
+      this.fallback = null;
+      this.aborted = false;
       const verb = String(method).toUpperCase();
       this.targetUrl =
         verb === "GET" &&
@@ -272,14 +280,20 @@ export function createRestrictedReplyXhrAdapter(config) {
     }
   }
 
+  // ★ WebIDL 的接口常量挂在**构造器和原型两处**（`XMLHttpRequest.DONE` 与
+  //   `xhr.DONE` 都必须是 4）。只挂构造器时 `xhr.DONE` 是 undefined，任何写
+  //   `xhr.readyState === xhr.DONE` 的库都会永远判假 —— 而我们换掉的是全局对象，
+  //   页面上的第三方代码不归我们挑。两处都挂，代价三行。
   for (const [name, value] of Object.entries({
     UNSENT: 0,
     OPENED: 1,
     HEADERS_RECEIVED: 2,
     LOADING: 3,
     DONE: 4,
-  }))
+  })) {
     Object.defineProperty(RestrictedReplyXhr, name, { value });
+    Object.defineProperty(RestrictedReplyXhr.prototype, name, { value });
+  }
 
   return Object.freeze({ XMLHttpRequest: RestrictedReplyXhr });
 }

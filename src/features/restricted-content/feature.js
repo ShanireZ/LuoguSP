@@ -254,7 +254,20 @@ export function createRestrictedContentFeature({
       rstHarvest("columba", signal),
       rstCnUser(data.authorId, signal),
       saverWorkflow.loadComments(info.id, { signal }),
-      resolveLiveArticleCounts({ fetchPage: rstFetch, authorUid: data.authorId, lid: info.id, category: data.category, signal }),
+      resolveLiveArticleCounts({
+        fetchPage: rstFetch,
+        authorUid: data.authorId,
+        lid: info.id,
+        category: data.category,
+        signal,
+        // article-live-counts.js 写死了「截断必须报出来」，但此前这里根本没接线，
+        // 于是「扫不完所以没找到」和「洛谷确实没有这条数据」在日志里长得一模一样。
+        onTruncated: ({ totalPages, scannedPages, category }) =>
+          console.warn(
+            `[LuoguSP] 文章 ${info.id} 的实时计数只扫了作者专栏的 ${scannedPages}/${totalPages} 页` +
+              `${category === null ? "" : `（分类 ${category}）`}，未命中不代表洛谷没有这条数据。`,
+          ),
+      }),
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");

@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve as resolvePath } from "node:path";
 import {
   parseArticleListPayload,
   pickLiveCounts,
@@ -438,4 +441,24 @@ test("合并层把 solutionFor 与 status 覆盖到官方 article 上", () => {
   });
   assert.equal(fallback.article.status, 2);
   assert.equal(fallback.article.solutionFor, null);
+});
+
+// ★ 结构守卫：`article-live-counts.js` 写死了「截断必须报出来 —— 默默少扫几页会让
+//   『没找到』看起来像『洛谷没有这条数据』」，而这条回调的**唯一**生产调用点在
+//   restricted-content/feature.js。此前那里根本没传 onTruncated，截断被静默吞掉，
+//   正好是注释禁止的那种失效。行为本身在上面已经测过，这里只钉住「接线还在」。
+test("受限文章页把 onTruncated 接了线，截断不会被静默吞掉", () => {
+  const root = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
+  const source = readFileSync(
+    resolvePath(root, "src/features/restricted-content/feature.js"),
+    "utf8",
+  );
+  const start = source.indexOf("resolveLiveArticleCounts({");
+  assert.notEqual(start, -1, "找不到 resolveLiveArticleCounts 的调用");
+  const call = [source.slice(start, source.indexOf("}),", start))];
+  assert.match(
+    call[0],
+    /onTruncated:/,
+    "resolveLiveArticleCounts 必须接 onTruncated —— 否则截断会被静默吞掉",
+  );
 });

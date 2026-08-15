@@ -777,3 +777,101 @@ test("reply fetch installer replaces its own wrapper and restores safely", async
   const revived = await host.fetch("/article/abc/replies");
   assert.equal(await revived.text(), "fallback");
 });
+
+// ★ WebIDL 的接口常量挂在构造器**和**原型两处。只挂构造器时 `xhr.DONE` 是 undefined，
+//   任何写 `xhr.readyState === xhr.DONE` 的第三方代码都会永远判假 ——
+//   而我们换掉的是页面的全局 XMLHttpRequest，页面上跑什么不归我们挑。
+test("reply XHR adapter exposes the readyState constants on instances too", () => {
+  const { FakeXhr } = xhrHarness({ status: 200, responseText: "", response: "" });
+  const { XMLHttpRequest: AdaptedXhr } = createRestrictedReplyXhrAdapter({
+    XMLHttpRequest: FakeXhr,
+    URL,
+    origin: "https://www.luogu.com.cn",
+    lid: "abc",
+    replies: [],
+  });
+  const expected = {
+    UNSENT: 0,
+    OPENED: 1,
+    HEADERS_RECEIVED: 2,
+    LOADING: 3,
+    DONE: 4,
+  };
+  const instance = new AdaptedXhr();
+  for (const [name, value] of Object.entries(expected)) {
+    assert.equal(AdaptedXhr[name], value, `构造器上缺 ${name}`);
+    assert.equal(instance[name], value, `实例上缺 ${name}`);
+  }
+});
+
+// ★ XHR 实例可以复用（同一个对象再 open 一次）。不复位 completed/fallback 的话，
+//   第二次请求的所有事件都会被 handleNative 早退吞掉，readyState 恒为 4，
+//   responseText 恒是上一次的回退体 —— 第二次请求彻底哑掉。
+test("reply XHR adapter resets its fallback state when the instance is reused", async () => {
+  const live = JSON.stringify({ replySlice: [{ id: 91, content: "live" }] });
+  let next = { status: 0, statusText: "", responseText: "", response: "" };
+  const instances = [];
+  class ReusableXhr {
+    constructor() {
+      this.readyState = 0;
+      this.status = 0;
+      this.statusText = "";
+      this.responseText = "";
+      this.response = "";
+      this.responseType = "";
+      this.responseURL = "";
+      instances.push(this);
+    }
+    open() {
+      this.readyState = 1;
+    }
+    send() {
+      Object.assign(this, next, { readyState: 4 });
+      queueMicrotask(() => this.onloadend?.({ type: "loadend" }));
+    }
+    abort() {}
+    setRequestHeader() {}
+    getAllResponseHeaders() {
+      return "content-type: application/json\r\n";
+    }
+    getResponseHeader() {
+      return null;
+    }
+    addEventListener(type, listener) {
+      this[`on${type}`] = listener;
+    }
+    removeEventListener() {}
+  }
+  const { XMLHttpRequest: AdaptedXhr } = createRestrictedReplyXhrAdapter({
+    XMLHttpRequest: ReusableXhr,
+    URL,
+    origin: "https://www.luogu.com.cn",
+    lid: "abc",
+    replies: [{ id: 1, time: 1, content: "saved" }],
+  });
+
+  const xhr = new AdaptedXhr();
+  const once = () =>
+    new Promise((resolve) => {
+      xhr.onloadend = resolve;
+    });
+
+  // 第一趟：洛谷挂了 → 用保存站回退。
+  let done = once();
+  xhr.open("GET", "/article/abc/replies");
+  xhr.send();
+  await done;
+  assert.deepEqual(JSON.parse(xhr.responseText).replySlice.length, 1);
+  assert.equal(xhr.getResponseHeader("x-luogusp-source"), "saver");
+
+  // 第二趟复用同一个实例：洛谷这次好了，必须原样透传，不许还端着上一次的回退体。
+  next = { status: 200, statusText: "OK", responseText: live, response: live };
+  done = once();
+  xhr.open("GET", "/article/abc/replies?sort=time-d");
+  xhr.send();
+  await done;
+  assert.equal(xhr.status, 200);
+  assert.equal(xhr.responseText, live);
+  assert.equal(xhr.getResponseHeader("x-luogusp-source"), null);
+  assert.equal(instances.length, 1);
+});

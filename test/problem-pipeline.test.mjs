@@ -360,3 +360,44 @@ test("Problem Pipeline discards stale anchors, route generations and disposed wo
   await flushMicrotasks();
   assert.deepEqual(fx3.writes, []);
 });
+
+// ★ 第二道闸：identity.js 的字符集守卫坏掉时，请求路径也不许拼出别的接口。
+//   判据是「请求不到东西」，绝不是「请求到别的东西」（2026-08-15 实测复现，见 identity.js）。
+test("Problem Pipeline encodes the pid instead of letting it reshape the URL", async () => {
+  const paths = [];
+  const hostile = "a1/../../api/user/search";
+  const fx = fixture({
+    anchors: [{ pid: hostile, href: "/discuss/lists" }],
+    text: async (path) => {
+      paths.push(path);
+      return JSON.stringify({ currentData: { problem: { difficulty: 3 } } });
+    },
+  });
+
+  fx.pipeline.mount();
+  await flushMicrotasks();
+
+  assert.equal(paths.length, 1);
+  assert.equal(
+    new URL(paths[0], "https://www.luogu.com.cn").pathname,
+    `/problem/${encodeURIComponent(hostile)}`,
+  );
+  fx.pipeline.dispose();
+});
+
+test("Problem Pipeline leaves a legal pid byte-identical in the request path", async () => {
+  const paths = [];
+  const fx = fixture({
+    anchors: [{ pid: "AT_abc397_a", href: "/problem/AT_abc397_a" }],
+    text: async (path) => {
+      paths.push(path);
+      return JSON.stringify({ currentData: { problem: { difficulty: 4 } } });
+    },
+  });
+
+  fx.pipeline.mount();
+  await flushMicrotasks();
+
+  assert.deepEqual(paths, ["/problem/AT_abc397_a?_contentOnly=1"]);
+  fx.pipeline.dispose();
+});

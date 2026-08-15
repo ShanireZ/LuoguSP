@@ -1,4 +1,5 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
+import { IDE_BATCH_LABEL, createBatchButtonHint } from "./batch-hint.js";
 import {
   diffLineNumbers,
   idePane,
@@ -247,20 +248,11 @@ export function createIdeBatchFeature({
     };
   }
 
-  let ideHintTimer = null;
-  function ideBatchHint(msg, running = false) {
-    const btn = document.querySelector(".luogusp-ide-batch-btn");
-    if (!btn) return;
-    const old = btn.textContent;
-    btn.textContent = msg;
-    btn.disabled = true;
-    if (ideHintTimer !== null) clearTimeout(ideHintTimer);
-    ideHintTimer = setTimeout(() => {
-      ideHintTimer = null;
-      btn.textContent = old;
-      btn.disabled = running;
-    }, 1500);
-  }
+  // 提示状态机搬到了 batch-hint.js（那边记着它为什么必须恢复成固定文案）。
+  const ideHint = createBatchButtonHint({
+    findButton: () => document.querySelector(".luogusp-ide-batch-btn"),
+  });
+  const ideBatchHint = (msg, running = false) => ideHint.show(msg, running);
 
   // 判定口径同洛谷：CRLF 归一、去行尾空格、去末尾空行。仅用于 diff 渲染与交叉校验，
   // 最终判定以原生胶囊为准（AC/WA 由洛谷前端本地比较）。
@@ -398,7 +390,7 @@ export function createIdeBatchFeature({
     if (!selfTest) return;
     // 克隆原生「自测」按钮继承洛谷样式（含 data-v 作用域），只换文字
     const btn = selfTest.cloneNode(true);
-    btn.textContent = "一键测试";
+    btn.textContent = IDE_BATCH_LABEL;
     btn.classList.add("luogusp-ide-batch-btn");
     btn.disabled = false;
     btn.addEventListener("click", (e) => {
@@ -694,10 +686,7 @@ export function createIdeBatchFeature({
         observer.disconnect();
         unpatchSubmit();
         unhook();
-        if (ideHintTimer !== null) {
-          clearTimeout(ideHintTimer);
-          ideHintTimer = null;
-        }
+        ideHint.cancel();
         if (frame !== null) cancelAnimationFrame(frame);
         cancelIdeSubmitWaiter();
         unmountIdeBatchUI();
