@@ -24,7 +24,17 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     (document.head || document.documentElement).appendChild(style);
   }
 
-  let closeSettingsOverlay = null;
+  // ★★ 本功能会往 body 上放两种覆盖层：设置面板与保存后的「是否立即刷新」确认框，
+  //   两者**共用 `#luogusp-settings` 这个 id**（CSS 作用域全挂在它上面，见 style.js）。
+  //   此前只有设置面板登记了关闭回调，确认框没有，于是（2026-08-15 jsdom 复现）：
+  //   保存设置 → 确认框弹出 → 路由切换（page-lifecycle dispose 再 remount）
+  //   → 确认框连同它那个 document 级 keydown 监听一起留在页面上（Enter 直接
+  //   `location.reload()`），而且它顶着的 id 会把 `openSettings` 的防重入判据挡下 ——
+  //   齿轮从此点了没反应。所以登记表是**一份**，两种覆盖层都进。
+  const openOverlays = new Set();
+  const closeAllOverlays = () => {
+    for (const close of [...openOverlays]) close();
+  };
   function openSettings() {
     if (document.getElementById("luogusp-settings")) return; // 避免重复打开
     const overlay = document.createElement("div");
@@ -66,9 +76,9 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       closed = true;
       overlay.remove();
       document.removeEventListener("keydown", esc);
-      if (closeSettingsOverlay === close) closeSettingsOverlay = null;
+      openOverlays.delete(close);
     };
-    closeSettingsOverlay = close;
+    openOverlays.add(close);
 
     overlay.addEventListener("click", (e) => {
       const t = e.target;
@@ -110,8 +120,12 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       done = true;
       overlay.remove();
       document.removeEventListener("keydown", onKey);
+      openOverlays.delete(dismiss);
       if (reload) location.reload();
     };
+    // ★ 功能被卸载时只能是「收起」，绝不能替用户按下「立即刷新」。
+    const dismiss = () => finish(false);
+    openOverlays.add(dismiss);
     function onKey(event) {
       if (event.key === "Escape") finish(false);
       if (event.key === "Enter") finish(true);
@@ -242,7 +256,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       document
         .querySelectorAll(".luogusp-setting-entry")
         .forEach((entry) => (entry.closest("li") || entry).remove());
-      if (closeSettingsOverlay) closeSettingsOverlay();
+      closeAllOverlays();
     };
   }
 

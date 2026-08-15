@@ -45,3 +45,32 @@ test("CDN staging keeps only the current canary release", async () => {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });
+
+// ★★ 紧接着守卫的下一行就是 `rm(output, { recursive: true, force: true })`，
+//    而**源目录也叫 `cdn`**。显式 `--output` 此前唯一的判据是 `basename === "cdn"`，
+//    于是 `--output cdn` 会把 `cdn/releases` 整个删掉 —— 那正是这个脚本
+//    存在的全部理由（那批字节被用户已安装脚本的 `@require #sha256=` 钉死）。
+test("CDN staging refuses to overwrite the repository's own cdn/ source tree", async () => {
+  const before = await readdir(path.join(root, "cdn/releases"));
+  for (const target of ["cdn", path.join(root, "cdn"), "cdn/releases/../"]) {
+    const result = spawnSync(
+      process.execPath,
+      ["scripts/cdn/prepare.mjs", "--output", target],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.notEqual(
+      result.status,
+      0,
+      `--output ${target} 必须被挡下，否则会删掉不可变发布产物`,
+    );
+    assert.match(
+      `${result.stdout}${result.stderr}`,
+      /Refusing to replace an unexpected deployment directory/,
+    );
+  }
+  assert.deepEqual(
+    await readdir(path.join(root, "cdn/releases")),
+    before,
+    "cdn/releases 必须一个都没少",
+  );
+});
