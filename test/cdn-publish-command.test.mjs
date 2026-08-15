@@ -61,3 +61,41 @@ test("the Windows npx shim path depends only on its inputs", () => {
     ["install"],
   ]);
 });
+
+// lock 同步门（scripts/lock-sync.mjs）要 spawn `npm`，踩的是同一个坑，而且更硬：
+// Node 20 起不带 shell 直接拒绝 spawn `.cmd`，所以 npm 也必须走 npm-cli.js。
+test("the lock-sync gate reaches npm through the same Windows shim", () => {
+  const args = ["ci", "--dry-run"];
+
+  assert.deepEqual(
+    commandInvocation("npm", args, {
+      platform: "win32",
+      nodeExecutable: "C:\\node\\node.exe",
+    }),
+    [
+      "C:\\node\\node.exe",
+      ["C:\\node\\node_modules\\npm\\bin\\npm-cli.js", ...args],
+    ],
+  );
+
+  // 同样是纯词法拼接：结果只由入参决定，不掺宿主平台和 cwd。
+  assert.deepEqual(
+    commandInvocation("npm", args, {
+      platform: "win32",
+      nodeExecutable: "/usr/local/bin/node",
+    }),
+    [
+      "/usr/local/bin/node",
+      ["\\usr\\local\\bin\\node_modules\\npm\\bin\\npm-cli.js", ...args],
+    ],
+  );
+
+  // 非 Windows 平台直接用 PATH 里的 npm。
+  assert.deepEqual(
+    commandInvocation("npm", args, {
+      platform: "linux",
+      nodeExecutable: "/usr/local/bin/node",
+    }),
+    ["npm", args],
+  );
+});

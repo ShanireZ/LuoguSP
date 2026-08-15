@@ -7,6 +7,7 @@ import {
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { behaviourHashOf } from "./artifact-behaviour-hash.mjs";
+import { inspectLockSync } from "./lock-sync.mjs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
@@ -434,6 +435,10 @@ if (writeReport) {
 
 if (check) {
   const failures = [];
+  // 两边 CI 装依赖都跑 `npm ci`，它对不上 lock 就直接挂，一条 check 都跑不到。
+  // 把那次失败搬到这里，理由与「别加 --offline」的实测见 scripts/lock-sync.mjs。
+  const lockSync = await inspectLockSync({ cwd: root });
+  if (lockSync) failures.push(lockSync.summary);
   if (report.artifact.bytes > budget.artifact.maxBytes)
     failures.push(
       `artifact bytes ${report.artifact.bytes} > ${budget.artifact.maxBytes}`,
