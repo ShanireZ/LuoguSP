@@ -11,6 +11,8 @@
     ]
   },
   "cli": {
-    "wrangler": "4.107.0"
+    "wrangler": {
+      "minimum": "4.107.0"
+    }
   }
 }

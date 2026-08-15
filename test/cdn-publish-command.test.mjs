@@ -2,8 +2,44 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { commandInvocation } from "../scripts/cdn/command-invocation.mjs";
 
+// 发布 CLI 已改为全局安装、从 PATH 解析（工作区约定）。pnpm 全局装出来的
+// 只有 `.CMD` / `.ps1`，没有 `.exe`：裸 spawn 得 ENOENT，直接指 `.CMD` 被
+// Node 20+ 拒绝（EINVAL），两条都实测过。所以 Windows 上必须过 ComSpec。
+// ★ 这里刻意**不用** `shell: true`：那样要把 args 拼成命令行，既触发 DEP0190，
+//   也让带空格的路径不安全；走 `cmd /d /s /c` 则 args 仍是数组。
+test("the global deploy CLIs go through ComSpec on Windows", () => {
+  const args = ["deploy", "--config", "deploy/cloudflare/wrangler.jsonc"];
+
+  assert.deepEqual(
+    commandInvocation("wrangler", args, {
+      platform: "win32",
+      comSpec: "C:\\Windows\\system32\\cmd.exe",
+    }),
+    [
+      "C:\\Windows\\system32\\cmd.exe",
+      ["/d", "/s", "/c", "wrangler", ...args],
+    ],
+  );
+  assert.deepEqual(
+    commandInvocation("edgeone", ["makers", "deploy"], {
+      platform: "win32",
+      comSpec: "C:\\Windows\\system32\\cmd.exe",
+    }),
+    [
+      "C:\\Windows\\system32\\cmd.exe",
+      ["/d", "/s", "/c", "edgeone", "makers", "deploy"],
+    ],
+  );
+
+  // 非 Windows 平台的全局 shim 带 shebang，直接 spawn 即可，不该套 ComSpec。
+  assert.deepEqual(
+    commandInvocation("wrangler", args, { platform: "linux" }),
+    ["wrangler", args],
+  );
+});
+
 test("CDN publishing uses the PATH npx shim under pnpm on Windows", () => {
-  const args = ["-y", "wrangler@4.107.0", "deploy"];
+  const args = ["-y", "some-package@1.2.3", "run"];
   const nodeExecutable = "C:\\node\\node.exe";
 
   assert.deepEqual(
@@ -24,7 +60,7 @@ test("CDN publishing uses the PATH npx shim under pnpm on Windows", () => {
 // 于是同一份代码在 Windows 通过、在 CI 失败（2026-08-12 实际发生过）。
 // 用纯词法的 win32 join 后，输出只由入参决定，与宿主平台和 cwd 都无关。
 test("the Windows npx shim path depends only on its inputs", () => {
-  const args = ["-y", "wrangler@4.107.0", "deploy"];
+  const args = ["-y", "some-package@1.2.3", "run"];
 
   // POSIX 形态的 node 路径配 win32 平台：宿主是 Windows 时 resolve 会补上盘符，
   // 宿主是 Linux 时又会补上 cwd —— 纯词法拼接则两处都得到同一个结果。
