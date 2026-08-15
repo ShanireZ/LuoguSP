@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.18.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "^12",
+      "onFail": "error"
+    }
+  },
   "scripts": {
     "release": "node scripts/publish.mjs",
     "publish": "node scripts/publish.mjs",
