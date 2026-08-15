@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { commandInvocation } from "./command-invocation.mjs";
+import { assertCliBaseline } from "./cli-baseline.mjs";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -28,7 +29,7 @@ const environment = {
   npm_config_cache: npmCache,
   WRANGLER_LOG_PATH: resolve(npmCache, "wrangler.log"),
 };
-const run = (command, args) => {
+const invoke = (command, args) => {
   const [executable, invocationArgs] = commandInvocation(command, args);
   const result = spawnSync(executable, invocationArgs, {
     cwd: root,
@@ -37,7 +38,10 @@ const run = (command, args) => {
     shell: false,
     maxBuffer: 10 * 1024 * 1024,
   });
-  const output = `${result.stdout || ""}${result.stderr || ""}`;
+  return { result, output: `${result.stdout || ""}${result.stderr || ""}` };
+};
+const run = (command, args) => {
+  const { result, output } = invoke(command, args);
   process.stdout.write(output);
   if (result.error || result.status !== 0)
     throw new Error(
@@ -45,6 +49,16 @@ const run = (command, args) => {
         result.error?.message || `exit ${result.status}`
       }`,
     );
+};
+const capture = (command, args) => {
+  const { result, output } = invoke(command, args);
+  if (result.error || result.status !== 0)
+    throw new Error(
+      `${command} ${args.join(" ")} failed: ${
+        result.error?.message || `exit ${result.status}`
+      }`,
+    );
+  return output;
 };
 
 if (!skipBuild)
@@ -54,9 +68,17 @@ if (!skipBuild)
     version,
   ]);
 run("node", ["scripts/cdn/prepare.mjs"]);
-run("npx", [
-  "-y",
-  `wrangler@${config.cli.wrangler}`,
+// 全局 wrangler（工作区约定），发布前先把它的版本量一次并对下限断言 ——
+// 理由见 scripts/cdn/cli-baseline.mjs：产物不可变，不能用行为未知的 CLI 去传。
+const wranglerVersion = assertCliBaseline({
+  name: "wrangler",
+  output: capture("wrangler", ["--version"]),
+  minimum: config.cli.wrangler.minimum,
+});
+process.stdout.write(
+  `wrangler ${wranglerVersion} (global, baseline ${config.cli.wrangler.minimum})\n`,
+);
+run("wrangler", [
   "deploy",
   "--config",
   "deploy/cloudflare/wrangler.jsonc",
