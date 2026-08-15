@@ -4,6 +4,12 @@ main:
       docker:
         image: node:26.7.0-bookworm
       stages:
+        # 镜像自带 npm 11.19.0，开发机是 pnpm 全局装的 12.x（pnpm 11 起装 Node
+        # 不解包自带 npm，两者解耦）。lock 同步门跑的就是 `npm ci`，两边 npm 大版本
+        # 不同这道门就不同构，所以先对齐。要求声明在 package.json 的
+        # devEngines.packageManager，npm 会在 ci 之前自行强制校验。
+        - name: Match the local npm major
+          script: npm i -g npm@12
         - name: Install locked dependencies
           script: npm ci
         - name: Verify reproducible build, quality budgets, and tests
@@ -14,6 +20,8 @@ main:
       docker:
         image: node:26.7.0-bookworm
       stages:
+        - name: Match the local npm major
+          script: npm i -g npm@12
         - name: Install locked dependencies
           script: npm ci
         - name: Verify reproducible build, quality budgets, and tests

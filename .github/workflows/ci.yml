@@ -25,6 +25,16 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
+      # 开发机的 npm 由 pnpm 全局装（`pnpm add -g npm`）而非跟随 Node —— pnpm 11 起
+      # 安装 Node 运行时**不解包自带的 npm**，两者是解耦的。Node 26.7.0 自带的是
+      # npm 11.19.0，本地是 12.x，而 lock 同步门（scripts/lock-sync.mjs）跑的正是
+      # `npm ci`，它存在的意义就是「本地先红、别让 CI 红」—— 两边 npm 大版本不同，
+      # 这道门就不是同构的。所以这里把 CI 的 npm 抬到同一个大版本。
+      # 版本要求声明在 package.json 的 devEngines.packageManager（npm 在 install/ci/run
+      # 之前强制校验，不满足直接 EBADDEVENGINES），这里只负责装到位。
+      - name: Match the local npm major
+        run: npm i -g npm@12
+
       - name: Install locked dependencies
         run: npm ci
 
