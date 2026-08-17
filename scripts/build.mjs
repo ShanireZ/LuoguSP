@@ -72,7 +72,7 @@ if (checkOnly) {
   const committed = await readFile(outputPath);
   if (!committed.equals(generated)) {
     console.error(
-      "LuoguSP.user.js is stale. Run `npm run build` and commit the result.",
+      "LuoguSP.user.js is stale. Run `pnpm build` and commit the result.",
     );
     process.exitCode = 1;
   } else {

@@ -3,9 +3,10 @@
   "version": "2.14.2",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.18.0",
+  "packageManager": "pnpm@12.0.0-rc.6",
   "engines": {
-    "npm": "^12"
+    "node": ">=26.7.0",
+    "pnpm": ">=12.0.0-rc.6"
   },
   "scripts": {
     "release": "node scripts/publish.mjs",
@@ -32,7 +33,7 @@
     "renderer:build": "node scripts/renderer/build.mjs",
     "renderer:test": "node --test test/markdown-lite-baseline.test.mjs test/markdown-full.test.mjs test/markdown-renderer-api.test.mjs test/renderer-build.test.mjs",
     "renderer:check": "node scripts/renderer/check.mjs",
-    "check": "npm run build:check && npm run quality:check && npm test"
+    "check": "pnpm run build:check && pnpm run quality:check && pnpm test"
   },
   "devDependencies": {
     "esbuild": "0.27.2",
