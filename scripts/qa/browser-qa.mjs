@@ -10,7 +10,7 @@ import { FIXTURE_HTML } from "./fixture.mjs";
 
 // 真机 QA。★★★ 这个脚本存在的理由：`reports/browser-qa.json` 一直是**手写**的 ——
 // 仓库里没有任何东西能生成它，于是「改了产物就得重跑 QA」在实际操作上等于「补不回来」，
-// 一改文案就把一份如假包换的 QA 弄作废。现在它可复现了：`npm run qa:browser`。
+// 一改文案就把一份如假包换的 QA 弄作废。现在它可复现了：`pnpm qa:browser`。
 //
 // 覆盖范围**故意画得很清楚**，写进报告的 limitations，不假装验过：
 //   验：两个 `@require` 的真实字节能不能在浏览器里跑起来、启动耗时、控制台有没有报错、
@@ -133,7 +133,7 @@ const report = {
   checkedAt: new Date().toISOString(),
   status: failures.length ? "failed" : "passed",
   browser: label,
-  generatedBy: "npm run qa:browser (scripts/qa/browser-qa.mjs)",
+  generatedBy: "pnpm qa:browser (scripts/qa/browser-qa.mjs)",
   sourceCommit: gitOutput(["rev-parse", "HEAD"]),
   worktreeIncluded: gitOutput(["status", "--porcelain"]) !== "",
   release: (artifact.match(/^\/\/ @version\s+(\S+)/m) || [])[1] || null,

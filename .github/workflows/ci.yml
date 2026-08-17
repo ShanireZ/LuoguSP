@@ -19,41 +19,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # ★ 这里**不能用 setup-node 的 `cache: npm`**。那个开关会在装完 Node 后立刻
-      #   调一次 npm 去定位缓存目录，而那次调用用的是镜像自带的 npm 11.19.0，
-      #   会当场撞上 package.json 里 `devEngines.packageManager: ^12` 而 EBADDEVENGINES
-      #   ——「Set up Node」这一步直接失败，后面全被跳过（2026-08-15 实际发生过）。
-      #   缓存改为下面显式声明，键仍绑 package-lock.json。
+      # ★ 必须排在 setup-node 之前：下面那步的 `cache: pnpm` 会去调 pnpm 定位 store，
+      #   找不到可执行文件就在「Set up Node」当场失败，后面全被跳过。
+      #   版本不写在这里 —— action 读 package.json 的 packageManager 字段，
+      #   与本地、与 pnpm 自身的版本校验共用同一个来源。
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
+          cache: pnpm
 
-      # 开发机的 npm 由 pnpm 全局装（`pnpm add -g npm`）而非跟随 Node —— pnpm 11 起
-      # 安装 Node 运行时**不解包自带的 npm**，两者是解耦的。Node 26.7.0 自带 11.19.0，
-      # 本地是 12.x，而 lock 同步门（scripts/lock-sync.mjs）跑的正是 `npm ci`，
-      # 它存在的意义就是「本地先红、别让 CI 红」—— 两边 npm 大版本不同这道门就不同构。
-      # 版本要求声明在 package.json 的 devEngines.packageManager，npm 自己在
-      # install/ci/run 前强制校验；这一步只负责把它装到位。
-      # ★ 在 `runner.temp` 里跑：那儿没有 package.json，所以这条命令本身不会去读
-      #   仓库的 devEngines（自举时用的还是旧 npm）。
-      - name: Match the local npm major
-        working-directory: ${{ runner.temp }}
-        run: npm i -g npm@12
-
-      - name: Locate the npm cache
-        id: npm-cache
-        run: echo "dir=$(npm config get cache)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache npm downloads
-        uses: actions/cache@v6
-        with:
-          path: ${{ steps.npm-cache.outputs.dir }}
-          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-npm-
-
+      # `--frozen-lockfile` 是这里唯一的 lock 一致性判据：pnpm-lock.yaml 与
+      # package.json 对不上就直接拒装。本仓曾经维护两份 lockfile 并靠
+      # scripts/lock-sync.mjs 把「只刷新了 pnpm 那份」搬到本地报错，
+      # 2026-08-17 全量切 pnpm 后单一 lockfile，那道门连同 npm 轨一并撤除。
       - name: Install locked dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Verify reproducible build, quality budgets, and tests
-        run: npm run check
+        run: pnpm check
