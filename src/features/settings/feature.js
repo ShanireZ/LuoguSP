@@ -155,6 +155,16 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     return gearInto(svg);
   }
 
+  // 会被浏览器当浮泡、或被读屏当元素名字的属性（data-v-* 是作用域 CSS，绝不能碰）。
+  const TOOLTIP_ATTRS = [
+    "title",
+    "aria-label",
+    "aria-labelledby",
+    "data-title",
+    "data-tooltip",
+    "data-original-title",
+  ];
+
   const navTextSpan = (a) => a.querySelector(SELECTORS.navText);
 
   function addSettingButton() {
@@ -184,6 +194,12 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     const clone = unit.cloneNode(true);
     const link = clone.matches("a") ? clone : clone.querySelector("a");
     if (!link) return;
+    // ★ 浮泡文字不在 <a> 上，在外面那层 <li title="文章广场"> 上（2026-08-20 在真站上量过：
+    //   新侧栏每条都是 `<li title="…"><a>…</a></li>`，而模板恰好取到 /article 那条 ——
+    //   它是最后一个「既有图标又有文字」的条目）。只改 <a> 里的文字，鼠标一悬停仍报模板的名字。
+    //   所以凡是能产生浮泡或读屏名字的属性，连 clone 根带整棵子树一起剥净，再按自己的名字重设。
+    for (const el of [clone, ...clone.querySelectorAll("*")])
+      for (const name of TOOLTIP_ATTRS) el.removeAttribute(name);
     link.removeAttribute("href");
     link.removeAttribute("id");
     link.classList.remove(
@@ -209,6 +225,9 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       const other = link.querySelector("img, i");
       if (other) other.replaceWith(newGear(other));
     }
+    // 名字按洛谷的位置放：新侧栏的浮泡挂在 <li> 上，所以挂 clone 根（无 li 时 clone 就是 <a>）。
+    clone.setAttribute("title", "插件设置");
+    link.setAttribute("aria-label", "插件设置");
     link.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
