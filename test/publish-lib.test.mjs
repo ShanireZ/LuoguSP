@@ -181,14 +181,17 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
 // 发布脚本的顶层，全绿到底。整个仓库没有任何一道门跑过它，所以两天没人知道。
 // 这道门就是那道门：`--plan` 会走完全部 preflight（版本一致性、目标版本必须更新、
 // 不覆盖既有不可变发布）再打印计划退出，一个字节都不写、一个请求都不发。
-test("发布脚本的 preflight 在 --plan 下跑得通，并认出下一个补丁版本", () => {
+test("发布脚本的 preflight 在 --plan 下跑得通，并认出当前生产版本", () => {
   const artifact = readFileSync(
     new URL("../LuoguSP.user.js", import.meta.url),
     "utf8",
   );
   const current = userscriptVersion(artifact);
-  const [major, minor, patch] = current.split(".").map(Number);
-  const next = `${major}.${minor}.${patch + 1}`;
+  // ★ 用一个永远不会有发布目录的版本号，而不是「当前版本 + 1」。这道门本身也在
+  //   `pnpm release` 的 pre-deployment 测试集里跑，而那时候「下一个补丁版本」的
+  //   `cdn/releases/` 目录**刚刚被第 1 步建出来**，`wouldPublish` 就变成了 false ——
+  //   第一次发 2.14.3 时它就是这么把发布拦下来的。判据不能依赖发布中途的状态。
+  const next = "999.0.0";
   const result = spawnSync(
     process.execPath,
     ["scripts/publish.mjs", "--plan", "--version", next],
