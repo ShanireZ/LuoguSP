@@ -39,8 +39,9 @@ export function userscriptMetadata(artifact) {
 export function packageTextWithVersion(text, version) {
   const document = JSON.parse(text);
   document.version = version;
-  if (document.packages?.[""])
-    document.packages[""].version = version;
+  // 这里以前还要顺手改 package-lock.json 的 packages[""].version。仓库 2026-08-17
+  // 全面转 pnpm，那个文件没了，pnpm-lock.yaml 压根不记根包版本 —— 这条腿一并删掉，
+  // 留着只会让人以为还有第二个地方要同步。
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 

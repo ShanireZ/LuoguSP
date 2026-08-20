@@ -76,8 +76,6 @@ const compareVersions = (left, right) => {
   return 0;
 };
 const initialPackageVersion = JSON.parse(initialPackage).version;
-const initialPackageLockVersion =
-  JSON.parse(initialPackageLock).version;
 const initialReadmeVersion =
   initialReadme.match(
     /\[!\[Version: (\d+\.\d+\.\d+)\]\(/,
@@ -86,12 +84,11 @@ if (
   ![
     sourceMetadataVersion,
     initialPackageVersion,
-    initialPackageLockVersion,
     initialReadmeVersion,
   ].every((value) => value === currentVersion)
 )
   throw new Error(
-    "Preflight version drift: userscript, source metadata, package, lockfile, and README must agree",
+    "Preflight version drift: userscript, source metadata, package, and README must agree",
   );
 if (compareVersions(version, currentVersion) <= 0)
   throw new Error(
