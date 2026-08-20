@@ -1,5 +1,9 @@
 <!-- source: BetaPass\std\candidates\luogusp\notes-logo.md -->
 
+> 归档说明（2026-08-20）：以下路径是生成当时的历史记录；当前采用源统一为本目录下
+> `luogusp-logo-source.png`、`luogusp-badge-bg-source.png`、`luogusp-stage-bg-source.png`。八色 v1
+> 竖版已按废稿清理，不再保留文件。
+
 # LuoguSP Logo 原生候选生成记录
 
 - 日期：2026-08-20（Asia/Shanghai）
@@ -102,9 +106,9 @@ Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear
 - 工具：Codex 内置 `image_gen`
 - 最终采用：第 2 次（总尝试 2/2，已停止）
 - v1 原始路径：`C:\Users\SkySa\.codex\generated_images\01a01cb2-f669-7023-a3f9-d66659d9078a\exec-ef996722-e69c-4434-aa8d-b1ed5faabc8b.png`
-- v1 保留路径：`BetaPass/std/candidates/luogusp/stage-bg-source-v1.png`
+- v1 处置：仅八条可辨色带，判废并于资源归档时移除
 - v2 原始路径：`C:\Users\SkySa\.codex\generated_images\01a01cb2-f669-7023-a3f9-d66659d9078a\exec-b58c44a2-edf3-457e-9ed5-1c51c88fc8ca.png`
-- v2 入选路径：`BetaPass/std/candidates/luogusp/stage-bg-source.png`
+- v2 入选路径：本目录 `luogusp-stage-bg-source.png`
 
 ## 原始 prompt
 
