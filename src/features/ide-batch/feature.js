@@ -387,6 +387,16 @@ export function createIdeBatchFeature({
     };
   }
 
+  // 克隆原生控件时，模板身上的浮泡/读屏名字会一起被抄走 —— 换了文字也换不掉它。
+  // 侧栏「插件设置」就是这么把「文章广场」的浮泡带出来的（2026-08-20 owner 报的）。
+  // ★ 这里是同形防御：IDE 页要登录，我没法量「自测」按钮到底带不带 title，
+  //   所以按最坏情况剥净；真站上若本来就没有，这两行等于空转。data-v-* 是作用域 CSS，绝不能碰。
+  function dropInheritedNames(el) {
+    for (const node of [el, ...el.querySelectorAll("*")])
+      for (const name of ["title", "aria-label", "aria-labelledby"])
+        node.removeAttribute(name);
+  }
+
   function mountIdeButton(controls) {
     const tb = ideToolbarByTitle("代码");
     if (!tb) return;
@@ -399,6 +409,7 @@ export function createIdeBatchFeature({
     // 克隆原生「自测」按钮继承洛谷样式（含 data-v 作用域），只换文字
     const btn = selfTest.cloneNode(true);
     btn.textContent = "一键测试";
+    dropInheritedNames(btn);
     btn.classList.add("luogusp-ide-batch-btn");
     btn.disabled = false;
     btn.addEventListener("click", (e) => {
@@ -449,6 +460,7 @@ export function createIdeBatchFeature({
     const mkBtn = (text, cls, onClick) => {
       const b = tpl ? tpl.cloneNode(true) : document.createElement("button");
       b.textContent = text;
+      dropInheritedNames(b);
       b.className = (tpl ? tpl.className : "") + " " + cls;
       b.classList.remove("luogusp-ide-batch-btn");
       b.disabled = false;
