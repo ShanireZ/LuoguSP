@@ -6,6 +6,10 @@
 //    需要联网才验得了的东西（按需块、保存站、写请求）**明说不在覆盖范围内**，
 //    写进报告的 limitations，不假装验过。
 //
+// ★ 每条 <li> 上的 title 是照真站抄的（2026-08-20 在 www.luogu.com.cn 上量的）：
+//   浮泡文字挂在 <li> 上而不是 <a> 上，而设置入口是整条 <li> 克隆模板来的 ——
+//   夹具不带 title，这道门就永远看不见「悬停插件设置显示文章广场」那一类缺陷。
+//   末尾那条无图标的「云剪贴板」也是真站形状：它保证模板一定落在「文章广场」上。
 // ★ 夹具刻意做成**旧版页**的骨架：`nav.lfe-body` 是设置入口三种落点里最简单的一种，
 //   足以证明 page-lifecycle 跑通、功能被挂载。
 //
@@ -28,8 +32,9 @@ export const FIXTURE_HTML = `<!doctype html>
 <body>
   <nav class="lfe-body">
     <ul>
-      <li><a href="/"><span class="icon"></span><span class="title">首页</span></a></li>
-      <li><a href="/article"><span class="icon"></span><span class="title">文章</span></a></li>
+      <li title="首页"><a href="/"><span class="icon"></span><span class="title">首页</span></a></li>
+      <li title="文章广场"><a href="/article"><span class="icon"></span><span class="title">文章广场</span></a></li>
+      <li><a href="/paste"><span class="title minor">云剪贴板</span></a></li>
     </ul>
   </nav>
   <main>
