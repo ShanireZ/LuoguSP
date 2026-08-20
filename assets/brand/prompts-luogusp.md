@@ -27,7 +27,7 @@
 | code / 显示名 | `luogusp` / LuoguSP |
 | 定位 | 面向洛谷的 Tampermonkey 用户脚本：题号染难度色、题目与用户悬停预览卡、个人介绍显形、受限文章与剪贴板解限、IDE 模式一键测全样例 |
 | 最终文字 | ★ **单语单行主标 `LuoguSP`，没有副标**（照 `horus` 先例） |
-| 字体 | 拉丁 **Fira Code Bold**（OFL）· ⏳ **本机没有，需下载**，落 `BetaPass/std/candidates/_build/FiraCode-Bold.ttf` |
+| 字体 | 拉丁 **Fira Code Bold**（OFL）· 已落 `BetaPass/std/candidates/_build/FiraCode-Bold.ttf`，授权副本为同目录 `FiraCode-OFL.txt` |
 | 色板 | 夜墨 `#0e1116` · 石板 `#161b22` · 冷钢灰蓝 `#7c8899` · 暖白 `#eceff4` · 界面蓝 `#3498db` · 九档难度色（唯一彩色源） |
 | 视觉方向 | **增强镜片覆在朴素灰条目上，镜片下的条目按九档难度色被点亮** |
 
@@ -146,18 +146,19 @@ Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear
 ## 4. 后期合成
 
 - **徽章**：左侧 1/4 叠 `luogusp-logo.png`；中段排单行 `LuoguSP`；右侧只保留镜片 HERO。
-  主标 Fira Code Bold 约 92px、`#eceff4`、字距 0.14em。
-- ★ **单行主标的排版算术（可复核）**：Fira Code 字身宽 0.6em，`LuoguSP` 七个字符 →
-  7 × 0.6 × 92 ≈ 386px，加 0.14em × 92 × 7 ≈ 90px 字距，合计约 476px；中段可用区
-  x=352→880 共 528px，左右各余约 26px。**字号超过 100px 就会顶到右侧 HERO**。
-- **竖版宣传图**：中央叠 Logo（占画布宽约 40%，约 512px），主标排在 Logo 下方，整组垂直居中。
+  实际定稿主标为 Fira Code Bold 80px、`#eceff4`、字距 9.5px，组合中心 x=485px；这样末尾 `SP`
+  不压进右侧镜片主体。
+- ★ **单行主标的排版算术（可复核）**：Fira Code 字身宽约 0.6em，`LuoguSP` 七个字符 →
+  7 × 0.6 × 80 ≈ 336px，再加字距约 67px，合计约 403px；组合中心 x=485px 时主体大致落在
+  x=284→686，既不挤左侧 Logo，也不会盖住右侧 HERO。
+- **竖版宣传图**：中央偏下叠 Logo（占画布宽约 33%，420px），主标排在 Logo 下方；整组中心
+  y=68%，与上半部的背景镜片错层，避免两个方形器物正面重叠。
 - ★ **这是本批唯一的单语单行。** 中段只有一个词，字号必须取上限、字距拉到 0.12–0.16em，
   否则左侧 Logo 与右侧 HERO 之间会空出一大块 —— 和枢衡两字主标是同一个问题的同一种解法。
 - ★ Logo 是**方形**器物，徽章左侧 1/4 那格按**高度**定尺即可（与横向的枢衡不同）。
-- ⏳ **`BetaPass/std/candidates/_build/build-non-platform-assets.cjs` 现有的每项目配置假定
-  「中文主标 + 拉丁副标」两行**。单语单行要么加一个跳过副标的模式，要么把 `subtitle` 置空
-  并让排版收掉那一行。**本轮没有改这个脚本**，出图前必须先补，否则会合成出一行空副标。
-- ⏳ **Fira Code Bold 本机没有**，与当初的 Courier Prime 一样要先下载 OFL 字体文件再出图。
+- ✅ `BetaPass/std/candidates/_build/build-non-platform-assets.cjs` 已支持 `subtitle` 为空时完全收掉副标行，
+  并为 LuoguSP 使用上面的单行版式参数。
+- ✅ Fira Code Bold 与 OFL 授权副本已落 `BetaPass/std/candidates/_build/`，确定性合成不依赖系统字体。
 
 ## 5. 自检
 
