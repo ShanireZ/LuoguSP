@@ -6,9 +6,9 @@
 >
 > | 落位 | 路径 |
 > | --- | --- |
-> | 提示词（两份逐字一致） | `BetaPass/std/prompts-luogusp.md` · `LuoguSP/assets/brand/prompts-luogusp.md` |
-> | 候选与生成记录 | `BetaPass/std/candidates/luogusp/` |
-> | 成图（五件） | `LuoguSP/assets/brand/` |
+> | BetaPass 镜像 | `BetaPass/std/brand/luogusp/` |
+> | 项目完整副本 | `LuoguSP/assets/brand/` |
+> | 脚本 | `BetaPass/std/candidates/_build/`（只存 BetaPass） |
 >
 > 正文一律写工作区相对路径、不用 Markdown 相对链接 —— 两份副本要能逐字节相同。
 >
@@ -27,7 +27,7 @@
 | code / 显示名 | `luogusp` / LuoguSP |
 | 定位 | 面向洛谷的 Tampermonkey 用户脚本：题号染难度色、题目与用户悬停预览卡、个人介绍显形、受限文章与剪贴板解限、IDE 模式一键测全样例 |
 | 最终文字 | ★ **单语单行主标 `LuoguSP`，没有副标**（照 `horus` 先例） |
-| 字体 | 拉丁 **Fira Code Bold**（OFL）· 已落 `BetaPass/std/candidates/_build/FiraCode-Bold.ttf`，授权副本为同目录 `FiraCode-OFL.txt` |
+| 字体 | 拉丁 **Fira Code Bold**（OFL）· 当前字体与授权副本在本目录 `fonts/` |
 | 色板 | 夜墨 `#0e1116` · 石板 `#161b22` · 冷钢灰蓝 `#7c8899` · 暖白 `#eceff4` · 界面蓝 `#3498db` · 九档难度色（唯一彩色源） |
 | 视觉方向 | **增强镜片覆在朴素灰条目上，镜片下的条目按九档难度色被点亮** |
 
@@ -158,7 +158,7 @@ Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear
 - ★ Logo 是**方形**器物，徽章左侧 1/4 那格按**高度**定尺即可（与横向的枢衡不同）。
 - ✅ `BetaPass/std/candidates/_build/build-non-platform-assets.cjs` 已支持 `subtitle` 为空时完全收掉副标行，
   并为 LuoguSP 使用上面的单行版式参数。
-- ✅ Fira Code Bold 与 OFL 授权副本已落 `BetaPass/std/candidates/_build/`，确定性合成不依赖系统字体。
+- ✅ Fira Code Bold 与 OFL 授权副本已落本目录 `fonts/`，确定性合成不依赖系统字体。
 
 ## 5. 自检
 
