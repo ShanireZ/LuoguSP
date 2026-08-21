@@ -27,7 +27,6 @@ const requestedVersion = argument("--version");
 const metadataPath = resolve(root, "src/userscript.meta.js");
 const artifactPath = resolve(root, "LuoguSP.user.js");
 const packagePath = resolve(root, "package.json");
-const packageLockPath = resolve(root, "package-lock.json");
 const readmePath = resolve(root, "README.md");
 const qualityReportPath = resolve(root, "reports/quality-report.json");
 const channelPath = resolve(root, "cdn/channels/canary.json");
@@ -44,7 +43,6 @@ const [
   initialMetadata,
   initialArtifact,
   initialPackage,
-  initialPackageLock,
   initialReadme,
   initialQualityReport,
   initialChannel,
@@ -54,7 +52,6 @@ const [
   readFile(metadataPath, "utf8"),
   readFile(artifactPath, "utf8"),
   readFile(packagePath, "utf8"),
-  readFile(packageLockPath, "utf8"),
   readFile(readmePath, "utf8"),
   readFile(qualityReportPath, "utf8"),
   readFile(channelPath, "utf8"),
@@ -79,8 +76,6 @@ const compareVersions = (left, right) => {
   return 0;
 };
 const initialPackageVersion = JSON.parse(initialPackage).version;
-const initialPackageLockVersion =
-  JSON.parse(initialPackageLock).version;
 const initialReadmeVersion =
   initialReadme.match(
     /\[!\[Version: (\d+\.\d+\.\d+)\]\(/,
@@ -89,12 +84,11 @@ if (
   ![
     sourceMetadataVersion,
     initialPackageVersion,
-    initialPackageLockVersion,
     initialReadmeVersion,
   ].every((value) => value === currentVersion)
 )
   throw new Error(
-    "Preflight version drift: userscript, source metadata, package, lockfile, and README must agree",
+    "Preflight version drift: userscript, source metadata, package, and README must agree",
   );
 if (compareVersions(version, currentVersion) <= 0)
   throw new Error(
@@ -200,7 +194,6 @@ const restoreProduction = async () => {
     writeFile(metadataPath, initialMetadata, "utf8"),
     writeFile(artifactPath, initialArtifact, "utf8"),
     writeFile(packagePath, initialPackage, "utf8"),
-    writeFile(packageLockPath, initialPackageLock, "utf8"),
     writeFile(readmePath, initialReadme, "utf8"),
     writeFile(qualityReportPath, initialQualityReport, "utf8"),
   ]);
@@ -309,11 +302,6 @@ try {
     writeFile(
       packagePath,
       packageTextWithVersion(initialPackage, version),
-      "utf8",
-    ),
-    writeFile(
-      packageLockPath,
-      packageTextWithVersion(initialPackageLock, version),
       "utf8",
     ),
     writeFile(

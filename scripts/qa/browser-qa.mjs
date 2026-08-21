@@ -10,7 +10,7 @@ import { FIXTURE_HTML } from "./fixture.mjs";
 
 // 真机 QA。★★★ 这个脚本存在的理由：`reports/browser-qa.json` 一直是**手写**的 ——
 // 仓库里没有任何东西能生成它，于是「改了产物就得重跑 QA」在实际操作上等于「补不回来」，
-// 一改文案就把一份如假包换的 QA 弄作废。现在它可复现了：`npm run qa:browser`。
+// 一改文案就把一份如假包换的 QA 弄作废。现在它可复现了：`pnpm qa:browser`。
 //
 // 覆盖范围**故意画得很清楚**，写进报告的 limitations，不假装验过：
 //   验：两个 `@require` 的真实字节能不能在浏览器里跑起来、启动耗时、控制台有没有报错、
@@ -96,6 +96,20 @@ try {
       runtime: !!globalThis.__LUOGUSP_CDN_RUNTIME__,
       // 设置入口的标记是 `.luogusp-setting-entry`（settings/feature.js 里加的那个类）。
       settingsEntry: !!document.querySelector(".luogusp-setting-entry"),
+      // 入口是克隆模板条目来的，所以浮泡与读屏名字都可能是模板那条的（真站上模板
+      // 是「文章广场」）。这里收的是入口自己那一层能被浏览器当浮泡用的名字。
+      settingsEntryNames: (() => {
+        const entry = document.querySelector(".luogusp-setting-entry");
+        if (!entry) return null;
+        const unit = entry.closest("li") || entry;
+        return [unit, ...unit.querySelectorAll("*")]
+          .flatMap((el) =>
+            ["title", "aria-label", "aria-labelledby"]
+              .map((name) => el.getAttribute(name))
+              .filter((value) => value !== null),
+          )
+          .filter((value, index, all) => all.indexOf(value) === index);
+      })(),
       // 着色是把题号包进一个带 inline color 的 <b> 里。
       colouredPid: (() => {
         const link = document.querySelector('a[href="/problem/P1000"]');
@@ -107,6 +121,7 @@ try {
     if (iteration === 1) {
       checks.cdnRuntimeInstalled = measured.runtime;
       checks.settingsEntryMounted = measured.settingsEntry;
+      checks.settingsEntryNames = measured.settingsEntryNames;
       checks.problemColourApplied = measured.colouredPid;
     }
     await page.close();
@@ -116,6 +131,18 @@ try {
     failures.push("两个 @require 跑完之后没有建起 __LUOGUSP_CDN_RUNTIME__");
   if (!checks.settingsEntryMounted)
     failures.push("page-lifecycle 没有把设置入口挂进导航栏");
+  // ★ 名字必须全是入口自己的。夹具的模板是「文章广场」，所以只要克隆时没剥净，
+  //   这里会当场读到它 —— owner 2026-08-20 报的就是这个。
+  const entryNames = checks.settingsEntryNames;
+  if (entryNames !== null) {
+    const wrong = entryNames.filter((name) => name !== "插件设置");
+    if (wrong.length)
+      failures.push(
+        `设置入口带着模板条目的名字：${wrong.join(" / ")}`,
+      );
+    else if (!entryNames.length)
+      failures.push("设置入口一个浮泡名字都没有，克隆时连自己的名字也没设上");
+  }
   // 入门是 #fe4c61。★ 这条能离线成立，是因为夹具的 lentille-context 里带了难度，
   //   整批收取直接命中，一个请求都不用发。
   if (checks.problemColourApplied !== "rgb(254, 76, 97)")
@@ -133,7 +160,7 @@ const report = {
   checkedAt: new Date().toISOString(),
   status: failures.length ? "failed" : "passed",
   browser: label,
-  generatedBy: "npm run qa:browser (scripts/qa/browser-qa.mjs)",
+  generatedBy: "pnpm qa:browser (scripts/qa/browser-qa.mjs)",
   sourceCommit: gitOutput(["rev-parse", "HEAD"]),
   worktreeIncluded: gitOutput(["status", "--porcelain"]) !== "",
   release: (artifact.match(/^\/\/ @version\s+(\S+)/m) || [])[1] || null,

@@ -77,7 +77,10 @@ const metadata = new Map(
 );
 
 test("pnpm release uses the guarded CDN publisher", () => {
-  assert.equal(packageJson.packageManager, "pnpm@11.18.0");
+  // 精确版本是**有意**硬编码的绊线：packageManager 是全仓唯一的 pnpm 版本来源
+  // （本地、GitHub CI、.cnb.yml 都从它取），升版必须过这一条，不许无声漂移。
+  // 同时它也钉住「精确版本」这个形态 —— 写成 ^12 之类的范围会当场红。
+  assert.equal(packageJson.packageManager, "pnpm@12.0.0-rc.6");
   assert.equal(packageJson.scripts.release, packageJson.scripts.publish);
   assert.match(pnpmWorkspace, /allowBuilds:\s+esbuild: true/);
 });
@@ -318,7 +321,7 @@ test("source feature descriptors keep their shape", () => {
 
 // ★★★ `reports/browser-qa.json` 曾经是**手写**的：仓库里没有任何东西能生成它，
 //    于是「改了产物就得重跑 QA」在操作上等于「补不回来」。现在它由
-//    `npm run qa:browser` 生成，这条守卫盯着它别再退回手写。
+//    `pnpm qa:browser` 生成，这条守卫盯着它别再退回手写。
 test("browser QA report is machine generated and covers this artifact", () => {
   const report = JSON.parse(
     fs.readFileSync(path.join(root, "reports", "browser-qa.json"), "utf8"),

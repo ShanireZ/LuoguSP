@@ -1,38 +1,38 @@
 {
-  "checkedAt": "2026-08-15T13:43:39.965Z",
+  "checkedAt": "2026-08-20T00:58:32.647Z",
   "status": "passed",
   "browser": "Playwright + 系统 chrome 151.0.7922.138",
-  "generatedBy": "npm run qa:browser (scripts/qa/browser-qa.mjs)",
-  "sourceCommit": "27bd024426508d62a97f078aacc612e0cd36c816",
+  "generatedBy": "pnpm qa:browser (scripts/qa/browser-qa.mjs)",
+  "sourceCommit": "4839c4f9ad0101b596198587f0ce0eac1faf65e4",
   "worktreeIncluded": true,
-  "release": "2.14.2",
+  "release": "2.14.3",
   "requireUrls": [
-    "https://luogusp.round1.cc/releases/2.14.2/compat/early-gate.224ee89f7d716736.js#sha256=224ee89f7d716736325b31d5970e14cee4707250d2383097456577ab97f81c1b",
-    "https://luogusp.round1.cc/releases/2.14.2/compat/runtime.577676e298d92fb7.js#sha256=577676e298d92fb7e5ae98bcc2e8b2e2615116d82ac0fd7cda4defd407d3d07a"
+    "https://luogusp.round1.cc/releases/2.14.3/compat/early-gate.d0ce6b7c6c0d3923.js#sha256=d0ce6b7c6c0d3923394ef5d68b98238776e355fb601bd3bb1cfaa5355fd7507e",
+    "https://luogusp.round1.cc/releases/2.14.3/compat/runtime.3b31e4e865c8d1ef.js#sha256=3b31e4e865c8d1ef00505773768aa31b6836a78177099062d362a693779104a5"
   ],
-  "artifactSha256": "e8378ca3ccb2697345d79810a63fe9f89d1336c995099a65f4c66f53380e11fa",
-  "behaviorSha256": "299c9dbf5a7f849eaaa8decad9ac429a124fe62bce561a3e3f38f6a7350398e0",
+  "artifactSha256": "7cb663eb93970d073fd2837bfa0b98ad575c36e687c4f0c8b2a84dc6003b8210",
+  "behaviorSha256": "56775cd383ed4029166482a1801bf66a4680d3e22e9a75c0fc284ff9e5ab2cc6",
   "behaviorSha256Note": "只把 @description 那一行抹成占位符，其余（含 @require/@match/@grant/@connect/@run-at/@sandbox 与脚本体）全部参与。",
   "startupMeasurements": [
     {
       "iteration": 1,
-      "ms": 1.200000001117587
+      "ms": 4.900000000372529
     },
     {
       "iteration": 2,
-      "ms": 1.300000000745058
+      "ms": 1.3999999999068677
     },
     {
       "iteration": 3,
-      "ms": 1
+      "ms": 0.8999999999068677
     },
     {
       "iteration": 4,
-      "ms": 1.199999999254942
+      "ms": 0.8999999999068677
     },
     {
       "iteration": 5,
-      "ms": 1.099999999627471
+      "ms": 1
     }
   ],
   "console": {
@@ -68,6 +68,9 @@
   "checks": {
     "cdnRuntimeInstalled": true,
     "settingsEntryMounted": true,
+    "settingsEntryNames": [
+      "插件设置"
+    ],
     "problemColourApplied": "rgb(254, 76, 97)"
   },
   "limitations": [
