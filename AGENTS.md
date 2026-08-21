@@ -27,3 +27,21 @@ LuoguSP is a browser userscript for Luogu. Source modules live under `src/`; `Lu
 - Treat Luogu DOM and embedded payloads as external, versioned interfaces: prefer shape checks, fail closed, and add a regression fixture for every compatibility repair.
 - On `/user/{uid}/practice`, color only the “尝试过的题目” list. The “已通过的题目” list is already grouped by difficulty and must not be recolored, fetched, or bulk-cached.
 - Preserve unrelated user changes and keep generated browser artifacts outside the repository.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This target uses a single-context domain-doc layout. See `docs/agents/domain.md`.
+
+### Related engineering skills
+
+See `docs/agents/skill-workflows.md` for recommendations on when to use the installed engineering skills and how their workflows compose.
