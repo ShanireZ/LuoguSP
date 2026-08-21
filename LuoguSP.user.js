@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.14.2
+// @version      2.14.3
 // @description  LuoguSP：题号显示难度颜色 / 题目悬停显示预览卡 / 用户名/头像悬停显示预览卡 / 个人页显示个人介绍 / 受限文章与剪贴板解限 / IDE 模式一键测试所有样例
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -13,8 +13,8 @@
 // @sandbox      raw
 // @connect      luogusp.round1.cc
 // @grant        GM_xmlhttpRequest
-// @require      https://luogusp.round1.cc/releases/2.14.2/compat/early-gate.224ee89f7d716736.js#sha256=224ee89f7d716736325b31d5970e14cee4707250d2383097456577ab97f81c1b
-// @require      https://luogusp.round1.cc/releases/2.14.2/compat/runtime.577676e298d92fb7.js#sha256=577676e298d92fb7e5ae98bcc2e8b2e2615116d82ac0fd7cda4defd407d3d07a
+// @require      https://luogusp.round1.cc/releases/2.14.3/compat/early-gate.d0ce6b7c6c0d3923.js#sha256=d0ce6b7c6c0d3923394ef5d68b98238776e355fb601bd3bb1cfaa5355fd7507e
+// @require      https://luogusp.round1.cc/releases/2.14.3/compat/runtime.3b31e4e865c8d1ef.js#sha256=3b31e4e865c8d1ef00505773768aa31b6836a78177099062d362a693779104a5
 // @run-at       document-start
 // ==/UserScript==
 (()=>{var i=globalThis.__LUOGUSP_CDN_RUNTIME__;(!i||i.apiVersion!==1)&&console.error("LuoguSP CDN runtime was not initialized. Please update or reinstall LuoguSP.");})();

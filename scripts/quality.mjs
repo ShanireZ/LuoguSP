@@ -7,8 +7,6 @@ import {
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { behaviourHashOf } from "./artifact-behaviour-hash.mjs";
-import { inspectLockSync, readNpmVersion } from "./lock-sync.mjs";
-import { assertCliMajor } from "./cdn/cli-baseline.mjs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
@@ -436,25 +434,12 @@ if (writeReport) {
 
 if (check) {
   const failures = [];
-  // 两边 CI 装依赖都跑 `npm ci`，它对不上 lock 就直接挂，一条 check 都跑不到。
-  // 把那次失败搬到这里，理由与「别加 --offline」的实测见 scripts/lock-sync.mjs。
-  const lockSync = await inspectLockSync({ cwd: root });
-  if (lockSync) failures.push(lockSync.summary);
-  // 上面那道门跑的是 `npm ci`，本地与 CI 的 npm 不同大版本它就不同构。
-  // 要求声明在 package.json 的 engines.npm；npm 自身只会警告，这里让它硬失败。
-  // 为什么不用 devEngines：见 scripts/cdn/cli-baseline.mjs 的说明。
-  const npmRange = JSON.parse(
-    await readFile(resolve(root, "package.json"), "utf8"),
-  ).engines?.npm;
-  try {
-    assertCliMajor({
-      name: "npm",
-      output: await readNpmVersion({ cwd: root }),
-      range: npmRange,
-    });
-  } catch (error) {
-    failures.push(error.message);
-  }
+  // 依赖安装的一致性不再需要本仓自建的门：两边 CI 都跑 `pnpm install
+  // --frozen-lockfile`（lock 与 package.json 对不上它直接拒装），而本地与 CI
+  // 用同一个 pnpm 版本由 package.json 的 packageManager 字段强制 —— pnpm 12
+  // 在版本不符时以 ERR_PNPM_BAD_PM_VERSION 硬失败，不是警告。
+  // 这替掉了原来的 lock-sync 门（npm ci --dry-run）与 npm 大版本断言：
+  // 那两道门是为「日常 pnpm、CI 却跑 npm ci」这个双轨形态而存在的，双轨已取消。
   if (report.artifact.bytes > budget.artifact.maxBytes)
     failures.push(
       `artifact bytes ${report.artifact.bytes} > ${budget.artifact.maxBytes}`,

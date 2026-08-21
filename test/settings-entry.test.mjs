@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { createSettingsFeature } from "../src/features/settings/feature.js";
 
+// 夹具照抄真站形状（2026-08-20 在 www.luogu.com.cn 上量的）：新侧栏每一条都是
+// `<li title="文章广场"><a>…</a></li>`——浮泡文字在 <li> 上，不在 <a> 上；而末尾的
+// 「云剪贴板」一类没有图标（真站是 `<!---->`），所以模板一定落在 /article 那条上。
 // Luogu's left navigation renders in three shapes. The columba sidebar keeps its
 // `sidebar` class only while it is pinned open; narrowing the viewport collapses
 // it to `nav.lside.drawer`, which used to lose the entry entirely.
@@ -18,8 +21,9 @@ function installDom(navClass) {
     `<!doctype html><html><head></head><body>
        <nav class="${navClass}">
          <ul>
-           <li><a href="/"><span class="icon"><svg viewBox="0 0 1 1"></svg></span><span class="title">首页</span></a></li>
-           <li><a href="/article"><span class="icon"><svg viewBox="0 0 1 1"></svg></span><span class="title">文章</span></a></li>
+           <li title="首页"><a href="/"><span class="icon"><svg viewBox="0 0 1 1"></svg></span><span class="title">首页</span></a></li>
+           <li title="文章广场"><a href="/article" aria-label="文章广场"><span class="icon"><svg viewBox="0 0 1 1"></svg></span><span class="title">文章广场</span></a></li>
+           <li><a href="/paste"><!----><span class="title minor">云剪贴板</span></a></li>
          </ul>
        </nav>
      </body></html>`,
@@ -70,6 +74,20 @@ for (const [label, navClass, expectedText] of NAV_SHAPES) {
       assert.equal(entries[0].hasAttribute("href"), false);
       assert.equal(entries[0].getAttribute("role"), "button");
       assert.ok(entries[0].querySelector("svg"));
+
+      // ★ 入口是整条 <li> 克隆来的，模板是「文章广场」：浮泡与读屏名字都必须是自己的，
+      //   不能把模板那条的名字一起抄过来（owner 2026-08-20 报的就是这个）。
+      const unit = entries[0].closest("li") || entries[0];
+      assert.equal(unit.getAttribute("title"), "插件设置");
+      assert.equal(entries[0].getAttribute("aria-label"), "插件设置");
+      for (const el of [unit, ...unit.querySelectorAll("*")])
+        for (const name of ["title", "aria-label", "aria-labelledby"]) {
+          const value = el.getAttribute(name);
+          assert.ok(
+            value === null || value === "插件设置",
+            `${el.tagName}[${name}]=${value} 是从模板抄来的名字`,
+          );
+        }
 
       dispose();
       assert.equal(
