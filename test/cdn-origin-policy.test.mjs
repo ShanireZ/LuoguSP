@@ -18,7 +18,7 @@ const config = {
   origins: {
     primary: "https://luogusp.round1.cc",
     bootstrap: "https://luogusp.round1.cc",
-    legacy: ["https://spcdn.betaoi.cc"],
+    legacy: [],
   },
 };
 
@@ -80,13 +80,10 @@ test("userscript bootstrap uses one configured custom origin", () => {
   );
 });
 
-test("CDN tooling preserves only explicit legacy custom origins", () => {
-  assert.deepEqual(resolveLegacyOrigins(config), [
-    "https://spcdn.betaoi.cc",
-  ]);
+test("CDN tooling supports retiring every legacy custom origin", () => {
+  assert.deepEqual(resolveLegacyOrigins(config), []);
   assert.deepEqual(resolveSupportedOrigins(config), [
     "https://luogusp.round1.cc",
-    "https://spcdn.betaoi.cc",
   ]);
   assert.throws(
     () =>
@@ -139,10 +136,6 @@ test("Cloudflare deployment keeps the workers.dev default domain disabled", asyn
   assert.deepEqual(wrangler.routes, [
     {
       pattern: "luogusp.round1.cc",
-      custom_domain: true,
-    },
-    {
-      pattern: "spcdn.betaoi.cc",
       custom_domain: true,
     },
   ]);
