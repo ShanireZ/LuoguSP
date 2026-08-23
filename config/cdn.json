@@ -6,9 +6,7 @@
   "origins": {
     "primary": "https://luogusp.round1.cc",
     "bootstrap": "https://luogusp.round1.cc",
-    "legacy": [
-      "https://spcdn.betaoi.cc"
-    ]
+    "legacy": []
   },
   "cli": {
     "wrangler": {

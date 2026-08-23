@@ -9,10 +9,6 @@
     {
       "pattern": "luogusp.round1.cc",
       "custom_domain": true
-    },
-    {
-      "pattern": "spcdn.betaoi.cc",
-      "custom_domain": true
     }
   ],
   "observability": {

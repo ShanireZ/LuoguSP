@@ -1,1 +1,0 @@
-function a({id:t,key:e,label:r,storage:n,mount:f,onRoute:o}){if(!t||!e||!r||!n||typeof f!="function")throw new TypeError("Configurable feature descriptor is invalid");let u=`LuoguSP.${e}`,i={id:t,key:e,label:r,storageKey:u,defaultEnabled:!0,enabled:()=>n.get(u),mount:f};return typeof o=="function"&&(i.onRoute=o),Object.freeze(i)}export{a};
