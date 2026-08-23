@@ -1,0 +1,44 @@
+{
+  "runtime": "browser-tool",
+  "featureTarget": "newly",
+  "buildTarget": {
+    "strategy": "explicit-browsers",
+    "targets": ["chrome111", "edge111", "firefox114", "safari16.4", "ios16.4"],
+    "reason": "不可变 CDN 发布需要可复现输出；所有 esbuild 浏览器产物显式冻结到 Baseline Widely Available 浏览器边界。"
+  },
+  "policyQuery": "baseline widely available with downstream",
+  "requiredBrowsers": ["chrome", "edge", "firefox", "safari", "ios_saf"],
+  "downstream": {
+    "enabled": true,
+    "requiredBrowsers": ["android", "and_chr", "and_ff", "samsung"],
+    "reason": "洛谷用户脚本运行于用户自带浏览器；发布审查包含移动 Chromium、Firefox Android 与 Samsung Internet，但实际支持仍受 Tampermonkey 和洛谷页面能力约束。"
+  },
+  "approvedPolicyMinimums": {
+    "chrome": "121",
+    "edge": "121",
+    "firefox": "123",
+    "safari": "17.2",
+    "ios_saf": "17.2",
+    "android": "151",
+    "and_chr": "151",
+    "and_ff": "153",
+    "samsung": "25"
+  },
+  "negativeQuery": "baseline newly available",
+  "criticalFallback": "DOM、嵌入数据与新 Web API 一律做形状检查或特性检测并失败关闭；关键启动路径保留 compat IIFE，按需 ESM、渲染器、悬停卡和受限内容失败时不得阻断洛谷原页。",
+  "verification": [
+    "pnpm run baseline:check",
+    "pnpm check",
+    "pnpm release -- --plan --version <version>",
+    "pnpm release -- --version <version>",
+    "pnpm run qa:browser",
+    "自定义 CDN 源点完整性验证与真实洛谷页面实测"
+  ],
+  "snapshot": {
+    "approvedAt": "2026-08-23",
+    "browserslist": "4.28.8",
+    "esbuild": "0.27.2",
+    "baselineBrowserMapping": "2.11.17",
+    "caniuseLite": "1.0.30001809"
+  }
+}

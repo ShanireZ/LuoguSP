@@ -2,11 +2,13 @@
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.14.3](https://img.shields.io/badge/version-2.14.3-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+[![Version: 2.14.4](https://img.shields.io/badge/version-2.14.4-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
 LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题目、个人页、IDE 模式、文章与剪贴板提供实用增强。
 
 项目仓库：[GitHub](https://github.com/ShanireZ/LuoguSP)（主仓库）／[CNB](https://cnb.cool/Round1/LuoguSP)（辅助镜像）
+
+构建采用 Web Platform Baseline 分层策略：Newly 是新能力上限，全部 esbuild 浏览器产物显式冻结到可复现的 Widely 语法目标，并由 `pnpm run baseline:check` 检查核心引擎、下游浏览器和每个构建消费点。Baseline 不提供 Web API polyfill，也不替代真实洛谷页面验收。
 
 ## 功能
 

@@ -6,6 +6,7 @@ LuoguSP is a browser userscript for Luogu. Source modules live under `src/`; `Lu
 
 ## Commands
 
+- `pnpm run baseline:check` — expand the approved Baseline query and prove that every esbuild browser output consumes the fixed target contract.
 - `pnpm run check` — reproducible-build check, quality budgets, and the full Node test suite.
 - `pnpm release -- --plan --version <version>` — inspect the release plan without changing production.
 - `pnpm release -- --version <version>` — build and deploy an immutable CDN release, update all version-bearing files, then stop for real-browser QA (`publish` remains a compatibility alias).
@@ -24,6 +25,7 @@ LuoguSP is a browser userscript for Luogu. Source modules live under `src/`; `Lu
 
 ## Product constraints
 
+- Web Platform Baseline contract: `runtime: browser-tool`, `featureTarget: newly`; production syntax is frozen in `baseline-targets.mjs` at the approved Widely boundary. Baseline does not polyfill Web APIs or replace real Luogu-page QA. The six-field declaration and tool snapshots live in `baseline.config.json`.
 - Treat Luogu DOM and embedded payloads as external, versioned interfaces: prefer shape checks, fail closed, and add a regression fixture for every compatibility repair.
 - On `/user/{uid}/practice`, color only the “尝试过的题目” list. The “已通过的题目” list is already grouped by difficulty and must not be recolored, fetched, or bulk-cached.
 - Preserve unrelated user changes and keep generated browser artifacts outside the repository.

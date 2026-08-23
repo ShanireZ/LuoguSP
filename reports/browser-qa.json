@@ -1,34 +1,34 @@
 {
-  "checkedAt": "2026-08-23T08:16:57.081Z",
+  "checkedAt": "2026-08-23T13:48:09.509Z",
   "status": "passed",
   "browser": "Playwright + 系统 chrome 151.0.7922.172",
   "generatedBy": "pnpm qa:browser (scripts/qa/browser-qa.mjs)",
-  "sourceCommit": "cdb9f6b2f1bd9918d7bdc510b6c7dc94237a2dc2",
+  "sourceCommit": "913cf38225a83b719cfc5e02b23a2bc1ab2c299a",
   "worktreeIncluded": true,
-  "release": "2.14.3",
+  "release": "2.14.4",
   "requireUrls": [
-    "https://luogusp.round1.cc/releases/2.14.3/compat/early-gate.d0ce6b7c6c0d3923.js#sha256=d0ce6b7c6c0d3923394ef5d68b98238776e355fb601bd3bb1cfaa5355fd7507e",
-    "https://luogusp.round1.cc/releases/2.14.3/compat/runtime.3b31e4e865c8d1ef.js#sha256=3b31e4e865c8d1ef00505773768aa31b6836a78177099062d362a693779104a5"
+    "https://luogusp.round1.cc/releases/2.14.4/compat/early-gate.16eb5533cc5eb634.js#sha256=16eb5533cc5eb634823aa21616ca60258e420c2588328a259eb04acd5d56faa5",
+    "https://luogusp.round1.cc/releases/2.14.4/compat/runtime.18c3ab644a52df19.js#sha256=18c3ab644a52df198526f6f4bceb57b2c22c51aa2ad86c69a4cd798bd3423988"
   ],
-  "artifactSha256": "7cb663eb93970d073fd2837bfa0b98ad575c36e687c4f0c8b2a84dc6003b8210",
-  "behaviorSha256": "56775cd383ed4029166482a1801bf66a4680d3e22e9a75c0fc284ff9e5ab2cc6",
+  "artifactSha256": "ab82f1b9810bbde5892086e6ca92532636b0683f8cef99b0e6acc6e1c0d809c2",
+  "behaviorSha256": "42b9c2af454e4a5000a1162bc9fc1cae09eee883324e052f2a96d7adb1268fe6",
   "behaviorSha256Note": "只把 @description 那一行抹成占位符，其余（含 @require/@match/@grant/@connect/@run-at/@sandbox 与脚本体）全部参与。",
   "startupMeasurements": [
     {
       "iteration": 1,
-      "ms": 0.8999999999068677
+      "ms": 1
     },
     {
       "iteration": 2,
-      "ms": 1.1000000000931323
+      "ms": 1
     },
     {
       "iteration": 3,
-      "ms": 1.1000000000931323
+      "ms": 0.9000000022351742
     },
     {
       "iteration": 4,
-      "ms": 1
+      "ms": 0.9000000022351742
     },
     {
       "iteration": 5,

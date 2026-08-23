@@ -113,6 +113,7 @@ const resumeMode =
   releaseExists && isResumablePublish(previousReport, version);
 
 const steps = [
+  "run Web Platform Baseline contract guard",
   resumeMode
     ? "verify existing immutable CDN release against current source"
     : "build immutable CDN release",
@@ -212,6 +213,9 @@ const beginPhase = (value) => {
 };
 
 try {
+  beginPhase("Baseline contract guard");
+  run(["scripts/check-baseline.mjs"]);
+
   beginPhase(
     resumeMode
       ? "verify existing immutable release"
