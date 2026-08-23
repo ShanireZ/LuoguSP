@@ -3,6 +3,7 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { build } from "esbuild";
+import { ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const normalizePath = (path) => path.split(sep).join("/");
@@ -34,6 +35,7 @@ const result = await build({
   splitting: true,
   format: "esm",
   platform: "browser",
+  target: ESBUILD_BASELINE_TARGETS,
   minify: true,
   treeShaking: true,
   metafile: true,

@@ -1,6 +1,6 @@
 {
   "name": "luogusp",
-  "version": "2.14.3",
+  "version": "2.14.4",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.0.0-rc.6",
@@ -9,6 +9,7 @@
     "pnpm": ">=12.0.0-rc.6"
   },
   "scripts": {
+    "baseline:check": "node scripts/check-baseline.mjs",
     "release": "node scripts/publish.mjs",
     "publish": "node scripts/publish.mjs",
     "build": "node scripts/build.mjs",
@@ -33,9 +34,10 @@
     "renderer:build": "node scripts/renderer/build.mjs",
     "renderer:test": "node --test test/markdown-lite-baseline.test.mjs test/markdown-full.test.mjs test/markdown-renderer-api.test.mjs test/renderer-build.test.mjs",
     "renderer:check": "node scripts/renderer/check.mjs",
-    "check": "pnpm run build:check && pnpm run quality:check && pnpm test"
+    "check": "pnpm run baseline:check && pnpm run build:check && pnpm run quality:check && pnpm test"
   },
   "devDependencies": {
+    "browserslist": "4.28.8",
     "esbuild": "0.27.2",
     "jsdom": "29.1.1",
     "playwright": "^1.62.1"

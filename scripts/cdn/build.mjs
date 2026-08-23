@@ -4,6 +4,7 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { build } from "esbuild";
+import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
 import { buildMarkdownRenderer } from "../renderer/build-lib.mjs";
 import {
   MARKDOWN_RENDERER_API_VERSION,
@@ -91,6 +92,7 @@ async function buildCompat(entryPoint, prefix, define = {}) {
     bundle: true,
     format: "iife",
     platform: "browser",
+    target: ESBUILD_BASELINE_TARGETS,
     charset: "utf8",
     legalComments: "inline",
     minify: true,
@@ -150,6 +152,7 @@ const restrictedContentResult = await build({
   bundle: true,
   format: "esm",
   platform: "browser",
+  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "none",
   minify: true,
@@ -188,6 +191,7 @@ const hoverCardResult = await build({
   bundle: true,
   format: "esm",
   platform: "browser",
+  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "none",
   minify: true,
@@ -255,6 +259,7 @@ const esmResult = await build({
   splitting: true,
   format: "esm",
   platform: "browser",
+  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "inline",
   minify: true,

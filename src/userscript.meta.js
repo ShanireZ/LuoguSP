@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
-// @version      2.14.3
+// @version      2.14.4
 // @description  LuoguSP：题号显示难度颜色 / 题目悬停显示预览卡 / 用户名/头像悬停显示预览卡 / 个人页显示个人介绍 / 受限文章与剪贴板解限 / IDE 模式一键测试所有样例
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
@@ -13,7 +13,7 @@
 // @sandbox      raw
 // @connect      luogusp.round1.cc
 // @grant        GM_xmlhttpRequest
-// @require      https://luogusp.round1.cc/releases/2.14.3/compat/early-gate.d0ce6b7c6c0d3923.js#sha256=d0ce6b7c6c0d3923394ef5d68b98238776e355fb601bd3bb1cfaa5355fd7507e
-// @require      https://luogusp.round1.cc/releases/2.14.3/compat/runtime.3b31e4e865c8d1ef.js#sha256=3b31e4e865c8d1ef00505773768aa31b6836a78177099062d362a693779104a5
+// @require      https://luogusp.round1.cc/releases/2.14.4/compat/early-gate.16eb5533cc5eb634.js#sha256=16eb5533cc5eb634823aa21616ca60258e420c2588328a259eb04acd5d56faa5
+// @require      https://luogusp.round1.cc/releases/2.14.4/compat/runtime.18c3ab644a52df19.js#sha256=18c3ab644a52df198526f6f4bceb57b2c22c51aa2ad86c69a4cd798bd3423988
 // @run-at       document-start
 // ==/UserScript==

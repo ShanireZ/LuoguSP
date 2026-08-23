@@ -6,6 +6,7 @@ import {
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
 import { resolveBootstrapOrigin } from "./origin-policy.mjs";
 import { createStagedMetadata } from "./userscript-stage-lib.mjs";
 
@@ -47,6 +48,7 @@ const result = await build({
   bundle: true,
   format: "iife",
   platform: "browser",
+  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "none",
   minify: true,

@@ -1,21 +1,21 @@
 {
-  "startedAt": "2026-08-20T00:56:00.914Z",
-  "completedAt": "2026-08-20T00:56:34.485Z",
+  "startedAt": "2026-08-23T13:47:19.847Z",
+  "completedAt": "2026-08-23T13:47:50.165Z",
   "status": "ready-for-browser-qa",
-  "release": "2.14.3",
+  "release": "2.14.4",
   "resumed": false,
   "userscript": {
     "bytes": 1385,
-    "sha256": "7cb663eb93970d073fd2837bfa0b98ad575c36e687c4f0c8b2a84dc6003b8210",
+    "sha256": "ab82f1b9810bbde5892086e6ca92532636b0683f8cef99b0e6acc6e1c0d809c2",
     "requires": 2
   },
   "renderer": {
     "apiVersion": 1,
-    "path": "releases/2.14.3/render/markdown-renderer.1e3542bb7ec67cf3.js",
-    "bytes": 412941,
-    "gzipBytes": 126917,
-    "sha256": "1e3542bb7ec67cf316e94db6213fb4a894cd7ca33ba7c6a19899d08936457afe",
-    "sri": "sha256-HjVCu37GfPMW6U22IT+0qJTNfKM7p8ahmJnQiTZFev4=",
+    "path": "releases/2.14.4/render/markdown-renderer.412de553874e4116.js",
+    "bytes": 412958,
+    "gzipBytes": 126926,
+    "sha256": "412de553874e41166b51e0ec85baeec17a91edc7b23864ffbe8c61e286139380",
+    "sri": "sha256-QS3lU4dOQRZrUeDshbruwXqR7ceyOGT/voxh4oYTk4A=",
     "dependencies": {
       "katex": "0.18.1",
       "marked": "18.0.7",

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -18,6 +19,7 @@ export async function buildMarkdownRenderer({ root = defaultRoot } = {}) {
     bundle: true,
     format: "esm",
     platform: "browser",
+    target: ESBUILD_BASELINE_TARGETS,
     charset: "utf8",
     legalComments: "inline",
     minify: true,

@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";
 import { resolveSupportedOrigins } from "./cdn/origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -55,6 +56,7 @@ const result = await build({
   bundle: true,
   format: "iife",
   platform: "browser",
+  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: cdnBacked ? "none" : "inline",
   minify: cdnBacked,
