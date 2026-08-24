@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 import browserslist from "browserslist";
 
@@ -29,6 +29,58 @@ const packageJsonForModule = (modulePath) => {
 
 const packageVersion = async (packageJsonPath) =>
   JSON.parse(await readFile(packageJsonPath, "utf8")).version;
+
+const withoutCodeComments = (source) => {
+  let output = "";
+  let quote = null;
+  let index = 0;
+  while (index < source.length) {
+    const current = source[index] ?? "";
+    const next = source[index + 1] ?? "";
+    if (quote !== null) {
+      output += current;
+      if (current === "\\") {
+        output += next;
+        index += 2;
+        continue;
+      }
+      if (current === quote) quote = null;
+      index += 1;
+      continue;
+    }
+    if (current === '"' || current === "'" || current === "`") {
+      quote = current;
+      output += current;
+      index += 1;
+      continue;
+    }
+    if (current === "/" && next === "/") {
+      const lineEnd = source.indexOf("\n", index + 2);
+      if (lineEnd === -1) break;
+      output += "\n";
+      index = lineEnd + 1;
+      continue;
+    }
+    if (current === "/" && next === "*") {
+      const commentEnd = source.indexOf("*/", index + 2);
+      index = commentEnd === -1 ? source.length : commentEnd + 2;
+      continue;
+    }
+    output += current;
+    index += 1;
+  }
+  return output;
+};
+
+const moduleFiles = async (directory) => {
+  const files = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const absolute = resolve(directory, entry.name);
+    if (entry.isDirectory()) files.push(...(await moduleFiles(absolute)));
+    else if (entry.isFile() && entry.name.endsWith(".mjs")) files.push(absolute);
+  }
+  return files;
+};
 
 const versionParts = (value) =>
   value
@@ -83,12 +135,18 @@ assert.equal(policy.downstream.enabled, true);
 assert.ok(policy.downstream.reason?.trim(), "downstream 必须记录理由");
 assert.ok(policy.criticalFallback?.trim(), "criticalFallback 不得为空");
 assert.ok(policy.verification?.length > 0, "verification 不得为空");
-assert.match(policy.snapshot.approvedAt, /^\d{4}-\d{2}-\d{2}$/);
+assert.match(policy.snapshot.approvedAt, /^\d{4}-\d{2}-\d{2}$/u);
 const approvedAt = Date.parse(`${policy.snapshot.approvedAt}T00:00:00Z`);
+const normalizedApprovedAt = Number.isFinite(approvedAt)
+  ? new Date(approvedAt).toISOString().slice(0, 10)
+  : "";
+const now = new Date();
+const todayAt = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 assert.ok(
   Number.isFinite(approvedAt) &&
-    approvedAt <= Date.now() &&
-    Date.now() - approvedAt <= 100 * 24 * 60 * 60 * 1000,
+    normalizedApprovedAt === policy.snapshot.approvedAt &&
+    approvedAt <= todayAt &&
+    todayAt - approvedAt <= 92 * 24 * 60 * 60 * 1000,
   "Baseline 快照日期无效或已超过季度复核期",
 );
 assert.deepEqual(ESBUILD_BASELINE_TARGETS, policy.buildTarget.targets);
@@ -156,21 +214,21 @@ for (const target of ESBUILD_BASELINE_TARGETS) {
   );
 }
 
-const buildConsumers = [
-  ["scripts/build.mjs", "../baseline-targets.mjs"],
-  ["scripts/analyze-cdn-chunks.mjs", "../baseline-targets.mjs"],
-  ["scripts/cdn/build.mjs", "../../baseline-targets.mjs"],
-  ["scripts/cdn/stage-userscript.mjs", "../../baseline-targets.mjs"],
-  ["scripts/renderer/build-lib.mjs", "../../baseline-targets.mjs"],
-  ["scripts/renderer/check.mjs", "../../baseline-targets.mjs"],
-  ["scripts/qa/stage-hidden-intro.mjs", "../../baseline-targets.mjs"],
-];
-for (const [file, importPath] of buildConsumers) {
-  const source = await readFile(resolve(root, file), "utf8");
+const buildConsumers = [];
+for (const absolute of await moduleFiles(resolve(root, "scripts"))) {
+  const source = withoutCodeComments(await readFile(absolute, "utf8"));
+  if (!/^\s*import\s+\{\s*build\s*\}\s+from\s+["']esbuild["'];?\s*$/mu.test(source)) {
+    continue;
+  }
+  const file = relative(root, absolute).replaceAll("\\", "/");
+  let importPath = relative(dirname(absolute), resolve(root, "baseline-targets.mjs")).replaceAll(
+    "\\",
+    "/",
+  );
+  if (!importPath.startsWith(".")) importPath = `./${importPath}`;
+  buildConsumers.push(file);
   assert.ok(
-    source.includes(
-      `import { ESBUILD_BASELINE_TARGETS } from "${importPath}";`,
-    ),
+    source.includes(`import { ESBUILD_BASELINE_TARGETS } from "${importPath}";`),
     `${file} 没有消费共享 Baseline 目标`,
   );
   const buildCalls = source.match(/\bbuild\(\{/g)?.length ?? 0;
@@ -178,6 +236,7 @@ for (const [file, importPath] of buildConsumers) {
   assert.ok(buildCalls > 0, `${file} 不再包含可识别的 esbuild 调用`);
   assert.equal(targetUses, buildCalls, `${file} 有 esbuild 调用未声明 target`);
 }
+assert.ok(buildConsumers.length > 0, "未发现任何 esbuild 浏览器构建消费点");
 
 const negativeErrors = targetErrors(
   policy.negativeQuery,
