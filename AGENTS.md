@@ -33,22 +33,6 @@ LuoguSP is a browser userscript for Luogu. Source modules live under `src/`; `Lu
 
 ## Agent skills
 
-### Issue tracker
-
-Issues and specs are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Use the five canonical triage labels. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-This target uses a single-context domain-doc layout. See `docs/agents/domain.md`.
-
-### Related engineering skills
-
-Working rules by phase, completion criteria, and the skill mapping live in the workspace-root [`Docs/dev_guide.md`](../Docs/dev_guide.md), which is imported into every session. It replaced the per-project `docs/agents/skill-workflows.md` copies, which had drifted and named uninstalled skills.
-
-### Documentation system
-
-Maintain durable documentation as an OKF knowledge bundle. See `docs/agents/documentation.md` and `docs/agents/index.md`.
+- **Issue tracker：本仓 GitHub Issues。**
+- triage 标签、domain 文档布局、OKF 文档系统沿用工作区约定：[`docs/agents/index.md`](docs/agents/index.md)。
+- 按环节的守则、完成判据与技能对照见根 [`../Docs/dev_guide.md`](../Docs/dev_guide.md)，它每个会话自动加载。
