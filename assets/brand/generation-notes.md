@@ -10,7 +10,7 @@
 - 工具：Codex 内置 `image_gen`
 - 调用次数：1
 - 原始生成路径：`C:\Users\SkySa\.codex\generated_images\01a01cb2-e058-7191-87c9-54bd3e756fd2\exec-ae9eeb6e-248e-4346-a516-020a580d22f9.png`
-- 落盘路径：`D:\WorkSpace\BetaPass\std\candidates\luogusp\logo-source.png`
+- 落盘路径：`D:\Workspace\BetaPass\std\candidates\luogusp\logo-source.png`
 - 原始尺寸：`1254×1254`
 - PNG：`Format32bppArgb`，真实 alpha；四角中三角 `A=0`、左下角 `A=1`（肉眼等效透明），画布边缘其余抽查点 `A=0`
 - SHA-256：`077890A3BA1250F13A3A19CB1E9B3AD3BF6EE9617BEBD8C1DAF4CEAAE32E2C95`
@@ -64,7 +64,7 @@ Avoid: puzzle piece, jigsaw, monkey or ape or any animal mascot, magnifying glas
 - Date: 2026-08-20 (Asia/Shanghai)
 - Tool: Codex built-in `image_gen` (`image_gen.imagegen`), one call only
 - Generated path: `C:\Users\SkySa\.codex\generated_images\01a01cb2-c910-7882-95e8-f730f6573c8c\exec-94988f6b-d581-4ade-a151-d20a6e8d5d3d.png`
-- Candidate path: `D:\WorkSpace\BetaPass\std\candidates\luogusp\badge-bg-source.png`
+- Candidate path: `D:\Workspace\BetaPass\std\candidates\luogusp\badge-bg-source.png`
 - Native dimensions: 1774 × 887 px (`2:1`, not the requested `3:1`)
 - File size: 1,253,984 bytes
 
