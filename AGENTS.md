@@ -1,38 +1,38 @@
-# AGENTS.md — LuoguSP project guide
+# AGENTS.md — LuoguSP
 
-See the workspace-wide rules in [`../AGENTS.md`](../AGENTS.md).
+> 继承 [`../AGENTS.md`](../AGENTS.md) 与 [`../Docs/dev_guide.md`](../Docs/dev_guide.md)；勿假定自动加载。
 
-LuoguSP is a browser userscript for Luogu. Source modules live under `src/`; `LuoguSP.user.js` is a reproducible loader artifact, and immutable CDN releases live under `cdn/releases/<version>/`.
+LuoguSP 是洛谷浏览器用户脚本。源码在 `src/`，`LuoguSP.user.js` 是可复现 loader 产物，`cdn/releases/<version>/` 是不可变 CDN 发布。使用说明见 [`README.md`](README.md)，不在此复述。
 
-## Commands
+## 命令与验收
 
-- `pnpm run baseline:check` — expand the approved Baseline query and prove that every esbuild browser output consumes the fixed target contract.
-- `pnpm run check` — reproducible-build check, quality budgets, and the full Node test suite.
-- `pnpm release -- --plan --version <version>` — inspect the release plan without changing production.
-- `pnpm release -- --version <version>` — build and deploy an immutable CDN release, update all version-bearing files, then stop for real-browser QA (`publish` remains a compatibility alias).
-- `pnpm run qa:prepare` — prepare the currently promoted userscript for browser injection.
-- `pnpm run qa:browser` — reproducible real-browser QA; writes `reports/browser-qa.json`. It exercises the **promoted artifact** (the bytes its two `@require` URLs point at), not the working tree, so run it **after** a release, not before. Prefers the system Chrome/Edge; falls back to Playwright's bundled Chromium.
+从仓库根运行；Node/pnpm 要求与包管理版本以 `package.json` 为准，唯一 lockfile 是 `pnpm-lock.yaml`。命令定义与两套 CI 对齐；下表不是已通过记录。
 
-## Release safety
+| 何时 | 命令 / 前置 | 能证明什么 / 边界 |
+|---|---|---|
+| 准备依赖 | `pnpm install --frozen-lockfile`；运行时匹配 | 锁文件与 package 一致；不等于行为验收 |
+| 普通源码/合同变更 | `pnpm check`；依赖已装 | baseline:check、可复现构建检查、质量预算、Node 全套测试；不含已发布产物的浏览器 QA |
+| Baseline 诊断 | `pnpm baseline:check` | 查询边界与全部 esbuild 浏览器产物固定 target 消费点；已含于 check |
+| 查看发布计划 | `pnpm release -- --plan --version <version>` | 查看计划，不改生产；不是发布或 QA 通过 |
+| 已授权发布 | `pnpm release -- --version <version>`；全局 wrangler 已准备/登录 | 构建、部署不可变 CDN 并同步版本文件，然后停在真实浏览器 QA；会外部写入，publish 仅兼容别名 |
+| 发布后注入准备 | `pnpm qa:prepare` | 获取当前 promoted 的依赖并在系统临时目录生成注入物；非离线检查 |
+| 发布后、提交/推送前 | `pnpm qa:browser`；Chrome/Edge 或 Playwright Chromium 可用 | 测两条 @require 实际指向的 promoted 字节，写 reports/browser-qa.json；离线 fixture 不证明真实洛谷 DOM/线上全链路 |
 
-- Never edit or overwrite an existing directory under `cdn/releases/`; release paths and hashed files are immutable.
-- This repository uses GitHub Actions. After finishing and validating an owner-approved fix or increment, commit the focused change directly on local `main`; agents must not run `git push`. The owner batches one or more local commits into a single push so Actions runs for that push's final SHA; deferred pushing never relaxes the local release gates.
-- The deploy CLI is the **globally installed** `wrangler` (workspace convention, see [`../AGENTS.md`](../AGENTS.md)), not a version pinned through `npx`. Because releases are immutable and byte-pinned by `@require #sha256=`, `scripts/cdn/publish.mjs` measures the global CLI first and fails closed below `cli.wrangler.minimum` in `config/cdn.json` — that value is a **verified floor**, so only lower it after re-verifying a real release.
-- Run real-browser QA (`pnpm run qa:browser`) after `pnpm release` and before commit/push, then verify the deployed custom origin and the user-visible Luogu behavior by hand — the harness runs on an offline fixture and states its own limitations in the report.
-- The QA stamp compares a **behaviour hash** that exempts only the `@description` line (`scripts/artifact-behaviour-hash.mjs`); every other metadata line and the script body are hashed. Editing the description alone therefore does not invalidate a genuine QA run.
-- Keep `src/userscript.meta.js`, `LuoguSP.user.js`, `package.json`, `pnpm-lock.yaml`, the README version badge, CDN manifest, and release reports aligned. The release script owns version synchronization. There is **one** lockfile: the repository moved fully to pnpm on 2026-08-17, retiring the `package-lock.json` / `scripts/lock-sync.mjs` dual-track (both CI definitions used to install with `npm ci`, so refreshing only the pnpm lockfile failed CI before a single check ran). Both CI definitions now run `pnpm install --frozen-lockfile`, which is itself the drift gate — it refuses to install when `pnpm-lock.yaml` and `package.json` disagree. The pnpm version has a single source, `package.json`s `packageManager`; pnpm 12 enforces it with a hard `ERR_PNPM_BAD_PM_VERSION`, so no separate version-match assertion is needed.
-- After the owner pushes the release commit to both `origin` (GitHub) and `cnb`, verify their branch heads and CI/build results. The project release is the immutable CDN deployment; do not create GitHub or CNB Release objects unless explicitly requested.
-- Do not expose authentication tokens, request headers, cookies, or browser storage in logs or committed QA artifacts.
+验收须区分工作树 check、发布字节 QA、手工线上洛谷行为与自定义源验证，逐项报告命令/结果/未覆盖项。qa:browser 应在 release 后跑，不能用工作树测试替代；优先系统 Chrome/Edge，缺失才回退 bundled Chromium。
 
-## Product constraints
+## 发布、数据与安全合同
 
-- Web Platform Baseline contract: `runtime: browser-tool`, `featureTarget: newly`; production syntax is frozen in `baseline-targets.mjs` at the approved Widely boundary. Baseline does not polyfill Web APIs or replace real Luogu-page QA. The six-field declaration and tool snapshots live in `baseline.config.json`.
-- Treat Luogu DOM and embedded payloads as external, versioned interfaces: prefer shape checks, fail closed, and add a regression fixture for every compatibility repair.
-- On `/user/{uid}/practice`, color only the “尝试过的题目” list. The “已通过的题目” list is already grouped by difficulty and must not be recolored, fetched, or bulk-cached.
-- Preserve unrelated user changes and keep generated browser artifacts outside the repository.
+- 不编辑或覆盖 `cdn/releases/` 既有目录/哈希文件。`@require #sha256=` 钉住字节，发布路径不可变。
+- `wrangler` 为全局 CLI，不由 npx 临时锁版；`scripts/cdn/publish.mjs` 先测全局版本，低于 `config/cdn.json` 的 `cli.wrangler.minimum` 即停。降低这个已验证下限须重验真实发布。
+- 发布脚本负责同步 `src/userscript.meta.js`、`LuoguSP.user.js`、package/lockfile、README 版本 badge、CDN manifest、release reports，不手工维护第二套版本源。pnpm 版本只取 packageManager，由 pnpm 自身硬校验；GitHub/CNB CI 均 frozen install + check。
+- QA stamp 使用 `scripts/artifact-behaviour-hash.mjs`：仅豁免 @description 一行，所有其他 metadata/body 都计入 behaviour hash；单改 description 不使真实 QA 失效。
+- 获批修复/增量验证后聚焦 commit 本地 main；agent 不 push，owner 批量推进 GitHub，CNB 按工作区同步入口执行。推送/同步后核两端分支头与 CI；延后推送不弱化本地门禁。
+- 项目 release 指不可变 CDN 部署；没有明确要求不创建 GitHub/CNB Release 对象。
+- token、请求头、cookie、浏览器 storage 不得出现在日志或入库 QA 产物。临时注入/浏览器产物放仓外，约定的 reports/browser-qa.json 由 QA 脚本生成；保留无关用户修改。
 
-## Agent skills
+## 外部接口与兼容
 
-- **Issue tracker：本仓 GitHub Issues。**
-- triage 标签、domain 文档布局、OKF 文档系统沿用工作区约定：[`docs/agents/index.md`](docs/agents/index.md)。
-- 进入工作区后必须读取根 [`../Docs/dev_guide.md`](../Docs/dev_guide.md) 的环节守则、完成判据与技能对照；Claude 由根 `CLAUDE.md` 显式导入，其他运行时不得假定自动加载。
+- Baseline：`runtime: browser-tool`、`featureTarget: newly`；生产语法固定在 `baseline-targets.mjs` 的获准 Widely 边界。六字段/工具快照在 `baseline.config.json`，不复制第二份声明；Baseline 不补 Web API polyfill，也不替代真实洛谷页面验收。
+- 洛谷 DOM 与嵌入 payload 是会变动的外部接口：先 shape check，失败关闭；每次兼容修复增加回归 fixture。
+- `/user/{uid}/practice` 只给“尝试过的题目”着色。“已通过的题目”已有难度分组，不重染色、不抓取、不批量缓存。
+- Issue tracker：本仓 GitHub Issues；triage、domain、OKF 沿用 [`docs/agents/index.md`](docs/agents/index.md)。
