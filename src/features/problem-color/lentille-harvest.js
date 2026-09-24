@@ -61,6 +61,7 @@ export function collectDifficultyBatches(data) {
 
   // 评测记录列表：每条记录把题目包在 problem 下。
   // 记录里的高档难度值在新旧编号之间有歧义，映射为 null 后交给 Pipeline 查题目页当前值。
+  // 列表页本身不染色（洛谷已原生上色）；这批数据只留给离开该页之后的题号。
   const records = asList(data.records);
   if (records && records.length)
     batches.push({

@@ -42,3 +42,13 @@ test("practice policy colors attempted problems but skips passed problems", () =
     true,
   );
 });
+
+test("record list already paints difficulty colors, so the plugin stays off", () => {
+  const dom = new JSDOM(`<!doctype html><body>
+    <a id="row" href="/problem/P1001">P1001 题目</a>
+  </body>`);
+  const anchor = dom.window.document.querySelector("#row");
+  assert.equal(isProblemAnchorColorable(anchor, "/record/list"), false);
+  assert.equal(isProblemAnchorColorable(anchor, "/record/list/"), false);
+  assert.equal(isProblemAnchorColorable(anchor, "/record/12345"), true);
+});

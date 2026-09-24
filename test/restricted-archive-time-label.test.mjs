@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { relabelArchiveTime } from "../src/features/restricted-content/archive-time-label.js";
 
 // 保存站只有入档时间；实测 2l4x53kj 入档 2026-01-02、真实发表 2025-10-01，差三个月。
-// 官方模板把它渲染成「创建时间」（文章）/「发表时间」（剪贴板），等于用存档时间冒充真值。
+// 官方模板把它渲染成「创建时间」（文章）/「发布时间」（剪贴板，旧壳是「发表时间」），
+// 等于用存档时间冒充真值。
 // .cn 上没有任何他人剪贴板发表时间的只读来源（/paste/{id} 被拦、/user/{uid}/paste 404、
 // /paste 只列自己的），所以剪贴板永远只能显示存档时间 —— 那就得如实标注。
 
@@ -32,6 +33,12 @@ test("剪贴板的「发表时间」同样处理", () => {
   const row = element([text("发表时间: 2025-12-12 00:04")]);
   assert.equal(relabelArchiveTime([row], "发表时间"), 1);
   assert.equal(flatten(row), "存档时间: 2025-12-12 00:04");
+});
+
+test("剪贴板现行文案「发布时间」同样改成存档时间", () => {
+  const row = element([text("发布时间 "), text("2025-12-12 00:04")]);
+  assert.equal(relabelArchiveTime([row], "发布时间"), 1);
+  assert.equal(flatten(row), "存档时间 2025-12-12 00:04");
 });
 
 // ★ 观察器会反复跑 inject，重复替换必须是空操作。

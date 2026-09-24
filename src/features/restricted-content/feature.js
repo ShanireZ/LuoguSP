@@ -21,8 +21,17 @@ import {
   rstTrustedCdnUrl,
   rstUserSummary,
 } from "./presentation.js";
+import {
+  buildColumbaDocument,
+  columbaScaffoldProblem,
+  parseColumbaScaffold,
+} from "./columba-scaffold.js";
 import { createRestrictedPageDetector } from "./page-detector.js";
-import { parseRestrictedPasteScaffold } from "./paste-scaffold.js";
+import {
+  buildPasteShowContext,
+  findPasteChrome,
+  pasteTimeLabel,
+} from "./paste-show.js";
 import { pickPublishTime } from "./publish-time.js";
 import { createRestrictedReplyFetchInstaller } from "./reply-fetch-installer.js";
 import { resolveRestrictedTransportRealm } from "./transport-realm.js";
@@ -44,10 +53,10 @@ export function createRestrictedContentFeature({
   // 显示受限文章与剪贴板（原生壳注入）
   // 国内站访问非本人/未审核的 /article、/paste 会落在「安全访问中心」拦截页
   // （独立静态页、零全站样式、无 CSP）。本功能在拦截页上重建官方页面：
-  //   1) 壳骨架收割：从 .cn 同源页拿官方壳（columba 源=/ranking 等，lfe 源=/image 等；
+  //   1) 壳骨架收割：从 .cn 同源 columba 页拿官方壳（/ranking、/discuss；
   //      骨架自带真实 csrf、当前登录用户、用户主题、官方脚本当前版本——全部活取，绝不写死）；
-  //   2) 数据合成：把保存站存档映射为官方数据壳
-  //      （文章=lentille-context template "article.show"；剪贴板=window._feInjection "PasteShow"）；
+  //   2) 数据合成：把保存站存档映射为 lentille-context
+  //      （文章 template "article.show"；剪贴板 template "paste.show"）；
   //   3) document.write 重建文档并加载官方前端 JS——顶栏/侧栏/主题/登录态/markdown/评论组件
   //      全部由洛谷原生前端渲染，本脚本零复刻（2026-07-22 owner 拍板弃手工烘焙路线）；
   //   4) 网络包装（window 不随 document.write 重建，包装器天然存活）：
@@ -55,7 +64,7 @@ export function createRestrictedContentFeature({
   //      回退形状 {replySlice:[{id,author:userSummary,time,content}]}，支持 sort=time-d、after=<id>；
   //      官方点赞/收藏/评论写入仅由用户点击触发，使用同源 Cookie 与壳页面的真实 CSRF；
   //   5) 官方渲染完成后注入两枚蓝色扩展按钮（申请更新 / 国际站原文）：
-  //      文章页=互动条 button-2line 挂「不推荐」右侧；剪贴板页=源码卡下方 lfe 实心按钮。
+  //      文章页=互动条 button-2line 挂「不推荐」右侧；剪贴板页=元信息行右侧实心按钮。
   // 数据源=洛谷保存站 api.luogu.me（CORS 开放、匿名；owner 拍板纯保存站+更新仅手动）；
   // 作者数据走 .cn 同源 /api/user/search（owner 要求不吃保存站/国际站的用户数据）。
   // ★保存站硬边界：payload 的 createdAt 是入档时间，非原文发布时间（无接口可取原始时间）。
@@ -187,23 +196,54 @@ export function createRestrictedContentFeature({
     document.querySelector(".luogusp-rst-original").href = info.origUrl;
   }
 
-  // 壳骨架收割：候选源逐个尝试（2026-07-22 实测：/ranking、/discuss 已迁 columba；
-  // /image、/theme/list 仍为 lfe。任一命中即用；全挂=降级失败卡）
-  async function rstHarvest(kind, signal) {
-    const sources =
-      kind === "columba" ? ["/ranking", "/discuss"] : ["/image", "/theme/list"];
-    const marker = kind === "columba" ? "lentille-context" : "_feInjection";
-    for (const src of sources) {
+  // 壳骨架收割：/ranking、/discuss 任一带 lentille-context 即用。
+  // 2026-09 剪贴板已迁 paste.show，旧 lfe 源 /image、/theme/list 分别是 401 和 404。
+  async function rstHarvest(signal) {
+    for (const src of ["/ranking", "/discuss"]) {
       try {
         const res = await rstFetch(src, signal);
         const html = await res.text();
-        if (html.includes(marker)) return html;
+        if (html.includes("lentille-context")) return html;
       } catch (e) {
         if (e && e.kind === "cancelled") throw e;
         /* 换下一个源 */
       }
     }
     return null;
+  }
+  function readColumbaShell(scaffold) {
+    const parsed = parseColumbaScaffold(scaffold);
+    const problem = columbaScaffoldProblem(parsed, {
+      isTrustedUrl: rstTrustedCdnUrl,
+      isSafeCsrf: rstSafeCsrf,
+    });
+    if (problem === "theme")
+      throw rstPreparationError("洛谷主题数据解析失败（结构可能已改版）。");
+    if (problem)
+      throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
+    return {
+      csrf: parsed.csrf,
+      globalsRaw: parsed.globalsRaw,
+      scripts: parsed.scripts,
+      cssLinks: parsed.cssLinks,
+      themeJson: parsed.themeRaw
+        ? serializeJsonForScript(parsed.theme)
+        : "",
+      viewer: parsed.context.user || null,
+    };
+  }
+  function columbaHtml(title, shell, ctx) {
+    return buildColumbaDocument({
+      title,
+      csrf: shell.csrf,
+      globalsRaw: shell.globalsRaw,
+      contextJson: serializeJsonForScript(ctx),
+      scripts: shell.scripts,
+      cssLinks: shell.cssLinks,
+      themeJson: shell.themeJson,
+      extraCss: RST_EXTRA_CSS,
+      bodySuffix: RST_LOADER_HTML,
+    });
   }
   // 嵌入 <script> 的 JSON 防拆壳（内容里出现 </script> 会截断壳文档）
 
@@ -251,7 +291,7 @@ export function createRestrictedContentFeature({
   // 文章页：合成 lentille-context（template article.show）+ 官方 columba 前端
   async function rstBootArticle(info, data, signal) {
     const [scaffold, cnUser, commentsResult, live] = await Promise.all([
-      rstHarvest("columba", signal),
+      rstHarvest(signal),
       rstCnUser(data.authorId, signal),
       saverWorkflow.loadComments(info.id, { signal }),
       resolveLiveArticleCounts({
@@ -271,53 +311,7 @@ export function createRestrictedContentFeature({
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
-    const pick = (re) => {
-      const m = scaffold.match(re);
-      return m ? m[1] : null;
-    };
-    const ctxRaw = pick(
-      /<script id="lentille-context" type="application\/json">([\s\S]*?)<\/script>/,
-    );
-    const themeRaw =
-      pick(
-        /<script id="luogu-theme" type="application\/json">([\s\S]*?)<\/script>/,
-      ) || "";
-    const csrf = pick(/<meta name="csrf-token" content="([^"]+)"/) || "";
-    const globalsRaw =
-      pick(/<script>\s*(window\.__feInitLocalTime[\s\S]*?)<\/script>/) || "";
-    const scripts = [
-      ...scaffold.matchAll(
-        /<script src="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+)"[^>]*><\/script>/g,
-      ),
-    ].map((m) => m[1]);
-    const cssLinks = [
-      ...scaffold.matchAll(
-        /<link rel="stylesheet" href="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+)"/g,
-      ),
-    ].map((m) => m[1]);
-    if (
-      !ctxRaw ||
-      !scripts.length ||
-      !scripts.every(rstTrustedCdnUrl) ||
-      !cssLinks.every(rstTrustedCdnUrl) ||
-      !rstSafeCsrf(csrf) ||
-      /<\/script/i.test(globalsRaw)
-    )
-      throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
-    let safeThemeRaw = "";
-    if (themeRaw) {
-      try {
-        safeThemeRaw = serializeJsonForScript(JSON.parse(themeRaw));
-      } catch (error) {
-        throw rstPreparationError("洛谷主题数据解析失败（结构可能已改版）。");
-      }
-    }
-    let viewer = null;
-    try {
-      viewer = JSON.parse(ctxRaw).user || null;
-    } catch (e) {
-      /* 匿名兜底 */
-    }
+    const shell = readColumbaShell(scaffold);
     const comments =
       commentsResult.kind === "available" &&
       Array.isArray(commentsResult.data.comments)
@@ -328,7 +322,7 @@ export function createRestrictedContentFeature({
         store: rstInteractionStore,
         origin: location.origin,
         lid: info.id,
-        viewer,
+        viewer: shell.viewer,
         // 存档快照的新鲜度：只有比已确认记录更新，保存站计数才允许覆盖。
         archivedAt: Date.parse(data.updatedAt || data.createdAt) || null,
         archived: data,
@@ -367,33 +361,18 @@ export function createRestrictedContentFeature({
       data: {
         ...interaction,
       },
-      user: viewer,
+      user: shell.viewer,
       time: Math.floor(Date.now() / 1000),
     };
     const title = rstEscapeHtmlText(data.title || "文章");
-    const html =
-      `<!DOCTYPE html><html lang="zh-CN" class="no-js"><head><meta charset="utf-8">` +
-      `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` +
-      `<meta name="csrf-token" content="${csrf}">` +
-      `<title>${title} - 洛谷专栏</title>` +
-      `<link rel="icon" href="https://fecdn.luogu.com.cn/favicon.ico">` +
-      `<script>${globalsRaw}<\/script>` +
-      `<script id="lentille-context" type="application/json">${serializeJsonForScript(ctx)}<\/script>` +
-      scripts
-        .map((s) => `<script src="${s}" charset="utf-8" defer><\/script>`)
-        .join("") +
-      cssLinks.map((c) => `<link rel="stylesheet" href="${c}" />`).join("") +
-      `<script id="luogu-theme" type="application/json">${safeThemeRaw}<\/script>` +
-      `<style>${RST_EXTRA_CSS}</style>` +
-      `</head><body><div id="app"></div>${RST_LOADER_HTML}</body></html>`;
     return {
       kind: "article",
-      html,
+      html: columbaHtml(`${title} - 洛谷专栏`, shell, ctx),
       install: () =>
         rstInstallArticleTransport(
           info.id,
           comments,
-          csrf,
+          shell.csrf,
           interactionTracker.observeWrite,
         ),
       rollback: rstDisposeReplyTransport,
@@ -401,61 +380,30 @@ export function createRestrictedContentFeature({
     };
   }
 
-  // 剪贴板页：合成 window._feInjection（currentTemplate PasteShow）+ 官方 lfe 前端
+  // 剪贴板页：合成 lentille-context（template paste.show）+ 官方 columba 前端。
   async function rstBootPaste(info, data, signal) {
     const [scaffold, cnUser] = await Promise.all([
-      rstHarvest("lfe", signal),
+      rstHarvest(signal),
       rstCnUser(data.authorId, signal),
     ]);
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
-    const parsed = parseRestrictedPasteScaffold(scaffold);
-    if (
-      !parsed ||
-      !rstTrustedCdnUrl(parsed.loaderJs) ||
-      !rstTrustedCdnUrl(parsed.loaderCss) ||
-      !rstSafeCsrf(parsed.csrf)
-    )
-      throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
-    const scafInj = parsed.injection;
-    const inj = {
-      code: 200,
-      currentTemplate: "PasteShow",
-      currentData: {
-        paste: {
-          id: data.id,
-          user: rstUserSummary(cnUser, data.author, data.authorId),
-          // 剪贴板没有作者专栏列表那条路，真值只可能来自保存站的 publishTime；
-          // 没有就退回入档时间，并把文案改成「存档时间」（见 rstMountPasteButtons）。
-          time:
-            pickPublishTime(data, null) ??
-            (Math.floor(new Date(data.createdAt).getTime() / 1000) || 0),
-          public: true,
-          data: String(data.content || ""),
-        },
-        canEdit: false,
-      },
-      currentTitle: "云剪贴板",
-      currentTheme: scafInj.currentTheme || null,
-      currentUser: scafInj.currentUser || null,
-      currentTime: Math.floor(Date.now() / 1000),
-    };
-    const html =
-      `<!DOCTYPE html><html class="no-js" lang="zh"><head><meta charset="utf-8">` +
-      `<meta http-equiv="X-UA-Compatible" content="IE=edge">` +
-      `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` +
-      `<meta name="csrf-token" content="${parsed.csrf}">` +
-      `<meta name="renderer" content="webkit">` +
-      `<title>云剪贴板 - 洛谷 | 计算机科学教育新生态</title>` +
-      `<link rel="shortcut icon" type="image/x-icon" href="https://fecdn.luogu.com.cn/favicon.ico" media="screen"/>` +
-      `<link rel="stylesheet" href="${parsed.loaderCss}">` +
-      `<style>${RST_EXTRA_CSS}</style>` +
-      `<script>window._feInjection = JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(inj))}"));window._feConfigVersion=${parsed.configVersionLiteral};window._tagVersion=${parsed.tagVersionLiteral};<\/script>` +
-      `<script src="${parsed.loaderJs}" charset="utf-8" defer><\/script>` +
-      `</head><body><div id="app"><noscript><h3>请<b style="color:#f00;">不要禁用</b>脚本，否则网页无法正常加载</h3></noscript></div>${RST_LOADER_HTML}</body></html>`;
+    const shell = readColumbaShell(scaffold);
+    // 剪贴板没有作者专栏列表那条路，真值只可能来自保存站的 publishTime；
+    // 没有就退回入档时间，并把文案改成「存档时间」（见 rstMountPasteButtons）。
+    const ctx = buildPasteShowContext({
+      id: data.id || info.id,
+      content: data.content,
+      user: rstUserSummary(cnUser, data.author, data.authorId),
+      time:
+        pickPublishTime(data, null) ??
+        (Math.floor(new Date(data.createdAt).getTime() / 1000) || 0),
+      viewer: shell.viewer,
+      now: Math.floor(Date.now() / 1000),
+    });
     return {
       kind: "paste",
-      html,
+      html: columbaHtml("云剪贴板 - 洛谷", shell, ctx),
       afterReady: () => rstMountPasteButtons(info, data),
     };
   }
@@ -565,15 +513,16 @@ export function createRestrictedContentFeature({
     };
     return rstObserveInjection(inject);
   }
-  // 扩展按钮（剪贴板页）：内容卡首行（content-card-top）最右侧两枚实心蓝钮
-  // （首行是 flex space-between，作者信息在左，本容器落位最右）。
-  // 同时在「发表时间: …」行下方补「更新时间」行＝保存站存档最近更新时间（updatedAt）。
+  // 扩展按钮（剪贴板页）：元信息行（meta-row）右侧两枚实心蓝钮。
+  // 该行是 flex space-between，作者和时间在 .meta-left，本容器落位最右。
+  // 「更新时间」跟在「发布时间」同一行，值是保存站存档最近更新时间（updatedAt）。
   function rstMountPasteButtons(info, data) {
     const updText = rstFmtTime(data && data.updatedAt, false);
     const inject = () => {
-      const top = document.querySelector(".card .content-card-top");
-      if (!top) return;
-      if (!top.querySelector(".luogusp-rst-pactions")) {
+      const chrome = findPasteChrome(document);
+      if (!chrome) return;
+      const { actionsHost, timeRow } = chrome;
+      if (!actionsHost.querySelector(".luogusp-rst-pactions")) {
         // owner 要求：扩展按钮不带 title 悬浮说明（与时间栏一致，页面不出浏览器浮泡）
         const mk = (extraCls, text, onClick) => {
           const b = document.createElement("button");
@@ -593,36 +542,29 @@ export function createRestrictedContentFeature({
             window.open(info.origUrl, "_blank", "noopener"),
           ),
         );
-        top.appendChild(box);
+        actionsHost.appendChild(box);
       }
-      const author = top.querySelector(".author");
-      // owner 要求：指向发表/更新时间不出浏览器悬浮泡 → 发表时间行剥 title
+      // owner 要求：指向发表/更新时间不出浏览器悬浮泡 → 时间行剥 title
       // （removeAttribute 无属性时不产生变更记录，天然幂等）
-      const pubRow = author
-        ? [...author.querySelectorAll("div.lfe-caption")].find((d) =>
-            /发表时间|存档时间/.test(d.textContent || ""),
-          )
-        : null;
-      if (pubRow) {
-        pubRow.removeAttribute("title");
-        pubRow
-          .querySelectorAll("[title]")
-          .forEach((n) => n.removeAttribute("title"));
-      }
-      if (updText && pubRow && !author.querySelector(".luogusp-rst-updtime")) {
-        // 浅克隆保留 lfe-caption 类与 data-v 作用域属性（title 已在上方剥净）
-        const row = pubRow.cloneNode(false);
-        row.classList.add("luogusp-rst-updtime");
+      timeRow.removeAttribute("title");
+      timeRow
+        .querySelectorAll("[title]")
+        .forEach((node) => node.removeAttribute("title"));
+      const meta = timeRow.parentElement;
+      if (updText && meta && !meta.querySelector(".luogusp-rst-updtime")) {
         const span = document.createElement("span");
-        span.textContent = `更新时间: ${updText}`;
-        row.appendChild(span);
-        pubRow.after(row);
+        span.className = "luogusp-rst-updtime";
+        span.textContent = `更新时间 ${updText}`;
+        timeRow.after(span);
       }
-      // 保存站给不出真实发表时间时（.cn 这边他人剪贴板无来源），这一行只能是存档时间。
-      if (pubRow && pickPublishTime(data, null) === null)
-        relabelArchiveTime([pubRow], "发表时间");
+      // 保存站给不出真实发表时间时，这一行只能是存档时间。
+      // 当前官方文案是「发布时间」，旧壳是「发表时间」。
+      if (pickPublishTime(data, null) === null) {
+        const label = pasteTimeLabel(timeRow);
+        if (label) relabelArchiveTime([timeRow], label);
+      }
       rstApplyRefreshBtns(); // Vue 重种出的「申请更新」按钮要重新套用当前状态
-      if (author && pubRow) rstHideLoader();
+      rstHideLoader();
     };
     return rstObserveInjection(inject);
   }

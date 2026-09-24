@@ -117,7 +117,8 @@ export function createProblemColorFeature({ storage }) {
     difficultySource: {
       text: (path, options) => limiter.text(path, options),
       // 练习页只收“尝试过的题目”；“已通过”已按难度分组，既不着色也不入缓存。
-      // 评测记录列表仍随页面下发整批难度，省掉逐题请求。
+      // 评测记录列表的题号洛谷已经上色，practice-policy.js 会整页跳过。
+      // 列表 payload 里的难度仍收进缓存，离开该页后的题号不用逐题再请求。
       // 数据源与判据见 lentille-harvest.js（原先读的 window._feInstance 已全站消失）。
       harvest: () => collectDifficultyBatches(readLentilleData()),
     },

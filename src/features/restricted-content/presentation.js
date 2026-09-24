@@ -36,13 +36,10 @@ export const RST_EXTRA_CSS =
   ".luogusp-rst-abtn .icon{font-size:1.25em;margin-bottom:.3em;}" +
   ".luogusp-rst-abtn .text{text-align:center;font-size:.75em;}" +
   ".luogusp-rst-abtn>*{color:#3498db !important;}" +
-  ".luogusp-rst-pactions{display:flex;align-items:center;}" +
+  ".luogusp-rst-pactions{display:flex;align-items:center;flex:none;}" +
   ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
   ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}" +
-  ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}" +
-  // 剪贴板页「更新时间」与同行左侧「发表时间」的水平间隔（author 行内横排；
-  // ★勿用 margin-top——会把本项在行内往下推出错位。div 选择器只命中剪贴板项，文章页是内联 span 不受影响）
-  "div.luogusp-rst-updtime{margin-left:1em;}";
+  ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}";
 // 扩展按钮图标（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
 
 export const RST_BTN_ICONS = {

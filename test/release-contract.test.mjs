@@ -173,12 +173,19 @@ test("runtime dependencies migrate atomically to two first-party compatibility f
 
 test("restricted first paint stays covered until native page anchors are ready", () => {
   assert.equal(
-    (
-      restrictedFeatureSource.match(
-        /\$\{RST_LOADER_HTML\}<\/body><\/html>/g,
-      ) || []
-    ).length,
+    (restrictedFeatureSource.match(/html: columbaHtml\(/g) || []).length,
     2,
+  );
+  assert.match(restrictedFeatureSource, /bodySuffix: RST_LOADER_HTML/);
+  assert.match(
+    fs.readFileSync(
+      path.join(
+        root,
+        "src/features/restricted-content/columba-scaffold.js",
+      ),
+      "utf8",
+    ),
+    /\$\{bodySuffix \|\| ""\}<\/body><\/html>/,
   );
   assert.match(
     restrictedFeatureSource,
@@ -186,7 +193,7 @@ test("restricted first paint stays covered until native page anchors are ready",
   );
   assert.match(
     restrictedFeatureSource,
-    /if \(author && pubRow\) rstHideLoader\(\)/,
+    /const chrome = findPasteChrome\(document\);\s*if \(!chrome\) return;[\s\S]*rstHideLoader\(\);/,
   );
   assert.match(
     restrictedEarlyGateSource,

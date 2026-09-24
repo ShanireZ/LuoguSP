@@ -14,15 +14,15 @@
     "reason": "洛谷用户脚本运行于用户自带浏览器；发布审查包含移动 Chromium、Firefox Android 与 Samsung Internet，但实际支持仍受 Tampermonkey 和洛谷页面能力约束。"
   },
   "approvedPolicyMinimums": {
-    "chrome": "121",
-    "edge": "121",
-    "firefox": "123",
-    "safari": "17.2",
-    "ios_saf": "17.2",
+    "chrome": "123",
+    "edge": "123",
+    "firefox": "124",
+    "safari": "17.4",
+    "ios_saf": "17.4",
     "android": "151",
     "and_chr": "151",
     "and_ff": "153",
-    "samsung": "25"
+    "samsung": "27"
   },
   "negativeQuery": "baseline newly available",
   "criticalFallback": "DOM、嵌入数据与新 Web API 一律做形状检查或特性检测并失败关闭；关键启动路径保留 compat IIFE，按需 ESM、渲染器、悬停卡和受限内容失败时不得阻断洛谷原页。",
@@ -35,7 +35,7 @@
     "自定义 CDN 源点完整性验证与真实洛谷页面实测"
   ],
   "snapshot": {
-    "approvedAt": "2026-08-24",
+    "approvedAt": "2026-09-24",
     "browserslist": "4.28.8",
     "esbuild": "0.27.2",
     "baselineBrowserMapping": "2.11.17",
