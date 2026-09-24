@@ -91,9 +91,12 @@ test("两处「存档时间」文案的判据与取值同源", () => {
   );
   assert.match(
     source,
-    /if \(pubRow && pickPublishTime\(data, null\) === null\)\s*\n?\s*relabelArchiveTime\(\[pubRow\], "发表时间"\)/,
+    /if \(pickPublishTime\(data, null\) === null\) \{\s*\n?\s*const label = pasteTimeLabel\(timeRow\);\s*\n?\s*if \(label\) relabelArchiveTime\(\[timeRow\], label\);\s*\n?\s*\}/,
     "剪贴板：保存站回填到之后就该显示真实发表时间，不再一律标「存档时间」",
   );
+  const pasteShow = read("src/features/restricted-content/paste-show.js");
+  assert.match(pasteShow, /发布时间/);
+  assert.match(pasteShow, /发表时间/);
   assert.doesNotMatch(
     source,
     /!\(live && live\.time\)/,

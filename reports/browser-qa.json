@@ -1,38 +1,38 @@
 {
-  "checkedAt": "2026-08-23T13:48:09.509Z",
+  "checkedAt": "2026-09-24T07:27:52.571Z",
   "status": "passed",
-  "browser": "Playwright + 系统 chrome 151.0.7922.172",
+  "browser": "Playwright + 系统 chrome 153.0.8010.53",
   "generatedBy": "pnpm qa:browser (scripts/qa/browser-qa.mjs)",
-  "sourceCommit": "913cf38225a83b719cfc5e02b23a2bc1ab2c299a",
+  "sourceCommit": "277e2a30f19914090c076cde48f61c08ecef877a",
   "worktreeIncluded": true,
-  "release": "2.14.4",
+  "release": "2.14.5",
   "requireUrls": [
-    "https://luogusp.round1.cc/releases/2.14.4/compat/early-gate.16eb5533cc5eb634.js#sha256=16eb5533cc5eb634823aa21616ca60258e420c2588328a259eb04acd5d56faa5",
-    "https://luogusp.round1.cc/releases/2.14.4/compat/runtime.18c3ab644a52df19.js#sha256=18c3ab644a52df198526f6f4bceb57b2c22c51aa2ad86c69a4cd798bd3423988"
+    "https://luogusp.round1.cc/releases/2.14.5/compat/early-gate.a6566fa8f1000003.js#sha256=a6566fa8f1000003226fc60cdf322c961341a0403bb1a11479d63444ef36a2ae",
+    "https://luogusp.round1.cc/releases/2.14.5/compat/runtime.c2b7a35eedef5b33.js#sha256=c2b7a35eedef5b33d0c55d87340567ffa7f0c9f9201002cda42c7e14d8c6c22c"
   ],
-  "artifactSha256": "ab82f1b9810bbde5892086e6ca92532636b0683f8cef99b0e6acc6e1c0d809c2",
-  "behaviorSha256": "42b9c2af454e4a5000a1162bc9fc1cae09eee883324e052f2a96d7adb1268fe6",
+  "artifactSha256": "b3d05cb787bdcdaf44a71405e04c26c694b6b3c20b4ee90d818281a5e93b24be",
+  "behaviorSha256": "f36c46575c65d273a3316642814084c11871d058e5e4be36a6b84ba06ef0e68a",
   "behaviorSha256Note": "只把 @description 那一行抹成占位符，其余（含 @require/@match/@grant/@connect/@run-at/@sandbox 与脚本体）全部参与。",
   "startupMeasurements": [
     {
       "iteration": 1,
-      "ms": 1
+      "ms": 6.100000001490116
     },
     {
       "iteration": 2,
-      "ms": 1
+      "ms": 2.900000002235174
     },
     {
       "iteration": 3,
-      "ms": 0.9000000022351742
+      "ms": 1.3999999985098839
     },
     {
       "iteration": 4,
-      "ms": 0.9000000022351742
+      "ms": 2.199999999254942
     },
     {
       "iteration": 5,
-      "ms": 1
+      "ms": 4.800000000745058
     }
   ],
   "console": {

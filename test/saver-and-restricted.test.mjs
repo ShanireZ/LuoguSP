@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  parseRestrictedPasteScaffold,
-} from "../src/features/restricted-content/paste-scaffold.js";
+  buildColumbaDocument,
+  columbaScaffoldProblem,
+  parseColumbaScaffold,
+} from "../src/features/restricted-content/columba-scaffold.js";
+import {
+  buildPasteShowContext,
+  findPasteChrome,
+  pasteTimeLabel,
+} from "../src/features/restricted-content/paste-show.js";
+import { JSDOM } from "jsdom";
 import {
   createRestrictedPageDetector,
 } from "../src/features/restricted-content/page-detector.js";
@@ -35,47 +43,130 @@ import {
 } from "../src/features/restricted-content/saver-workflow.js";
 import { FakeClock, flushMicrotasks } from "./helpers.js";
 
-test("Paste scaffold parser accepts the quoted config version used by Luogu", () => {
-  const injection = encodeURIComponent(
-    JSON.stringify({ currentTheme: null, currentUser: null }),
-  );
-  const scaffold = [
-    '<meta name="csrf-token" content="token:abc=">',
-    '<link rel="stylesheet" href="https://fecdn.luogu.com.cn/luogu/loader.css?ver=20260422">',
-    `<script>window._feInjection = JSON.parse(decodeURIComponent("${injection}"));`,
-    "window._feConfigVersion='1784804286';",
-    "window._tagVersion=1784876547;</script>",
-    '<script src="https://fecdn.luogu.com.cn/luogu/loader.js?ver=20260422" charset="utf-8" defer></script>',
-  ].join("");
-
-  assert.deepEqual(parseRestrictedPasteScaffold(scaffold), {
-    injection: { currentTheme: null, currentUser: null },
-    configVersionLiteral: "'1784804286'",
-    tagVersionLiteral: "1784876547",
-    csrf: "token:abc=",
-    loaderCss:
-      "https://fecdn.luogu.com.cn/luogu/loader.css?ver=20260422",
-    loaderJs: "https://fecdn.luogu.com.cn/luogu/loader.js?ver=20260422",
+function columbaScaffoldFixture(overrides = {}) {
+  const context = JSON.stringify({
+    instance: "main",
+    template: "ranking",
+    data: {},
+    user: { uid: 7 },
   });
+  return [
+    '<meta name="csrf-token" content="token:abc=">',
+    '<link rel="stylesheet" href="https://fecdn.luogu.com.cn/columba/loader.css">',
+    `<script id="lentille-context" type="application/json">${context}</script>`,
+    `<script id="luogu-theme" type="application/json">{"dark":false}</script>`,
+    "<script>window.__feInitLocalTime = 1; window.__feConfigVersion = 'abc';</script>",
+    '<script src="https://fecdn.luogu.com.cn/columba/loader.js" charset="utf-8" defer></script>',
+    overrides.extra || "",
+  ].join("");
+}
 
+const trusted = (url) => {
+  try {
+    return new URL(url).origin === "https://fecdn.luogu.com.cn";
+  } catch (error) {
+    return false;
+  }
+};
+const safeCsrf = (value) =>
+  typeof value === "string" && !/["'<>\s]/.test(value);
+
+test("Columba scaffold parser reads the shell paste.show and article.show share", () => {
+  const parsed = parseColumbaScaffold(columbaScaffoldFixture());
+  assert.equal(columbaScaffoldProblem(parsed, {
+    isTrustedUrl: trusted,
+    isSafeCsrf: safeCsrf,
+  }), null);
+  assert.equal(parsed.context.user.uid, 7);
+  assert.equal(parsed.csrf, "token:abc=");
+  assert.deepEqual(parsed.scripts, [
+    "https://fecdn.luogu.com.cn/columba/loader.js",
+  ]);
+  assert.deepEqual(parsed.theme, { dark: false });
+  assert.match(parsed.globalsRaw, /__feInitLocalTime/);
+
+  // 正则在第一个 </script> 处停下，大小写变体仍能把壳截断，必须拒掉。
   assert.equal(
-    parseRestrictedPasteScaffold(
-      scaffold.replace(
-        "window._feConfigVersion='1784804286';",
-        "window._feConfigVersion=1784804286;",
-      ),
-    ).configVersionLiteral,
-    "1784804286",
-  );
-  assert.equal(
-    parseRestrictedPasteScaffold(
-      scaffold.replace(
-        "window._feConfigVersion='1784804286';",
-        "window._feConfigVersion=1784804286+alert(1);",
+    parseColumbaScaffold(
+      columbaScaffoldFixture().replace(
+        "window.__feInitLocalTime = 1;",
+        "window.__feInitLocalTime = 1; </SCRIPT>",
       ),
     ),
     null,
   );
+  assert.equal(
+    columbaScaffoldProblem(
+      parseColumbaScaffold(
+        columbaScaffoldFixture().replace('{"dark":false}', "{"),
+      ),
+      { isTrustedUrl: trusted, isSafeCsrf: safeCsrf },
+    ),
+    "theme",
+  );
+  assert.equal(
+    columbaScaffoldProblem(
+      parseColumbaScaffold(
+        columbaScaffoldFixture().replace("token:abc=", "bad token"),
+      ),
+      { isTrustedUrl: trusted, isSafeCsrf: safeCsrf },
+    ),
+    "scaffold",
+  );
+});
+
+test("paste.show context matches the current clipboard page and stays read-only", () => {
+  const ctx = buildPasteShowContext({
+    id: "40hfk7qm",
+    content: "hello",
+    user: { uid: 1, name: "a" },
+    time: 1681960974,
+    viewer: { uid: 7 },
+    now: 1700000000,
+  });
+  assert.equal(ctx.template, "paste.show");
+  assert.equal(ctx.data.canEdit, false);
+  assert.equal(ctx.data.paste.id, "40hfk7qm");
+  assert.equal(ctx.data.paste.data, "hello");
+  assert.equal(ctx.data.paste.public, true);
+  assert.equal(ctx.data.paste.time, 1681960974);
+  assert.equal("expireTime" in ctx.data.paste, false);
+  assert.equal(ctx.user.uid, 7);
+  const html = buildColumbaDocument({
+    title: "云剪贴板 - 洛谷",
+    csrf: "token:abc=",
+    globalsRaw: "window.__feInitLocalTime = 1;",
+    contextJson: JSON.stringify(ctx).replace(/</g, "\\u003C"),
+    scripts: ["https://fecdn.luogu.com.cn/columba/loader.js"],
+    cssLinks: ["https://fecdn.luogu.com.cn/columba/loader.css"],
+    themeJson: "null",
+    extraCss: "",
+    bodySuffix: "",
+  });
+  assert.match(html, /"template":"paste.show"/);
+  assert.match(html, /<div id="app">/);
+  assert.doesNotMatch(html, /_feInjection|PasteShow/);
+});
+
+test("paste chrome anchors the current meta row, not the retired lfe card", () => {
+  const dom = new JSDOM(`<!doctype html><body>
+    <div class="card"><div class="content-card-top"><div class="author">
+      <div class="lfe-caption">发表时间: 2021-05-12 22:20</div>
+    </div></div></div>
+    <div class="paste-show-card"><div class="meta-row">
+      <div class="meta-left">
+        <span>作者 <a>someone</a></span>
+        <span id="time">发布时间 <time title="full">2023-04-19 23:22</time></span>
+      </div>
+    </div></div>
+  </body>`);
+  const chrome = findPasteChrome(dom.window.document);
+  assert.equal(chrome.actionsHost.className, "meta-row");
+  assert.equal(chrome.timeRow.id, "time");
+  assert.equal(pasteTimeLabel(chrome.timeRow), "发布时间");
+  assert.equal(chrome.actionsHost.classList.contains("content-card-top"), false);
+  assert.equal(pasteTimeLabel({ textContent: "发表时间: 2021" }), "发表时间");
+  assert.equal(pasteTimeLabel({ textContent: "存档时间 2021" }), null);
 });
 
 test("Saver transport separates HTTP, malformed JSON and business responses", async () => {
