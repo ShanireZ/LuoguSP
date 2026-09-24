@@ -2,7 +2,7 @@ main:
   push:
     - name: LuoguSP CI
       docker:
-        image: node:26.7.0-bookworm
+        image: node:26.10.0-bookworm
       stages:
         # 这里不能用 pnpm/action-setup（那是 GitHub Actions 专用），所以用镜像自带的
         # npm 装一次 pnpm —— npm 在本仓的用途仅此一项自举，不参与依赖安装。
@@ -19,7 +19,7 @@ main:
   pull_request:
     - name: LuoguSP CI
       docker:
-        image: node:26.7.0-bookworm
+        image: node:26.10.0-bookworm
       stages:
         - name: Set up pnpm
           script: npm i -g pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")
