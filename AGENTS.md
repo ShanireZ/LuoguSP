@@ -1,6 +1,6 @@
 # AGENTS.md — LuoguSP
 
-> 继承 [`../AGENTS.md`](../AGENTS.md) 与 [`../Docs/dev_guide.md`](../Docs/dev_guide.md)；勿假定自动加载。
+> 继承 [`../AGENTS.md`](../AGENTS.md)；勿假定自动加载。
 
 LuoguSP 是洛谷浏览器用户脚本。源码在 `src/`，`LuoguSP.user.js` 是可复现 loader 产物，`cdn/releases/<version>/` 是不可变 CDN 发布。使用说明见 [`README.md`](README.md)，不在此复述。
 
