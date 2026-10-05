@@ -7,7 +7,7 @@ import { createHoverCardFeatures } from "../features/hover-card/lazy-feature.js"
 import { createRestrictedContentFeature } from "../features/restricted-content/lazy-feature.js";
 import { createSettingsFeature } from "../features/settings/feature.js";
 
-function createBrowserStorage() {
+export function createBrowserStorage() {
   return Object.freeze({
     get: (key) => localStorage.getItem(key) === "true",
     set: (key, value) => localStorage.setItem(key, String(value)),
@@ -59,7 +59,7 @@ export function createLuoguSPApp(options = {}) {
   const restrictedLoadingGate = options.restrictedLoadingGate || null;
   let pageLifecycle = null;
 
-  const problemColorFeature = createProblemColorFeature({ storage });
+  const problemColorFeature = options.problemColorFeature || createProblemColorFeature({ storage });
   const hiddenIntroFeature = createHiddenIntroFeature({
     storage,
     nativeIntroAdapter: options.hiddenIntroNativeAdapter,

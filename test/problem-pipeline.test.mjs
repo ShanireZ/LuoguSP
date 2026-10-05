@@ -6,13 +6,17 @@ import {
 import {
   createProblemPipeline,
 } from "../src/features/problem-color/pipeline.js";
-import { deferred, flushMicrotasks } from "./helpers.js";
+import { deferred, flushMicrotasks, FakeClock } from "./helpers.js";
 
 function fixture({
   anchors = [],
   text,
   harvest = () => [],
   logError = () => {},
+  subscribe,
+  clock,
+  requestDelayMs = 0,
+  cacheTtlMs,
 } = {}) {
   const writes = [];
   const clears = [];
@@ -48,9 +52,12 @@ function fixture({
       },
     },
     routeAdapter: { token: () => route },
-    difficultySource: { text, harvest },
+    difficultySource: { text, harvest, subscribe },
     colorForDifficulty: (difficulty) => `color-${difficulty}`,
     logError,
+    clock,
+    requestDelayMs,
+    cacheTtlMs,
   });
   return {
     pipeline,
@@ -72,6 +79,118 @@ test("record harvesting trusts only difficulty ids stable across both scales", (
   );
   assert.equal(recordDifficultyForHarvest(-1), null);
   assert.equal(recordDifficultyForHarvest(null), null);
+});
+
+test("native colors apply synchronously; unknown problems wait 300ms and recheck data", async () => {
+  const clock = new FakeClock();
+  const anchors = ["P1", "P2", "P3"].map((pid) => ({ pid, href: `/problem/${pid}` }));
+  let source = [{ pid: "P1", difficulty: 1 }];
+  const requests = [];
+  const fx = fixture({ anchors, clock: clock.adapter(), requestDelayMs: 300,
+    harvest: () => [{ source, problems: source }],
+    text: async (url) => { requests.push(url); return '{"currentData":{"problem":{"difficulty":4}}}'; },
+  });
+  fx.pipeline.mount();
+  assert.equal(anchors[0].color, "color-1", "no promise turn or timer for native colors");
+  await clock.advance(299);
+  assert.deepEqual(requests, []);
+  source = [...source, { pid: "P2", difficulty: 2 }];
+  await clock.advance(1);
+  assert.equal(anchors[1].color, "color-2");
+  assert.deepEqual(requests, ["/problem/P3?_contentOnly=1"]);
+  assert.equal(anchors[2].color, "color-4");
+  fx.pipeline.dispose();
+});
+
+test("new native data repaints the same pid and wins over an older in-flight query", async () => {
+  const clock = new FakeClock();
+  const anchor = { pid: "P1", href: "/problem/P1" };
+  let batches = [];
+  let changed;
+  const response = deferred();
+  const fx = fixture({ anchors: [anchor], clock: clock.adapter(),
+    harvest: () => batches,
+    subscribe: (accept) => { changed = accept; return () => { changed = null; }; },
+    text: () => response.promise,
+  });
+  fx.pipeline.mount();
+  await clock.advance(1);
+  const first = [{ pid: "P1", difficulty: 3 }];
+  batches = [{ source: first, problems: first, at: 1 }];
+  changed();
+  assert.equal(anchor.color, "color-3");
+  response.resolve('{"currentData":{"problem":{"difficulty":1}}}');
+  await flushMicrotasks();
+  assert.equal(anchor.color, "color-3", "an older request must not overwrite new native data");
+  await clock.advance(1);
+  const second = [{ pid: "P1", difficulty: 4 }];
+  batches = [{ source: second, problems: second, at: 2 }];
+  changed();
+  assert.equal(anchor.color, "color-4", "same DOM node and same pid can change difficulty");
+  fx.pipeline.dispose();
+  assert.equal(changed, null);
+});
+
+test("disposing before the fallback delay cancels all pending queries", async () => {
+  const clock = new FakeClock();
+  const requests = [];
+  const fx = fixture({ anchors: [{ pid: "P1", href: "/problem/P1" }],
+    requestDelayMs: 300, clock: clock.adapter(), text: async (url) => requests.push(url),
+  });
+  fx.pipeline.mount();
+  fx.pipeline.dispose();
+  await clock.advance(301);
+  assert.deepEqual(requests, []);
+});
+
+test("query and harvested caches expire after five minutes without renewing on reads", async () => {
+  const clock = new FakeClock();
+  const native = { pid: "P1", href: "/problem/P1" };
+  const queried = { pid: "P2", href: "/problem/P2" };
+  const source = [{ pid: "P1", difficulty: 1 }];
+  let calls = 0;
+  const fx = fixture({ anchors: [native, queried], clock: clock.adapter(),
+    harvest: () => [{ source, problems: source, at: 0 }],
+    text: async () => { calls++; return '{"currentData":{"problem":{"difficulty":4}}}'; },
+  });
+  fx.pipeline.mount();
+  await flushMicrotasks();
+  assert.equal(calls, 1);
+  await clock.advance(299999);
+  fx.emit([native, queried]);
+  await flushMicrotasks();
+  assert.equal(calls, 1);
+  await clock.advance(1);
+  fx.emit([native, queried]);
+  await flushMicrotasks();
+  assert.equal(calls, 3, "expired initial payload must not resurrect a stale difficulty");
+  assert.equal(native.color, "color-4");
+  fx.pipeline.dispose();
+});
+
+test("newer native data replaces a cached query and receives its own five-minute lifetime", async () => {
+  const clock = new FakeClock();
+  const anchor = { pid: "P1", href: "/problem/P1" };
+  let batches = [];
+  let calls = 0;
+  const fx = fixture({ anchors: [anchor], clock: clock.adapter(),
+    harvest: () => batches,
+    text: async () => { calls++; return '{"currentData":{"problem":{"difficulty":1}}}'; },
+  });
+  fx.pipeline.mount(); await flushMicrotasks();
+  await clock.advance(200000);
+  const source = [{ pid: "P1", difficulty: 3 }];
+  batches = [{ source, problems: source, at: clock.nowMs }];
+  fx.emit([anchor]);
+  assert.equal(anchor.color, "color-3");
+  await clock.advance(299999);
+  fx.emit([anchor]); await flushMicrotasks();
+  assert.equal(calls, 1);
+  await clock.advance(1);
+  fx.emit([anchor]); await flushMicrotasks();
+  assert.equal(calls, 2);
+  assert.equal(anchor.color, "color-1");
+  fx.pipeline.dispose();
 });
 
 test("Problem Pipeline fetches all four ambiguous record tiers by pid", async () => {
@@ -185,7 +304,7 @@ test("Problem Pipeline harvests injected lists once without mutating page data",
   fx.pipeline.mount();
   await flushMicrotasks();
 
-  assert.equal(harvests, 2, "the adapter may be read per task");
+  assert.equal(harvests, 1, "one harvest per scan, not per anchor");
   assert.deepEqual(Object.keys(source), ["0", "1"]);
   assert.deepEqual(
     fx.writes.map(({ pid, color }) => ({ pid, color })),
@@ -236,18 +355,20 @@ test("Problem Pipeline keeps a whole harvested page even when it exceeds the fet
 });
 
 test("Problem Pipeline prefers a freshly fetched difficulty over the harvested one", async () => {
+  const clock = new FakeClock(10);
   const source = [{ pid: "P9", difficulty: 1 }];
   const anchor = { pid: "P9", href: "/problem/P9" };
   let exposeHarvest = false;
   let fetches = 0;
   const fx = fixture({
     anchors: [anchor],
+    clock: clock.adapter(),
     text: async () => {
       fetches++;
       return '{"currentData":{"problem":{"difficulty":7}}';
     },
     harvest: () =>
-      exposeHarvest ? [{ source, problems: source }] : [],
+      exposeHarvest ? [{ source, problems: source, at: 0 }] : [],
   });
 
   fx.pipeline.mount();
