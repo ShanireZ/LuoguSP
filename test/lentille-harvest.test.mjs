@@ -91,6 +91,28 @@ test("lentille harvest keeps only unambiguous record difficulties", () => {
   ]);
 });
 
+test("detail and training pages expose their native difficulty without another request", () => {
+  for (const data of [
+    { problem: { pid: "P1001", difficulty: 1 } },
+    { training: { problems: [{ pid: "P1001", difficulty: 1 }] } },
+  ]) {
+    assert.deepEqual(flatten(collectDifficultyBatches(data)), [
+      { pid: "P1001", difficulty: 1 },
+    ]);
+  }
+  assert.deepEqual(collectDifficultyBatches({ problem: false, training: { problems: {} } }), []);
+});
+
+test("an updated context element replaces the parsed snapshot", () => {
+  const doc = documentWithContext({ data: { problem: { pid: "P1001", difficulty: 1 } } });
+  const first = readLentilleData(doc);
+  doc.getElementById("lentille-context").textContent = JSON.stringify({
+    data: { problem: { pid: "P1001", difficulty: 2 } },
+  });
+  assert.notEqual(readLentilleData(doc), first);
+  assert.equal(readLentilleData(doc).problem.difficulty, 2);
+});
+
 test("lentille harvest returns a stable source so the pipeline can dedupe it", () => {
   const doc = documentWithContext({
     data: { submitted: [{ pid: "P1001", difficulty: 1 }] },

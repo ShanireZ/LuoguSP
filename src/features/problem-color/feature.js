@@ -2,10 +2,7 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createGetRequestScheduler } from "../../core/get-request-scheduler.js";
 import { DIFFICULTY_COLORS } from "../../core/luogu-difficulty.js";
 import { createProblemIdentityResolver } from "./identity.js";
-import {
-  collectDifficultyBatches,
-  readLentilleData,
-} from "./lentille-harvest.js";
+import { createNativeDifficultySource } from "./native-difficulty-source.js";
 import { createProblemPipeline } from "./pipeline.js";
 import { isProblemAnchorColorable } from "./practice-policy.js";
 
@@ -105,6 +102,13 @@ export function createProblemColorFeature({ storage }) {
     delete anchor.dataset.luoguspPid;
   };
 
+  const nativeDifficulty = typeof document === "undefined" ? null :
+    createNativeDifficultySource({
+      document,
+      XMLHttpRequest: globalThis.XMLHttpRequest,
+      origin: location.origin,
+    });
+
   const problemPipeline =
     typeof document === "undefined"
       ? null
@@ -119,8 +123,9 @@ export function createProblemColorFeature({ storage }) {
       // 练习页只收“尝试过的题目”；“已通过”已按难度分组，既不着色也不入缓存。
       // 评测记录列表的题号洛谷已经上色，practice-policy.js 会整页跳过。
       // 列表 payload 里的难度仍收进缓存，离开该页后的题号不用逐题再请求。
-      // 数据源与判据见 lentille-harvest.js（原先读的 window._feInstance 已全站消失）。
-      harvest: () => collectDifficultyBatches(readLentilleData()),
+      // 首屏 JSON + 洛谷自身导航请求的响应，不额外请求页面数据。
+      harvest: () => nativeDifficulty.harvest(),
+      subscribe: (accept) => nativeDifficulty.subscribe(accept),
     },
     colorForDifficulty: (difficulty) => diffColor(difficulty),
     logError: (pid, error) =>
@@ -145,6 +150,14 @@ export function createProblemColorFeature({ storage }) {
       },
       observeAnchors: (accept) => {
         const observer = new MutationObserver((mutations) => {
+          if (mutations.some((mutation) =>
+            mutation.target.id === "lentille-context" ||
+            mutation.target.parentElement?.id === "lentille-context" ||
+            Array.from(mutation.addedNodes || []).some((node) => node.id === "lentille-context"),
+          )) {
+            accept(document.querySelectorAll(PROBLEM_ANCHOR_SELECTOR));
+            return;
+          }
           const anchors = new Set();
           const addAnchor = (anchor) => {
             if (anchor && shouldProcessProblemAnchor(anchor))
@@ -209,7 +222,11 @@ export function createProblemColorFeature({ storage }) {
         });
         return () => observer.disconnect();
       },
-      appliedPid: (anchor) => anchor.dataset.luoguspPid,
+      appliedPid: (anchor) => {
+        const state = appliedProblemColors.get(anchor);
+        return state && anchor.contains(state.node) && state.node.style.color === state.paintColor
+          ? anchor.dataset.luoguspPid : null;
+      },
       isConnected: (anchor) => anchor.isConnected,
       clearColor: (anchor) => clearProblemColor(anchor),
       applyColor: (a, pid, color) => {
@@ -228,6 +245,7 @@ export function createProblemColorFeature({ storage }) {
           });
           a.style.color = color;
           a.style.fontWeight = "bold";
+          appliedProblemColors.get(a).paintColor = a.style.color;
           a.dataset.luoguspPid = pid;
           return;
         }
@@ -245,6 +263,7 @@ export function createProblemColorFeature({ storage }) {
           });
           span.style.color = color;
           span.style.fontWeight = "bold";
+          appliedProblemColors.get(a).paintColor = span.style.color;
           a.dataset.luoguspPid = pid;
         } else {
           const wrapper = wrapPidText(a, pid, color);
@@ -252,6 +271,7 @@ export function createProblemColorFeature({ storage }) {
           appliedProblemColors.set(a, {
             kind: "wrapper",
             node: wrapper,
+            paintColor: wrapper.style.color,
           });
           a.dataset.luoguspPid = pid;
         }
@@ -265,21 +285,9 @@ export function createProblemColorFeature({ storage }) {
     label: "题号显示难度颜色",
     storage,
     mount: (context) => {
-      let disposePipeline = null;
-      const timer = setTimeout(() => {
-        if (!context.isCurrent()) return;
-        try {
-          disposePipeline = problemPipeline
-            ? problemPipeline.mount()
-            : () => {};
-        } catch (error) {
-          console.error("LuoguSP lifecycle problem-pipeline:", error);
-        }
-      }, 500);
-      return () => {
-        clearTimeout(timer);
-        if (disposePipeline) disposePipeline();
-      };
+      if (!context.isCurrent()) return () => {};
+      // Observe immediately; only the query fallback waits 300ms in the pipeline.
+      return problemPipeline ? problemPipeline.mount() : () => {};
     },
   });
 }
