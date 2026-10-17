@@ -43,7 +43,7 @@ const CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
 //
 // ★ 為什麼用 CSS 而不是掐事件：原生觸發器的 `mouseover` 監聽掛在觸發元素上，
 //   要攔就得在 document 捕獲階段 `stopPropagation` —— 那會連帶掐掉那棵子樹上
-//   別人的一切 mouseover，代價不可控。CSS 隻影響顯示，壞不了任何行為。
+//   別人的一切 mouseover，代價不可控。CSS 只影響顯示，壞不了任何行為。
 //   代價是原生那邊照樣會發一次 `/api/user/info/{uid}`（約 1 KB），可以接受。
 // ★ 只在**使用者卡開關打開時**才注入：關掉我們的卡就該把原生卡還給使用者。
 //   `:has()` 那條連空的下拉盒子一起藏掉；下面那條是沒有 `:has()` 時的備援。
