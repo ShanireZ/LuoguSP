@@ -31,8 +31,8 @@ export function createIdeBatchFeature({
   };
 
   // ============================================================
-  // IDE 模式一鍵測試所有樣例
-  // 洛谷新版題目頁（columba）IDE 模式（#ide）下，逐組驅動題面樣例的原生「執行」，
+  // IDE 模式一鍵測試所有範例
+  // 洛谷新版題目頁（columba）IDE 模式（#ide）下，逐組驅動題面範例的原生「執行」，
   // 結果從輸出面板 DOM 捕獲（結果經頁面常駐 WS 推送，網路層拿不到——勿改走攔截）。
   // 錨點與配色均來自 2026-07 洛谷 columba IDE 的真實頁面觀測。
   // ============================================================
@@ -45,7 +45,7 @@ export function createIdeBatchFeature({
   }
 
   const IDE_VIEW = {
-    activeTab: "custom", // custom=原生輸入輸出 / samples=樣例面板
+    activeTab: "custom", // custom=原生輸入輸出 / samples=範例面板
     tabBar: null,
     panel: null,
     ioLayout: null, // 原生 輸入|輸出 水平分欄（tab 切換時顯隱）
@@ -97,7 +97,7 @@ export function createIdeBatchFeature({
     return null;
   }
   function sampleRunButtons() {
-    // 「輸入 #N」「輸出 #N」各一塊都帶「執行」；只取輸入塊的，按 DOM 序=樣例序
+    // 「輸入 #N」「輸出 #N」各一塊都帶「執行」；只取輸入塊的，按 DOM 序=範例序
     const btns = [];
     for (const block of document.querySelectorAll(SELECTORS.ideSampleBlock)) {
       if (!/^(输入|Input)/i.test((block.textContent || "").trim())) continue;

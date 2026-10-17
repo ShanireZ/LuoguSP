@@ -287,8 +287,8 @@ test("description and README follow the current source feature set", () => {
   "題目懸停顯示預覽卡",
   "使用者名/頭像懸停顯示預覽卡",
   "個人頁顯示個人介紹",
-  "受限文章與剪貼板解限",
-  "IDE 模式一鍵測試所有樣例",
+  "受限文章與剪貼簿解限",
+  "IDE 模式一鍵測試所有範例",
   ];
   for (const label of readmeLabels)
     assert.equal(readme.includes(`**${label}**`), true, label);

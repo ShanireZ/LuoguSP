@@ -252,7 +252,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
 
   // 洛谷是 SPA：首頁頂欄↔內容頁側欄隨路由切換而重掛，入口須在導覽變化時補上（rAF 節流，加了就早退）。
   // ★受限內容接管頁 document.write 後舊 body 上的觀察器全滅——接管流程會重新呼叫本函式。
-  // 格式隨導覽自適應：舊版豎排欄（nav.lfe-body，首頁/剪貼板同款）=「外掛/設定」兩行，
+  // 格式隨導覽自適應：舊版豎排欄（nav.lfe-body，首頁/剪貼簿同款）=「外掛/設定」兩行，
   // 新版側欄（nav.sidebar，columba 文章頁等）=「外掛設定」單行。
   function watchSettingButton() {
     let frame = null;

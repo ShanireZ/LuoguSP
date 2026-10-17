@@ -190,7 +190,7 @@ test("发布脚本的 preflight 在 --plan 下跑得通，并认出当前生产�
   // ★ 用一個永遠不會有發佈目錄的版本號，而不是「當前版本 + 1」。這道門本身也在
   //   `pnpm release` 的 pre-deployment 測試集裡跑，而那時候「下一個補丁版本」的
   //   `cdn/releases/` 目錄**剛剛被第 1 步建出來**，`wouldPublish` 就變成了 false ——
-  //   第一次發 2.14.3 時它就是這麼把發佈攔下來的。判據不能依賴發佈中途的狀態。
+  //   第一次發 2.14.3 時它就是這麼把發佈攔下來的。判據不能相依發佈中途的狀態。
   const next = "999.0.0";
   const result = spawnSync(
     process.execPath,

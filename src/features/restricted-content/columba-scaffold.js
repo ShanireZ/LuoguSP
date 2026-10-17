@@ -1,6 +1,6 @@
 // 洛谷 columba 頁的殼：#lentille-context、csrf、主題、當前前端指令碼。
-// 文章和剪貼板都從 /ranking、/discuss 收同一份殼，只替換 template 和 data。
-// 舊剪貼板走 lfe 的 window._feInjection；2026-09 實測 /image 401、/theme/list 404，
+// 文章和剪貼簿都從 /ranking、/discuss 收同一份殼，只替換 template 和 data。
+// 舊剪貼簿走 lfe 的 window._feInjection；2026-09 實測 /image 401、/theme/list 404，
 // 那條殼已經收不到。
 
 export function parseColumbaScaffold(scaffold) {

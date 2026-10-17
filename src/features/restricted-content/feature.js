@@ -50,13 +50,13 @@ export function createRestrictedContentFeature({
   };
 
   // ============================================================
-  // 顯示受限文章與剪貼板（原生殼注入）
+  // 顯示受限文章與剪貼簿（原生殼注入）
   // 國內站訪問非本人/未審核的 /article、/paste 會落在「安全訪問中心」攔截頁
   // （獨立靜態頁、零全站樣式、無 CSP）。本功能在攔截頁上重建官方頁面：
   //   1) 殼骨架收割：從 .cn 同源 columba 頁拿官方殼（/ranking、/discuss；
   //      骨架自帶真實 csrf、當前登入使用者、使用者主題、官方指令碼當前版本——全部活取，絕不寫死）；
   //   2) 資料合成：把保存站存檔映射為 lentille-context
-  //      （文章 template "article.show"；剪貼板 template "paste.show"）；
+  //      （文章 template "article.show"；剪貼簿 template "paste.show"）；
   //   3) document.write 重建文件並載入官方前端 JS——頂欄/側欄/主題/登入態/markdown/評論元件
   //      全部由洛谷原生前端繪製，本指令碼零復刻（2026-07-22 owner 拍板棄手動烘焙路線）；
   //   4) 網路包裝（window 不隨 document.write 重建，包裝器天然存活）：
@@ -64,7 +64,7 @@ export function createRestrictedContentFeature({
   //      退回形狀 {replySlice:[{id,author:userSummary,time,content}]}，支援 sort=time-d、after=<id>；
   //      官方點贊/收藏/評論寫入僅由使用者點擊觸發，使用同源 Cookie 與殼頁面的真實 CSRF；
   //   5) 官方繪製完成後注入兩枚藍色擴充按鈕（申請更新 / 國際站原文）：
-  //      文章頁=互動條 button-2line 掛「不推薦」右側；剪貼板頁=元資訊行右側實心按鈕。
+  //      文章頁=互動條 button-2line 掛「不推薦」右側；剪貼簿頁=元資訊行右側實心按鈕。
   // 資料源=洛谷保存站 api.luogu.me（CORS 開放、匿名；owner 拍板純保存站+更新僅手動）；
   // 作者資料走 .cn 同源 /api/user/search（owner 要求不吃保存站/國際站的使用者資料）。
   // ★保存站硬邊界：payload 的 createdAt 是入檔時間，非原文發佈時間（無介面可取原始時間）。
@@ -197,7 +197,7 @@ export function createRestrictedContentFeature({
   }
 
   // 殼骨架收割：/ranking、/discuss 任一帶 lentille-context 即用。
-  // 2026-09 剪貼板已遷 paste.show，舊 lfe 源 /image、/theme/list 分別是 401 和 404。
+  // 2026-09 剪貼簿已遷 paste.show，舊 lfe 源 /image、/theme/list 分別是 401 和 404。
   async function rstHarvest(signal) {
     for (const src of ["/ranking", "/discuss"]) {
       try {
@@ -301,7 +301,7 @@ export function createRestrictedContentFeature({
         category: data.category,
         signal,
         // article-live-counts.js 寫死了「截斷必須報出來」，但此前這裡根本沒串接，
-        // 於是「掃不完所以沒找到」和「洛谷確實沒有這條資料」在紀錄里長得一模一樣。
+        // 於是「掃不完所以沒找到」和「洛谷確實沒有這條資料」在紀錄裡長得一模一樣。
         onTruncated: ({ totalPages, scannedPages, category }) =>
           console.warn(
             `[LuoguSP] 文章 ${info.id} 的实时计数只扫了作者专栏的 ${scannedPages}/${totalPages} 页` +
@@ -380,7 +380,7 @@ export function createRestrictedContentFeature({
     };
   }
 
-  // 剪貼板頁：合成 lentille-context（template paste.show）+ 官方 columba 前端。
+  // 剪貼簿頁：合成 lentille-context（template paste.show）+ 官方 columba 前端。
   async function rstBootPaste(info, data, signal) {
     const [scaffold, cnUser] = await Promise.all([
       rstHarvest(signal),
@@ -389,7 +389,7 @@ export function createRestrictedContentFeature({
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
     const shell = readColumbaShell(scaffold);
-    // 剪貼板沒有作者專欄列表那條路，真值只可能來自保存站的 publishTime；
+    // 剪貼簿沒有作者專欄列表那條路，真值只可能來自保存站的 publishTime；
     // 沒有就退回入檔時間，並把文案改成「存檔時間」（見 rstMountPasteButtons）。
     const ctx = buildPasteShowContext({
       id: data.id || info.id,
@@ -513,7 +513,7 @@ export function createRestrictedContentFeature({
     };
     return rstObserveInjection(inject);
   }
-  // 擴充按鈕（剪貼板頁）：元資訊行（meta-row）右側兩枚實心藍鈕。
+  // 擴充按鈕（剪貼簿頁）：元資訊行（meta-row）右側兩枚實心藍鈕。
   // 該行是 flex space-between，作者和時間在 .meta-left，本容器落位最右。
   // 「更新時間」跟在「發佈時間」同一行，值是保存站存檔最近更新時間（updatedAt）。
   function rstMountPasteButtons(info, data) {
