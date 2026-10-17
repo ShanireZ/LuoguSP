@@ -17,7 +17,7 @@
 4. 保存站評論是存檔退回，不是即時評論：伺服器端從
    `https://www.luogu.com/article/{lid}/replies` 分頁抓取，預設六小時過期。
    過期的 GET 會非同步派發刷新，但本次回應仍回傳舊評論列表。
-5. 保存站沒有云剪貼板評論、點贊、收藏模型或路由。剪貼板退回頁應繼續唯讀，
+5. 保存站沒有云剪貼簿評論、點贊、收藏模型或路由。剪貼簿退回頁應繼續唯讀，
    不應繪製文章的交互按鈕。
 
 ## API 資料形狀
@@ -61,7 +61,7 @@
 
 ### `GET /paste/query/:id`
 
-剪貼板查詢同樣回傳保存站資料庫實體：
+剪貼簿查詢同樣回傳保存站資料庫實體：
 
 ```json
 {
@@ -147,7 +147,7 @@
 - [存檔任務只取 `resp.data.article`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/article.handler.ts#L16-L30)
 - [存檔寫入映射只保留公共計數](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/article.service.ts#L328-L345)
 
-抓取工具可選接受 Cookie，但文章、剪貼板和評論 handler 呼叫時都沒有傳第三個
+抓取工具可選接受 Cookie，但文章、剪貼簿和評論 handler 呼叫時都沒有傳第三個
 Cookie 參數。這些任務是保存站伺服器的匿名抓取，不具有 LuoguSP 訪問者的洛谷
 工作階段；網路失敗或 429 時還可以由保存站伺服器改用 Tor。
 
@@ -162,17 +162,21 @@ Cookie 參數。這些任務是保存站伺服器的匿名抓取，不具有 Luo
 - [洛谷評論分頁抓取與存檔](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/comments.handler.ts#L43-L100)
 - [評論的整體替換交易](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/comment.service.ts#L35-L67)
 
-### 剪貼板
+<a id="剪貼板"></a>
+
+### 剪貼簿
 
 `paste-save-pipeline` 從 `https://www.luogu.com/paste/{id}` 讀取
-`resp.currentData.paste`，只保存剪貼板 ID、內容和作者，沒有評論抓取分支。
+`resp.currentData.paste`，只保存剪貼簿 ID、內容和作者，沒有評論抓取分支。
 
-- [剪貼板抓取 handler](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/paste.handler.ts#L16-L30)
-- [剪貼板儲存映射](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/paste.service.ts#L45-L76)
+- [剪貼簿抓取 handler](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/paste.handler.ts#L16-L30)
+- [剪貼簿儲存映射](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/paste.service.ts#L45-L76)
 
 ## Refresh API 語義
 
-### 文章/剪貼板收錄與更新
+<a id="文章剪貼板收錄與更新"></a>
+
+### 文章/剪貼簿收錄與更新
 
 ```http
 POST /workflow/create/template/article-save-pipeline
@@ -197,7 +201,7 @@ Content-Type: application/json
 這意味著“只有點贊/收藏計數改變”不會刷新存檔計數。要刷新計數必須顯式傳
 `forceUpdate: true`。
 
-`paste-save-pipeline` 當前範本不會把 `forceUpdate` 傳給任務；剪貼板本身也沒有
+`paste-save-pipeline` 當前範本不會把 `forceUpdate` 傳給任務；剪貼簿本身也沒有
 本需求所需的交互計數。
 
 一手證據：
@@ -243,7 +247,7 @@ POST /article/comments/:id/refresh
 4. 如果 LuoguSP 的“手動更新文章存檔”還要更新公共點贊/收藏計數，
    article workflow 請求應顯式傳入 `forceUpdate: true`；否則文章內容不變時計數也
    不會寫入資料庫。
-5. 剪貼板保持唯讀，介面不顯示點贊、收藏、評論輸入框或可點擊的交互計數。
+5. 剪貼簿保持唯讀，介面不顯示點贊、收藏、評論輸入框或可點擊的交互計數。
 
 ## 補充調查（2026-08-12 夜）：洛谷側唯讀介面與官方寫契約
 

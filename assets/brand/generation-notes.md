@@ -7,7 +7,7 @@
 # LuoguSP Logo 原生候選生成記錄
 
 - 日期：2026-08-20（Asia/Shanghai）
-- 工具：Codex 內置 `image_gen`
+- 工具：Codex 內建 `image_gen`
 - 呼叫次數：1
 - 原始生成路徑：`C:\Users\SkySa\.codex\generated_images\01a01cb2-e058-7191-87c9-54bd3e756fd2\exec-ae9eeb6e-248e-4346-a516-020a580d22f9.png`
 - 寫入磁碟路徑：`D:\Workspace\BetaPass\std\candidates\luogusp\logo-source.png`
@@ -51,7 +51,7 @@ Avoid: puzzle piece, jigsaw, monkey or ape or any animal mascot, magnifying glas
 ## 禁止項與主體自檢
 
 - 未見文字、字母、數字、站台 Logo/字標/吉祥物或可辨認頁面外觀。
-- 未見拼圖塊、猴子/動物、放大鏡、齒輪、尖括號、瀏覽器三點窗框、游標、科技藍光球或電路板。
+- 未見拼圖塊、猴子/動物、放大鏡、齒輪、尖括號、瀏覽器三點窗框、遊標、科技藍光球或電路板。
 - 上右角剝起，露出兩條灰條；九色只在鏡片內主色階出現，鏡片外仍有灰條。
 - 生成結果直接帶真實 alpha，沒有使用或保留品紅摳圖底。
 
@@ -103,7 +103,7 @@ Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear
 # LuoguSP 豎版原生候選生成記錄
 
 - 日期：2026-08-20（Asia/Shanghai）
-- 工具：Codex 內置 `image_gen`
+- 工具：Codex 內建 `image_gen`
 - 最終採用：第 2 次（總嘗試 2/2，已停止）
 - v1 原始路徑：`C:\Users\SkySa\.codex\generated_images\01a01cb2-f669-7023-a3f9-d66659d9078a\exec-ef996722-e69c-4434-aa8d-b1ed5faabc8b.png`
 - v1 處置：僅八條可辨色帶，判廢並於資源歸檔時移除
@@ -137,5 +137,5 @@ EXACTLY NINE DISTINCT COLOR BANDS, count them 1 through 9 before rendering; fixe
 - v1：`1122×1402`，約 4:5；無可讀字元、偽 UI、第三方站台標誌或禁用陳詞，但只能明確辨認 8 條色帶，判廢並完整保留。
 - v2：`1003×1568`，視覺上恰好 9 條獨立色帶，順序為灰、粉紅、橙、金黃、綠、青、藍、紫、深青金石藍；無可讀字元、字母或數字。
 - v2 原生比例不是 4:5。確定性建置從頂部對齊裁成 `1280×1600`，保住上部鏡片 HERO，只裁去下方重複的暗灰條；原始檔不改寫。
-- 九色僅出現在鏡片內，鏡片外保留灰條；未見拼圖、猴子/動物、放大鏡、齒輪、瀏覽器窗框、游標、第三方標誌或可辨頁面外觀。
+- 九色僅出現在鏡片內，鏡片外保留灰條；未見拼圖、猴子/動物、放大鏡、齒輪、瀏覽器窗框、遊標、第三方標誌或可辨頁面外觀。
 - 結論：v2 可進入確定性合成，最終成片仍待 owner 視覺審閱。

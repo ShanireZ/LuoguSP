@@ -205,7 +205,7 @@ test("构建脚本把块写进 manifest.optionalBundles 与 files，并注入 de
 // ★ canary.10 真機迴歸：早期載入層在 document-start 就用
 // `body>*{visibility:hidden}` 遮住了**所有** /article/*、/paste/* 頁面，
 // 舊程式碼由 document-boot 在探測失敗時釋放。薄殼提前 return 卻忘了釋放，
-// 結果每一個正常文章/剪貼板頁面都被永久遮成空白。
+// 結果每一個正常文章/剪貼簿頁面都被永久遮成空白。
 test("不是拦截页时必须放掉早期加载层，否则正常文章页会一直空白", async () => {
   let released = 0;
   const gate = { start: () => {}, release: () => void (released += 1) };

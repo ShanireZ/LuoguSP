@@ -22,7 +22,7 @@ function ordinal(version) {
   return parsed.slice(1, 4).map(Number);
 }
 
-// 純數值比較，不引依賴：這裡只可能是三段發佈版本號。
+// 純數值比較，不引相依：這裡只可能是三段發佈版本號。
 export function satisfiesMinimum(actual, minimum) {
   const left = ordinal(actual);
   const right = ordinal(minimum);

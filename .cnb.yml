@@ -5,7 +5,7 @@ main:
         image: node:26.10.0-bookworm
       stages:
         # 這裡不能用 pnpm/action-setup（那是 GitHub Actions 專用），所以用鏡像自帶的
-        # npm 裝一次 pnpm —— npm 在本儲存庫的用途僅此一項自舉，不參與依賴安裝。
+        # npm 裝一次 pnpm —— npm 在本儲存庫的用途僅此一項自舉，不參與相依安裝。
         # ★ 版本號不寫死：從 package.json 的 packageManager 欄位取。它是全倉唯一的
         #   pnpm 版本來源（本機、GitHub CI、這裡共用），寫死會多出一個會漂的副本。
         # ★ corepack 不用管：Node 25 起已不隨 Node 散布，這個鏡像里根本沒有。

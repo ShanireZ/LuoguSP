@@ -96,7 +96,7 @@ export function createRestrictedContentFeature(config) {
       // ★ 但必須先把早期載入層放掉：它在 document-start 就遮住了**所有**
       //   /article/*、/paste/* 頁面（`body>*{visibility:hidden}`），
       //   舊程式碼由 document-boot 在探測失敗時釋放。這裡提前 return 卻不釋放，
-      //   就會把每一個正常文章/剪貼板頁面永久遮成空白。
+      //   就會把每一個正常文章/剪貼簿頁面永久遮成空白。
       if (!detect()) {
         if (restrictedLoadingGate) restrictedLoadingGate.release();
         return () => {};

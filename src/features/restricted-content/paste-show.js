@@ -1,4 +1,4 @@
-// 2026-09 洛谷雲剪貼板詳情是 columba 範本 paste.show。
+// 2026-09 洛谷雲剪貼簿詳情是 columba 範本 paste.show。
 // PasteShow 讀 lentille data.paste / data.canEdit，元資訊在
 // .paste-show-card .meta-row > .meta-left 裡，標籤是「發佈時間」。
 // 不寫 expireTime：元件會據此繪製「已過期 / 臨期」，保存站沒有這個欄位。

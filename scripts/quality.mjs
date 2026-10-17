@@ -434,7 +434,7 @@ if (writeReport) {
 
 if (check) {
   const failures = [];
-  // 依賴安裝的一致性不再需要本儲存庫自建的門：兩邊 CI 都跑 `pnpm install
+  // 相依安裝的一致性不再需要本儲存庫自建的門：兩邊 CI 都跑 `pnpm install
   // --frozen-lockfile`（lock 與 package.json 對不上它直接拒裝），而本機與 CI
   // 用同一個 pnpm 版本由 package.json 的 packageManager 欄位強制 —— pnpm 12
   // 在版本不符時以 ERR_PNPM_BAD_PM_VERSION 硬失敗，不是警告。

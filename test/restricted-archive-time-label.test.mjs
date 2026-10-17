@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { relabelArchiveTime } from "../src/features/restricted-content/archive-time-label.js";
 
 // 保存站只有入檔時間；實測 2l4x53kj 入檔 2026-01-02、真實發表 2025-10-01，差三個月。
-// 官方範本把它繪製成「建立時間」（文章）/「發佈時間」（剪貼板，舊殼是「發表時間」），
+// 官方範本把它繪製成「建立時間」（文章）/「發佈時間」（剪貼簿，舊殼是「發表時間」），
 // 等於用存檔時間冒充真值。
-// .cn 上沒有任何他人剪貼板發表時間的唯讀來源（/paste/{id} 被攔、/user/{uid}/paste 404、
-// /paste 只列自己的），所以剪貼板永遠只能顯示存檔時間 —— 那就得如實標註。
+// .cn 上沒有任何他人剪貼簿發表時間的唯讀來源（/paste/{id} 被攔、/user/{uid}/paste 404、
+// /paste 只列自己的），所以剪貼簿永遠只能顯示存檔時間 —— 那就得如實標註。
 
 // 最小 DOM 替身：只實作本模組用到的 childNodes / querySelectorAll / nodeValue。
 function text(value) {
