@@ -27,7 +27,7 @@ export const DIFFICULTY_NAMES = Object.freeze([
 ]);
 
 // `/_lfe/config` 的 `ProblemDifficulty` 給的是**色名**而不是色值，一檔一名。
-// 留著它是為了讓守衛能把「檔位 → 色名 → 色值」這條鏈整條釘住，而不是隻釘一串魔法數。
+// 留著它是為了讓守衛能把「檔位 → 色名 → 色值」這條鏈整條釘住，而不是只釘一串魔法數。
 export const DIFFICULTY_COLOR_NAMES = Object.freeze([
   "grey-3",
   "pink-3",
