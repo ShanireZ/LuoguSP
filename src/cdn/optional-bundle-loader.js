@@ -24,8 +24,8 @@ function validateOptions(bundle, origin, expectedApiVersion) {
     );
 }
 
-// markdown 渲染器的导出契约。这里保留成默认值，是为了让既有调用方
-// （hidden-intro/renderer-client.js）不必改一行；新的可选块用 `exports` 传自己的。
+// markdown 繪製器的匯出契約。這裡保留成預設值，是為了讓既有呼叫方
+// （hidden-intro/renderer-client.js）不必改一行；新的可選塊用 `exports` 傳自己的。
 const MARKDOWN_RENDERER_EXPORTS = Object.freeze([
   "renderMarkdown",
   "enhanceCodeBlocks",
@@ -39,7 +39,7 @@ function validateModule(module, expectedApiVersion, requiredExports) {
       ),
       { kind: "api-version" },
     );
-  // 缺哪个导出要报出来 —— 「API 不完整」这五个字对排查毫无帮助。
+  // 缺哪個匯出要報出來 —— 「API 不完整」這五個字對排查毫無幫助。
   const missing = requiredExports.filter(
     (name) => typeof module[name] !== "function",
   );
@@ -63,7 +63,7 @@ export function createOptionalBundleLoader(options = {}) {
     BlobImpl = globalThis.Blob,
     onEvent = () => {},
   } = options;
-  // 契约在构造时定死：调用方后来改 options 也影响不了已建好的 loader。
+  // 契約在建構時定死：呼叫方後來改 options 也影響不了已建好的 loader。
   const contract = Object.freeze(
     (Array.isArray(requiredExports) ? requiredExports : [])
       .filter((name) => typeof name === "string" && name)

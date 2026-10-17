@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { createSettingsFeature } from "../src/features/settings/feature.js";
 
-// 夹具照抄真站形状（2026-08-20 在 www.luogu.com.cn 上量的）：新侧栏每一条都是
+// 夾具照抄真站形狀（2026-08-20 在 www.luogu.com.cn 上量的）：新側欄每一條都是
 // `<li title="文章广场"><a>…</a></li>`——浮泡文字在 <li> 上，不在 <a> 上；而末尾的
-// 「云剪贴板」一类没有图标（真站是 `<!---->`），所以模板一定落在 /article 那条上。
+// 「雲剪貼板」一類沒有圖標（真站是 `<!---->`），所以範本一定落在 /article 那條上。
 // Luogu's left navigation renders in three shapes. The columba sidebar keeps its
 // `sidebar` class only while it is pinned open; narrowing the viewport collapses
 // it to `nav.lside.drawer`, which used to lose the entry entirely.
@@ -75,8 +75,8 @@ for (const [label, navClass, expectedText] of NAV_SHAPES) {
       assert.equal(entries[0].getAttribute("role"), "button");
       assert.ok(entries[0].querySelector("svg"));
 
-      // ★ 入口是整条 <li> 克隆来的，模板是「文章广场」：浮泡与读屏名字都必须是自己的，
-      //   不能把模板那条的名字一起抄过来（owner 2026-08-20 报的就是这个）。
+      // ★ 入口是整條 <li> 克隆來的，範本是「文章廣場」：浮泡與讀屏名字都必須是自己的，
+      //   不能把範本那條的名字一起抄過來（owner 2026-08-20 報的就是這個）。
       const unit = entries[0].closest("li") || entries[0];
       assert.equal(unit.getAttribute("title"), "插件设置");
       assert.equal(entries[0].getAttribute("aria-label"), "插件设置");
@@ -129,19 +129,19 @@ test("settings entry stays out of pages with no recognisable navigation", () => 
   }
 });
 
-// owner 要求：保存后的刷新提示要在屏幕正中。浏览器原生 confirm() 在 Chrome/Edge
-// 一律贴视口顶部且样式不可控，所以换成页内对话框，复用设置面板同一套
+// owner 要求：保存後的刷新提示要在螢幕正中。瀏覽器原生 confirm() 在 Chrome/Edge
+// 一律貼視口頂部且樣式不可控，所以換成頁內對話框，重複使用設定面板同一套
 // #luogusp-settings 遮罩 + 居中面板作用域。
 test("保存后的刷新提示是页内居中对话框，不是原生 confirm", () => {
   const source = readFileSync(
     new URL("../src/features/settings/feature.js", import.meta.url),
     "utf8",
   );
-  // 先剥注释再匹配：讲这条坑的注释里本来就会出现反例字面量，
-  // 不剥就会像定时器那条守卫一样误报到自己身上。
+  // 先剝註解再匹配：講這條坑的註解裡本來就會出現反例字面值，
+  // 不剝就會像定時器那條守衛一樣誤報到自己身上。
   const code = source
     .replace(/\/\*[\s\S]*?\*\//g, "")
-    // 只剥行首注释：剥任意 // 会把 URL 里的 // 当注释起点，把要查的代码一起删掉。
+    // 只剝行首註解：剝任意 // 會把 URL 裡的 // 當註解起點，把要查的程式碼一起刪掉。
     .replace(/^[ \t]*\/\/[^\n]*$/gm, "");
   assert.doesNotMatch(
     code,
@@ -150,7 +150,7 @@ test("保存后的刷新提示是页内居中对话框，不是原生 confirm", 
   );
   assert.match(source, /function askRefresh\(/);
   assert.match(source, /role="alertdialog"/);
-  // 复用同一个 id 才能吃到 .luogusp-panel 的 translate(-50%,-50%) 居中规则。
+  // 重複使用同一個 id 才能吃到 .luogusp-panel 的 translate(-50%,-50%) 居中規則。
   assert.match(source, /overlay\.id = "luogusp-settings"[\s\S]*luogusp-confirm/);
   const style = readFileSync(
     new URL("../src/features/settings/style.js", import.meta.url),
@@ -160,11 +160,11 @@ test("保存后的刷新提示是页内居中对话框，不是原生 confirm", 
   assert.match(style, /luogusp-confirm/);
 });
 
-// ★★ 设置面板与保存后的「是否立即刷新」确认框**共用 `#luogusp-settings` 这个 id**
-//    （CSS 作用域全挂在它上面）。此前只有设置面板登记了关闭回调，确认框没有，
-//    于是路由切换时它会连同那个 document 级 keydown 监听（Enter = location.reload()）
-//    一起留在页面上；而它顶着的 id 又会把 openSettings 的防重入判据挡下 ——
-//    重挂之后齿轮点了没反应。2026-08-15 在 jsdom 里逐步复现过。
+// ★★ 設定面板與保存後的「是否立即刷新」確認框**共用 `#luogusp-settings` 這個 id**
+//    （CSS 作用域全掛在它上面）。此前只有設定面板登記了關閉回呼，確認框沒有，
+//    於是路由切換時它會連同那個 document 級 keydown 監聽（Enter = location.reload()）
+//    一起留在頁面上；而它頂著的 id 又會把 openSettings 的防重入判據擋下 ——
+//    重掛之後齒輪點了沒反應。2026-08-15 在 jsdom 裡逐步重現過。
 test("路由切换时刷新确认框跟着收走，齿轮不会变成哑巴", () => {
   const restore = installDom("lfe-body");
   try {
@@ -178,7 +178,7 @@ test("路由切换时刷新确认框跟着收走，齿轮不会变成哑巴", ()
     click(document.querySelector('[data-act="save"]'));
     assert.ok(document.querySelector(".luogusp-confirm"), "确认框没出现");
 
-    // page-lifecycle 在每次路由切换时都会 dispose 再 remount。
+    // page-lifecycle 在每次路由切換時都會 dispose 再 remount。
     dispose();
     assert.equal(
       document.getElementById("luogusp-settings"),
@@ -199,8 +199,8 @@ test("路由切换时刷新确认框跟着收走，齿轮不会变成哑巴", ()
   }
 });
 
-// ★ 卸载只能是「收起」。替用户按下「立即刷新」是我们无权做的事，
-// 而 jsdom 的 location.reload 不可重定义，只能盯住登记进去的那个回调本身。
+// ★ 卸載只能是「收起」。替使用者按下「立即刷新」是我們無權做的事，
+// 而 jsdom 的 location.reload 不可重定義，只能盯住登記進去的那個回呼本身。
 test("卸载确认框走的是「不刷新」那一支", () => {
   const source = readFileSync(
     new URL("../src/features/settings/feature.js", import.meta.url),

@@ -37,12 +37,12 @@ function fixedClock(start = 1_800_000_000_000) {
   return clock;
 }
 
-// 官方 article.show 互动条契约（columba 20260730-2078 chunk columba~0bd2df6a7ee2b996.js）：
-//   收藏 I(favored) → POST article.favor，favored 为真时带 query {remove:1}；响应体不参与状态；
-//        客户端自行做 favored=!favored、favorCount±1。
-//   点赞 B(intent) → 先算 vote = (article.voted === intent ? 0 : intent)，
-//        POST article.vote?vote=<vote>，再用响应体 {upvotes,voted} 覆盖 article.upvote/voted。
-// 这两个映射决定“刷新后还能不能撤回”，所以在测试里显式复刻。
+// 官方 article.show 互動條契約（columba 20260730-2078 chunk columba~0bd2df6a7ee2b996.js）：
+//   收藏 I(favored) → POST article.favor，favored 為真時帶 query {remove:1}；回應體不參與狀態；
+//        用戶端自行做 favored=!favored、favorCount±1。
+//   點贊 B(intent) → 先算 vote = (article.voted === intent ? 0 : intent)，
+//        POST article.vote?vote=<vote>，再用回應體 {upvotes,voted} 覆蓋 article.upvote/voted。
+// 這兩個映射決定“刷新後還能不能撤回”，所以在測試裡顯式復刻。
 const officialFavorUrl = (favored) =>
   `/article/${LID}/favor${favored ? "?remove=1" : ""}`;
 const officialVoteUrl = (articleVoted, intent) =>
@@ -82,7 +82,7 @@ test("a confirmed official vote outranks the stale Saver count", () => {
   assert.equal(confirmed.article.upvote, 61);
   assert.equal(confirmed.article.voted, 1);
   assert.equal(confirmed.voted, 1);
-  // 保存站未确认的字段保持存档快照，不被伪造。
+  // 保存站未確認的欄位保持存檔快照，不被偽造。
   assert.equal(confirmed.article.favorCount, 4);
   assert.equal(confirmed.favored, null);
 });
@@ -103,7 +103,7 @@ test("a confirmed favourite survives a component remount", () => {
     responseText: "{}",
   });
 
-  // 重新引导页面（组件重挂载）时读取的确认状态。
+  // 重新引導頁面（元件重掛載）時讀取的確認狀態。
   const restored = store.read({ uid: 52918, lid: LID });
   assert.equal(restored.favored, true);
   assert.equal(restored.favorCount, 5);
@@ -141,7 +141,7 @@ test("a page refresh restores state so the next click cancels through Luogu", ()
     responseText: "{}",
   });
 
-  // 整页刷新：新的 store 实例只能读回持久化记录。
+  // 整頁刷新：新的 store 執行個體只能讀回持久化記錄。
   clock.ms += 3_600_000;
   const reloaded = createArticleInteractionStore({ storage, now: clock.now });
   const merged = completeRestrictedArticleInteraction({
@@ -157,7 +157,7 @@ test("a page refresh restores state so the next click cancels through Luogu", ()
   assert.equal(merged.article.voted, 1);
   assert.equal(merged.article.upvote, 61);
   assert.equal(merged.article.favorCount, 5);
-  // 官方组件据此发起撤回，而不是重复点赞或重复收藏。
+  // 官方元件據此發起撤回，而不是重複點贊或重複收藏。
   assert.equal(officialVoteUrl(merged.article.voted, 1), `/article/${LID}/vote?vote=0`);
   assert.equal(officialFavorUrl(merged.favored), `/article/${LID}/favor?remove=1`);
 });
@@ -219,7 +219,7 @@ test("confirmed state never leaks across accounts or to anonymous visitors", () 
   assert.equal(store.read({ uid: null, lid: LID }), null);
   assert.equal(store.read({ uid: 52918, lid: "other" }), null);
 
-  // 匿名访客的写入不得落盘，也不得污染登录账号的记录。
+  // 匿名訪客的寫入不得寫入磁碟，也不得汙染登入帳號的記錄。
   const anonymous = createArticleInteractionTracker({
     store,
     origin: ORIGIN,
@@ -296,7 +296,7 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
     }),
     { kind: "favor", favored: false, favorCount: 3 },
   );
-  // 响应体没有计数时按官方组件的本地 ±1 推导；-1 不能把计数推成负数。
+  // 回應體沒有計數時按官方元件的本機 ±1 推導；-1 不能把計數推成負數。
   assert.deepEqual(
     interpretArticleWrite({
       origin: ORIGIN,
@@ -309,7 +309,7 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
     }),
     { kind: "favor", favored: false, favorCount: 0 },
   );
-  // 无关请求、读请求和其他文章一律不产生确认状态。
+  // 無關請求、讀請求和其他文章一律不產生確認狀態。
   for (const request of [
     { method: "GET", url: `/article/${LID}/favor` },
     { method: "POST", url: `/article/${LID}/reply` },
@@ -420,7 +420,7 @@ test("the reply XHR adapter reports official writes without touching them", asyn
       responseText: JSON.stringify({ upvotes: 61, voted: 1 }),
     },
   );
-  // 写响应原样交还官方组件。
+  // 寫回應原樣交還官方元件。
   assert.equal(xhr.status, 200);
   assert.equal(xhr.responseText, JSON.stringify({ upvotes: 61, voted: 1 }));
   assert.equal(xhr.getResponseHeader("x-luogusp-source"), "application/json");
@@ -454,7 +454,7 @@ test("boot preparation merges the stored record and seeds the tracker", () => {
     favored: true,
   });
 
-  // 退出登录/换账号：读不到上一个账号的确认状态，计数回落到保存站快照。
+  // 退出登入/換帳號：讀不到上一個帳號的確認狀態，計數回落到保存站快照。
   for (const viewer of [null, { uid: 99999 }]) {
     const other = prepareRestrictedArticleInteraction({ ...boot, viewer });
     assert.equal(other.interaction.favored, null);
@@ -473,7 +473,7 @@ test("the 不推荐 downvote confirms, persists and cancels like the upvote", ()
     current: { upvote: 19, favorCount: 17, voted: null, favored: null },
   });
 
-  // 官方：B(-1) → vote = (voted === -1 ? 0 : -1)。首次点击发 -1。
+  // 官方：B(-1) → vote = (voted === -1 ? 0 : -1)。首次點擊發 -1。
   assert.equal(officialVoteUrl(null, -1), `/article/${LID}/vote?vote=-1`);
   tracker.observeWrite({
     method: "POST",
@@ -493,16 +493,16 @@ test("the 不推荐 downvote confirms, persists and cancels like the upvote", ()
     archivedAt: clock.ms - 60_000,
     confirmed: record,
   });
-  // 官方按 -1 === article.voted 点亮「不推荐」，按 1 === article.voted 点亮「点赞」。
+  // 官方按 -1 === article.voted 點亮「不推薦」，按 1 === article.voted 點亮「點贊」。
   assert.equal(merged.article.voted, -1);
   assert.equal(merged.voted, -1);
   assert.equal(merged.article.upvote, 18);
-  // 刷新后再点「不推荐」必须走撤回，而不是重复投一次 -1。
+  // 刷新後再點「不推薦」必須走撤回，而不是重複投一次 -1。
   assert.equal(
     officialVoteUrl(merged.article.voted, -1),
     `/article/${LID}/vote?vote=0`,
   );
-  // 而此时点「点赞」应当直接切换成 1，不是撤回。
+  // 而此時點「點贊」應當直接切換成 1，不是撤回。
   assert.equal(
     officialVoteUrl(merged.article.voted, 1),
     `/article/${LID}/vote?vote=1`,
@@ -532,7 +532,7 @@ test("a vote-only confirmation never fabricates a zero favourite count", () => {
     responseText: JSON.stringify({ upvotes: 25, voted: 1 }),
   });
 
-  // ★ Number(null) === 0：未确认的计数一旦被规范化成 0，就会反过来盖掉保存站的真实值。
+  // ★ Number(null) === 0：未確認的計數一旦被規範化成 0，就會反過來蓋掉保存站的真實值。
   const record = store.read({ uid: 52918, lid: LID });
   assert.equal(record.upvote, 25);
   assert.equal(record.favorCount, null);
@@ -550,7 +550,7 @@ test("a vote-only confirmation never fabricates a zero favourite count", () => {
   assert.equal(merged.voted, 1);
   assert.equal(merged.favored, null);
 
-  // 反向同理：只确认过收藏时，点赞数必须留给保存站快照。
+  // 反向同理：只確認過收藏時，點贊數必須留給保存站快照。
   const favorOnly = seededTracker({
     storage: memoryStorage(),
     clock,
@@ -572,7 +572,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   const reports = [];
   const clock = fixedClock();
 
-  // 拿不到当前账号：官方写成功了，但状态无处可存 —— 刷新后必然撤不回，必须报出来。
+  // 拿不到當前帳號：官方寫成功了，但狀態無處可存 —— 刷新後必然撤不回，必須報出來。
   const anonymous = createArticleInteractionTracker({
     store: createArticleInteractionStore({ storage: memoryStorage(), now: clock.now }),
     origin: ORIGIN,
@@ -589,7 +589,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   });
   assert.deepEqual(reports, [{ lid: LID, reason: "no-account" }]);
 
-  // 存储不可用（隐私模式、配额、被宿主环境挡住）同样必须报出来。
+  // 儲存不可用（隱私模式、配額、被宿主環境擋住）同樣必須報出來。
   const blocked = createArticleInteractionTracker({
     store: createArticleInteractionStore({ storage: null }),
     origin: ORIGIN,
@@ -606,7 +606,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   });
   assert.deepEqual(reports[1], { lid: LID, reason: "storage-unavailable" });
 
-  // 成功落盘时不得产生噪音。
+  // 成功寫入磁碟時不得產生噪音。
   const working = createArticleInteractionTracker({
     store: createArticleInteractionStore({ storage: memoryStorage(), now: clock.now }),
     origin: ORIGIN,
@@ -655,7 +655,7 @@ test("the interaction store expires, caps and survives corrupt payloads", () => 
   assert.equal(recovered.save({ uid: 7, lid: "ccc", favored: true }).favored, true);
   assert.equal(recovered.read({ uid: 7, lid: "ccc" }).favored, true);
 
-  // 没有可用存储时降级为纯内存，不抛错。
+  // 沒有可用儲存時降級為純記憶體，不拋錯。
   const ephemeral = createArticleInteractionStore({ storage: null });
   assert.equal(ephemeral.save({ uid: 7, lid: "ccc", favored: true }), null);
   assert.equal(ephemeral.read({ uid: 7, lid: "ccc" }), null);

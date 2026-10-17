@@ -1,23 +1,23 @@
-// 洛谷真实发表时间的取值，两个来源按可信与代价排序：
+// 洛谷真實發表時間的取值，兩個來源按可信與代價排序：
 //
-//   1. 保存站存档载荷的 `publishTime` —— 上游 laikit-dev/luogu-saver#84 之后自带，
-//      跟着我们本来就要发的那次存档查询一起回来，不额外发请求。
-//   2. 作者专栏列表现扫出来的 `live.time`（article-live-counts.js）—— 要发若干请求，
-//      有 2.5s 预算，扫不到就是没有。
+//   1. 保存站存檔載荷的 `publishTime` —— 上游 laikit-dev/luogu-saver#84 之後自帶，
+//      跟著我們本來就要發的那次存檔查詢一起回來，不額外發請求。
+//   2. 作者專欄列表現掃出來的 `live.time`（article-live-counts.js）—— 要發若干請求，
+//      有 2.5s 預算，掃不到就是沒有。
 //
-// ★ 文章那条路上，两者都有时最终显示的是 live —— article-interaction-state.js 会在
-//   合并阶段用 live.time 再覆盖一次。两个都是洛谷给的同一个量，谁赢不影响正确性；
-//   这里排 publishTime 在前，是为了 live 扫不到（超时/分页没命中）时仍然有真值。
+// ★ 文章那條路上，兩者都有時最終顯示的是 live —— article-interaction-state.js 會在
+//   合併階段用 live.time 再覆蓋一次。兩個都是洛谷給的同一個量，誰贏不影響正確性；
+//   這裡排 publishTime 在前，是為了 live 掃不到（超時/分頁沒命中）時仍然有真值。
 //
-// ★ 两者都没有时返回 null，**绝不**拿入档时间（createdAt）顶替：实测 2l4x53kj
-//   入档 2026-01-02、真实发表 2025-10-01，差三个月。调用方拿到 null 就该如实标注
-//   「存档时间」（archive-time-label.js），这是铁律「不伪造未知」的一部分。
+// ★ 兩者都沒有時回傳 null，**絕不**拿入檔時間（createdAt）頂替：實測 2l4x53kj
+//   入檔 2026-01-02、真實發表 2025-10-01，差三個月。呼叫方拿到 null 就該如實標註
+//   「存檔時間」（archive-time-label.js），這是鐵律「不偽造未知」的一部分。
 //
-// 上游把列定成 INT UNSIGNED，所以合法值是 [1, 4294967295] 的整数；0 是「洛谷没给值」。
+// 上游把列定成 INT UNSIGNED，所以合法值是 [1, 4294967295] 的整數；0 是「洛谷沒給值」。
 const PUBLISH_TIME_MAX = 4294967295;
 
-// ★ Number(null) === 0 且 Number.isFinite(0) 为真 —— 本项目已经咬过四次，
-//   必须先把 null / undefined / 空串挡在外面再转数字。
+// ★ Number(null) === 0 且 Number.isFinite(0) 為真 —— 本專案已經咬過四次，
+//   必須先把 null / undefined / 空串擋在外面再轉數字。
 function publishSeconds(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === "string" && value.trim() === "") return null;

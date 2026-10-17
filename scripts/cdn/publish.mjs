@@ -68,8 +68,8 @@ if (!skipBuild)
     version,
   ]);
 run("node", ["scripts/cdn/prepare.mjs"]);
-// 全局 wrangler（工作区约定），发布前先把它的版本量一次并对下限断言 ——
-// 理由见 scripts/cdn/cli-baseline.mjs：产物不可变，不能用行为未知的 CLI 去传。
+// 全域 wrangler（工作區約定），發佈前先把它的版本量一次並對下限斷言 ——
+// 理由見 scripts/cdn/cli-baseline.mjs：產物不可變，不能用行為未知的 CLI 去傳。
 const wranglerVersion = assertCliBaseline({
   name: "wrangler",
   output: capture("wrangler", ["--version"]),

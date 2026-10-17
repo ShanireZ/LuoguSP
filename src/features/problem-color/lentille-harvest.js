@@ -1,13 +1,13 @@
 import { recordDifficultyForHarvest } from "./identity.js";
 
-// 洛谷把每页的服务端数据放在 <script id="lentille-context" type="application/json"> 里，
-// 练习页和评测记录列表因此带着整批 pid→难度一起下发，收下来可省掉成百上千次单题请求。
+// 洛谷把每頁的伺服器端資料放在 <script id="lentille-context" type="application/json"> 裡，
+// 練習頁和評測記錄列表因此帶著整批 pid→難度一起下發，收下來可省掉成百上千次單題請求。
 //
-// ★ 数据源换过一次：原先读 window._feInstance.currentData，该全局已全站消失。
-// ★ 判据按 payload 形状取，不按 URL 匹配。个人页子页从 `#practice` 改成 `/practice` 那次，
-//   挂在 URL 上的旧判据整条失效且零征兆——URL 变了，数据形状没变。
+// ★ 資料源換過一次：原先讀 window._feInstance.currentData，該全域已全站消失。
+// ★ 判據按 payload 形狀取，不按 URL 匹配。個人頁子頁從 `#practice` 改成 `/practice` 那次，
+//   掛在 URL 上的舊判據整條失效且零徵兆——URL 變了，資料形狀沒變。
 //
-// 首屏 script 不随 SPA 导航更新；后续页的数据由 native-difficulty-source.js 收取。
+// 首屏 script 不隨 SPA 導覽更新；後續頁的資料由 native-difficulty-source.js 收取。
 
 const parsedContexts = new WeakMap();
 
@@ -17,9 +17,9 @@ export function readLentilleData(doc = globalThis.document) {
       ? doc.getElementById("lentille-context")
       : null;
   if (!element) return null;
-  // ★ 必须按元素和内容缓存：Pipeline 每次扫描都会 harvest()，每次重新解析一份
-  //   100KB+ 的 payload 会毁掉性能；而且每次返回新数组会让 Pipeline 的 WeakSet 去重永远落空。
-  //   按元素缓存也让受限内容 document.write 出的新文档自然重新解析。
+  // ★ 必須按元素和內容快取：Pipeline 每次掃描都會 harvest()，每次重新解析一份
+  //   100KB+ 的 payload 會毀掉效能；而且每次回傳新陣列會讓 Pipeline 的 WeakSet 去重永遠落空。
+  //   按元素快取也讓受限內容 document.write 出的新文件自然重新解析。
   const text = element.textContent || "null";
   const previous = parsedContexts.get(element);
   if (previous?.text === text) return previous.data;
@@ -29,31 +29,31 @@ export function readLentilleData(doc = globalThis.document) {
     if (context && typeof context.data === "object" && context.data)
       data = context.data;
   } catch (error) {
-    // 非 JSON 或被截断的 payload 一律当作没有批量数据。
+    // 非 JSON 或被截斷的 payload 一律當作沒有批量資料。
   }
   parsedContexts.set(element, { text, data });
   return data;
 }
 
-// 题目直接摊在 data 下的几种键：
-//   /user/{uid}/practice → submitted（裸数组）；passed 已按难度分组展示，刻意忽略
-//   /problem/list        → problems（分页容器 { perPage, count, result }）
+// 題目直接攤在 data 下的幾種鍵：
+//   /user/{uid}/practice → submitted（裸陣列）；passed 已按難度分組展示，刻意忽略
+//   /problem/list        → problems（分頁容器 { perPage, count, result }）
 const DIRECT_PROBLEM_LISTS = ["submitted", "problems"];
 
-// 裸数组与分页容器都收；其它形状一律当作没有批量数据。
+// 裸陣列與分頁容器都收；其它形狀一律當作沒有批量資料。
 function asList(value) {
   if (Array.isArray(value)) return value;
   if (value && Array.isArray(value.result)) return value.result;
   return null;
 }
 
-// 返回 { source, problems } 批次：source 用于 Pipeline 侧的 WeakSet 去重，
-// problems 产出纯数据，不污染洛谷的原始数组。
+// 回傳 { source, problems } 批次：source 用於 Pipeline 側的 WeakSet 去重，
+// problems 產出純資料，不汙染洛谷的原始陣列。
 export function collectDifficultyBatches(data) {
   if (!data || typeof data !== "object") return [];
   const batches = [];
 
-  // 题目条目本身就是 { pid, difficulty, name, type, … }。
+  // 題目條目本身就是 { pid, difficulty, name, type, … }。
   for (const key of DIRECT_PROBLEM_LISTS) {
     const list = asList(data[key]);
     if (list && list.length)
@@ -66,9 +66,9 @@ export function collectDifficultyBatches(data) {
   if (training?.length)
     batches.push({ source: training, problems: () => [...training] });
 
-  // 评测记录列表：每条记录把题目包在 problem 下。
-  // 记录里的高档难度值在新旧编号之间有歧义，映射为 null 后交给 Pipeline 查题目页当前值。
-  // 列表页本身不染色（洛谷已原生上色）；这批数据只留给离开该页之后的题号。
+  // 評測記錄列表：每條記錄把題目包在 problem 下。
+  // 記錄裡的高檔難度值在新舊編號之間有歧義，映射為 null 後交給 Pipeline 查題目頁當前值。
+  // 列表頁本身不染色（洛谷已原生上色）；這批資料只留給離開該頁之後的題號。
   const records = asList(data.records);
   if (records && records.length)
     batches.push({

@@ -43,8 +43,8 @@ function createGate() {
           if (!document.getElementById(styleId)) {
             const style = document.createElement("style");
             style.id = styleId;
-            // 几何与壳内加载层同源（loader-geometry.js）：两者先后出现在同一位置，
-            // 一旦不一致，切换瞬间转圈就会跳一下。
+            // 幾何與殼內載入層同源（loader-geometry.js）：兩者先後出現在同一位置，
+            // 一旦不一致，切換瞬間轉圈就會跳一下。
             style.textContent = `
               html.${className},html.${className} body{overflow:hidden!important;background:${LOADER_BACKDROP}!important;}
               html.${className} body>*{visibility:hidden!important;}

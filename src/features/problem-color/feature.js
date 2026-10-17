@@ -7,8 +7,8 @@ import { createProblemPipeline } from "./pipeline.js";
 import { isProblemAnchorColorable } from "./practice-policy.js";
 
 export function createProblemColorFeature({ storage }) {
-  // ★ 色表**不在这里** —— 唯一一份在 `core/luogu-difficulty.js`。
-  //   它以前在这里另存了一份，和悬停卡那份同时错了两档（2.14.1 修正）。
+  // ★ 色表**不在這裡** —— 唯一一份在 `core/luogu-difficulty.js`。
+  //   它以前在這裡另存了一份，和懸停卡那份同時錯了兩檔（2.14.1 修正）。
   const FALLBACK_COLOR = DIFFICULTY_COLORS[0];
   const diffColor = (difficulty) =>
     DIFFICULTY_COLORS[difficulty] || FALLBACK_COLOR;
@@ -18,9 +18,9 @@ export function createProblemColorFeature({ storage }) {
   };
 
   // ============================================================
-  // 题号显示难度颜色
+  // 題號顯示難度顏色
   // ============================================================
-  // 单队列 FIFO：300ms 发起间隔、最多 3 并发、15s 超时。
+  // 單佇列 FIFO：300ms 發起間隔、最多 3 並行、15s 超時。
   const limiter = createGetRequestScheduler({
     fetch: (url, init) => fetch(url, init),
     clock: {
@@ -57,16 +57,16 @@ export function createProblemColorFeature({ storage }) {
         : null,
   });
 
-  // 把子树中第一处 pid 文本包成 <b>（纯 DOM，避免 innerHTML.replace 误伤属性内同名子串、
-  // 重建整个锚点子树、抖掉已绑定的监听）。返回创建的包裹节点，未找到则返回 null。
+  // 把子樹中第一處 pid 文字包成 <b>（純 DOM，避免 innerHTML.replace 誤傷屬性內同名子串、
+  // 重建整個錨點子樹、抖掉已綁定的監聽）。回傳建立的包裹節點，未找到則回傳 null。
   function wrapPidText(root, pid, color) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
       const idx = node.nodeValue.indexOf(pid);
       if (idx === -1) continue;
-      const mid = node.splitText(idx); // mid 以 pid 开头
-      mid.splitText(pid.length); // 把 pid 之后的部分切走，mid 现在正好等于 pid
+      const mid = node.splitText(idx); // mid 以 pid 開頭
+      mid.splitText(pid.length); // 把 pid 之後的部分切走，mid 現在正好等於 pid
       const b = document.createElement("b");
       b.style.color = color;
       b.textContent = pid;
@@ -120,10 +120,10 @@ export function createProblemColorFeature({ storage }) {
     },
     difficultySource: {
       text: (path, options) => limiter.text(path, options),
-      // 练习页只收“尝试过的题目”；“已通过”已按难度分组，既不着色也不入缓存。
-      // 评测记录列表的题号洛谷已经上色，practice-policy.js 会整页跳过。
-      // 列表 payload 里的难度仍收进缓存，离开该页后的题号不用逐题再请求。
-      // 首屏 JSON + 洛谷自身导航请求的响应，不额外请求页面数据。
+      // 練習頁只收“嘗試過的題目”；“已通過”已按難度分組，既不著色也不入快取。
+      // 評測記錄列表的題號洛谷已經上色，practice-policy.js 會整頁跳過。
+      // 列表 payload 裡的難度仍收進快取，離開該頁後的題號不用逐題再請求。
+      // 首屏 JSON + 洛谷自身導覽請求的回應，不額外請求頁面資料。
       harvest: () => nativeDifficulty.harvest(),
       subscribe: (accept) => nativeDifficulty.subscribe(accept),
     },
@@ -230,7 +230,7 @@ export function createProblemColorFeature({ storage }) {
       isConnected: (anchor) => anchor.isConnected,
       clearColor: (anchor) => clearProblemColor(anchor),
       applyColor: (a, pid, color) => {
-        // 虚拟列表可能在请求期间复用锚点；Problem Pipeline 已复核身份后才会到这里。
+        // 虛擬列表可能在請求期間重複使用錨點；Problem Pipeline 已複核身分後才會到這裡。
         clearProblemColor(a);
         if (
           a.matches(SELECTORS.standalonePid) &&

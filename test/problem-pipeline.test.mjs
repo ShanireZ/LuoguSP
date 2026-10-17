@@ -482,8 +482,8 @@ test("Problem Pipeline discards stale anchors, route generations and disposed wo
   assert.deepEqual(fx3.writes, []);
 });
 
-// ★ 第二道闸：identity.js 的字符集守卫坏掉时，请求路径也不许拼出别的接口。
-//   判据是「请求不到东西」，绝不是「请求到别的东西」（2026-08-15 实测复现，见 identity.js）。
+// ★ 第二道閘：identity.js 的字元集守衛壞掉時，請求路徑也不許拼出別的介面。
+//   判據是「請求不到東西」，絕不是「請求到別的東西」（2026-08-15 實測重現，見 identity.js）。
 test("Problem Pipeline encodes the pid instead of letting it reshape the URL", async () => {
   const paths = [];
   const hostile = "a1/../../api/user/search";

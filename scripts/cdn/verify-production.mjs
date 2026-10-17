@@ -88,9 +88,9 @@ if (stagedArtifact.includes("/channels/"))
   failures.push("staged userscript must not load a mutable channel");
 if (Buffer.byteLength(stagedArtifact) > 5000)
   failures.push("staged userscript loader exceeds 5000 bytes");
-// 受限内容按需块：清单声明了就必须钉全。这里不强制它「必须存在」——
-// 老 release（2.14.0 之前）没有这个块，而「必须存在」由构建侧的结构守卫
-// （test/restricted-lazy-bundle.test.mjs）无条件盯着。
+// 受限內容按需塊：清單宣告了就必須釘全。這裡不強制它「必須存在」——
+// 老 release（2.14.0 之前）沒有這個塊，而「必須存在」由建置側的結構守衛
+// （test/restricted-lazy-bundle.test.mjs）無條件盯著。
 const optionalHover = manifest.optionalBundles?.hoverCard;
 if (optionalHover) {
   const hoverFile = manifest.files?.[optionalHover.path];

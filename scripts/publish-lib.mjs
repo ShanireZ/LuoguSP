@@ -39,9 +39,9 @@ export function userscriptMetadata(artifact) {
 export function packageTextWithVersion(text, version) {
   const document = JSON.parse(text);
   document.version = version;
-  // 这里以前还要顺手改 package-lock.json 的 packages[""].version。仓库 2026-08-17
-  // 全面转 pnpm，那个文件没了，pnpm-lock.yaml 压根不记根包版本 —— 这条腿一并删掉，
-  // 留着只会让人以为还有第二个地方要同步。
+  // 這裡以前還要順手改 package-lock.json 的 packages[""].version。儲存庫 2026-08-17
+  // 全面轉 pnpm，那個檔案沒了，pnpm-lock.yaml 壓根不記根包版本 —— 這條腿一併刪掉，
+  // 留著只會讓人以為還有第二個地方要同步。
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 
@@ -85,7 +85,7 @@ export function verifyStagedActivation(options) {
     manifest?.esm?.enabled !== false
   )
     throw new Error("Staged userscript manifest is not production-ready");
-  // 同 verify-production：声明了就必须钉全；「必须存在」由构建侧结构守卫负责。
+  // 同 verify-production：宣告了就必須釘全；「必須存在」由建置側結構守衛負責。
   const hover = manifest.optionalBundles?.hoverCard;
   if (hover) {
     const hoverFile = manifest.files?.[hover.path];

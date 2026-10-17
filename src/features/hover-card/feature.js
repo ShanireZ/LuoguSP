@@ -16,22 +16,22 @@ import { createHoverIntent } from "./hover-intent.js";
 import { createHoverCardSources } from "./sources.js";
 import { HOVER_CARD_STYLE } from "./style.js";
 
-// 题号 / 用户名 / 头像的悬停预览卡。
+// 題號 / 使用者名 / 頭像的懸停預覽卡。
 //
-// 页面上满地是裸题号和裸用户名，现在只有颜色，看不出是什么题、是谁。这个功能把
-// 题名、难度、通过率、标签（默认折叠）、我的状态，以及用户的通过数/排名/咕值/Elo/
-// 获奖/关系 就地摊开，并带一枚复用洛谷原生契约的关注按钮。
+// 頁面上滿地是裸題號和裸使用者名，現在只有顏色，看不出是什麼題、是誰。這個功能把
+// 題名、難度、通過率、標籤（預設摺疊）、我的狀態，以及使用者的通過數/排名/咕值/Elo/
+// 獲獎/關係 就地攤開，並帶一枚重複使用洛谷原生契約的關注按鈕。
 //
-// ★ 全部数据只走当前站同源（.com.cn）；一个字节都不碰国际站。
-// ★ 靠事件委托，不靠 MutationObserver + rAF —— 隐藏标签页里 rAF 不触发。
+// ★ 全部資料只走當前站同源（.com.cn）；一個位元組都不碰國際站。
+// ★ 靠事件委託，不靠 MutationObserver + rAF —— 隱藏標籤頁裡 rAF 不觸發。
 
 const STYLE_ID = "luogusp-hover-card-style";
 const CARD_ID = "luogusp-hover-card";
 
 export function createHoverCardFeature(config) {
-  // ★ 设置项的身份（id/key/label）在**薄壳**手里，不在这里 —— 这个块只负责干活。
-  //   `isEnabled(kind)` 是薄壳现问的：owner 把开关拆成了题目卡与用户卡两个，
-  //   改开关要**立刻生效**，不能靠重挂。
+  // ★ 設定項的身分（id/key/label）在**薄殼**手裡，不在這裡 —— 這個塊只負責幹活。
+  //   `isEnabled(kind)` 是薄殼現問的：owner 把開關拆成了題目卡與使用者卡兩個，
+  //   改開關要**立刻生效**，不能靠重掛。
   const { fetchPage, isEnabled = () => true } = config || {};
 
   const clock = {
@@ -42,8 +42,8 @@ export function createHoverCardFeature(config) {
   const identity = createProblemIdentityResolver({
     getOrigin: () => location.origin,
     voidAnchorSelector: "a[data-v-bade3303][data-v-4842157a]",
-    // ★ 不给 standalonePidSelector：`.pid[title]` 已经从锚点选择器里拿掉了
-    //   （题库的题号格靠那个 title 着色，我们碰不得）。见 anchors.js 的说明。
+    // ★ 不給 standalonePidSelector：`.pid[title]` 已經從錨點選擇器裡拿掉了
+    //   （題庫的題號格靠那個 title 著色，我們碰不得）。見 anchors.js 的說明。
   });
 
   const mount = (options = {}) => {
@@ -78,18 +78,18 @@ export function createHoverCardFeature(config) {
         }),
       onState: (uid, next) => {
         sources.patchUser(uid, next);
-        // 状态变了就地重画，别等下一次 hover。
+        // 狀態變了就地重畫，別等下一次 hover。
         if (shown && shown.kind === "user" && shown.uid === uid) draw(shown.key);
       },
       logError: (error) => console.error("LuoguSP hover follow:", error),
     });
 
-    // 当前正在展示的目标（由 hover-intent 决定），以及它的锚点矩形。
+    // 當前正在展示的目標（由 hover-intent 決定），以及它的錨點矩形。
     let shown = null;
     const targets = new Map();
-    // ★ owner 要求屏蔽洛谷原生的题号悬停。原生那个就是 `.pid[title]` 上的 title 属性
-    //   （problem-color 的选择器就叫这个名字）触发的浏览器浮泡 —— 我们的卡片一接管，
-    //   两层提示就会打架。摘掉 title，并记下原值，dispose 时还回去。
+    // ★ owner 要求屏蔽洛谷原生的題號懸停。原生那個就是 `.pid[title]` 上的 title 屬性
+    //   （problem-color 的選擇器就叫這個名字）觸發的瀏覽器浮泡 —— 我們的卡片一接管，
+    //   兩層提示就會打架。摘掉 title，並記下原值，dispose 時還回去。
     const strippedTitles = new WeakMap();
     const stripNativeTitle = (anchor) => {
       for (const node of [anchor, ...anchor.querySelectorAll?.("[title]") ?? []]) {
@@ -110,10 +110,10 @@ export function createHoverCardFeature(config) {
       }
     };
 
-    // 最近一次指针坐标：跨行锚点要靠它挑出「指针所在的那一行」来定位，
-    // 否则卡片会被推到整个盒子的下沿，离题号很远。
+    // 最近一次指針座標：跨行錨點要靠它挑出「指針所在的那一行」來定位，
+    // 否則卡片會被推到整個盒子的下沿，離題號很遠。
     let pointer = null;
-    // 从锚点的多个 client rect 里挑包含指针纵坐标的那一行；挑不到就退回整体盒子。
+    // 從錨點的多個 client rect 裡挑包含指針縱座標的那一行；挑不到就退回整體盒子。
     const rectForPointer = (anchor) => {
       const rects = anchor.getClientRects ? [...anchor.getClientRects()] : [];
       if (pointer && rects.length > 1) {
@@ -125,10 +125,10 @@ export function createHoverCardFeature(config) {
       return rects[0] || anchor.getBoundingClientRect();
     };
 
-    // ★★★ 2.14.1「卡片跳走」。开卡时卡里只有一个转圈（≈42px），内容一到是 ≈320px，
-    //   两次定位量到的高度差近 8 倍 —— 锚点下方余量 44~320px 时必然翻边。
-    //   所以开卡那一次按「内容将会有多高」定边，内容落地那一次沿用同一边。
-    //   ★ 之后（用户点展开）`openSide` 已经交还成 null，仍按第七轮的三句话自由重判。
+    // ★★★ 2.14.1「卡片跳走」。開卡時卡里只有一個轉圈（≈42px），內容一到是 ≈320px，
+    //   兩次定位量到的高度差近 8 倍 —— 錨點下方餘量 44~320px 時必然翻邊。
+    //   所以開卡那一次按「內容將會有多高」定邊，內容完成實作那一次沿用同一邊。
+    //   ★ 之後（使用者點展開）`openSide` 已經交還成 null，仍按第七輪的三句話自由重判。
     const LOADING_MIN_HEIGHT = 320;
     let loading = false;
     let openSide = null;
@@ -146,7 +146,7 @@ export function createHoverCardFeature(config) {
           forceBelow: openSide,
         },
       );
-      // 加载态记住这一边；内容一落地就交还自由。
+      // 載入態記住這一邊；內容一完成實作就交還自由。
       openSide = loading ? placement.below : null;
     };
 
@@ -158,21 +158,21 @@ export function createHoverCardFeature(config) {
         target.kind === "problem"
           ? await sources.problem(target.pid, viewer)
           : await sources.user(target.uid);
-      // 等数据的过程中鼠标可能已经走了 —— 拿到了也不许再画。
+      // 等資料的過程中滑鼠可能已經走了 —— 拿到了也不許再畫。
       if (!shown || shown.key !== key) return;
       card.textContent = "";
       if (!model) {
         card.appendChild(
           Object.assign(document.createElement("div"), {
             className: "luogusp-hc-muted",
-            // 洛谷自己说了原因就照搬（例如「该用户未通过实名认证」），
-            // 说不出原因才退回这句笼统的。★ 不编原因。
+            // 洛谷自己說了原因就照搬（例如「該使用者未通過實名認證」），
+            // 說不出原因才退回這句籠統的。★ 不編原因。
             textContent: sources.lastError(target.key) || "拿不到这条数据。",
           }),
         );
       } else if (model.kind === "problem") {
         card.appendChild(
-          // ★ 展开标签会让卡片长高，必须就地重定位 —— 否则向下弹的卡会顶出视口。
+          // ★ 展開標籤會讓卡片長高，必須就地重定位 —— 否則向下彈的卡會頂出視口。
           renderProblemCard(model, { origin: location.origin, onResize: position }),
         );
       } else {
@@ -181,15 +181,15 @@ export function createHoverCardFeature(config) {
             origin: location.origin,
             viewerUid: viewer,
             onResize: position,
-            // 匿名访客不给写入按钮：点了必然被洛谷拒。
+            // 匿名訪客不給寫入按鈕：點了必然被洛谷拒。
             onFollow: viewer ? (next) => follow.toggle(next) : null,
             onBlock: viewer ? (next) => follow.block(next) : null,
             followBusy: follow.isBusy(model.uid),
           }),
         );
       }
-      // 插入之后才量得到「签名有没有溢出两行」。
-      // ★ 先摘掉加载态：这一次定位要用内容的真高，并沿用开卡时定的那一边。
+      // 插入之後才量得到「簽名有沒有溢出兩行」。
+      // ★ 先摘掉載入態：這一次定位要用內容的真高，並沿用開卡時定的那一邊。
       loading = false;
       finalizeCard(card);
       position();
@@ -224,13 +224,13 @@ export function createHoverCardFeature(config) {
     const onOver = (event) => {
       if (typeof event.clientX === "number")
         pointer = { x: event.clientX, y: event.clientY };
-      // 指针落在卡片自己身上：维持当前卡，别关。
+      // 指針落在卡片自己身上：維持當前卡，別關。
       if (card.contains(event.target)) {
         if (shown) intent.enter(shown.key);
         return;
       }
-      // ★ 页面主体每次 hover 现读，不在 mount 时算一次：洛谷是 SPA，
-      //   路由一换 pathname 就变了，缓存下来会在下一页拿旧主体做判断。
+      // ★ 頁面主體每次 hover 現讀，不在 mount 時算一次：洛谷是 SPA，
+      //   路由一換 pathname 就變了，快取下來會在下一頁拿舊主體做判斷。
       const target = resolveHoverTarget(
         event.target,
         identity,
@@ -244,15 +244,15 @@ export function createHoverCardFeature(config) {
     };
     const onOut = (event) => {
       const to = event.relatedTarget;
-      // 移到卡片上不算离开，否则卡上的按钮永远点不到。
+      // 移到卡片上不算離開，否則卡上的按鈕永遠點不到。
       if (to && (card === to || card.contains(to))) return;
       intent.leave();
     };
-    // ★★ owner 2026-08-14 第四轮：滚轮滚动时，指针明明还在卡片里，卡片却消失了。
-    //    根因是这里无条件 dismiss。卡片自己是可滚的（内容超高时 overflow:auto），
-    //    在卡里滚本来就不该关它 —— 而且此时页面根本没动，关掉纯属误伤。
-    //    判据用**指针最后落点**去问 `elementFromPoint`：滚动事件不带坐标，
-    //    而 `pointer` 是每次 mouseover 更新的，滚动期间指针没动，它就是准的。
+    // ★★ owner 2026-08-14 第四輪：滾輪捲動時，指針明明還在卡片裡，卡片卻消失了。
+    //    根因是這裡無條件 dismiss。卡片自己是可滾的（內容超高時 overflow:auto），
+    //    在卡里滾本來就不該關它 —— 而且此時頁面根本沒動，關掉純屬誤傷。
+    //    判據用**指針最後落點**去問 `elementFromPoint`：捲動事件不帶座標，
+    //    而 `pointer` 是每次 mouseover 更新的，捲動期間指針沒動，它就是準的。
     const pointerInsideCard = () => {
       if (!pointer || !document.elementFromPoint) return false;
       const under = document.elementFromPoint(pointer.x, pointer.y);
@@ -266,10 +266,10 @@ export function createHoverCardFeature(config) {
       if (event.key === "Escape") intent.dismiss();
     };
 
-    // ★★ 块是被用户那一次悬停拉下来的，而那个事件早就派发完了 —— 委托监听接不到。
-    //    所以薄壳把「指针当时在哪」交过来，这里自己解析一次并**立刻打开**。
-    //    ★ 不用补发合成事件：跨 realm 造事件脆，而且合成事件仍要再等 300ms 停留，
-    //      体感还是「第一次悬停不弹」。
+    // ★★ 塊是被使用者那一次懸停拉下來的，而那個事件早就派發完了 —— 委託監聽接不到。
+    //    所以薄殼把「指針當時在哪」交過來，這裡自己解析一次並**立刻打開**。
+    //    ★ 不用補發合成事件：跨 realm 造事件脆，而且合成事件仍要再等 300ms 停留，
+    //      體感還是「第一次懸停不彈」。
     if (options.replayAt && document.elementFromPoint) {
       const { x, y } = options.replayAt;
       const node = document.elementFromPoint(x, y);

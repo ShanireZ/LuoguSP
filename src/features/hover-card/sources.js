@@ -6,32 +6,32 @@ import {
   pickLastAttempt,
 } from "./models.js";
 
-// 卡片数据源。★ 铁律：一切数据只从 `.com.cn` 国内站或 `api.luogu.me` 保存站取，
-// **绝不走 `www.luogu.com` 国际站** —— 普通用户没有代理，访问不到。
-// 本模块全部请求都是当前站同源。
+// 卡片資料源。★ 鐵律：一切資料只從 `.com.cn` 國內站或 `api.luogu.me` 保存站取，
+// **絕不走 `www.luogu.com` 國際站** —— 普通使用者沒有代理，訪問不到。
+// 本模組全部請求都是當前站同源。
 //
-//   题目：GET /problem/{pid}                 + x-lentille-request: content-only
-//   标签：GET /_lfe/tags                     （字典，带 version，可长缓存）
-//   上次尝试：GET /record/list?user=&pid=    ★ 旧版页面，不吃 lentille header，
-//                                             数据在 _feInjection.currentData.records
-//   用户（主）：GET /api/user/info/{uid}     ★ 洛谷**原生悬停卡自己用的接口**
-//   用户（补）：GET /user/{uid}               + 同 header，只为拿主接口没有的两样东西
+//   題目：GET /problem/{pid}                 + x-lentille-request: content-only
+//   標籤：GET /_lfe/tags                     （字典，帶 version，可長快取）
+//   上次嘗試：GET /record/list?user=&pid=    ★ 舊版頁面，不吃 lentille header，
+//                                             資料在 _feInjection.currentData.records
+//   使用者（主）：GET /api/user/info/{uid}     ★ 洛谷**原生懸停卡自己用的介面**
+//   使用者（補）：GET /user/{uid}               + 同 header，只為拿主介面沒有的兩樣東西
 //
-// ★★★ 用户数据为什么是两个来源（owner 2026-08-14：「能用原生接口的用原生卡片的接口」）：
-//   主接口 `/api/user/info/{uid}` 是原生 UserFloatCard 调的那个（路由名 api.user.get_info，
-//   在 `/_lfe/config` 的 routes 里可查）。它有三个决定性好处：
+// ★★★ 使用者資料為什麼是兩個來源（owner 2026-08-14：「能用原生介面的用原生卡片的介面」）：
+//   主介面 `/api/user/info/{uid}` 是原生 UserFloatCard 調的那個（路由名 api.user.get_info，
+//   在 `/_lfe/config` 的 routes 裡可查）。它有三個決定性好處：
 //     1. **951 B**，而 `/user/{uid}` 是 12~20 KB；
-//     2. **`eloValue` / `elo` 在这里是真值**（在 `/user/{uid}` 里恒为 null）；
-//     3. **未通过实名认证的用户照样 200**，而 `/user/{uid}` 直接 403
-//        （`errorMessage: "该用户未通过实名认证"`）—— owner 报的「拿不到这条数据」就是它。
-//   它缺两样：`gu`（咕值）与 `prizes`（获奖），所以补一发 `/user/{uid}`，**取不到就少画几行**。
+//     2. **`eloValue` / `elo` 在這裡是真值**（在 `/user/{uid}` 裡恆為 null）；
+//     3. **未通過實名認證的使用者照樣 200**，而 `/user/{uid}` 直接 403
+//        （`errorMessage: "该用户未通过实名认证"`）—— owner 報的「拿不到這條資料」就是它。
+//   它缺兩樣：`gu`（咕值）與 `prizes`（獲獎），所以補一發 `/user/{uid}`，**取不到就少畫幾行**。
 //
-// ★★★ 一个必须记死的陷阱：**两个接口都有 `submittedProblemCount`，含义不一样**。
-//   实测 697932：主接口 5441、`/user/{uid}` 710，而洛谷个人页上写的「提交」是 **710**。
-//   所以「通过 / 提交」这一行**只认 `/user/{uid}` 的口径**，拿不到就不画 ——
-//   混着用会让我们显示一个比洛谷自己大 8 倍的数字。
+// ★★★ 一個必須記死的陷阱：**兩個介面都有 `submittedProblemCount`，含義不一樣**。
+//   實測 697932：主介面 5441、`/user/{uid}` 710，而洛谷個人頁上寫的「提交」是 **710**。
+//   所以「通過 / 提交」這一行**只認 `/user/{uid}` 的口徑**，拿不到就不畫 ——
+//   混著用會讓我們顯示一個比洛谷自己大 8 倍的數字。
 //
-// 全部按 key 缓存并共享在途请求：hover 会反复进出同一个锚点，不能每次都打网络。
+// 全部按 key 快取並共享在途請求：hover 會反覆進出同一個錨點，不能每次都打網路。
 
 const LENTILLE_INIT = Object.freeze({
   headers: Object.freeze({ "x-lentille-request": "content-only" }),
@@ -39,7 +39,7 @@ const LENTILLE_INIT = Object.freeze({
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 60;
 
-// 旧版页面把数据塞在 `window._feInjection = JSON.parse(decodeURIComponent("…"))` 里。
+// 舊版頁面把資料塞在 `window._feInjection = JSON.parse(decodeURIComponent("…"))` 裡。
 export function parseLegacyInjection(html) {
   const match = String(html || "").match(
     /_feInjection\s*=\s*JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/,
@@ -69,7 +69,7 @@ export function createHoverCardSources(config) {
   const pending = new Map();
 
   const remember = (key, value) => {
-    // 简单 FIFO 上限：hover 卡是浏览态缓存，不值得为它上 LRU。
+    // 簡單 FIFO 上限：hover 卡是瀏覽態快取，不值得為它上 LRU。
     if (cache.size >= maxEntries) {
       const oldest = cache.keys().next();
       if (!oldest.done) cache.delete(oldest.value);
@@ -98,7 +98,7 @@ export function createHoverCardSources(config) {
       .then((value) => remember(key, value))
       .catch((error) => {
         logError(error);
-        // 失败也记住（记成 null），避免鼠标来回扫时反复重打同一个失败请求。
+        // 失敗也記住（記成 null），避免滑鼠來回掃時反覆重打同一個失敗請求。
         return remember(key, null);
       })
       .finally(() => pending.delete(key));
@@ -123,7 +123,7 @@ export function createHoverCardSources(config) {
       ),
     );
 
-  // 上次尝试：匿名访客没有提交记录，不必发这个请求。
+  // 上次嘗試：匿名訪客沒有提交記錄，不必發這個請求。
   const lastAttempt = (pid, viewerUid, signal) => {
     const uid = Number(viewerUid);
     if (!Number.isSafeInteger(uid) || uid <= 0) return Promise.resolve(null);
@@ -156,13 +156,13 @@ export function createHoverCardSources(config) {
     });
   };
 
-  // 洛谷说得出口的失败原因（例如「该用户未通过实名认证」），按目标 key 记下来。
-  // ★ 只转述洛谷自己的话，**不编原因** —— 说不出就让视图退回笼统的那句。
+  // 洛谷說得出口的失敗原因（例如「該使用者未通過實名認證」），按目標 key 記下來。
+  // ★ 只轉述洛谷自己的話，**不編原因** —— 說不出就讓視圖退回籠統的那句。
   const reasons = new Map();
 
-  // 两个用户接口的响应体**即使不是 2xx 也是 JSON**（lentille 的错误页就是
-  // `{status:403, data:{errorMessage:"该用户未通过实名认证"}}`），所以照样解析，
-  // 只是把「有没有拿到 user」和「失败原因」分开返回。
+  // 兩個使用者介面的回應體**即使不是 2xx 也是 JSON**（lentille 的錯誤頁就是
+  // `{status:403, data:{errorMessage:"该用户未通过实名认证"}}`），所以照樣解析，
+  // 只是把「有沒有拿到 user」和「失敗原因」分開回傳。
   const readMaybe = async (path, init, signal) => {
     const response = await fetchPage(path, signal, init);
     if (!response) return null;
@@ -181,8 +181,8 @@ export function createHoverCardSources(config) {
     return load(key, async () => {
       const [info, page] = await Promise.all([
         readMaybe(`/api/user/info/${target}`, null, undefined),
-        // ★ 补充载荷对未实名用户返回 403，**那不是缺陷是常态**：主接口照样有数据，
-        //   这里拿不到就只是少画几行（咕值 / 获奖 / 通过·提交）。
+        // ★ 補充載荷對未實名使用者回傳 403，**那不是缺陷是常態**：主介面照樣有資料，
+        //   這裡拿不到就只是少畫幾行（咕值 / 獲獎 / 通過·提交）。
         readMaybe(`/user/${target}`, LENTILLE_INIT, undefined),
       ]);
       const card = buildUserCard(info, page);
@@ -200,8 +200,8 @@ export function createHoverCardSources(config) {
     });
   };
 
-  // 关注成功后卡片上的关系与粉丝数已经改了，缓存里那份必须跟着走，
-  // 否则重新 hover 会把旧状态摆回来 —— 看起来就像「关注没生效」。
+  // 關注成功後卡片上的關係與粉絲數已經改了，快取裡那份必須跟著走，
+  // 否則重新 hover 會把舊狀態擺回來 —— 看起來就像「關注沒生效」。
   const patchUser = (uid, patch) => {
     const key = `user:${Number(uid)}`;
     const entry = cache.get(key);

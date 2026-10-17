@@ -56,7 +56,7 @@ test("Route Adapter wraps history once and restores only owned wrappers", () => 
   disposeThird();
   assert.equal(history.pushState, laterPagePatch);
 
-  // 后置包装器拆除后可能恢复旧引用；旧代际必须惰性，重新订阅只能通知一次。
+  // 後置包裝器拆除後可能恢復舊引用；舊代際必須惰性，重新訂閱只能通知一次。
   history.pushState = staleOwnedWrapper;
   let fourth = 0;
   const disposeFourth = adapter.subscribe(() => fourth++);

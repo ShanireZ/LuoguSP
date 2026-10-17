@@ -1,7 +1,7 @@
-// 2026-09 洛谷云剪贴板详情是 columba 模板 paste.show。
-// PasteShow 读 lentille data.paste / data.canEdit，元信息在
-// .paste-show-card .meta-row > .meta-left 里，标签是「发布时间」。
-// 不写 expireTime：组件会据此渲染「已过期 / 临期」，保存站没有这个字段。
+// 2026-09 洛谷雲剪貼板詳情是 columba 範本 paste.show。
+// PasteShow 讀 lentille data.paste / data.canEdit，元資訊在
+// .paste-show-card .meta-row > .meta-left 裡，標籤是「發佈時間」。
+// 不寫 expireTime：元件會據此繪製「已過期 / 臨期」，保存站沒有這個欄位。
 
 const PASTE_TIME_LABEL = /发布时间|发表时间|存档时间/;
 

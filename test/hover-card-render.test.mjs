@@ -10,11 +10,11 @@ import {
 } from "../src/features/hover-card/card-view.js";
 import { buildProblemCard, buildUserCard } from "../src/features/hover-card/models.js";
 
-// 卡片渲染。★ 这一组全是 owner 2026-08-14 逐条提的口径，每条都配一句**反证**：
-// 只断言「新的在」不够，还要断言「旧的不在」—— 否则退回旧写法测试照绿。
+// 卡片繪製。★ 這一組全是 owner 2026-08-14 逐條提的口徑，每條都配一句**反證**：
+// 只斷言「新的在」不夠，還要斷言「舊的不在」—— 否則退回舊寫法測試照綠。
 //
-// 用 jsdom 而不是替身：卡片用 createElementNS 画 SVG、用 [hidden] 折叠标签，
-// 这些只有真 DOM 实现才验得出来。
+// 用 jsdom 而不是替身：卡片用 createElementNS 畫 SVG、用 [hidden] 摺疊標籤，
+// 這些只有真 DOM 實作才驗得出來。
 
 function withDom(run) {
   const dom = new JSDOM("<!doctype html><body></body>", {
@@ -60,7 +60,7 @@ const problemCard = (over = {}) =>
     tagDictionary: { resolve: () => ["模拟"] },
   });
 
-// 用户卡的两个载荷：主=/api/user/info/{uid}，补=/user/{uid}。
+// 使用者卡的兩個載荷：主=/api/user/info/{uid}，補=/user/{uid}。
 const userCard = (over = {}) =>
   buildUserCard(
     {
@@ -102,20 +102,20 @@ const userCard = (over = {}) =>
         },
   );
 
-// ---- 题目卡 ----
-// ★ owner：难度用**题号的颜色**表达，不再单占一行文字。
+// ---- 題目卡 ----
+// ★ owner：難度用**題號的顏色**表達，不再單佔一行文字。
 test("题号按难度着色，难度不再单独占一行", () => {
   const host = mount(() => renderProblemCard(problemCard(), { origin: "" }));
   const pid = host.querySelector(".luogusp-hc-title span");
   assert.equal(pid.textContent, "P2911");
   assert.equal(pid.style.color, "rgb(254, 76, 97)", "入门是 #fe4c61");
   assert.match(host.querySelector(".luogusp-hc-title").textContent, /^P2911 \[USACO08OCT]/);
-  // 反证：难度名一个字都不该出现在卡片里。
+  // 反證：難度名一個字都不該出現在卡片裡。
   assert.doesNotMatch(host.textContent, /入门/, "难度名不该再单独显示");
 });
 
-// ---- 用户卡：徽章 ----
-// ★ owner：徽章和气球要画成图标，上一版渲染的是 "CCF 7" / "XCPC 3" 这样的文字。
+// ---- 使用者卡：徽章 ----
+// ★ owner：徽章和氣球要畫成圖標，上一版繪製的是 "CCF 7" / "XCPC 3" 這樣的文字。
 test("徽章画成 duotone SVG，不再是 CCF / XCPC 文字", () => {
   const host = mount(() => renderUserCard(userCard({ ccfLevel: 7, xcpcLevel: 8 }), { origin: "" }));
   const icons = [...host.querySelectorAll("svg.luogusp-hc-fa")];
@@ -124,26 +124,26 @@ test("徽章画成 duotone SVG，不再是 CCF / XCPC 文字", () => {
   assert.equal(icons[1].getAttribute("viewBox"), "0 0 384 512", "🎈 是 384x512");
   for (const icon of icons)
     assert.equal(icon.querySelectorAll("path").length, 2, "duotone 是两段 path");
-  // ✅：盾面取等级色、钩子恒白；🎈 正好相反。
+  // ✅：盾面取等級色、鉤子恆白；🎈 正好相反。
   const ccf = icons[0].querySelectorAll("path");
   assert.equal(ccf[0].getAttribute("fill"), "#3498db");
   assert.equal(ccf[1].getAttribute("fill"), "#fff");
   const balloon = icons[1].querySelectorAll("path");
   assert.equal(balloon[0].getAttribute("fill"), "#fff");
   assert.equal(balloon[1].getAttribute("fill"), "#ffc116", "8 级是 gold-3");
-  // 反证：旧的文字徽章不许再出现。
+  // 反證：舊的文字徽章不許再出現。
   assert.doesNotMatch(host.textContent, /CCF\s*\d|XCPC\s*\d/);
 });
 
-// ★ 组件原文：level < 3 一个图标都不画。旧口径是「> 0 就画」。
+// ★ 元件原文：level < 3 一个图标都不画。旧口径是「> 0 就畫」。
 test("等级低于 3 不画徽章", () => {
   const host = mount(() => renderUserCard(userCard({ ccfLevel: 2, xcpcLevel: 1 }), { origin: "" }));
   assert.equal(host.querySelectorAll("svg.luogusp-hc-fa").length, 0);
 });
 
-// ---- 用户卡：统计排 ----
-// ★ owner 三轮下来的口径：去掉排名与「尝试」；通过题数叫「通过 / 提交」；
-//   并且咕值与「通过 / 提交」从下面的扩展行**挪进统计排**，依次尾随在等级分后面。
+// ---- 使用者卡：統計排 ----
+// ★ owner 三輪下來的口徑：去掉排名與「嘗試」；通過題數叫「通過 / 提交」；
+//   並且咕值與「通過 / 提交」從下面的擴充行**挪進統計排**，依次尾隨在等級分後面。
 test("统计排依次是 关注·粉丝·等级分·咕值·通过/提交", () => {
   const host = mount(() =>
     renderUserCard(
@@ -170,7 +170,7 @@ test("统计排依次是 关注·粉丝·等级分·咕值·通过/提交", () =
     ["咕值", "307"],
     ["通过 / 提交", "612 / 710"],
   ]);
-  // 反证：这两样不许再以 key-value 行的形式留在下面。
+  // 反證：這兩樣不許再以 key-value 行的形式留在下面。
   const keys = [...host.querySelectorAll(".luogusp-hc-key")].map((n) => n.textContent);
   assert.equal(keys.includes("通过 / 提交"), false);
   assert.equal(keys.includes("咕值"), false);
@@ -178,24 +178,24 @@ test("统计排依次是 关注·粉丝·等级分·咕值·通过/提交", () =
   assert.doesNotMatch(host.textContent, /尝试/, "「尝试」两个字要移除");
 });
 
-// ★ owner：隐藏了个人信息的账号拿不到这些字段，没数据的行不画。
+// ★ owner：隱藏了個人資訊的帳號拿不到這些欄位，沒資料的行不畫。
 test("拿不到的数据不画那一行，绝不用 0 顶替", () => {
   const bare = mount(() => renderUserCard(userCard({}), { origin: "" }));
   const keys = () => [...bare.querySelectorAll(".luogusp-hc-key")].map((n) => n.textContent);
   for (const gone of ["通过 / 提交", "咕值", "比赛 Elo", "获奖", "关注 / 粉丝", "关系", "注册于"])
-    // 这些键一个都不该出现：有的是移除了，有的是没数据。
+    // 這些鍵一個都不該出現：有的是移除了，有的是沒資料。
     assert.equal(keys().includes(gone), false, gone);
-  // 反证：不能因为「没数据」就写成 0 或「未关注」。
+  // 反證：不能因為「沒資料」就寫成 0 或「未關注」。
   assert.doesNotMatch(bare.textContent, /0/);
   assert.doesNotMatch(bare.textContent, /未关注/);
 
-  // 只有一半数据时该行仍要画，缺的那半写 `?`。
+  // 只有一半資料時該行仍要畫，缺的那半寫 `?`。
   const half = mount(() => renderUserCard(userCard({ submitted: 1234 }), { origin: "" }));
   assert.match(half.textContent, /\? \/ 1\.23k/);
 });
 
-// ★ owner 2026-08-14 第三轮：「关系」整行移除 —— 关注按钮已经把关系说清楚了
-//   （关注 / 已关注 / 互相关注 / 已拉黑），再写一行是重复。「注册于」同样移除。
+// ★ owner 2026-08-14 第三輪：「關係」整行移除 —— 關注按鈕已經把關係說清楚了
+//   （關注 / 已關注 / 互相關注 / 已拉黑），再寫一行是重複。「註冊於」同樣移除。
 test("关系与注册于都不再单列一行", () => {
   for (const over of [{ rel: 1, rev: 1 }, { rel: 0, rev: 0 }, {}]) {
     const host = mount(() =>
@@ -210,7 +210,7 @@ test("关系与注册于都不再单列一行", () => {
     assert.equal(keys.includes("关系"), false, JSON.stringify(over));
     assert.equal(keys.includes("注册于"), false, JSON.stringify(over));
   }
-  // 关系仍然由按钮表达 —— 互相关注时按钮就该这么写。
+  // 關係仍然由按鈕表達 —— 互相關注時按鈕就該這麼寫。
   const mutual = mount(() =>
     renderUserCard(userCard({ rel: 1, rev: 1 }), {
       origin: "",
@@ -222,8 +222,8 @@ test("关系与注册于都不再单列一行", () => {
   assert.equal(mutual.querySelector("button.luogusp-hc-btn").textContent, "互相关注");
 });
 
-// ★ owner 追问两次的那条：以前只画 prizes[0]，而洛谷发的是**年份升序**，
-//   于是永远只显示最早那个奖。
+// ★ owner 追問兩次的那條：以前只畫 prizes[0]，而洛谷發的是**年份升序**，
+//   於是永遠只顯示最早那個獎。
 test("获奖把拿到的都画出来，最近的排在最前", () => {
   const host = mount(() =>
     renderUserCard(
@@ -240,7 +240,7 @@ test("获奖把拿到的都画出来，最近的排在最前", () => {
   assert.deepEqual(lines, ["2025 CSP-S 一等奖", "2024 CSP-J 一等奖"]);
 });
 
-// ★ owner：签名可能很长。截断交给 CSS，不在 JS 里切字符串（会劈开 emoji）。
+// ★ owner：簽名可能很長。截斷交給 CSS，不在 JS 裡切字串（會劈開 emoji）。
 test("长签名交给 CSS 截断，文本本身一个字不少", () => {
   const slogan = "很长的签名".repeat(40);
   const host = mount(() => renderUserCard(userCard({ slogan }), { origin: "" }));
@@ -249,8 +249,8 @@ test("长签名交给 CSS 截断，文本本身一个字不少", () => {
   assert.equal(node.textContent, slogan, "不许在 JS 里截字符串");
 });
 
-// ---- 用户卡：原生骨架的复刻（owner 2026-08-14「复刻 + 扩展」）----
-// ★ 背景图抄自 UserFloatCard 组件原文：`user.background || <那张固定图>`。
+// ---- 使用者卡：原生骨架的復刻（owner 2026-08-14「復刻 + 擴充」）----
+// ★ 背景圖抄自 UserFloatCard 元件原文：`user.background || <那张固定图>`。
 test("页头有背景图，用户没设就用洛谷自己的兜底图", () => {
   const mine = mount(() =>
     renderUserCard(userCard({ background: "https://cdn.luogu.com.cn/upload/image_hosting/x.png" }), {
@@ -266,14 +266,14 @@ test("页头有背景图，用户没设就用洛谷自己的兜底图", () => {
     /DSCF0530-shrink\.jpg/,
     "兜底图要和洛谷用的是同一张",
   );
-  // 头像压在页头里（原生就是 user-header-top > img.avatar），不再是原来那种并排小图。
+  // 頭像壓在頁頭裡（原生就是 user-header-top > img.avatar），不再是原來那種並排小圖。
   assert.ok(
     bare.querySelector(".luogusp-hc-userhead .luogusp-hc-avatar"),
     "头像必须在页头内，否则背景图会被它挤开",
   );
 });
 
-// ★ owner：举报、屏蔽要**直接摆在按钮行右侧**，不折叠进「更多」。
+// ★ owner：舉報、屏蔽要**直接擺在按鈕行右側**，不折疊進「更多」。
 test("举报是链接、屏蔽是按钮，都摊在操作行里", () => {
   const host = mount(() =>
     renderUserCard(userCard({ rel: 0, rev: 0 }), {
@@ -284,10 +284,10 @@ test("举报是链接、屏蔽是按钮，都摊在操作行里", () => {
     }),
   );
   const actions = host.querySelector(".luogusp-hc-actions");
-  // ★ owner 第三轮：举报与屏蔽不再靠右，紧跟私信 —— 中间那个撑开的空隙要没有。
+  // ★ owner 第三輪：舉報與屏蔽不再靠右，緊跟私信 —— 中間那個撐開的空隙要沒有。
   assert.equal(actions.querySelector(".luogusp-hc-spacer"), null);
   const labels = [...actions.children].map((n) => n.textContent).filter(Boolean);
-  // ★ owner 第四轮：私信与举报之间多了「专栏」。
+  // ★ owner 第四輪：私信與舉報之間多了「專欄」。
   assert.deepEqual(labels, ["关注", "私信", "专栏", "举报", "屏蔽"]);
   const column = [...actions.querySelectorAll("a")].find((a) => a.textContent === "专栏");
   assert.equal(
@@ -295,7 +295,7 @@ test("举报是链接、屏蔽是按钮，都摊在操作行里", () => {
     "https://www.luogu.com.cn/user/697932/article",
   );
   const report = [...actions.querySelectorAll("a")].find((a) => a.textContent === "举报");
-  // 原生就是一个到工单页的链接（路由 ticket.create → /ticket/new），不发任何请求。
+  // 原生就是一個到工單頁的連結（路由 ticket.create → /ticket/new），不發任何請求。
   assert.equal(
     report.getAttribute("href"),
     "https://www.luogu.com.cn/ticket/new?type=report.user&related=697932",
@@ -304,7 +304,7 @@ test("举报是链接、屏蔽是按钮，都摊在操作行里", () => {
   assert.equal(chat.getAttribute("href"), "https://www.luogu.com.cn/chat?uid=697932");
 });
 
-// ★ 原生的两条硬规则：看自己时整个操作区不画；正在关注的人不能拉黑。
+// ★ 原生的兩條硬規則：看自己時整個操作區不畫；正在關注的人不能拉黑。
 test("看自己不画操作区，关注中的人不给屏蔽按钮", () => {
   const self = mount(() =>
     renderUserCard(userCard({ rel: 0 }), {
@@ -330,7 +330,7 @@ test("看自己不画操作区，关注中的人不给屏蔽按钮", () => {
   assert.equal(labels.includes("屏蔽"), false, "洛谷自己就拒绝拉黑正在关注的人");
 });
 
-// 已拉黑：关注按钮写「已拉黑」且禁用（原生就是这么画的）。
+// 已拉黑：關注按鈕寫「已拉黑」且禁用（原生就是這麼畫的）。
 test("已拉黑时关注按钮禁用并写「已拉黑」", () => {
   const host = mount(() =>
     renderUserCard(userCard({ rel: 2, rev: 0 }), {
@@ -347,8 +347,8 @@ test("已拉黑时关注按钮禁用并写「已拉黑」", () => {
   assert.ok(labels.includes("取消屏蔽"));
 });
 
-// ★★ owner 2026-08-14：XCPC 类奖项的名字过长。根因是我上一轮把 `event` 也拼了上去 ——
-//    `contest` 本身已经是简称（"ICPC Regional" / "CCPC 分站赛"），洛谷个人页也只显示它。
+// ★★ owner 2026-08-14：XCPC 類獎項的名字過長。根因是我上一輪把 `event` 也拼了上去 ——
+//    `contest` 本身已經是簡稱（"ICPC Regional" / "CCPC 分站賽"），洛谷個人頁也只顯示它。
 test("获奖只用简称，不拼那段又臭又长的 event", () => {
   const host = mount(() =>
     renderUserCard(
@@ -371,27 +371,27 @@ test("获奖只用简称，不拼那段又臭又长的 event", () => {
     ),
   );
   const lines = [...host.querySelectorAll(".luogusp-hc-stack span")].map((n) => n.textContent);
-  // 最近 3 条，年份降序，一条都不带 event。
+  // 最近 3 條，年份降序，一條都不帶 event。
   assert.deepEqual(lines, ["2025 ICPC Regional 铜牌", "2024 NOIP 一等奖", "2023 CSP-S 一等奖"]);
   assert.doesNotMatch(host.textContent, /国际大学生程序设计竞赛/);
 });
 
-// ★ owner 第三轮：用户名那一行**最右侧**显示 uid。挂在用户名行而不是签名行 ——
-//   签名会被截成两行，右边缘不稳定。
+// ★ owner 第三輪：使用者名那一行**最右側**顯示 uid。掛在使用者名行而不是簽名行 ——
+//   簽名會被截成兩行，右邊緣不穩定。
 test("用户名行最右侧显示 uid", () => {
   const host = mount(() => renderUserCard(userCard({ ccfLevel: 7 }), { origin: "" }));
   const title = host.querySelector(".luogusp-hc-utitle");
   assert.ok(title, "用户名行要用两端对齐的容器");
   const uid = title.querySelector(".luogusp-hc-uid");
   assert.equal(uid.textContent, "uid : 697932");
-  // uid 必须是这一行的**最后**一个子元素，名字与徽章都在它前面。
+  // uid 必須是這一行的**最後**一個子元素，名字與徽章都在它前面。
   assert.equal(title.lastElementChild, uid);
   assert.ok(title.querySelector(".luogusp-hc-identity .luogusp-hc-name"));
   assert.ok(title.querySelector(".luogusp-hc-identity svg.luogusp-hc-fa"));
 });
 
-// ★★ owner 2026-08-14 第四轮报「管理员、作弊者没显示」。规则照抄 UserName 组件原文，
-//    两个字面量取自洛谷自己的 i18n（Cheat / Admin 的 zh-CN 值）。
+// ★★ owner 2026-08-14 第四輪報「管理員、作弊者沒顯示」。規則照抄 UserName 元件原文，
+//    兩個字面值取自洛谷自己的 i18n（Cheat / Admin 的 zh-CN 值）。
 test("称号覆盖作弊者与管理员，优先级照原生", () => {
   const badgeOf = (over) => {
     const host = mount(() => renderUserCard(userCard(over), { origin: "" }));
@@ -404,8 +404,8 @@ test("称号覆盖作弊者与管理员，优先级照原生", () => {
   assert.equal(badgeOf({}), null, "什么都没有就不画");
 });
 
-// ★ owner：超两行时第二行末尾出现展开按钮，展开到 6 行封顶。
-//   按钮**只在真的溢出时**才露 —— 露不露由 finalizeCard 量完实际高度决定。
+// ★ owner：超兩行時第二行末尾出現展開按鈕，展開到 6 行封頂。
+//   按鈕**只在真的溢出時**才露 —— 露不露由 finalizeCard 量完實際高度決定。
 test("签名溢出才给展开按钮，展开后限 6 行", () => {
   const dom = new JSDOM("<!doctype html><body></body>", { url: "https://www.luogu.com.cn/" });
   const saved = { document: globalThis.document, window: globalThis.window };
@@ -420,7 +420,7 @@ test("签名溢出才给展开按钮，展开后限 6 行", () => {
     assert.ok(box && expand, "签名要包在可展开的容器里");
     assert.equal(expand.hidden, true, "量之前先藏着");
 
-    // jsdom 不排版，手动伪造「溢出」与「没溢出」两种量测结果。
+    // jsdom 不排版，手動偽造「溢出」與「沒溢出」兩種量測結果。
     Object.defineProperty(box.querySelector(".luogusp-hc-clamp"), "scrollHeight", { value: 90 });
     Object.defineProperty(box.querySelector(".luogusp-hc-clamp"), "clientHeight", { value: 40 });
     finalizeCard(host);
@@ -457,7 +457,7 @@ test("签名没溢出就不给展开按钮", () => {
   }
 });
 
-// ★ owner 第四轮：获奖改叫「最近奖项」，博客整行移除。
+// ★ owner 第四輪：獲獎改叫「最近獎項」，博客整行移除。
 test("获奖改叫最近奖项，博客不再单列", () => {
   const host = mount(() =>
     renderUserCard(
@@ -475,7 +475,7 @@ test("获奖改叫最近奖项，博客不再单列", () => {
   assert.doesNotMatch(host.textContent, /个人博客/);
 });
 
-// ★ owner 第四轮：题目卡那两个链接改成和用户卡一样的按钮，文案也换。
+// ★ owner 第四輪：題目卡那兩個連結改成和使用者卡一樣的按鈕，文案也換。
 test("题目卡的两个动作是按钮，文案是跳转题目 / 最佳提交", () => {
   const card = buildProblemCard({
     payload: {
@@ -504,18 +504,18 @@ test("题目卡的两个动作是按钮，文案是跳转题目 / 最佳提交",
     actions[1].getAttribute("href"),
     "https://www.luogu.com.cn/record/179363526",
   );
-  // 反证：旧文案一个都不许留。
+  // 反證：舊文案一個都不許留。
   assert.doesNotMatch(host.textContent, /打开题目|最好的一次提交/);
 });
 
-// ★★★ owner 第四轮报「展开标签后顶出视口」，第七轮又报「下面放不下却还往下弹、
-//    右边出滚动条」。两次是同一处判据。现在的分界线按优先级三句话：
-//    放得下就放下面 → 下面放不下而上面放得下就翻上去 → 两边都放不下才比谁宽。
+// ★★★ owner 第四輪報「展開標籤後頂出視口」，第七輪又報「下面放不下卻還往下彈、
+//    右邊出捲軸」。兩次是同一處判據。現在的分界線按優先級三句話：
+//    放得下就放下面 → 下面放不下而上面放得下就翻上去 → 兩邊都放不下才比誰寬。
 test("上下分界：放得下优先，其次翻到放得下的那边，都放不下才比宽窄", () => {
   const make = (h) => {
     const node = { offsetWidth: 320, style: {} };
-    // 真元素的 offsetHeight 会被 max-height 夹住 —— 替身必须照这个规矩来，
-    // 否则「量之前先松开约束」这条修复根本测不出来。
+    // 真元素的 offsetHeight 會被 max-height 夾住 —— 替身必須照這個規矩來，
+    // 否則「量之前先鬆開約束」這條修復根本測不出來。
     Object.defineProperty(node, "offsetHeight", {
       get: () => {
         const cap = parseInt(node.style.maxHeight, 10);
@@ -532,31 +532,31 @@ test("上下分界：放得下优先，其次翻到放得下的那边，都放�
   assert.equal(a.fits, true);
   assert.equal(a.top, 124);
 
-  // 2. ★ 下面放不下、上面放得下 → 翻上去。**即使下面的空间比上面还宽**也要翻 ——
-  //    这正是 owner 报的那种「下面差一点点却赖着不走」。
-  //    锚点 top=360 bottom=380：下面 412、上面 352，卡片高 500，两边都放不下 → 走第 3 条。
-  //    这里把卡片调到 400 高：下面 412 放得下 → 仍在下面。
+  // 2. ★ 下面放不下、上面放得下 → 翻上去。**即使下面的空間比上面還寬**也要翻 ——
+  //    這正是 owner 報的那種「下面差一點點卻賴著不走」。
+  //    錨點 top=360 bottom=380：下面 412、上面 352，卡片高 500，兩邊都放不下 → 走第 3 條。
+  //    這裡把卡片調到 400 高：下面 412 放得下 → 仍在下面。
   const roomy = placeCard(make(400), { left: 100, right: 180, top: 360, bottom: 380 }, viewport);
   assert.equal(roomy.below, true);
-  // 换成 420 高：下面 412 放不下，上面 352 也放不下 → 挑宽的（下面）。
+  // 換成 420 高：下面 412 放不下，上面 352 也放不下 → 挑寬的（下面）。
   const neither = placeCard(make(420), { left: 100, right: 180, top: 360, bottom: 380 }, viewport);
   assert.equal(neither.below, true);
   assert.equal(neither.fits, false, "两边都放不下时要如实说明");
-  // 真正的「下面放不下、上面放得下」：锚点靠下。
+  // 真正的「下面放不下、上面放得下」：錨點靠下。
   const flip = placeCard(make(400), { left: 100, right: 180, top: 500, bottom: 520 }, viewport);
   assert.equal(flip.below, false, "上面放得下就必须翻上去，不许赖在下面出滚动条");
   assert.equal(flip.fits, true);
   assert.ok(flip.top >= 4);
 
-  // 3. 两边都放不下 → 挑宽的那边，钉住高度，绝不出界。
+  // 3. 兩邊都放不下 → 挑寬的那邊，釘住高度，絕不出界。
   const huge = placeCard(make(2000), { left: 100, right: 180, top: 380, bottom: 400 }, viewport);
   assert.ok(huge.maxHeight <= 800);
   assert.ok(huge.top >= 4);
 });
 
-// ★★★ 这条是第七轮的**根因反证**：上一次定位钉下的 max-height 会把 offsetHeight 夹住，
-//    于是内容长高之后再量还是旧高度，判据以为「下面放得下」，永远不翻上去。
-//    量之前必须先把自己上一次施加的约束松开。
+// ★★★ 這條是第七輪的**根因反證**：上一次定位釘下的 max-height 會把 offsetHeight 夾住，
+//    於是內容長高之後再量還是舊高度，判據以為「下面放得下」，永遠不翻上去。
+//    量之前必須先把自己上一次施加的約束鬆開。
 test("重新定位前先松开上一次钉的 max-height，否则长高了也发现不了", () => {
   const node = { offsetWidth: 320, style: {} };
   let content = 200;
@@ -572,20 +572,20 @@ test("重新定位前先松开上一次钉的 max-height，否则长高了也发
   const first = placeCard(node, anchor, viewport);
   assert.equal(first.below, true, "200 高时下面（272）放得下");
 
-  // 用户点了「展开」，内容长到 400 —— 下面放不下了，上面（496）放得下。
+  // 使用者點了「展開」，內容長到 400 —— 下面放不下了，上面（496）放得下。
   content = 400;
   const second = placeCard(node, anchor, viewport);
   assert.equal(second.below, false, "长高之后必须翻上去；夹住不松开就会一直判成放得下");
   assert.ok(second.top >= 4);
 });
 
-// ★★★ owner 2026-08-14 拍板：屏蔽的确认改成**卡内就地确认**，不弹任何层。
-//    这一条同时是**安全判据**：屏蔽是替用户对第三方做的社交动作，
-//    没点「确定」之前一个请求都不许发（follow-action 里已经没有 confirm 了，
-//    问一句的责任整个落在视图层，所以必须在这里守住）。
+// ★★★ owner 2026-08-14 拍板：屏蔽的確認改成**卡內就地確認**，不彈任何層。
+//    這一條同時是**安全判據**：屏蔽是替使用者對第三方做的社交動作，
+//    沒點「確定」之前一個請求都不許發（follow-action 裡已經沒有 confirm 了，
+//    問一句的責任整個落在視圖層，所以必須在這裡守住）。
 test("屏蔽先在卡内问一句，没点确定不发请求", () => {
   const blocked = [];
-  // ★ 点击处理器里还要 createElement，所以整段必须跑在 jsdom 的全局还装着的时候。
+  // ★ 點擊處理器裡還要 createElement，所以整段必須跑在 jsdom 的全域還裝著的時候。
   withDom((dom) => {
     const host = document.createElement("div");
     host.appendChild(
@@ -605,19 +605,19 @@ test("屏蔽先在卡内问一句，没点确定不发请求", () => {
     assert.ok(button, "未关注的人应该给屏蔽按钮");
     click(button);
 
-    // 按钮行原地换成了问话 —— 没有任何弹层，也还没发请求。
+    // 按鈕行原地換成了問話 —— 沒有任何彈層，也還沒發請求。
     const ask = host.querySelector(".luogusp-hc-confirm");
     assert.ok(ask, "要就地换成确认行");
     assert.match(ask.textContent, /屏蔽 Gcend？/);
     assert.deepEqual(blocked, [], "只是点开确认，一个请求都不许发");
 
-    // 点「取消」→ 回到原来的按钮行，仍然什么都没发。
+    // 點「取消」→ 回到原來的按鈕行，仍然什麼都沒發。
     click(byText("取消", ask));
     assert.equal(host.querySelector(".luogusp-hc-confirm"), null);
     assert.deepEqual(blocked, []);
     assert.ok(byText("屏蔽"), "取消后按钮行要原样回来");
 
-    // 再点开，点「确定」→ 这时才发。
+    // 再點開，點「確定」→ 這時才發。
     click(byText("屏蔽"));
     click(byText("确定", host.querySelector(".luogusp-hc-confirm")));
     assert.deepEqual(blocked, [697932]);
@@ -625,7 +625,7 @@ test("屏蔽先在卡内问一句，没点确定不发请求", () => {
   });
 });
 
-// 反证：不许再退回 window.confirm —— 那是被 owner 换掉的做法。
+// 反證：不許再退回 window.confirm —— 那是被 owner 換掉的做法。
 test("整个 hover 块里不再有 window.confirm", () => {
   const files = ["feature.js", "follow-action.js", "card-view.js"];
   for (const name of files) {
@@ -637,11 +637,11 @@ test("整个 hover 块里不再有 window.confirm", () => {
   }
 });
 
-// ★★★ 2.14.1「卡片跳走」。开卡时卡里只有一个 16px 转圈（连内边距 ≈42px），
-//    内容一到是 ≈320px。两次定位量到的高度差近 8 倍，于是**锚点下方余量
-//    44~320px 时必然**先落下方、内容一落地又翻上方 —— 那是视口下部一大片区域。
-//    下面第一条先把这个 BUG 原样复现出来（反证必须重现原始缺陷形态），
-//    第二条再证明修法把它消掉了。
+// ★★★ 2.14.1「卡片跳走」。開卡時卡里只有一個 16px 轉圈（連內邊距 ≈42px），
+//    內容一到是 ≈320px。兩次定位量到的高度差近 8 倍，於是**錨點下方餘量
+//    44~320px 時必然**先落下方、內容一完成實作又翻上方 —— 那是視口下部一大片區域。
+//    下面第一條先把這個 BUG 原樣重現出來（反證必須重現原始缺陷形態），
+//    第二條再證明修法把它消掉了。
 const jumpProbe = (height) => {
   const node = { offsetWidth: 320, style: {} };
   Object.defineProperty(node, "offsetHeight", {
@@ -657,7 +657,7 @@ const CONTENT_H = 320;
 
 test("不给占位高度，转圈与内容会落在两边 —— 这就是「卡片跳走」", () => {
   const viewport = { width: 1280, height: 900 };
-  // 锚点下方余量 200px：转圈（42）放得下，内容（320）放不下而上面放得下。
+  // 錨點下方餘量 200px：轉圈（42）放得下，內容（320）放不下而上面放得下。
   const anchor = { left: 400, right: 480, top: 680, bottom: 700 };
   const spinner = placeCard(jumpProbe(SPINNER_H), anchor, viewport);
   const content = placeCard(jumpProbe(CONTENT_H), anchor, viewport);
@@ -669,12 +669,12 @@ test("不给占位高度，转圈与内容会落在两边 —— 这就是「卡
 test("加载态按「内容将会有多高」定边，转圈与内容同边", () => {
   const viewport = { width: 1280, height: 900 };
   const anchor = { left: 400, right: 480, top: 680, bottom: 700 };
-  // 开卡：卡里只有转圈，但按内容的高度定边。
+  // 開卡：卡里只有轉圈，但按內容的高度定邊。
   const opened = placeCard(jumpProbe(SPINNER_H), anchor, viewport, {
     assumeMinHeight: CONTENT_H,
   });
   assert.equal(opened.below, false, "按 320 判：下面放不下、上面放得下 → 上方");
-  // 内容落地：沿用开卡定的那一边。
+  // 內容完成實作：沿用開卡定的那一邊。
   const settled = placeCard(jumpProbe(CONTENT_H), anchor, viewport, {
     forceBelow: opened.below,
   });
@@ -684,7 +684,7 @@ test("加载态按「内容将会有多高」定边，转圈与内容同边", ()
 test("forceBelow 钉得住，且钉住时绝不出界", () => {
   const viewport = { width: 1280, height: 900 };
   const anchor = { left: 400, right: 480, top: 680, bottom: 700 };
-  // 硬钉在下方：下面只有 ~192px，卡片 320px —— 必须靠 max-height 收在卡内滚，不许出界。
+  // 硬釘在下方：下面只有 ~192px，卡片 320px —— 必須靠 max-height 收在卡內滾，不許出界。
   const pinned = placeCard(jumpProbe(CONTENT_H), anchor, viewport, {
     forceBelow: true,
   });
@@ -704,32 +704,32 @@ test("不传新选项时，第七轮定的三句话一字不变", () => {
   assert.deepEqual(empty, bare, "空选项对象不许改变任何结果");
 });
 
-// ★★ 结构守卫。行为测试只证明「placeCard 会照选项办事」，证明不了**有人真的传了**
-//    —— 本项目记过这条：「声明了却没人接」得靠结构门拦。
+// ★★ 結構守衛。行為測試只證明「placeCard 會照選項辦事」，證明不了**有人真的傳了**
+//    —— 本專案記過這條：「宣告了卻沒人接」得靠結構門攔。
 test("hover feature 真的把两个选项都接上了", () => {
   const source = readFileSync(
     new URL("../src/features/hover-card/feature.js", import.meta.url),
     "utf8",
   );
-  // ★★★ 这里必须钉**整条表达式**，不能只钉字段名 ——
-  //   把它改回 `assumeMinHeight: 0`（也就是退回会跳的写法）时，
-  //   「含不含 assumeMinHeight 这几个字」的断言照样是绿的。**那种门永远红不了。**
-  //   我第一版就是这么写的，反证当场发现它拦不住。
+  // ★★★ 這裡必須釘**整條表達式**，不能只釘欄位名 ——
+  //   把它改回 `assumeMinHeight: 0`（也就是退回會跳的寫法）時，
+  //   「含不含 assumeMinHeight 這幾個字」的斷言照樣是綠的。**那種門永遠紅不了。**
+  //   我第一版就是這麼寫的，反證當場發現它攔不住。
   assert.ok(
     source.includes("assumeMinHeight: loading ? LOADING_MIN_HEIGHT : 0"),
     "feature 没把占位高度接在加载态上",
   );
   assert.ok(source.includes("forceBelow: openSide"), "feature 没把定好的那一边接上");
-  // 加载态必须真的进得去、也真的摘得掉，否则内容落地后还按占位高度定位。
+  // 載入態必須真的進得去、也真的摘得掉，否則內容完成實作後還按佔位高度定位。
   assert.ok(source.includes("loading = true"), "feature 从不进入加载态");
   assert.ok(source.includes("loading = false"), "feature 从不摘掉加载态");
   assert.ok(source.includes("openSide = loading ?"), "feature 没在内容落地时交还自由");
 });
 
-// ★★★ 上面那条是**文本门**：它只证明 feature.js 里写着那行字。这一条是**行为门** ——
-//    把真的 feature 挂进 jsdom，走完「悬停 → 转圈 → 内容落地」，看卡片有没有换边。
-//    ★ 高度替身按**卡片当前装的是什么**给值（有转圈就 42，没有就 320），
-//      所以内容是真数据还是「拿不到这条数据」都不影响这条判据。
+// ★★★ 上面那條是**文字門**：它只證明 feature.js 裡寫著那行字。這一條是**行為門** ——
+//    把真的 feature 掛進 jsdom，走完「懸停 → 轉圈 → 內容完成實作」，看卡片有沒有換邊。
+//    ★ 高度替身按**卡片當前裝的是什麼**給值（有轉圈就 42，沒有就 320），
+//      所以內容是真資料還是「拿不到這條資料」都不影響這條判據。
 test("行为门：悬停到内容落地，卡片不许换边", async () => {
   const dom = new JSDOM(
     '<!doctype html><body><p><a id="who" href="/user/116524">某人</a></p></body>',
@@ -744,8 +744,8 @@ test("行为门：悬停到内容落地，卡片不许换边", async () => {
   globalThis.window = dom.window;
   globalThis.location = dom.window.location;
   try {
-    const viewportHeight = dom.window.innerHeight; // jsdom 默认 768
-    // 锚点靠下：下方只剩 200px，够转圈（42）不够内容（320）—— 正是会跳的那一带。
+    const viewportHeight = dom.window.innerHeight; // jsdom 預設 768
+    // 錨點靠下：下方只剩 200px，夠轉圈（42）不夠內容（320）—— 正是會跳的那一帶。
     const rect = {
       left: 400,
       right: 480,
@@ -761,14 +761,14 @@ test("行为门：悬停到内容落地，卡片不许换边", async () => {
     const { createHoverCardFeature } = await import(
       "../src/features/hover-card/feature.js"
     );
-    // ★ 闸门：不闸住的话 fetch 立刻 resolve，转圈在我们看之前就被内容替掉了，
-    //   这条判据就永远量不到「开卡那一刻」。
+    // ★ 閘門：不閘住的話 fetch 立刻 resolve，轉圈在我們看之前就被內容替掉了，
+    //   這條判據就永遠量不到「開卡那一刻」。
     let release = () => {};
     const gate = new Promise((resolve) => {
       release = resolve;
     });
     const feature = createHoverCardFeature({
-      // 一律失败 → 走「拿不到这条数据」那条渲染路径，不必造任何载荷。
+      // 一律失敗 → 走「拿不到這條資料」那條繪製路徑，不必造任何載荷。
       fetchPage: async () => {
         await gate;
         return { ok: false };
@@ -796,13 +796,13 @@ test("行为门：悬停到内容落地，卡片不许换边", async () => {
         clientY: rect.top + 10,
       }),
     );
-    // 停留计时 300ms，之后是转圈。
+    // 停留計時 300ms，之後是轉圈。
     await new Promise((r) => setTimeout(r, 360));
     assert.ok(!card.hidden, "停留够久之后卡片应该出来了");
     assert.ok(card.querySelector(".luogusp-hc-spin"), "这时卡里应该是转圈");
     const spinnerSide = sideNow();
 
-    // 放闸，让 draw() 的 promise 链跑完，内容落地。
+    // 放閘，讓 draw() 的 promise 鏈跑完，內容完成實作。
     release();
     for (let i = 0; i < 20; i += 1) await Promise.resolve();
     await new Promise((r) => setTimeout(r, 20));

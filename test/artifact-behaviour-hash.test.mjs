@@ -11,9 +11,9 @@ const qaReport = JSON.parse(
   fs.readFileSync(path.join(root, "reports", "browser-qa.json"), "utf8"),
 );
 
-// ★★★ 这道门证明「这份产物真的在浏览器里跑过」。放松它等于把门拆了 ——
-//    所以这一组测试的重点是**反证**：除了 `@description`，改任何一处都必须让哈希变。
-//    只断言「改说明不变」是不够的，那种测试永远绿。
+// ★★★ 這道門證明「這份產物真的在瀏覽器裡跑過」。放鬆它等於把門拆了 ——
+//    所以這一組測試的重點是**反證**：除了 `@description`，改任何一處都必須讓雜湊變。
+//    只斷言「改說明不變」是不夠的，那種測試永遠綠。
 
 test("@description 是纯展示文本，改它不影响行为哈希", () => {
   const before = behaviourHashOf(artifact);
@@ -21,14 +21,14 @@ test("@description 是纯展示文本，改它不影响行为哈希", () => {
     artifact.replace(/^\/\/ @description\s.*$/m, "// @description  完全不一样的说明文字"),
   );
   assert.equal(after, before);
-  // 但整份文件的哈希**是**会变的 —— 这正是当初卡住的原因，别把这条也抹掉。
+  // 但整份檔案的雜湊**是**會變的 —— 這正是當初卡住的原因，別把這條也抹掉。
   assert.notEqual(
     artifact,
     artifact.replace(/^\/\/ @description\s.*$/m, "// @description  完全不一样的说明文字"),
   );
 });
 
-// 每一条生效的元数据都会改变行为，一条都不许豁免。
+// 每一條生效的中繼資料都會改變行為，一條都不許豁免。
 test("生效元数据与脚本体，改哪一处行为哈希都要变", () => {
   const before = behaviourHashOf(artifact);
   const mutations = {
@@ -48,20 +48,20 @@ test("生效元数据与脚本体，改哪一处行为哈希都要变", () => {
   }
 });
 
-// 报告里必须钉着一个像样的行为哈希 —— 但**不在这里断言它等于当前产物**。
+// 報告裡必須釘著一個像樣的行為雜湊 —— 但**不在這裡斷言它等於當前產物**。
 //
-// ★★★ 这条边界是踩出来的：我一开始在这里断言「报告的哈希 == 当前产物的哈希」，
-//    结果把**转正式版的流程整个堵死**了 —— `pnpm release` 在
-//    「activation verification」阶段会跑 `node --test`，而那时产物刚被提升到新版本、
-//    QA 还没来得及重跑（重跑 QA 本来就必须在发布**之后**，因为它注入的是
-//    `@require` 指向的已发布字节）。于是：不重跑 QA 过不了测试，不发布又没法重跑 QA。
-//    发布脚本对这件事早有安排 —— 它给 `quality.mjs` 传了 `--skip-browser-qa`，
-//    把「QA 是否覆盖当前产物」这道门**留到发布之后**再验。
-//    所以那条相等断言的归属是 `scripts/quality.mjs`，不是这里。
+// ★★★ 這條邊界是踩出來的：我一開始在這裡斷言「報告的雜湊 == 當前產物的雜湊」，
+//    結果把**轉正式版的流程整個堵死**了 —— `pnpm release` 在
+//    「activation verification」階段會跑 `node --test`，而那時產物剛被提升到新版本、
+//    QA 還沒來得及重跑（重跑 QA 本來就必須在發佈**之後**，因為它注入的是
+//    `@require` 指向的已發佈位元組）。於是：不重跑 QA 過不了測試，不發佈又沒法重跑 QA。
+//    發佈指令碼對這件事早有安排 —— 它給 `quality.mjs` 傳了 `--skip-browser-qa`，
+//    把「QA 是否覆蓋當前產物」這道門**留到發佈之後**再驗。
+//    所以那條相等斷言的歸屬是 `scripts/quality.mjs`，不是這裡。
 test("真机 QA 报告钉的是一个像样的行为哈希", () => {
   assert.equal(typeof qaReport.behaviorSha256, "string");
   assert.equal(qaReport.behaviorSha256.length, 64);
   assert.match(qaReport.behaviorSha256, /^[0-9a-f]{64}$/);
-  // 整份文件的哈希也要留着：一份 QA 究竟跑的是哪串字节，事后要说得清。
+  // 整份檔案的雜湊也要留著：一份 QA 究竟跑的是哪串位元組，事後要說得清。
   assert.match(String(qaReport.artifactSha256), /^[0-9a-f]{64}$/);
 });

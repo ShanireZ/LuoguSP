@@ -16,12 +16,12 @@ const output = resolve(root, argument("--output") || "dist/cdn");
 const distRoot = resolve(root, "dist");
 const sourceCdnRoot = resolve(root, "cdn");
 const explicitOutput = argument("--output") !== null;
-// ★★ 下面这一行紧接着就是 `rm(output, { recursive: true, force: true })`，
-//    而**源目录也叫 `cdn`** —— 显式 `--output` 此前唯一的判据是 `basename === "cdn"`，
-//    于是 `--output cdn` 会静静地把 `cdn/releases` 整个删掉，也就是这个脚本
-//    存在的全部理由（那批字节被用户已安装脚本的 `@require #sha256=` 钉死，
-//    删了就再也拼不回来，git 之外没有第二份）。测试用的是 tmpdir 下的 `cdn`，
-//    所以这里挡住的只有「打到仓库源目录上」这一类，不影响它。
+// ★★ 下面這一行緊接著就是 `rm(output, { recursive: true, force: true })`，
+//    而**源目錄也叫 `cdn`** —— 顯式 `--output` 此前唯一的判據是 `basename === "cdn"`，
+//    於是 `--output cdn` 會靜靜地把 `cdn/releases` 整個刪掉，也就是這個指令碼
+//    存在的全部理由（那批位元組被使用者已安裝指令碼的 `@require #sha256=` 釘死，
+//    刪了就再也拼不回來，git 之外沒有第二份）。測試用的是 tmpdir 下的 `cdn`，
+//    所以這裡擋住的只有「打到儲存庫源目錄上」這一類，不影響它。
 if (
   output === root ||
   output === distRoot ||

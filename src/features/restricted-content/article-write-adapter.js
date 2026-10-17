@@ -42,7 +42,7 @@ export function createOfficialArticleWriteAdapter(config) {
     try {
       requestUrl = new URLCtor(rawUrl, origin);
     } catch (error) {
-      /* 无法解析的请求交给原 fetch */
+      /* 無法解析的請求交給原 fetch */
     }
     if (
       method !== "POST" ||
@@ -66,8 +66,8 @@ export function createOfficialArticleWriteAdapter(config) {
       }),
     );
     if (typeof onWrite !== "function") return result;
-    // 官方前端目前用 axios/XHR 写入，这里只是同一契约在 fetch 侧的旁观镜像：
-    // 读取响应副本，绝不改动交还给调用方的原响应。
+    // 官方前端目前用 axios/XHR 寫入，這裡只是同一契約在 fetch 側的旁觀鏡像：
+    // 讀取回應副本，絕不改動交還給呼叫方的原回應。
     return Promise.resolve(result).then((response) => {
       try {
         if (response && typeof response.clone === "function")
@@ -85,7 +85,7 @@ export function createOfficialArticleWriteAdapter(config) {
               () => {},
             );
       } catch (error) {
-        /* 观察失败绝不影响官方写入本身 */
+        /* 觀察失敗絕不影響官方寫入本身 */
       }
       return response;
     });

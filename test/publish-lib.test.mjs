@@ -174,23 +174,23 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
   );
 });
 
-// ★★★ 发布脚本的 preflight 必须真的跑得起来。2026-08-17 的 pnpm 迁移把
-// `initialPackageLock` 的读取删了，却漏掉了 preflight 里的两处使用 —— 于是
-// `pnpm release` 从那天起一开口就死在 `ReferenceError: initialPackageLock is not
-// defined`，而 `pnpm check`（build:check + quality:check + node --test）一条都碰不到
-// 发布脚本的顶层，全绿到底。整个仓库没有任何一道门跑过它，所以两天没人知道。
-// 这道门就是那道门：`--plan` 会走完全部 preflight（版本一致性、目标版本必须更新、
-// 不覆盖既有不可变发布）再打印计划退出，一个字节都不写、一个请求都不发。
+// ★★★ 發佈指令碼的 preflight 必須真的跑得起來。2026-08-17 的 pnpm 遷移把
+// `initialPackageLock` 的讀取刪了，卻漏掉了 preflight 裡的兩處使用 —— 於是
+// `pnpm release` 從那天起一開口就死在 `ReferenceError: initialPackageLock is not
+// defined`，而 `pnpm check`（build:check + quality:check + node --test）一條都碰不到
+// 發佈指令碼的頂層，全綠到底。整個儲存庫沒有任何一道門跑過它，所以兩天沒人知道。
+// 這道門就是那道門：`--plan` 會走完全部 preflight（版本一致性、目標版本必須更新、
+// 不覆蓋既有不可變發佈）再列印計畫退出，一個位元組都不寫、一個請求都不發。
 test("发布脚本的 preflight 在 --plan 下跑得通，并认出当前生产版本", () => {
   const artifact = readFileSync(
     new URL("../LuoguSP.user.js", import.meta.url),
     "utf8",
   );
   const current = userscriptVersion(artifact);
-  // ★ 用一个永远不会有发布目录的版本号，而不是「当前版本 + 1」。这道门本身也在
-  //   `pnpm release` 的 pre-deployment 测试集里跑，而那时候「下一个补丁版本」的
-  //   `cdn/releases/` 目录**刚刚被第 1 步建出来**，`wouldPublish` 就变成了 false ——
-  //   第一次发 2.14.3 时它就是这么把发布拦下来的。判据不能依赖发布中途的状态。
+  // ★ 用一個永遠不會有發佈目錄的版本號，而不是「當前版本 + 1」。這道門本身也在
+  //   `pnpm release` 的 pre-deployment 測試集裡跑，而那時候「下一個補丁版本」的
+  //   `cdn/releases/` 目錄**剛剛被第 1 步建出來**，`wouldPublish` 就變成了 false ——
+  //   第一次發 2.14.3 時它就是這麼把發佈攔下來的。判據不能依賴發佈中途的狀態。
   const next = "999.0.0";
   const result = spawnSync(
     process.execPath,
@@ -209,13 +209,13 @@ test("发布脚本的 preflight 在 --plan 下跑得通，并认出当前生产�
   assert.equal(plan.version, next);
   assert.equal(plan.currentVersion, current);
   assert.equal(plan.wouldPublish, true);
-  // 计划本身不许自作主张提交或推送，也不许绕过真机 QA。
+  // 計畫本身不許自作主張提交或推送，也不許繞過真機 QA。
   assert.equal(plan.commit, false);
   assert.equal(plan.push, false);
   assert.equal(plan.browserQaRequiredBeforeCommit, true);
 });
 
-// 反证同一道门的另一半：已经发出去的版本号绝不能被再发一次（不可变发布）。
+// 反證同一道門的另一半：已經發出去的版本號絕不能被再發一次（不可變發佈）。
 test("发布脚本拒绝重发已存在的版本", () => {
   const artifact = readFileSync(
     new URL("../LuoguSP.user.js", import.meta.url),

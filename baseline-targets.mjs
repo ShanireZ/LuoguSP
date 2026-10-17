@@ -1,5 +1,5 @@
-// esbuild 不读取 Browserslist。所有浏览器产物必须显式消费这组固定目标。
-// 该集合冻结 Baseline Widely Available 的浏览器边界；升级必须发新版 CDN 路径。
+// esbuild 不讀取 Browserslist。所有瀏覽器產物必須顯式消費這組固定目標。
+// 該集合凍結 Baseline Widely Available 的瀏覽器邊界；升級必須發新版 CDN 路徑。
 export const ESBUILD_BASELINE_TARGETS = Object.freeze([
   "chrome111",
   "edge111",
