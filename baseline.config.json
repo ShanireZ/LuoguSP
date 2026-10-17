@@ -16,7 +16,7 @@
   "approvedPolicyMinimums": {
     "chrome": "123",
     "edge": "123",
-    "firefox": "124",
+    "firefox": "125",
     "safari": "17.4",
     "ios_saf": "17.4",
     "android": "151",
@@ -35,7 +35,7 @@
     "自定义 CDN 源点完整性验证与真实洛谷页面实测"
   ],
   "snapshot": {
-    "approvedAt": "2026-09-24",
+    "approvedAt": "2026-10-17",
     "browserslist": "4.28.8",
     "esbuild": "0.27.2",
     "baselineBrowserMapping": "2.11.17",
