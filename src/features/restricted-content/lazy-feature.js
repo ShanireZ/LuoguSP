@@ -2,16 +2,16 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createRestrictedPageDetector } from "./page-detector.js";
 import { createRestrictedUrlPolicy } from "./url-policy.js";
 
-// 「显示受限文章与剪贴板」的启动侧薄壳。
+// 「顯示受限文章與剪貼板」的啟動側薄殼。
 //
-// 真正的实现（保存站工作流、壳骨架收割、document.write 重建、评论传输层、
-// 互动状态持久化……）是启动包里最大的一块，却只在「安全访问中心」拦截页上才用得到。
-// 这里只留**廉价探测器**：不是拦截页就一个字节都不拉；是拦截页才按需加载重机械。
+// 真正的實作（保存站工作流、殼骨架收割、document.write 重建、評論傳輸層、
+// 互動狀態持久化……）是啟動包裡最大的一塊，卻只在「安全訪問中心」攔截頁上才用得到。
+// 這裡只留**廉價探測器**：不是攔截頁就一個位元組都不拉；是攔截頁才按需載入重機械。
 //
-// ★ 设置项必须在不加载重机械的前提下就能显示（导航栏「插件设置」列出全部功能），
-//   所以 id / key / label 由本壳持有，与被拆出去的实现保持一致。
-// ★ `mount` 必须**同步**返回 disposer（page-lifecycle 的契约），所以这里同步探测、
-//   异步加载，并用一个已释放标记保证「壳先被 dispose、块后到达」时不会再挂上去。
+// ★ 設定項必須在不載入重機械的前提下就能顯示（導覽欄「外掛設定」列出全部功能），
+//   所以 id / key / label 由本殼持有，與被拆出去的實作保持一致。
+// ★ `mount` 必須**同步**回傳 disposer（page-lifecycle 的契約），所以這裡同步探測、
+//   非同步載入，並用一個已釋放標記保證「殼先被 dispose、塊後到達」時不會再掛上去。
 
 const RESTRICTED_ROUTE = /^\/(article|paste)\/[A-Za-z0-9]+\/?$/;
 
@@ -22,7 +22,7 @@ export function createRestrictedContentFeature(config) {
     getPageLifecycle,
     loadBundle,
     logError = (error) => console.error("LuoguSP restricted bundle:", error),
-    // 探测三锚点默认取全局；注入是为了可测（本壳是启动包里唯一还会碰 DOM 的部分）。
+    // 探測三錨點預設取全域；注入是為了可測（本殼是啟動包裡唯一還會碰 DOM 的部分）。
     pageAdapter = {
       path: () => location.pathname,
       title: () => document.title,
@@ -44,11 +44,11 @@ export function createRestrictedContentFeature(config) {
   let pending = null;
   let unavailable = false;
 
-  // 块只加载一次并共享；失败就记下来别反复重试（拦截页会反复 onRoute）。
+  // 塊只載入一次並共享；失敗就記下來別反覆重試（攔截頁會反覆 onRoute）。
   const ensureFeature = () => {
     if (feature) return Promise.resolve(feature);
     if (unavailable) return Promise.resolve(null);
-    // 没人接线就等于功能不存在 —— 必须报出来，别静默变成「功能没做」。
+    // 沒人串接就等於功能不存在 —— 必須報出來，別靜默變成「功能沒做」。
     if (typeof loadBundle !== "function") {
       unavailable = true;
       logError(new TypeError("受限内容功能块的加载器未接线"));
@@ -92,11 +92,11 @@ export function createRestrictedContentFeature(config) {
     label: "受限文章与剪贴板解限",
     storage,
     mount: (context) => {
-      // 不是拦截页 → 一个字节都不拉。这是本次拆分的全部意义。
-      // ★ 但必须先把早期加载层放掉：它在 document-start 就遮住了**所有**
-      //   /article/*、/paste/* 页面（`body>*{visibility:hidden}`），
-      //   旧代码由 document-boot 在探测失败时释放。这里提前 return 却不释放，
-      //   就会把每一个正常文章/剪贴板页面永久遮成空白。
+      // 不是攔截頁 → 一個位元組都不拉。這是本次拆分的全部意義。
+      // ★ 但必須先把早期載入層放掉：它在 document-start 就遮住了**所有**
+      //   /article/*、/paste/* 頁面（`body>*{visibility:hidden}`），
+      //   舊程式碼由 document-boot 在探測失敗時釋放。這裡提前 return 卻不釋放，
+      //   就會把每一個正常文章/剪貼板頁面永久遮成空白。
       if (!detect()) {
         if (restrictedLoadingGate) restrictedLoadingGate.release();
         return () => {};
@@ -117,8 +117,8 @@ export function createRestrictedContentFeature(config) {
         innerDispose = null;
       };
     },
-    // 加载层要在启动包里同步起手，否则拦截页会闪一下原始内容。
-    // 块没加载过就没有重建记录，onRoute 无事可做，不必为它把块拉下来。
+    // 載入層要在啟動包裡同步起手，否則攔截頁會閃一下原始內容。
+    // 塊沒載入過就沒有重建記錄，onRoute 無事可做，不必為它把塊拉下來。
     onRoute: () => {
       if (restrictedLoadingGate) restrictedLoadingGate.start();
       if (!feature) return;

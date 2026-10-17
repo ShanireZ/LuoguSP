@@ -1,15 +1,15 @@
-// 发布 CLI 从「npx 钉死某个精确版本」改成「用全局装好的那个」（工作区约定，
-// 见根 AGENTS.md）。少了精确 pin，就少了一条保证：这个仓库发布的是**不可变**
-// CDN 产物，字节被用户已安装脚本的 `@require #sha256=` 钉死，用一个行为未知的
-// wrangler 去传是不能接受的。
-// 所以 `config/cdn.json` 的 `cli.wrangler.minimum` 从「精确版本」改判为
-// 「**已验证可用的下限**」，发布前实测一次全局版本并做下限断言，低于下限直接失败。
-// 这与 DpMaster 的全局模型是同一套思路（基线声明 + 漂移巡检），只是这里因为
-// 产物不可变，把巡检换成了发布路径上的硬门。
+// 發佈 CLI 從「npx 釘死某個精確版本」改成「用全域裝好的那個」（工作區約定，
+// 見根 AGENTS.md）。少了精確 pin，就少了一條保證：這個儲存庫發佈的是**不可變**
+// CDN 產物，位元組被使用者已安裝指令碼的 `@require #sha256=` 釘死，用一個行為未知的
+// wrangler 去傳是不能接受的。
+// 所以 `config/cdn.json` 的 `cli.wrangler.minimum` 從「精確版本」改判為
+// 「**已驗證可用的下限**」，發佈前實測一次全域版本並做下限斷言，低於下限直接失敗。
+// 這與 DpMaster 的全域模型是同一套思路（基線宣告 + 漂移巡檢），只是這裡因為
+// 產物不可變，把巡檢換成了發佈路徑上的硬門。
 
 export function parseCliVersion(output) {
-  // wrangler 会先打一堆 banner，版本号在 ` ⛅️ wrangler 4.123.0` 这样的行里；
-  // 取**最后**一个 x.y.z，避免 banner 里的其它数字（如 compatibility date）抢先。
+  // wrangler 會先打一堆 banner，版本號在 ` ⛅️ wrangler 4.123.0` 這樣的行裡；
+  // 取**最後**一個 x.y.z，避免 banner 裡的其它數字（如 compatibility date）搶先。
   const matches = [...String(output).matchAll(/\b(\d+)\.(\d+)\.(\d+)\b/g)];
   if (!matches.length) return null;
   const [, major, minor, patch] = matches[matches.length - 1];
@@ -22,7 +22,7 @@ function ordinal(version) {
   return parsed.slice(1, 4).map(Number);
 }
 
-// 纯数值比较，不引依赖：这里只可能是三段发布版本号。
+// 純數值比較，不引依賴：這裡只可能是三段發佈版本號。
 export function satisfiesMinimum(actual, minimum) {
   const left = ordinal(actual);
   const right = ordinal(minimum);

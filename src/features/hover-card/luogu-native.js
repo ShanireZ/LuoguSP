@@ -1,14 +1,14 @@
-// 洛谷原生的表现形式。★ 这里每一个值都是 2026-08-13 在洛谷页面上**实测**取到的
-// 计算样式，不是抄的也不是猜的 —— 卡片要「和原生一致」，就不能靠印象写颜色。
+// 洛谷原生的表現形式。★ 這裡每一個值都是 2026-08-13 在洛谷頁面上**實測**取到的
+// 計算樣式，不是抄的也不是猜的 —— 卡片要「和原生一致」，就不能靠印象寫顏色。
 
-// 用户等级色。★ 2026-08-14 直接从洛谷前端 `UserName` 组件的原文取到映射表
-// （`loader.*.js`，与 OiLevel/XcpcLevel 同一个 chunk），不再靠页面配对推断：
+// 使用者等級色。★ 2026-08-14 直接從洛谷前端 `UserName` 元件的原文取到映射表
+// （`loader.*.js`，與 OiLevel/XcpcLevel 同一個 chunk），不再靠頁面配對推斷：
 //   { Cheater:"yellow-4", Gray:"grey-3", Blue:"blue-3", Green:"green-3",
-//     Orange:"orange-3", Red:"pink-3", Purple:"purple-3" }，认不出一律 grey-3。
-// 变量值取自 :root 的计算样式。两处反直觉，别按名字猜：
+//     Orange:"orange-3", Red:"pink-3", Purple:"purple-3" }，認不出一律 grey-3。
+// 變數值取自 :root 的計算樣式。兩處反直覺，別按名字猜：
 //   ★ **Red 映射到 pink-3**（#fe4c61），不是 red-3（#e74c3c）；
-//   ★ Gray 的变量名是 **grey**-3，写成 gray-3 取到的是空串。
-// Cheater 之前因为「页面上没遇到」而留白，现在有组件原文，可以照实写。
+//   ★ Gray 的變數名是 **grey**-3，寫成 gray-3 取到的是空串。
+// Cheater 之前因為「頁面上沒遇到」而留白，現在有元件原文，可以照實寫。
 const LEVEL_COLORS = Object.freeze({
   Cheater: "#ad8b00",
   Gray: "#bfbfbf",
@@ -21,52 +21,52 @@ const LEVEL_COLORS = Object.freeze({
 export const levelColor = (color) =>
   (typeof color === "string" && LEVEL_COLORS[color]) || LEVEL_COLORS.Gray;
 
-// ✅（fa-badge-check，CCF 等级）与 🎈（fa-balloon，XCPC 等级）。
-// ★★ 2026-08-14 从洛谷前端组件 `OiLevel` / `XcpcLevel` 的**原文**取得，全部照抄，
-//    推翻了上一轮「ccfLevel > 0 就显示、颜色恒为 #3498db」的抽样结论：
+// ✅（fa-badge-check，CCF 等級）與 🎈（fa-balloon，XCPC 等級）。
+// ★★ 2026-08-14 從洛谷前端元件 `OiLevel` / `XcpcLevel` 的**原文**取得，全部照抄，
+//    推翻了上一輪「ccfLevel > 0 就顯示、顏色恆為 #3498db」的抽樣結論：
 //
-//   分档表两个组件共用：[[8,"gold-3"],[6,"blue-3"],[3,"green-3"]]，
-//   取第一条满足 level >= min 的；**都不满足（即 level < 3）就一个图标都不画**。
-//   上一轮 41 个用户零反例，是因为抽到的人都在 6~7 档，恰好全是 blue-3。
+//   分檔表兩個元件共用：[[8,"gold-3"],[6,"blue-3"],[3,"green-3"]]，
+//   取第一條滿足 level >= min 的；**都不滿足（即 level < 3）就一個圖標都不畫**。
+//   上一輪 41 個使用者零反例，是因為抽到的人都在 6~7 檔，恰好全是 blue-3。
 //
-//   两个图标的着色**是反的**，照抄组件里的 inline style：
+//   兩個圖標的著色**是反的**，照抄元件裡的 inline style：
 //     OiLevel(✅)   --fa-primary-color:#fff      --fa-secondary-color:<等级色>
 //     XcpcLevel(🎈) --fa-primary-color:<等级色>  --fa-secondary-color:#fff
-//   两者都带 --fa-secondary-opacity:1（FA 默认 .4，不覆盖会淡掉一半）。
+//   兩者都帶 --fa-secondary-opacity:1（FA 預設 .4，不覆蓋會淡掉一半）。
 const BADGE_TIERS = Object.freeze([
   Object.freeze([8, "#ffc116"]),
   Object.freeze([6, "#3498db"]),
   Object.freeze([3, "#52c41a"]),
 ]);
 
-// 称号（如「扶咕咕」）：白字 + 底色 rgb(156,61,207)、圆角 2px、0.765em、左右内边距 0.383em。
-// ★ 那个底色 ≈ 紫名 #9d3dcf（差 1，像是叠了半透明），而该用户正是紫名 ——
-//   所以称号底色跟随**用户等级色**，不是固定紫色。
+// 稱號（如「扶咕咕」）：白字 + 底色 rgb(156,61,207)、圓角 2px、0.765em、左右內邊距 0.383em。
+// ★ 那個底色 ≈ 紫名 #9d3dcf（差 1，像是疊了半透明），而該使用者正是紫名 ——
+//   所以稱號底色跟隨**使用者等級色**，不是固定紫色。
 export const badgeStyle = (color) =>
   `background:${levelColor(color)};color:#fff;border-radius:2px;font-size:.765em;padding:0 .383em;`;
 
-// 评测状态。★ 实测洛谷**记录列表**只渲染两种：
+// 評測狀態。★ 實測洛谷**記錄列表**只繪製兩種：
 //   status 12 → `Accepted`，底色 rgb(82,196,26)；
-//   其它（实测到 14）→ `Unaccepted`，底色 rgb(231,76,60)。
-// 帮助文档（manual/luogu/problem/judging）列出的 AC/CE/PC/WA/RE/TLE/MLE/OLE/UKE
-// 是**记录详情页**才展开的细分状态，而「数字码 → 细分名」这张表本轮没能取到证据
-// （owner 账号只有 12 与 14 两种记录，bundle 里也搜不到那些字面量）。
-// 所以这里只实现有据可依的两种，**不编细分名** —— 编错一个字比少显示一个字更糟。
-// 有证据的码值（2026-08-13 实测）：
-//   12 → Accepted（记录 179363526 的记录级；记录 292611285 的测试点级）
-//   14 → Unaccepted（记录 292611285 记录级，score 80 也是 14）
-//   6  → Wrong Answer（记录 292611285 的**测试点级**）
-// ★ 细分状态是**测试点级**的；洛谷的**记录级** status 本身就只有 Accepted/Unaccepted
-//   （详情页顶部也只写 Unaccepted）。所以 bestRecord.status 先天只会是这两种。
-//   6 收进表里是为了兼容仍带细分码的旧记录；其余码值没有证据，一律按 Unaccepted 渲染。
+//   其它（實測到 14）→ `Unaccepted`，底色 rgb(231,76,60)。
+// 幫助文件（manual/luogu/problem/judging）列出的 AC/CE/PC/WA/RE/TLE/MLE/OLE/UKE
+// 是**記錄詳情頁**才展開的細分狀態，而「數字碼 → 細分名」這張表本輪沒能取到證據
+// （owner 帳號只有 12 與 14 兩種記錄，bundle 裡也搜不到那些字面值）。
+// 所以這裡只實作有據可依的兩種，**不編細分名** —— 編錯一個字比少顯示一個字更糟。
+// 有證據的碼值（2026-08-13 實測）：
+//   12 → Accepted（記錄 179363526 的記錄級；記錄 292611285 的測試點級）
+//   14 → Unaccepted（記錄 292611285 記錄級，score 80 也是 14）
+//   6  → Wrong Answer（記錄 292611285 的**測試點級**）
+// ★ 細分狀態是**測試點級**的；洛谷的**記錄級** status 本身就只有 Accepted/Unaccepted
+//   （詳情頁頂部也只寫 Unaccepted）。所以 bestRecord.status 先天只會是這兩種。
+//   6 收進表裡是為了相容仍帶細分碼的舊記錄；其餘碼值沒有證據，一律按 Unaccepted 繪製。
 const DETAILED = Object.freeze({ 6: "Wrong Answer" });
 const ACCEPTED = 12;
 export const STATUS_ACCEPTED_COLOR = "#52c41a";
 export const STATUS_UNACCEPTED_COLOR = "#e74c3c";
 
-// ★★ `Number(null) === 0` 且 `Number.isFinite(0)` 为真 —— 只判 isFinite 会把
-// 「没有状态」当成 0，进而渲染成 Unaccepted，也就是**在不知情的情况下断言用户没通过**。
-// 这个陷阱本轮已经咬过两次（canary.7 的计数、这里的状态），必须显式排除空值。
+// ★★ `Number(null) === 0` 且 `Number.isFinite(0)` 為真 —— 只判 isFinite 會把
+// 「沒有狀態」當成 0，進而繪製成 Unaccepted，也就是**在不知情的情況下斷言使用者沒通過**。
+// 這個陷阱本輪已經咬過兩次（canary.7 的計數、這裡的狀態），必須顯式排除空值。
 const finiteOrNull = (value) =>
   value === null || value === undefined || value === "" || !Number.isFinite(Number(value))
     ? null
@@ -88,8 +88,8 @@ export function statusPresentation(status) {
   });
 }
 
-// 计数缩写（owner 拍板）：小于 1000 全显示；小于 1000000 用 k；否则用 m。
-// 保留一位小数，且不留 `1.0k` 这种尾巴。
+// 計數縮寫（owner 拍板）：小於 1000 全顯示；小於 1000000 用 k；否則用 m。
+// 保留一位小數，且不留 `1.0k` 這種尾巴。
 export function abbreviateCount(value) {
   const n = finiteOrNull(value);
   if (n === null) return null;
@@ -97,23 +97,23 @@ export function abbreviateCount(value) {
   const abs = Math.abs(n);
   if (abs < 1000) return `${sign}${abs}`;
   const scale = abs < 1000000 ? { div: 1000, unit: "k" } : { div: 1000000, unit: "m" };
-  // ★★★ **向下截断，不是四舍五入**，而且两位小数一位都不省。
-  //   判据是 owner 2026-08-14 亲自给的 `999999 -> 999.99k` —— 四舍五入会得到
-  //   `1000.00k`，既多一位又翻过 k/m 的分界线。★ 这条对**所有**值生效，不只是边界：
-  //   `1237` 截断成 `1.23k`，四舍五入会是 `1.24k`。
-  // ★★ 全程整数运算：先乘 100 再除，而不是「先除再乘 100」。后者会踩浮点，
-  //   于是偶发地少一分 —— **实测最小的发散值是 1130**：`1130/1000*100` 是
-  //   `112.99999999999999`，`Math.floor` 之后成了 `1.12k`，正确答案是 `1.13k`。
-  //   （1000~999999 全扫过一遍，发散的还有 1140/1150/1160/2010/2030…）
+  // ★★★ **向下截斷，不是四捨五入**，而且兩位小數一位都不省。
+  //   判據是 owner 2026-08-14 親自給的 `999999 -> 999.99k` —— 四捨五入會得到
+  //   `1000.00k`，既多一位又翻過 k/m 的分界線。★ 這條對**所有**值生效，不只是邊界：
+  //   `1237` 截斷成 `1.23k`，四捨五入會是 `1.24k`。
+  // ★★ 全程整數運算：先乘 100 再除，而不是「先除再乘 100」。後者會踩浮點，
+  //   於是偶發地少一分 —— **實測最小的發散值是 1130**：`1130/1000*100` 是
+  //   `112.99999999999999`，`Math.floor` 之後成了 `1.12k`，正確答案是 `1.13k`。
+  //   （1000~999999 全掃過一遍，發散的還有 1140/1150/1160/2010/2030…）
   const hundredths = Math.floor((abs * 100) / scale.div);
   const whole = Math.floor(hundredths / 100);
   const frac = String(hundredths % 100).padStart(2, "0");
   return `${sign}${whole}.${frac}${scale.unit}`;
 }
 
-// FA duotone 的两段 path，逐字节抄自洛谷加载的 `fontawsm~*.js`
-// （长度 589+211 与 125+320，与上一轮实测的字符数完全一致）。
-// 数组顺序就是 FA 的顺序：[secondary, primary]，渲染时 secondary 在下、primary 在上。
+// FA duotone 的兩段 path，逐位元組抄自洛谷載入的 `fontawsm~*.js`
+// （長度 589+211 與 125+320，與上一輪實測的字元數完全一致）。
+// 陣列順序就是 FA 的順序：[secondary, primary]，繪製時 secondary 在下、primary 在上。
 export const FA_BADGE_CHECK = Object.freeze({
   viewBox: "0 0 512 512",
   secondary:
@@ -130,7 +130,7 @@ export const FA_BALLOON = Object.freeze({
     "M0 192C0 86 86 0 192 0S384 86 384 192c0 128-160 240-160 240l27.9 41.8c2.7 4 4.1 8.8 4.1 13.6 0 13.6-11 24.6-24.6 24.6l-78.9 0c-13.6 0-24.6-11-24.6-24.6 0-4.8 1.4-9.6 4.1-13.6L160 432S0 320 0 192zm104-16c0-39.8 32.2-72 72-72 13.3 0 24-10.7 24-24s-10.7-24-24-24c-66.3 0-120 53.7-120 120 0 13.3 10.7 24 24 24s24-10.7 24-24z",
 });
 
-// 等级 → 徽章配色。拿不到等级、或等级低于最低档，都返回 null（＝不画图标）。
+// 等級 → 徽章配色。拿不到等級、或等級低於最低檔，都回傳 null（＝不畫圖標）。
 export function badgeTierColor(level) {
   const value = finiteOrNull(level);
   if (value === null) return null;
@@ -138,7 +138,7 @@ export function badgeTierColor(level) {
   return null;
 }
 
-// CCF 认证徽章（✅）。primary 是那一钩，恒为白；secondary 是盾面，取等级色。
+// CCF 認證徽章（✅）。primary 是那一鉤，恆為白；secondary 是盾面，取等級色。
 export function ccfBadge(level) {
   const color = badgeTierColor(level);
   return color === null
@@ -151,8 +151,8 @@ export function ccfBadge(level) {
       });
 }
 
-// XCPC 认证徽章（🎈）。★ 与 ✅ 相反：primary 是气球本体，取等级色；secondary 是那道高光，
-// 恒为白。写反了会得到一个白底卡片上看不见的白气球。
+// XCPC 認證徽章（🎈）。★ 與 ✅ 相反：primary 是氣球本體，取等級色；secondary 是那道高光，
+// 恆為白。寫反了會得到一個白底卡片上看不見的白氣球。
 export function xcpcBadge(level) {
   const color = badgeTierColor(level);
   return color === null

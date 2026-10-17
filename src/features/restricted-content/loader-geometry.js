@@ -1,14 +1,14 @@
-// 加载层的几何。**两套加载层必须共用这一份**：
-//   1. 早期加载层（src/bootstrap/restricted-early-gate.js，用 html::before/::after，
-//      document-start 就起，留在启动包里）；
-//   2. 壳内加载层（restricted-content 按需块里的 .luogusp-rst-loader）。
-// 它们会先后出现在同一个位置，几何一旦不一致，切换的瞬间转圈就会跳一下。
+// 載入層的幾何。**兩套載入層必須共用這一份**：
+//   1. 早期載入層（src/bootstrap/restricted-early-gate.js，用 html::before/::after，
+//      document-start 就起，留在啟動包裡）；
+//   2. 殼內載入層（restricted-content 按需塊裡的 .luogusp-rst-loader）。
+// 它們會先後出現在同一個位置，幾何一旦不一致，切換的瞬間轉圈就會跳一下。
 //
-// ★ 转圈与文案都按视口中心**绝对定位**，不要用 flex 居中整列。
-//   文案是会变的（"加载中…" → "该内容尚未被保存站收录，已自动发起收录…"），
-//   flex 列一旦因为文案变长或换行而改变总高，就会重新居中，把转圈往上顶 ——
-//   owner 2026-08-13 报的「转圈随加载状态产生位移」就是这个。
-//   绝对定位下文案只会向下生长，转圈一动不动。
+// ★ 轉圈與文案都按視口中心**絕對定位**，不要用 flex 居中整列。
+//   文案是會變的（"載入中…" → "該內容尚未被保存站收錄，已自動發起收錄…"），
+//   flex 列一旦因為文案變長或換行而改變總高，就會重新居中，把轉圈往上頂 ——
+//   owner 2026-08-13 報的「轉圈隨載入狀態產生位移」就是這個。
+//   絕對定位下文案只會向下生長，轉圈一動不動。
 
 export const LOADER_SPINNER_BOX =
   "position:fixed;left:50%;top:50%;width:36px;height:36px;margin:-31px 0 0 -21px;" +
@@ -24,8 +24,8 @@ export const LOADER_TEXT_COLOR = "#595959";
 
 export const LOADER_BACKDROP = "#f5f5f5";
 
-// 壳内加载层的完整样式。放在这里而不是 feature.js，是为了让「几何」与「用它的 CSS」
-// 同处一地，两套加载层不可能再各自漂移。
+// 殼內載入層的完整樣式。放在這裡而不是 feature.js，是為了讓「幾何」與「用它的 CSS」
+// 同處一地，兩套載入層不可能再各自漂移。
 export const SHELL_LOADER_CSS =
   `.luogusp-rst-loader{position:fixed;inset:0;z-index:2147483000;background:${LOADER_BACKDROP};color:${LOADER_TEXT_COLOR};font:${LOADER_FONT};}` +
   `.luogusp-rst-spinner{${LOADER_SPINNER_BOX}animation:luogusp-rst-spin .8s linear infinite;}` +

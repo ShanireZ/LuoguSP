@@ -1,20 +1,20 @@
-// 受限内容的**表现层常量与纯函数**：样式、图标、时间/头像格式化、几个输入卫士。
+// 受限內容的**表現層常數與純函式**：樣式、圖標、時間/頭像格式化、幾個輸入衛士。
 //
-// ★ 这些从 `feature.js` 里搬出来，理由只有一个：那个文件顶着 850 行的预算上限
-//   （搬之前 845），下一个改动进不去。搬的全是**无闭包依赖**的东西 ——
-//   除了 `injectRstStyle` 之外一个都不碰 DOM，所以行为逐字节不变。
-//   ★ `injectRstStyle` 也搬了：它只在调用时摸全局 `document`，和本目录其它模块同款，
-//     没有捕获 feature 里的任何局部状态。
+// ★ 這些從 `feature.js` 裡搬出來，理由只有一個：那個檔案頂著 850 行的預算上限
+//   （搬之前 845），下一個改動進不去。搬的全是**無閉包依賴**的東西 ——
+//   除了 `injectRstStyle` 之外一個都不碰 DOM，所以行為逐位元組不變。
+//   ★ `injectRstStyle` 也搬了：它只在呼叫時摸全域 `document`，和本目錄其它模組同款，
+//     沒有捕獲 feature 裡的任何局部狀態。
 import { SHELL_LOADER_CSS } from "./loader-geometry.js";
 
-// 转圈与文案都绝对定位（见 loader-geometry.js）：不随文案变长而位移，也与早期加载层严丝合缝。
+// 轉圈與文案都絕對定位（見 loader-geometry.js）：不隨文案變長而位移，也與早期載入層嚴絲合縫。
 export const RST_LOADER_CSS = SHELL_LOADER_CSS;
 export const RST_LOADER_CONTENT_HTML =
   '<div class="luogusp-rst-spinner" aria-hidden="true"></div><div class="msg">加载中…</div>';
 export const RST_LOADER_HTML =
   `<div id="luogusp-rst-loader" class="luogusp-rst-loader" role="status" aria-live="polite">${RST_LOADER_CONTENT_HTML}</div>`;
 
-// 最小自有样式：加载层/失败卡（注入拦截页文档），扩展按钮样式随壳 HTML 走（见 RST_EXTRA_CSS）
+// 最小自有樣式：載入層/失敗卡（注入攔截頁文件），擴充按鈕樣式隨殼 HTML 走（見 RST_EXTRA_CSS）
 export function injectRstStyle() {
   if (document.getElementById("luogusp-rst-style")) return;
   const style = document.createElement("style");
@@ -28,8 +28,8 @@ export function injectRstStyle() {
   (document.head || document.documentElement).appendChild(style);
 }
 
-// 扩展按钮样式（写进壳文档；蓝色=与原生灰色互动钮区分，owner 拍板）。
-// ★button-2line 的官方规则是 data-v 作用域的，注入节点吃不到 → 布局自带（镜像官方值）。
+// 擴充按鈕樣式（寫進殼文件；藍色=與原生灰色互動鈕區分，owner 拍板）。
+// ★button-2line 的官方規則是 data-v 作用域的，注入節點吃不到 → 佈局自帶（鏡像官方值）。
 export const RST_EXTRA_CSS =
   RST_LOADER_CSS +
   ".luogusp-rst-abtn{display:flex;flex-direction:column;align-items:center;margin:0 1em;cursor:pointer;}" +
@@ -40,7 +40,7 @@ export const RST_EXTRA_CSS =
   ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
   ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}" +
   ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}";
-// 扩展按钮图标（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
+// 擴充按鈕圖標（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
 
 export const RST_BTN_ICONS = {
   refresh: {
@@ -57,7 +57,7 @@ export function rstAvatar(uid) {
   return `https://cdn.luogu.com.cn/upload/usericon/${uid}.png`;
 }
 
-// 保存站 ISO 时间 → 本地 "YYYY-MM-DD HH:mm[:ss]"（对齐洛谷原生 <time> 显示格式）
+// 保存站 ISO 時間 → 本機 "YYYY-MM-DD HH:mm[:ss]"（對齊洛谷原生 <time> 顯示格式）
 export function rstFmtTime(iso, withSec) {
   const ms = Date.parse(iso || "");
   if (!ms) return null;
@@ -67,7 +67,7 @@ export function rstFmtTime(iso, withSec) {
   return withSec ? `${base}:${p(d.getSeconds())}` : base;
 }
 
-// 官方 userSummary：.cn 接口结果优先，保存站作者快照兜底补形
+// 官方 userSummary：.cn 介面結果優先，保存站作者快照備援補形
 export function rstUserSummary(cnUser, snapshot, uid) {
   if (cnUser) return cnUser;
   const s = snapshot || {};

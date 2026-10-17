@@ -1,28 +1,28 @@
-// 受限文章的实时公共计数。
+// 受限文章的即時公共計數。
 //
-// 洛谷把「文章页」拦在「安全访问中心」后面，但**作者专栏列表 API 没有拦**：
+// 洛谷把「文章頁」攔在「安全訪問中心」後面，但**作者專欄列表 API 沒有攔**：
 //   GET /user/{authorUid}/article?page=N   Header: x-lentille-request: content-only
-//   → data.articles = { perPage, count, result[] }，每项带 upvote / favorCount / replyCount
-// 2026-08-13 实测（登录态）：受限文章 2l4x53kj 在列表里 upvote=24 / favorCount=22，
-// 与真机点赞实测的真值 24 一致；同一时刻保存站快照是 19 / 17。所以这里的值可以直接
-// 当服务器真值，用作后续官方写响应做增量的基线。
+//   → data.articles = { perPage, count, result[] }，每項帶 upvote / favorCount / replyCount
+// 2026-08-13 實測（登入態）：受限文章 2l4x53kj 在列表裡 upvote=24 / favorCount=22，
+// 與真機點贊實測的真值 24 一致；同一時刻保存站快照是 19 / 17。所以這裡的值可以直接
+// 當伺服器真值，用作後續官方寫回應做增量的基線。
 //
-// ★ 只覆盖公共计数。列表**不含** voted / favored，个人状态一个字节都不能从这里来 ——
-//   否则又会走回「用 false 伪造未收藏」那条老路。
-// ★ 列表不按时间排序（实测跨页时间乱序），所以只能扫页，不能二分；
-//   perPage 固定 10，?perPage=50 无效。
+// ★ 只覆蓋公共計數。列表**不含** voted / favored，個人狀態一個位元組都不能從這裡來 ——
+//   否則又會走回「用 false 偽造未收藏」那條老路。
+// ★ 列表不按時間排序（實測跨頁時間亂序），所以只能掃頁，不能二分；
+//   perPage 固定 10，?perPage=50 無效。
 
 const LENTILLE_INIT = Object.freeze({
   headers: Object.freeze({ "x-lentille-request": "content-only" }),
 });
-// `?category=N` 实测生效（作者 697932：26 篇 → category=3 只剩 4 篇），而保存站的
-// 存档里就带 `category`，所以扫页前就能把搜索空间缩小若干倍。`?keyword=` 实测**无效**
-// （结果集不变），别指望它。
+// `?category=N` 實測生效（作者 697932：26 篇 → category=3 只剩 4 篇），而保存站的
+// 存檔裡就帶 `category`，所以掃頁前就能把搜尋空間縮小若干倍。`?keyword=` 實測**無效**
+// （結果集不變），別指望它。
 const DEFAULT_MAX_PAGES = 40;
 const DEFAULT_CONCURRENCY = 5;
-// ★ 这个预算直接压在受限页的首屏上（它和骨架抓取、作者查询、评论并行，
-// 但总时长取最大值）。实测单页 ~600ms，分类过滤后常见情况就是 1 页，
-// 2.5s 够覆盖三四批；再长就是拿所有人的首屏去赌一个罕见的巨型专栏，不值。
+// ★ 這個預算直接壓在受限頁的首屏上（它和骨架抓取、作者查詢、評論並行，
+// 但總時長取最大值）。實測單頁 ~600ms，分類過濾後常見情況就是 1 頁，
+// 2.5s 夠覆蓋三四批；再長就是拿所有人的首屏去賭一個罕見的巨型專欄，不值。
 const DEFAULT_DEADLINE_MS = 2500;
 const FALLBACK_PER_PAGE = 10;
 const DEFAULT_CLOCK = Object.freeze({
@@ -30,8 +30,8 @@ const DEFAULT_CLOCK = Object.freeze({
   clearTimeout: (id) => clearTimeout(id),
 });
 
-// ★同 article-interaction-store：Number(null) === 0 且 Number.isFinite(0) 为真，
-// 只判 isFinite 会把「列表里没有这个字段」悄悄变成 0，再反过来盖掉保存站的真实值。
+// ★同 article-interaction-store：Number(null) === 0 且 Number.isFinite(0) 為真，
+// 只判 isFinite 會把「列表裡沒有這個欄位」悄悄變成 0，再反過來蓋掉保存站的真實值。
 const countOrNull = (value) =>
   value === null || value === undefined || value === "" ||
   !Number.isFinite(Number(value))
@@ -51,12 +51,12 @@ export function parseArticleListPayload(payload) {
   });
 }
 
-// 命中项 → 公共计数 + 真实发表时间。`upvote` / `favorCount` 缺一不可（它们是这个特性的
-// 全部意义）；`replyCount` 与 `time` 允许缺失，调用方回落。
+// 命中項 → 公共計數 + 真實發表時間。`upvote` / `favorCount` 缺一不可（它們是這個特性的
+// 全部意義）；`replyCount` 與 `time` 允許缺失，呼叫方回落。
 //
-// ★ `time` 是**洛谷的真实发表时间**（秒）。保存站只有 `createdAt`＝入档时间，
-//   两者可以差几个月（实测 2l4x53kj：入档 2026-01-02，真实发表 2025-10-01），
-//   此前把入档时间当「创建时间」显示是错的。
+// ★ `time` 是**洛谷的真實發表時間**（秒）。保存站只有 `createdAt`＝入檔時間，
+//   兩者可以差幾個月（實測 2l4x53kj：入檔 2026-01-02，真實發表 2025-10-01），
+//   此前把入檔時間當「建立時間」顯示是錯的。
 export function pickLiveCounts(rows, lid) {
   if (!Array.isArray(rows) || typeof lid !== "string" || !lid) return null;
   const hit = rows.find((row) => row && row.lid === lid);
@@ -71,7 +71,7 @@ export function pickLiveCounts(rows, lid) {
     replyCount: countOrNull(hit.replyCount),
     time: time !== null && time > 0 ? time : null,
     status: countOrNull(hit.status),
-    // 原样透传：形状由洛谷决定（官方组件读 solutionFor.pid），这里不构造也不猜。
+    // 原樣透傳：形狀由洛谷決定（官方元件讀 solutionFor.pid），這裡不建構也不猜。
     solutionFor:
       hit.solutionFor && typeof hit.solutionFor === "object"
         ? hit.solutionFor
@@ -84,8 +84,8 @@ function withDeadline(promise, ms, clock) {
   if (!Number.isFinite(budget) || budget <= 0) return promise;
   return new Promise((resolve) => {
     let settled = false;
-    // 超时后在途请求不再等待。它们数量有上限（maxPages），放着自然结束即可，
-    // 页面级取消由外层 signal 负责。
+    // 超時後在途請求不再等待。它們數量有上限（maxPages），放著自然結束即可，
+    // 頁面級取消由外層 signal 負責。
     const timer = clock.setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -101,8 +101,8 @@ function withDeadline(promise, ms, clock) {
   });
 }
 
-// 永不抛、永不拒绝：拿不到实时计数就返回 null，调用方回落保存站快照。
-// 实时计数是增强项，任何失败都不允许影响受限页本身能不能渲染出来。
+// 永不拋、永不拒絕：拿不到即時計數就回傳 null，呼叫方回落保存站快照。
+// 即時計數是增強項，任何失敗都不允許影響受限頁本身能不能繪製出來。
 export function resolveLiveArticleCounts(config) {
   const {
     fetchPage,
@@ -112,10 +112,10 @@ export function resolveLiveArticleCounts(config) {
     maxPages = DEFAULT_MAX_PAGES,
     concurrency = DEFAULT_CONCURRENCY,
     deadlineMs = DEFAULT_DEADLINE_MS,
-    // ★ 必须包一层，不能写 `{ setTimeout, clearTimeout }` 简写。裸引用会让
-    //   `clock.setTimeout(...)` 以 `this === clock` 调用原生方法 —— 在**页面 realm**
-    //   （本模块随受限内容按需块经 blob: 动态 import 执行）里就是
-    //   `TypeError: Illegal invocation`。在用户脚本沙箱里侥幸能过，一挪进按需块就炸。
+    // ★ 必須包一層，不能寫 `{ setTimeout, clearTimeout }` 簡寫。裸引用會讓
+    //   `clock.setTimeout(...)` 以 `this === clock` 呼叫原生方法 —— 在**頁面 realm**
+    //   （本模組隨受限內容按需塊經 blob: 動態 import 執行）裡就是
+    //   `TypeError: Illegal invocation`。在使用者指令碼沙箱裡僥倖能過，一挪進按需塊就炸。
     clock = DEFAULT_CLOCK,
     signal,
     onTruncated,
@@ -134,8 +134,8 @@ export function resolveLiveArticleCounts(config) {
   const filter =
     Number.isSafeInteger(cat) && cat > 0 ? `&category=${cat}` : "";
 
-  // ★ 页数预算是**跨两次尝试共享**的。否则「分类过滤扫不到 → 全量扫」这条回退路径
-  // 会把请求数翻倍（巨型专栏可达 40+40 页），对洛谷不礼貌。
+  // ★ 頁數預算是**跨兩次嘗試共享**的。否則「分類過濾掃不到 → 全量掃」這條退回路徑
+  // 會把請求數翻倍（巨型專欄可達 40+40 頁），對洛谷不禮貌。
   let pagesLeft = Math.max(1, Number(maxPages) || 1);
 
   const readPage = async (page, query) => {
@@ -147,7 +147,7 @@ export function resolveLiveArticleCounts(config) {
         signal,
         LENTILLE_INIT,
       );
-      // 拦截页是 HTTP 200 + text/html，`json()` 会抛 —— 这就是天然的守卫。
+      // 攔截頁是 HTTP 200 + text/html，`json()` 會拋 —— 這就是天然的守衛。
       if (!response || response.ok === false) return null;
       return parseArticleListPayload(await response.json());
     } catch (error) {
@@ -155,13 +155,13 @@ export function resolveLiveArticleCounts(config) {
     }
   };
 
-  // 分批并发：40 页一次性并发发出去对洛谷不礼貌，也容易踩限流。
+  // 分批並行：40 頁一次性並行發出去對洛谷不禮貌，也容易踩限流。
   const sweep = async (first, query) => {
     const perPage = first.perPage || first.result.length || FALLBACK_PER_PAGE;
     const total = first.count === null ? 1 : Math.ceil(first.count / perPage);
     if (total <= 1) return null;
     const limit = Math.min(total, pagesLeft + 1);
-    // 截断必须报出来：默默少扫几页会让「没找到」看起来像「洛谷没有这条数据」。
+    // 截斷必須報出來：默默少掃幾頁會讓「沒找到」看起來像「洛谷沒有這條資料」。
     if (total > limit && typeof onTruncated === "function")
       onTruncated({
         lid,
@@ -193,8 +193,8 @@ export function resolveLiveArticleCounts(config) {
   };
 
   const scan = async () => {
-    // 先按分类过滤扫（保存站给了 category，搜索空间小很多）；
-    // 分类过滤扫不到就退回全量扫 —— 存档的 category 可能已经过期（文章被改分类）。
+    // 先按分類過濾掃（保存站給了 category，搜尋空間小很多）；
+    // 分類過濾掃不到就退回全量掃 —— 存檔的 category 可能已經過期（文章被改分類）。
     const filtered = filter ? await attempt(filter) : null;
     return filtered ?? (await attempt(""));
   };

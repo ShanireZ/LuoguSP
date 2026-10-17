@@ -4,53 +4,53 @@
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
 [![Version: 2.14.6](https://img.shields.io/badge/version-2.14.6-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
-LuoguSP 是一款面向洛谷的 Tampermonkey 用户脚本，为题目、个人页、IDE 模式、文章与剪贴板提供实用增强。
+LuoguSP 是一款面向洛谷的 Tampermonkey 使用者指令碼，為題目、個人頁、IDE 模式、文章與剪貼板提供實用增強。
 
-项目仓库：[GitHub](https://github.com/ShanireZ/LuoguSP)（主仓库）／[CNB](https://cnb.cool/Round1/LuoguSP)（辅助镜像）
+專案儲存庫：[GitHub](https://github.com/ShanireZ/LuoguSP)（主儲存庫）／[CNB](https://cnb.cool/Round1/LuoguSP)（輔助鏡像）
 
-构建采用 Web Platform Baseline 分层策略：Newly 是新能力上限，全部 esbuild 浏览器产物显式冻结到可复现的 Widely 语法目标，并由 `pnpm run baseline:check` 检查核心引擎、下游浏览器和每个构建消费点。Baseline 不提供 Web API polyfill，也不替代真实洛谷页面验收。
+建置採用 Web Platform Baseline 分層策略：Newly 是新能力上限，全部 esbuild 瀏覽器產物顯式凍結到可重現的 Widely 語法目標，並由 `pnpm run baseline:check` 檢查核心引擎、下游瀏覽器和每個建置消費點。Baseline 不提供 Web API polyfill，也不替代真實洛谷頁面驗收。
 
 ## 功能
 
-- **题号显示难度颜色**：在主页、题库、题目详情、题单等位置中，让题号显示对应的难度颜色；评测记录列表保留洛谷原生着色。
-- **题目悬停显示预览卡**：鼠标停在题目链接上，就地摊开题名、难度、通过/提交、限制、标签（默认折叠）与我的状态。
-- **用户名/头像悬停显示预览卡**：鼠标停在用户名或头像上，复刻并扩展洛谷原生的个人悬停卡——关注/粉丝/等级分/咕值/通过·提交、最近奖项，以及关注、私信、专栏、举报、屏蔽。
-- **个人页显示个人介绍**：在用户个人页的主页中，显示原本未渲染的个人介绍。
-- **受限文章与剪贴板解限**：遇到「安全访问中心」拦截时，通过[洛谷保存站](https://www.luogu.me/)数据，自动显示该文章或云剪贴板，并支持主动更新、点赞、收藏及评论发送。
-- **IDE 模式一键测试所有样例**：在题目页的 IDE 模式下一键运行题目的所有样例，并可查看每组结果、用时、内存和输出差异。
-- **页面内设置**：从导航栏进入「插件设置」，可按需开启或关闭各项功能。
+- **題號顯示難度顏色**：在主頁、題庫、題目詳情、題單等位置中，讓題號顯示對應的難度顏色；評測記錄列表保留洛谷原生著色。
+- **題目懸停顯示預覽卡**：滑鼠停在題目連結上，就地攤開題名、難度、通過/提交、限制、標籤（預設摺疊）與我的狀態。
+- **使用者名/頭像懸停顯示預覽卡**：滑鼠停在使用者名或頭像上，復刻並擴充洛谷原生的個人懸停卡——關注/粉絲/等級分/咕值/通過·提交、最近獎項，以及關注、私信、專欄、舉報、屏蔽。
+- **個人頁顯示個人介紹**：在使用者個人頁的主頁中，顯示原本未繪製的個人介紹。
+- **受限文章與剪貼板解限**：遇到「安全訪問中心」攔截時，通過[洛谷保存站](https://www.luogu.me/)資料，自動顯示該文章或雲剪貼板，並支援主動更新、點贊、收藏及評論傳送。
+- **IDE 模式一鍵測試所有樣例**：在題目頁的 IDE 模式下一鍵執行題目的所有樣例，並可查看每組結果、用時、記憶體和輸出差異。
+- **頁面內設定**：從導覽欄進入「外掛設定」，可按需開啟或關閉各項功能。
 
-题号着色优先使用页面原生难度，支持首屏、翻页与站内跳转：已有数据同步着色，新节点在下一次绘制前补上颜色。插件从 document-start 开始观察页面；实际首次显示仍取决于用户脚本的加载时机。缺失原生数据时，每次挂载等待 300ms 后先查缓存，再按原有队列请求题目数据。个人练习页只处理「尝试过的题目」，不处理「已通过的题目」。
+題號著色優先使用頁面原生難度，支援首屏、翻頁與站內跳轉：已有資料同步著色，新節點在下一次繪製前補上顏色。外掛從 document-start 開始觀察頁面；實際首次顯示仍取決於使用者指令碼的載入時機。缺失原生資料時，每次掛載等待 300ms 後先查快取，再按原有佇列請求題目資料。個人練習頁只處理「嘗試過的題目」，不處理「已通過的題目」。
 
-题号难度缓存（包括原生数据与查询结果）有效期为 5 分钟，读取不续期，新收到的数据按新旧顺序覆盖；查询缓存最多 1000 条。悬停卡独立缓存 5 分钟、最多 60 项。缓存都只存在于当前标签页内存，站内跳转保留、刷新清空；过期在下次使用时刷新，不后台轮询已显示的静态页面。
+題號難度快取（包括原生資料與查詢結果）有效期為 5 分鐘，讀取不續期，新收到的資料按新舊順序覆蓋；查詢快取最多 1000 條。懸停卡獨立快取 5 分鐘、最多 60 項。快取都只存在於當前標籤頁記憶體，站內跳轉保留、刷新清空；過期在下次使用時刷新，不後台輪詢已顯示的靜態頁面。
 
-开发验证：`pnpm check` 检查工作树；`node scripts/qa/problem-color-local.mjs` 启动本地浏览器夹具，打开其输出的 URL 查看首帧着色、翻页、跳转和查询延迟结果。该夹具不替代发布后的 `pnpm qa:browser` 或登录态洛谷现场验证。
+開發驗證：`pnpm check` 檢查工作樹；`node scripts/qa/problem-color-local.mjs` 啟動本機瀏覽器夾具，打開其輸出的 URL 查看首影格著色、翻頁、跳轉和查詢延遲結果。該夾具不替代發佈後的 `pnpm qa:browser` 或登入態洛谷現場驗證。
 
-## 安装
+## 安裝
 
-1. 安装 [Tampermonkey](https://www.tampermonkey.net/)。
-2. 打开脚本 Raw 地址，Tampermonkey 会自动识别脚本，确认安装即可：
-   - [CNB Raw（🌟推荐🌟）](https://cnb.cool/Round1/LuoguSP/-/git/raw/main/LuoguSP.user.js)
+1. 安裝 [Tampermonkey](https://www.tampermonkey.net/)。
+2. 打開指令碼 Raw 位址，Tampermonkey 會自動識別指令碼，確認安裝即可：
+   - [CNB Raw（🌟推薦🌟）](https://cnb.cool/Round1/LuoguSP/-/git/raw/main/LuoguSP.user.js)
    - [GitHub Raw](https://raw.githubusercontent.com/ShanireZ/LuoguSP/main/LuoguSP.user.js)
 
-也可以使用以下方式安装：
+也可以使用以下方式安裝：
 
-- 复制 `LuoguSP.user.js` 的完整源码，在 Tampermonkey 中新建脚本，粘贴并保存。
-- 下载 `LuoguSP.user.js`，将脚本文件拖入 Tampermonkey，确认安装。
+- 複製 `LuoguSP.user.js` 的完整原始碼，在 Tampermonkey 中新建指令碼，粘貼並保存。
+- 下載 `LuoguSP.user.js`，將指令碼檔案拖入 Tampermonkey，確認安裝。
 
 ## 更新
 
-更新可以用下列方式之一来完成：
+更新可以用下列方式之一來完成：
 
-- 再次打开任一 Raw 地址，Tampermonkey 会自动识别脚本更新，确认更新即可。（🌟推荐🌟）
-- 在 Tampermonkey 管理面板中找到 LuoguSP，点击「最后更新时间」检查并安装更新。
-- 复制最新版 `LuoguSP.user.js` 源码，替换现有脚本并保存。
+- 再次打開任一 Raw 位址，Tampermonkey 會自動識別指令碼更新，確認更新即可。（🌟推薦🌟）
+- 在 Tampermonkey 管理面板中找到 LuoguSP，點擊「最後更新時間」檢查並安裝更新。
+- 複製最新版 `LuoguSP.user.js` 原始碼，替換現有指令碼並保存。
 
 ## 作者
 
 - ShanireZ
-- realskc（维护至 1.8.2）
+- realskc（維護至 1.8.2）
 
-## 许可证
+## 授權條款
 
-本项目采用 [GNU General Public License v3.0](LICENSE) 发布。
+本專案採用 [GNU General Public License v3.0](LICENSE) 發佈。

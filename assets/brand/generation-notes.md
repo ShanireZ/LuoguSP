@@ -1,18 +1,18 @@
 <!-- source: BetaPass\std\candidates\luogusp\notes-logo.md -->
 
-> 归档说明（2026-08-20）：以下路径是生成当时的历史记录；当前采用源统一为本目录下
+> 歸檔說明（2026-08-20）：以下路徑是生成當時的歷史記錄；當前採用源統一為本目錄下
 > `luogusp-logo-source.png`、`luogusp-badge-bg-source.png`、`luogusp-stage-bg-source.png`。八色 v1
-> 竖版已按废稿清理，不再保留文件。
+> 豎版已按廢稿清理，不再保留檔案。
 
-# LuoguSP Logo 原生候选生成记录
+# LuoguSP Logo 原生候選生成記錄
 
 - 日期：2026-08-20（Asia/Shanghai）
-- 工具：Codex 内置 `image_gen`
-- 调用次数：1
-- 原始生成路径：`C:\Users\SkySa\.codex\generated_images\01a01cb2-e058-7191-87c9-54bd3e756fd2\exec-ae9eeb6e-248e-4346-a516-020a580d22f9.png`
-- 落盘路径：`D:\Workspace\BetaPass\std\candidates\luogusp\logo-source.png`
+- 工具：Codex 內置 `image_gen`
+- 呼叫次數：1
+- 原始生成路徑：`C:\Users\SkySa\.codex\generated_images\01a01cb2-e058-7191-87c9-54bd3e756fd2\exec-ae9eeb6e-248e-4346-a516-020a580d22f9.png`
+- 寫入磁碟路徑：`D:\Workspace\BetaPass\std\candidates\luogusp\logo-source.png`
 - 原始尺寸：`1254×1254`
-- PNG：`Format32bppArgb`，真实 alpha；四角中三角 `A=0`、左下角 `A=1`（肉眼等效透明），画布边缘其余抽查点 `A=0`
+- PNG：`Format32bppArgb`，真實 alpha；四角中三角 `A=0`、左下角 `A=1`（肉眼等效透明），畫布邊緣其餘抽查點 `A=0`
 - SHA-256：`077890A3BA1250F13A3A19CB1E9B3AD3BF6EE9617BEBD8C1DAF4CEAAE32E2C95`
 
 ## 完整 prompt
@@ -30,30 +30,30 @@ Constraints: one uniform backdrop with no shadow, gradient, texture, floor or re
 Avoid: puzzle piece, jigsaw, monkey or ape or any animal mascot, magnifying glass, gear, cog, angle-bracket code symbol, browser window chrome with three dots, cursor arrow, rainbow gradient, neon cyberpunk, glowing tech-blue orb, circuit board, rounded app-icon plate behind the mark, any existing website logo wordmark or mascot
 ```
 
-## 九条色带计数与顺序自检
+## 九條色帶計數與順序自檢
 
-在完整尺寸下从上到下可辨认的主色带恰好为 9 条；第 9 条有冷白细描边，与夜墨内板可分。下表为每条中央位置 `x=600` 的代表像素，样本用于核对数量与顺序，不代表整条色带的唯一颜色。
+在完整尺寸下從上到下可辨認的主色帶恰好為 9 條；第 9 條有冷白細描邊，與夜墨內板可分。下表為每條中央位置 `x=600` 的代表像素，樣本用於核對數量與順序，不代表整條色帶的唯一顏色。
 
-| # | 目标色 | 中央代表像素 | 视觉顺序 |
+| # | 目標色 | 中央代表像素 | 視覺順序 |
 | --- | --- | --- | --- |
 | 1 | `#bfbfbf` | `#c5c5c4` | 灰 |
-| 2 | `#fe4c61` | `#fd4259` | 粉红 |
+| 2 | `#fe4c61` | `#fd4259` | 粉紅 |
 | 3 | `#f39c11` | `#f79702` | 橙 |
-| 4 | `#ffc116` | `#fdca02` | 金黄 |
-| 5 | `#52c41a` | `#47c915` | 绿 |
+| 4 | `#ffc116` | `#fdca02` | 金黃 |
+| 5 | `#52c41a` | `#47c915` | 綠 |
 | 6 | `#13c2c2` | `#05c3cc` | 青 |
-| 7 | `#3498db` | `#2f97e4` | 蓝 |
+| 7 | `#3498db` | `#2f97e4` | 藍 |
 | 8 | `#9d3dcf` | `#9e2fde` | 紫 |
-| 9 | `#0e1d69` | `#082072` | 深靛蓝，带冷白描边 |
+| 9 | `#0e1d69` | `#082072` | 深靛藍，帶冷白描邊 |
 
-结论：色带数量和目标色相顺序均正确，没有少条、多条或调换；但模型加入了高光与轻微明暗变化，代表像素并非九个目标十六进制的逐字精确值，因此当前只通过“计数与顺序”的视觉门，不通过“整条纯平色且精确色值”的取色器门。
+結論：色帶數量和目標色相順序均正確，沒有少條、多條或調換；但模型加入了高光與輕微明暗變化，代表像素並非九個目標十六進制的逐字精確值，因此當前只通過“計數與順序”的視覺門，不通過“整條純平色且精確色值”的取色器門。
 
-## 禁止项与主体自检
+## 禁止項與主體自檢
 
-- 未见文字、字母、数字、站点 Logo/字标/吉祥物或可辨认页面外观。
-- 未见拼图块、猴子/动物、放大镜、齿轮、尖括号、浏览器三点窗框、光标、科技蓝光球或电路板。
-- 上右角剥起，露出两条灰条；九色只在镜片内主色阶出现，镜片外仍有灰条。
-- 生成结果直接带真实 alpha，没有使用或保留品红抠图底。
+- 未見文字、字母、數字、站台 Logo/字標/吉祥物或可辨認頁面外觀。
+- 未見拼圖塊、猴子/動物、放大鏡、齒輪、尖括號、瀏覽器三點窗框、游標、科技藍光球或電路板。
+- 上右角剝起，露出兩條灰條；九色只在鏡片內主色階出現，鏡片外仍有灰條。
+- 生成結果直接帶真實 alpha，沒有使用或保留品紅摳圖底。
 
 ---
 
@@ -100,15 +100,15 @@ Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear
 
 <!-- source: BetaPass\std\candidates\luogusp\notes-stage.md -->
 
-# LuoguSP 竖版原生候选生成记录
+# LuoguSP 豎版原生候選生成記錄
 
 - 日期：2026-08-20（Asia/Shanghai）
-- 工具：Codex 内置 `image_gen`
-- 最终采用：第 2 次（总尝试 2/2，已停止）
-- v1 原始路径：`C:\Users\SkySa\.codex\generated_images\01a01cb2-f669-7023-a3f9-d66659d9078a\exec-ef996722-e69c-4434-aa8d-b1ed5faabc8b.png`
-- v1 处置：仅八条可辨色带，判废并于资源归档时移除
-- v2 原始路径：`C:\Users\SkySa\.codex\generated_images\01a01cb2-f669-7023-a3f9-d66659d9078a\exec-b58c44a2-edf3-457e-9ed5-1c51c88fc8ca.png`
-- v2 入选路径：本目录 `luogusp-stage-bg-source.png`
+- 工具：Codex 內置 `image_gen`
+- 最終採用：第 2 次（總嘗試 2/2，已停止）
+- v1 原始路徑：`C:\Users\SkySa\.codex\generated_images\01a01cb2-f669-7023-a3f9-d66659d9078a\exec-ef996722-e69c-4434-aa8d-b1ed5faabc8b.png`
+- v1 處置：僅八條可辨色帶，判廢並於資源歸檔時移除
+- v2 原始路徑：`C:\Users\SkySa\.codex\generated_images\01a01cb2-f669-7023-a3f9-d66659d9078a\exec-b58c44a2-edf3-457e-9ed5-1c51c88fc8ca.png`
+- v2 入選路徑：本目錄 `luogusp-stage-bg-source.png`
 
 ## 原始 prompt
 
@@ -126,16 +126,16 @@ Constraints: no text, no letters, no numbers, no logo, no watermark, no frame, n
 Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear, angle-bracket code symbol, full-image rainbow gradient, neon, glowing blue globe, circuit board, any existing website logo or recognizable page design, a small logo floating in an empty box
 ```
 
-第 2 次只追加了下列定向约束：
+第 2 次只追加了下列定向約束：
 
 ```text
 EXACTLY NINE DISTINCT COLOR BANDS, count them 1 through 9 before rendering; fixed order gray, pink-red, orange, gold-yellow, green, cyan, blue, purple, deep lapis; never omit or merge a band; all nine must be visibly separate; no text/letters/numbers.
 ```
 
-## 自检与取舍
+## 自檢與取捨
 
-- v1：`1122×1402`，约 4:5；无可读字符、伪 UI、第三方站点标志或禁用陈词，但只能明确辨认 8 条色带，判废并完整保留。
-- v2：`1003×1568`，视觉上恰好 9 条独立色带，顺序为灰、粉红、橙、金黄、绿、青、蓝、紫、深青金石蓝；无可读字符、字母或数字。
-- v2 原生比例不是 4:5。确定性构建从顶部对齐裁成 `1280×1600`，保住上部镜片 HERO，只裁去下方重复的暗灰条；源文件不改写。
-- 九色仅出现在镜片内，镜片外保留灰条；未见拼图、猴子/动物、放大镜、齿轮、浏览器窗框、光标、第三方标志或可辨页面外观。
-- 结论：v2 可进入确定性合成，最终成片仍待 owner 视觉审阅。
+- v1：`1122×1402`，約 4:5；無可讀字元、偽 UI、第三方站台標誌或禁用陳詞，但只能明確辨認 8 條色帶，判廢並完整保留。
+- v2：`1003×1568`，視覺上恰好 9 條獨立色帶，順序為灰、粉紅、橙、金黃、綠、青、藍、紫、深青金石藍；無可讀字元、字母或數字。
+- v2 原生比例不是 4:5。確定性建置從頂部對齊裁成 `1280×1600`，保住上部鏡片 HERO，只裁去下方重複的暗灰條；原始檔不改寫。
+- 九色僅出現在鏡片內，鏡片外保留灰條；未見拼圖、猴子/動物、放大鏡、齒輪、瀏覽器窗框、游標、第三方標誌或可辨頁面外觀。
+- 結論：v2 可進入確定性合成，最終成片仍待 owner 視覺審閱。

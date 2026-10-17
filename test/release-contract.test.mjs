@@ -77,9 +77,9 @@ const metadata = new Map(
 );
 
 test("pnpm release uses the guarded CDN publisher", () => {
-  // 精确版本是**有意**硬编码的绊线：packageManager 是全仓唯一的 pnpm 版本来源
-  // （本地、GitHub CI、.cnb.yml 都从它取），升版必须过这一条，不许无声漂移。
-  // 同时它也钉住「精确版本」这个形态 —— 写成 ^12 之类的范围会当场红。
+  // 精確版本是**有意**硬編碼的絆線：packageManager 是全倉唯一的 pnpm 版本來源
+  // （本機、GitHub CI、.cnb.yml 都從它取），升版必須過這一條，不許無聲漂移。
+  // 同時它也釘住「精確版本」這個形態 —— 寫成 ^12 之類的範圍會當場紅。
   assert.equal(packageJson.packageManager, "pnpm@12.6.0");
   assert.equal(packageJson.scripts.release, packageJson.scripts.publish);
   assert.match(pnpmWorkspace, /allowBuilds:\s+esbuild: true/);
@@ -253,18 +253,18 @@ test("Phase 7 removes temporary compatibility facades and keeps one document com
   assert.equal(runtimeScript.includes("module.exports"), false);
 });
 
-// 这一组合同盯两件不同的事，别混在一起：
+// 這一組合同盯兩件不同的事，別混在一起：
 //
-//  A. **当前源码**的功能集 —— `@description` 与 README 必须跟着它走。
-//     （防止再次漂移：功能改了名、加了开关，文案不跟着改就没人发现。）
-//  B. **已经发出去的 2.13.10** 的 runtime 里确实含有的标签 —— 只有这部分能对
-//     正式版产物做包含断言。
+//  A. **當前原始碼**的功能集 —— `@description` 與 README 必須跟著它走。
+//     （防止再次漂移：功能改了名、加了開關，文案不跟著改就沒人發現。）
+//  B. **已經發出去的 2.13.10** 的 runtime 裡確實含有的標籤 —— 只有這部分能對
+//     正式版產物做包含斷言。
 //
-// ★ 两者现在**故意不一致**：hover 卡的两个开关与受限内容的新名字都还在 canary 里，
-//   正式版 runtime 里没有那几行字。owner 2026-08-14 要求文案先行，
-//   所以 `@description` 已经写成了源码的样子，转 2.14.0 时 B 组会自动追上。
-// ★ 改 `@description` 不会让真机 QA 的戳失效 —— 那个戳用的是**行为哈希**，
-//   只豁免这一行（见 scripts/artifact-behaviour-hash.mjs）。
+// ★ 兩者現在**故意不一致**：hover 卡的兩個開關與受限內容的新名字都還在 canary 裡，
+//   正式版 runtime 裡沒有那幾行字。owner 2026-08-14 要求文案先行，
+//   所以 `@description` 已經寫成了原始碼的樣子，轉 2.14.0 時 B 組會自動追上。
+// ★ 改 `@description` 不會讓真機 QA 的戳失效 —— 那個戳用的是**行為雜湊**，
+//   只豁免這一行（見 scripts/artifact-behaviour-hash.mjs）。
 const SOURCE_LABELS = Object.freeze([
   "题号显示难度颜色",
   "题目悬停显示预览卡",
@@ -273,8 +273,8 @@ const SOURCE_LABELS = Object.freeze([
   "受限文章与剪贴板解限",
   "IDE 模式一键测试所有样例",
 ]);
-// ★ 2.14.0 转正之后两组重新合一：hover 卡的两个开关与受限内容的新名字都随这一版发出去了。
-//   下一次开 canary 周期、源码又走在前面时，这里再拆开写死那一版 runtime 真正含有的标签。
+// ★ 2.14.0 轉正之後兩組重新合一：hover 卡的兩個開關與受限內容的新名字都隨這一版發出去了。
+//   下一次開 canary 週期、原始碼又走在前面時，這裡再拆開寫死那一版 runtime 真正含有的標籤。
 const SHIPPED_LABELS = SOURCE_LABELS;
 
 test("description and README follow the current source feature set", () => {
@@ -282,7 +282,15 @@ test("description and README follow the current source feature set", () => {
     metadata.get("description"),
     `LuoguSP：${SOURCE_LABELS.join(" / ")}`,
   );
-  for (const label of SOURCE_LABELS)
+  const readmeLabels = [
+  "題號顯示難度顏色",
+  "題目懸停顯示預覽卡",
+  "使用者名/頭像懸停顯示預覽卡",
+  "個人頁顯示個人介紹",
+  "受限文章與剪貼板解限",
+  "IDE 模式一鍵測試所有樣例",
+  ];
+  for (const label of readmeLabels)
     assert.equal(readme.includes(`**${label}**`), true, label);
 });
 
@@ -291,7 +299,7 @@ test("the shipped runtime still contains every label it was released with", () =
     assert.equal(runtimeScript.includes(label), true, label);
 });
 
-// 当前源码里的描述符：键、默认值、存储键的形状不变。
+// 當前原始碼裡的描述符：鍵、預設值、儲存鍵的形狀不變。
 test("source feature descriptors keep their shape", () => {
   const storage = Object.freeze({
     get: () => true,
@@ -326,21 +334,21 @@ test("source feature descriptors keep their shape", () => {
   }
 });
 
-// ★★★ `reports/browser-qa.json` 曾经是**手写**的：仓库里没有任何东西能生成它，
-//    于是「改了产物就得重跑 QA」在操作上等于「补不回来」。现在它由
-//    `pnpm qa:browser` 生成，这条守卫盯着它别再退回手写。
+// ★★★ `reports/browser-qa.json` 曾經是**手寫**的：儲存庫裡沒有任何東西能生成它，
+//    於是「改了產物就得重跑 QA」在操作上等於「補不回來」。現在它由
+//    `pnpm qa:browser` 生成，這條守衛盯著它別再退回手寫。
 test("browser QA report is machine generated and covers this artifact", () => {
   const report = JSON.parse(
     fs.readFileSync(path.join(root, "reports", "browser-qa.json"), "utf8"),
   );
   assert.match(String(report.generatedBy), /qa:browser/);
   assert.equal(report.status, "passed");
-  // 它验的是**产物**（@require 指向的那份已发布 release），不是工作区源码 ——
-  // 所以报告里必须把那两条 URL 记下来，否则事后说不清跑的是哪一版。
+  // 它驗的是**產物**（@require 指向的那份已發佈 release），不是工作區原始碼 ——
+  // 所以報告裡必須把那兩條 URL 記下來，否則事後說不清跑的是哪一版。
   assert.equal(Array.isArray(report.requireUrls), true);
   assert.equal(report.requireUrls.length, 2);
   for (const url of report.requireUrls)
     assert.match(url, /#sha256=[0-9a-f]{64}$/, url);
-  // 覆盖范围必须写清楚，别让人误以为它验过按需块和保存站。
+  // 覆蓋範圍必須寫清楚，別讓人誤以為它驗過按需塊和保存站。
   assert.equal(report.limitations.length > 0, true);
 });

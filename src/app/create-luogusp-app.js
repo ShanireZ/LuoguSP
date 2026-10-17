@@ -81,7 +81,7 @@ export function createLuoguSPApp(options = {}) {
     loadBundle: options.hoverCardLoadBundle,
     fetchPage: options.hoverCardFetchPage,
   });
-  // ★ 这个数组的顺序**就是设置面板里的顺序**（owner 2026-08-14 第四轮点名要的排法）。
+  // ★ 這個陣列的順序**就是設定面板裡的順序**（owner 2026-08-14 第四輪點名要的排法）。
   const configurableFeatures = Object.freeze([
     problemColorFeature,
     hoverCardFeatures.problem,

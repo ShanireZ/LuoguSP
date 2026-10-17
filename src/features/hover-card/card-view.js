@@ -6,8 +6,8 @@ import {
   statusPresentation,
   xcpcBadge,
 } from "./luogu-native.js";
-// 卡片 DOM。★ 全程 createElement + textContent，不用 innerHTML 拼用户数据 ——
-// 题名、slogan、徽章、标签都来自洛谷，拼字符串等于把注入面留给上游。
+// 卡片 DOM。★ 全程 createElement + textContent，不用 innerHTML 拼使用者資料 ——
+// 題名、slogan、徽章、標籤都來自洛谷，拼字串等於把注入面留給上游。
 
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -18,9 +18,9 @@ const el = (tag, className, text) => {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// 原生徽章（✅ / 🎈）。FA 的 duotone 就是同一个 viewBox 里叠两段 path，
-// secondary 在下、primary 在上；颜色由 luogu-native 按等级给出（两个图标是反的）。
-// ★ 不用 innerHTML：path 数据是常量，但保持全仓一致的建 DOM 方式。
+// 原生徽章（✅ / 🎈）。FA 的 duotone 就是同一個 viewBox 裡疊兩段 path，
+// secondary 在下、primary 在上；顏色由 luogu-native 按等級給出（兩個圖標是反的）。
+// ★ 不用 innerHTML：path 資料是常數，但保持全倉一致的建 DOM 方式。
 const badgeIcon = (badge) => {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", badge.icon.viewBox);
@@ -57,17 +57,17 @@ const fmtDate = (seconds) =>
     ? new Date(seconds * 1000).toLocaleDateString("zh-CN")
     : null;
 
-// owner 拍板：小于 1000 全显示，小于 1000000 用 k，否则用 m。
+// owner 拍板：小於 1000 全顯示，小於 1000000 用 k，否則用 m。
 const fmtCount = (value) => abbreviateCount(value);
 
-// 洛谷原生页头背景图的兜底。★ 抄自 UserFloatCard 组件原文：
+// 洛谷原生頁頭背景圖的備援。★ 抄自 UserFloatCard 元件原文：
 // `user.background || "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg"`。
 const DEFAULT_HEADER_BACKGROUND =
   "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg";
 
-// 原生统计块：一个标签一个数字，横着铺。原生四项是 关注 / 粉丝 / 排名 / 等级分，
-// 其中等级分**只在 eloValue 有值时才出现**（组件原文里就是 `...e.eloValue?[…]:[]`）。
-// ★ 「排名」按 owner 2026-08-14 上一轮的明确要求移除，其余照原生。
+// 原生統計塊：一個標籤一個數字，橫著鋪。原生四項是 關注 / 粉絲 / 排名 / 等級分，
+// 其中等級分**只在 eloValue 有值時才出現**（元件原文裡就是 `...e.eloValue?[…]:[]`）。
+// ★ 「排名」按 owner 2026-08-14 上一輪的明確要求移除，其餘照原生。
 const statTile = (name, value) => {
   const tile = el("div", "luogusp-hc-stat");
   tile.appendChild(el("span", "luogusp-hc-stat-k", name));
@@ -90,9 +90,9 @@ export function renderProblemCard(card, options = {}) {
   const head = el("div", "luogusp-hc-head");
   const titles = el("div");
   titles.style.minWidth = "0";
-  // ★ owner 2026-08-14：难度**用题号的颜色表达**，不再单占一行文字。
-  //   这和插件自己的 problem-color 是同一套语义（也是洛谷自己的惯例），
-  //   题名保持正文色，免得整行都花掉。
+  // ★ owner 2026-08-14：難度**用題號的顏色表達**，不再單佔一行文字。
+  //   這和外掛自己的 problem-color 是同一套語義（也是洛谷自己的慣例），
+  //   題名保持正文色，免得整行都花掉。
   const title = el("p", "luogusp-hc-title");
   const pid = el("span", null, card.pid);
   pid.style.color = card.difficultyColor;
@@ -102,7 +102,7 @@ export function renderProblemCard(card, options = {}) {
   head.appendChild(titles);
   box.appendChild(head);
 
-  // owner 要求：通过数与提交数都要显示，且按 k / m 缩写。
+  // owner 要求：通過數與提交數都要顯示，且按 k / m 縮寫。
   if (card.acceptedCount !== null || card.submittedCount !== null)
     box.appendChild(
       row(
@@ -126,10 +126,10 @@ export function renderProblemCard(card, options = {}) {
       ),
     );
 
-  // ★ owner 拍板：标签默认折叠 —— 标签会剧透算法。
+  // ★ owner 拍板：標籤預設摺疊 —— 標籤會劇透演算法。
   if (card.tags.length) {
     const tags = el("div", "luogusp-hc-tags");
-    // owner 要求：按钮上不带统计数字。
+    // owner 要求：按鈕上不帶統計數字。
     const toggle = el("button", "luogusp-hc-tagbtn", "显示标签");
     toggle.type = "button";
     const list = el("div", "luogusp-hc-taglist");
@@ -154,10 +154,10 @@ export function renderProblemCard(card, options = {}) {
     mine.lastAttempt;
   if (hasMine) {
     box.appendChild(el("div", "luogusp-hc-sep"));
-    // 未知就说未知：accepted 缺失不等于「没通过」。
-    // owner 要求：用洛谷原生的状态表示。实测洛谷记录列表只渲染两种 ——
-    // status 12 = Accepted（#52c41a），其它（实测到 14）= Unaccepted（#e74c3c）。
-    // 细分状态（WA/TLE/…）的**数字码表本轮没取到证据**，所以不编。
+    // 未知就說未知：accepted 缺失不等於「沒通過」。
+    // owner 要求：用洛谷原生的狀態表示。實測洛谷記錄列表只繪製兩種 ——
+    // status 12 = Accepted（#52c41a），其它（實測到 14）= Unaccepted（#e74c3c）。
+    // 細分狀態（WA/TLE/…）的**數字碼表本輪沒取到證據**，所以不編。
     const native =
       mine.bestStatus !== null
         ? statusPresentation(mine.bestStatus)
@@ -190,7 +190,7 @@ export function renderProblemCard(card, options = {}) {
     if (mine.bookmarked === true) box.appendChild(row("收藏", "已收藏"));
   }
 
-  // ★ owner 2026-08-14 第四轮：这两个改成和用户卡一样的按钮，文案也改。
+  // ★ owner 2026-08-14 第四輪：這兩個改成和使用者卡一樣的按鈕，文案也改。
   const actions = el("div", "luogusp-hc-actions");
   actions.appendChild(linkButton("跳转题目", `${origin}/problem/${card.pid}`));
   if (mine.bestRecordId !== null)
@@ -205,7 +205,7 @@ export function renderUserCard(card, options = {}) {
   const { origin = "", onFollow, onBlock, followBusy = false, viewerUid = null } = options;
   const box = document.createDocumentFragment();
 
-  // ---- 原生卡的页头：背景图 + 压在上面的头像 ----
+  // ---- 原生卡的頁頭：背景圖 + 壓在上面的頭像 ----
   const header = el("div", "luogusp-hc-userhead");
   header.style.backgroundImage = `url("${(card.background || DEFAULT_HEADER_BACKGROUND).replace(/"/g, "%22")}")`;
   if (card.avatar) {
@@ -218,27 +218,27 @@ export function renderUserCard(card, options = {}) {
   box.appendChild(header);
 
   const body = el("div", "luogusp-hc-userbody");
-  // 用户名这一行是个左右两端对齐的 flex：左边名字 + 徽章 + 称号，右边贴着 uid。
-  // ★ owner 2026-08-14：uid 要在这一行**最右侧**。挂在这里而不是签名行 ——
-  //   签名会被截成两行，右边缘不稳定。
+  // 使用者名這一行是個左右兩端對齊的 flex：左邊名字 + 徽章 + 稱號，右邊貼著 uid。
+  // ★ owner 2026-08-14：uid 要在這一行**最右側**。掛在這裡而不是簽名行 ——
+  //   簽名會被截成兩行，右邊緣不穩定。
   const title = el("p", "luogusp-hc-title luogusp-hc-utitle");
   const identity = el("span", "luogusp-hc-identity");
   const nameLink = el("a", "luogusp-hc-name", card.name);
-  // 原生用户名就是按等级色渲染的，并且是加粗的（UserName 组件默认 noBold=false）。
+  // 原生使用者名就是按等級色繪製的，並且是加粗的（UserName 元件預設 noBold=false）。
   nameLink.style.color = levelColor(card.color);
   nameLink.href = `${origin}/user/${card.uid}`;
   nameLink.target = "_blank";
   nameLink.rel = "noopener noreferrer";
   identity.appendChild(nameLink);
-  // ★ ✅ 与 🎈 是真图标：两段 duotone path 抄自洛谷的 fontawsm 块，
-  //   分档与配色抄自 OiLevel / XcpcLevel 组件（见 luogu-native.js）。
+  // ★ ✅ 與 🎈 是真圖標：兩段 duotone path 抄自洛谷的 fontawsm 塊，
+  //   分檔與配色抄自 OiLevel / XcpcLevel 元件（見 luogu-native.js）。
   const badges = el("span", "luogusp-hc-badges");
   for (const badge of [ccfBadge(card.ccfLevel), xcpcBadge(card.xcpcLevel)])
     if (badge) badges.appendChild(badgeIcon(badge));
-  // 称号：原生是白字 + 等级色底 + 圆角 2px。
-  // ★★ owner 2026-08-14 第四轮报「管理员、作弊者没显示」。规则照抄 `UserName` 组件原文：
-  //    `Cheater` 色 → 「作弊者」；否则 `user.badge`；否则 `isAdmin` → 「管理员」；都没有就不画。
-  //    两个字面量取自洛谷自己的 i18n 表（`Cheat` / `Admin` 的 zh-CN 值）。
+  // 稱號：原生是白字 + 等級色底 + 圓角 2px。
+  // ★★ owner 2026-08-14 第四輪報「管理員、作弊者沒顯示」。規則照抄 `UserName` 元件原文：
+  //    `Cheater` 色 → 「作弊者」；否則 `user.badge`；否則 `isAdmin` → 「管理員」；都沒有就不畫。
+  //    兩個字面值取自洛谷自己的 i18n 表（`Cheat` / `Admin` 的 zh-CN 值）。
   const badgeText =
     card.color === "Cheater"
       ? "作弊者"
@@ -257,11 +257,11 @@ export function renderUserCard(card, options = {}) {
   title.appendChild(el("span", "luogusp-hc-uid", `uid : ${card.uid}`));
   body.appendChild(title);
 
-  // slogan。原生在空的时候回落到「这个人很懒，什么也没有留下。」，我们照做。
-  // ★ 过长交给 CSS 截（-webkit-line-clamp 两行），不在 JS 里切字符串 —— 会劈开 emoji。
-  // ★ owner 2026-08-14 第四轮：超两行时**在第二行末尾**给一个展开按钮，展开到最多 6 行
-  //   （再多也截断，免得卡片顶出视口）。按钮默认藏着，由 `finalizeCard()` 量完实际高度
-  //   再决定露不露 —— 只有真的溢出才需要它。
+  // slogan。原生在空的時候回落到「這個人很懶，什麼也沒有留下。」，我們照做。
+  // ★ 過長交給 CSS 截（-webkit-line-clamp 兩行），不在 JS 裡切字串 —— 會劈開 emoji。
+  // ★ owner 2026-08-14 第四輪：超兩行時**在第二行末尾**給一個展開按鈕，展開到最多 6 行
+  //   （再多也截斷，免得卡片頂出視口）。按鈕預設藏著，由 `finalizeCard()` 量完實際高度
+  //   再決定露不露 —— 只有真的溢出才需要它。
   const sloganBox = el("div", "luogusp-hc-slogan");
   const slogan = el(
     "div",
@@ -286,14 +286,14 @@ export function renderUserCard(card, options = {}) {
     stats.appendChild(statTile("关注", fmtCount(card.followingCount)));
   if (card.followerCount !== null)
     stats.appendChild(statTile("粉丝", fmtCount(card.followerCount)));
-  // ★ 等级分：原生取 `user.eloValue`。注意「eloValue 恒为 null」那条旧结论
-  //   **只对 `/user/{uid}` 成立**；主接口 `/api/user/info/{uid}` 里是真值，原生卡读的就是它。
+  // ★ 等級分：原生取 `user.eloValue`。注意「eloValue 恆為 null」那條舊結論
+  //   **只對 `/user/{uid}` 成立**；主介面 `/api/user/info/{uid}` 裡是真值，原生卡讀的就是它。
   if (card.eloRating !== null)
     stats.appendChild(statTile("等级分", String(card.eloRating)));
-  // ★ owner 2026-08-14：咕值与「通过 / 提交」从下面的扩展行**挪进这一排**，依次尾随。
+  // ★ owner 2026-08-14：咕值與「通過 / 提交」從下面的擴充行**挪進這一排**，依次尾隨。
   if (card.guRating !== null) stats.appendChild(statTile("咕值", String(card.guRating)));
-  // ★★ 「通过 / 提交」只认 `/user/{uid}` 的口径（主接口同名字段是提交**次数**，会大 8 倍）。
-  //    隐藏了做题情况的账号两个都拿不到（实测 397982），整格不画。
+  // ★★ 「通過 / 提交」只認 `/user/{uid}` 的口徑（主介面同名欄位是提交**次數**，會大 8 倍）。
+  //    隱藏了做題情況的帳號兩個都拿不到（實測 397982），整格不畫。
   if (card.passedCount !== null || card.submittedCount !== null)
     stats.appendChild(
       statTile(
@@ -303,13 +303,13 @@ export function renderUserCard(card, options = {}) {
     );
   if (stats.childNodes.length) body.appendChild(stats);
 
-  // ---- 操作区。原生是「关注 / 私信 / 更多(拉黑·举报·管理用户)」，
-  //      owner 要求把举报与屏蔽**摊开放在按钮行右侧**，不折叠。 ----
-  // ★ 看自己时原生整个操作区都不画（组件里的 `x.value || M.value`），我们照做。
+  // ---- 操作區。原生是「關注 / 私信 / 更多(拉黑·舉報·管理使用者)」，
+  //      owner 要求把舉報與屏蔽**攤開放在按鈕行右側**，不折疊。 ----
+  // ★ 看自己時原生整個操作區都不畫（元件裡的 `x.value || M.value`），我們照做。
   const isSelf = viewerUid !== null && viewerUid === card.uid;
   if (!isSelf) {
     const actions = el("div", "luogusp-hc-actions");
-    // 关注：拉黑状态下原生是禁用的（写着「已拉黑」），未知关系一律不给可点按钮。
+    // 關注：拉黑狀態下原生是禁用的（寫著「已拉黑」），未知關係一律不給可點按鈕。
     if (typeof onFollow === "function" && card.relation !== "unknown") {
       const blacklisted = card.relation === "blacklisted";
       const following = card.relation === "following";
@@ -333,13 +333,13 @@ export function renderUserCard(card, options = {}) {
       });
       actions.appendChild(follow);
     }
-    // 私信：原生就是一个到 /chat?uid= 的链接（路由名 chat.list）。
+    // 私信：原生就是一個到 /chat?uid= 的連結（路由名 chat.list）。
     actions.appendChild(linkButton("私信", `${origin}/chat?uid=${card.uid}`));
-    // ★ owner 2026-08-14 第四轮：私信与举报之间加一个「专栏」。
-    //   路由 user.show.article → /user/{uid}/article（`/_lfe/config` 里可查）。
+    // ★ owner 2026-08-14 第四輪：私信與舉報之間加一個「專欄」。
+    //   路由 user.show.article → /user/{uid}/article（`/_lfe/config` 裡可查）。
     actions.appendChild(linkButton("专栏", `${origin}/user/${card.uid}/article`));
-    // ★ 举报与屏蔽不靠右，**紧跟在私信/专栏后面**。
-    // 举报：原生也只是个链接，路由 ticket.create → /ticket/new。不发任何请求。
+    // ★ 舉報與屏蔽不靠右，**緊跟在私信/專欄後面**。
+    // 舉報：原生也只是個連結，路由 ticket.create → /ticket/new。不發任何請求。
     actions.appendChild(
       linkButton(
         "举报",
@@ -347,11 +347,11 @@ export function renderUserCard(card, options = {}) {
         "is-danger",
       ),
     );
-    // 屏蔽：**正在关注的人不能拉黑**（洛谷自己会拒）。
-    // ★★ owner 2026-08-14 拍板：确认改成**卡内就地确认**，不弹任何层。
-    //    点一下「屏蔽」，整条按钮行原地换成「确定屏蔽 XXX？[确定] [取消]」。
-    //    悬停卡本来就贴在指针底下，再叠一个居中弹层反而要用户把鼠标移开 ——
-    //    而鼠标一移开，卡片自己就该收起来了。
+    // 屏蔽：**正在關注的人不能拉黑**（洛谷自己會拒）。
+    // ★★ owner 2026-08-14 拍板：確認改成**卡內就地確認**，不彈任何層。
+    //    點一下「屏蔽」，整條按鈕行原地換成「確定屏蔽 XXX？[確定] [取消]」。
+    //    懸停卡本來就貼在指針底下，再疊一個居中彈層反而要使用者把滑鼠移開 ——
+    //    而滑鼠一移開，卡片自己就該收起來了。
     if (typeof onBlock === "function" && (card.relation === "unrelated" || card.relation === "blacklisted")) {
       const undo = card.relation === "blacklisted";
       const block = el("button", "luogusp-hc-btn is-ghost is-danger", undo ? "取消屏蔽" : "屏蔽");
@@ -387,7 +387,7 @@ export function renderUserCard(card, options = {}) {
         });
         ask.append(yes, no);
         actions.replaceWith(ask);
-        // 换了一行内容，高度可能变 —— 就地重定位，免得顶出视口。
+        // 換了一行內容，高度可能變 —— 就地重定位，免得頂出視口。
         if (typeof options.onResize === "function") options.onResize();
       });
       actions.appendChild(block);
@@ -395,14 +395,14 @@ export function renderUserCard(card, options = {}) {
     body.appendChild(actions);
   }
 
-  // ---- 到这里为止是「复刻」，下面是我们的扩展 ----
-  // 扩展区只剩上面那排放不下的东西。★ owner 2026-08-14 砍掉两行：
-  //   「关系」—— 关注按钮已经把关系说清楚了（关注 / 已关注 / 互相关注 / 已拉黑），重复；
-  //   「注册于」—— 不看。
-  //   咕值与通过/提交不是删掉，是**挪进了上面的统计排**。
+  // ---- 到這裡為止是「復刻」，下面是我們的擴充 ----
+  // 擴充區只剩上面那排放不下的東西。★ owner 2026-08-14 砍掉兩行：
+  //   「關係」—— 關注按鈕已經把關係說清楚了（關注 / 已關注 / 互相關注 / 已拉黑），重複；
+  //   「註冊於」—— 不看。
+  //   咕值與通過/提交不是刪掉，是**挪進了上面的統計排**。
   const extras = el("div", "luogusp-hc-extra");
-  // 获奖：最近 3 条，年份降序。★ 只取 `contest`（已经是简称），**不取 `event`** ——
-  // 那是「被认为是第 50 届 ICPC…上海站」这种全称，会把整行撑爆。
+  // 獲獎：最近 3 條，年份降序。★ 只取 `contest`（已經是簡稱），**不取 `event`** ——
+  // 那是「被認為是第 50 屆 ICPC…上海站」這種全稱，會把整行撐爆。
   if (card.prizes.length) {
     const entries = card.prizes
       .map((item) => item && item.prize)
@@ -423,9 +423,9 @@ export function renderUserCard(card, options = {}) {
   return box;
 }
 
-// 插入文档之后才做得了的那点收尾。★ 目前只有一件事：签名到底有没有溢出两行 ——
-// 没溢出就别摆那个「展开」按钮。读 `scrollHeight` 会强制一次同步布局，
-// 而这时候卡片已经在文档里、`hidden` 也已经摘掉，量得到真值。
+// 插入文件之後才做得了的那點收尾。★ 目前只有一件事：簽名到底有沒有溢出兩行 ——
+// 沒溢出就別擺那個「展開」按鈕。讀 `scrollHeight` 會強制一次同步佈局，
+// 而這時候卡片已經在文件裡、`hidden` 也已經摘掉，量得到真值。
 export function finalizeCard(cardEl) {
   const box = cardEl.querySelector(".luogusp-hc-slogan");
   const slogan = box && box.querySelector(".luogusp-hc-clamp");
@@ -435,14 +435,14 @@ export function finalizeCard(cardEl) {
 }
 
 // 卡片位置。
-// ★ owner 2026-08-14 第一轮报过「卡片离题目远、鼠标移过去时被换掉」：定位锚点用
-//   **指针所在的那一行**（调用方先挑好再传进来），间隙收到 4px。
-// ★★ owner 第四轮报「有的向上有的向下，向下时点开标签就出界」：
-//   旧判据是「下面放不下就翻上去」，于是下面差一点点也整张翻走；而翻上去同样放不下时
-//   又被压回视口内 —— 卡片高度一变（展开标签、展开签名）就顶出去。
-//   现在改成两步：**放得下就放下面，放不下挑空间大的那一边**，
-//   并且把 `max-height` 钉在那一侧的可用空间上（配合 CSS 的 `overflow:auto`），
-//   于是内容再长也只是卡片内部出滚动条，永远不出界。
+// ★ owner 2026-08-14 第一輪報過「卡片離題目遠、滑鼠移過去時被換掉」：定位錨點用
+//   **指針所在的那一行**（呼叫方先挑好再傳進來），間隙收到 4px。
+// ★★ owner 第四輪報「有的向上有的向下，向下時點開標籤就出界」：
+//   舊判據是「下面放不下就翻上去」，於是下面差一點點也整張翻走；而翻上去同樣放不下時
+//   又被壓回視口內 —— 卡片高度一變（展開標籤、展開簽名）就頂出去。
+//   現在改成兩步：**放得下就放下面，放不下挑空間大的那一邊**，
+//   並且把 `max-height` 釘在那一側的可用空間上（配合 CSS 的 `overflow:auto`），
+//   於是內容再長也只是卡片內部出捲軸，永遠不出界。
 export function placeCard(cardEl, rect, viewport, options = {}) {
   const gap = 4;
   const width = cardEl.offsetWidth || 320;
@@ -450,17 +450,17 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
   if (left + width > viewport.width - gap) left = viewport.width - width - gap;
   if (left < gap) left = gap;
 
-  // ★★★ 先把上一次钉的 max-height 摘掉再量。owner 2026-08-14 第七轮报
-  //    「展开之后越界」「下面明明放不下却还往下弹、右边出滚动条」——根因就在这：
-  //    上一次定位留下的 `max-height` 把 `offsetHeight` 夹住了，于是内容明明长高了，
-  //    量出来还是那个被夹住的旧高度，判据以为「下面放得下」，永远不翻上去。
-  //    **量之前必须先松开自己上一次施加的约束。**
+  // ★★★ 先把上一次釘的 max-height 摘掉再量。owner 2026-08-14 第七輪報
+  //    「展開之後越界」「下面明明放不下卻還往下彈、右邊出捲軸」——根因就在這：
+  //    上一次定位留下的 `max-height` 把 `offsetHeight` 夾住了，於是內容明明長高了，
+  //    量出來還是那個被夾住的舊高度，判據以為「下面放得下」，永遠不翻上去。
+  //    **量之前必須先鬆開自己上一次施加的約束。**
   cardEl.style.maxHeight = "";
-  // ★★★ 2.14.1「卡片跳走」。加载态的卡片里只有一个 16px 的转圈，连内边距才 ≈42px；
-  //   内容一到就是 ≈320px。拿转圈的真高去定边，**锚点下方余量 44~320px 时必然**
-  //   先落下方、内容一落地又翻到上方 —— 那是视口下部一大片区域，不是边角情形，
-  //   而且指针正朝原来那个位置移动，卡片从它底下跳走。
-  //   修法：加载态传 `assumeMinHeight`，用「内容将会有多高」去定边，而不是用转圈的高。
+  // ★★★ 2.14.1「卡片跳走」。載入態的卡片裡只有一個 16px 的轉圈，連內邊距才 ≈42px；
+  //   內容一到就是 ≈320px。拿轉圈的真高去定邊，**錨點下方餘量 44~320px 時必然**
+  //   先落下方、內容一完成實作又翻到上方 —— 那是視口下部一大片區域，不是邊角情形，
+  //   而且指針正朝原來那個位置移動，卡片從它底下跳走。
+  //   修法：載入態傳 `assumeMinHeight`，用「內容將會有多高」去定邊，而不是用轉圈的高。
   const natural = Math.max(
     cardEl.offsetHeight || 160,
     Number(options.assumeMinHeight) || 0,
@@ -468,18 +468,18 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
 
   const below = viewport.height - rect.bottom - gap * 2;
   const above = rect.top - gap * 2;
-  // ★★ 上下分界线（owner 要的「分界比例」就是这三句，按优先级从上往下读）：
-  //   1. **下面放得下就放下面** —— 阅读顺序自然，也是原生的习惯；
-  //   2. 下面放不下、**上面放得下就翻上去** —— 这一条是本轮补的。
-  //      旧判据是「下面放不下且 below < above 才翻」，于是「下面差一点点、但仍比上面宽」
-  //      的情形会赖在下面并被 max-height 夹出滚动条，正是 owner 看到的样子；
-  //   3. 两边都放不下 —— 才比谁宽，挑宽的那边，并把 max-height 钉在那一侧。
-  //      这时候出滚动条是没办法的事（视口本来就装不下），但绝不出界。
+  // ★★ 上下分界線（owner 要的「分界比例」就是這三句，按優先級從上往下讀）：
+  //   1. **下面放得下就放下面** —— 閱讀順序自然，也是原生的習慣；
+  //   2. 下面放不下、**上面放得下就翻上去** —— 這一條是本輪補的。
+  //      舊判據是「下面放不下且 below < above 才翻」，於是「下面差一點點、但仍比上面寬」
+  //      的情形會賴在下面並被 max-height 夾出捲軸，正是 owner 看到的樣子；
+  //   3. 兩邊都放不下 —— 才比誰寬，挑寬的那邊，並把 max-height 釘在那一側。
+  //      這時候出捲軸是沒辦法的事（視口本來就裝不下），但絕不出界。
   const fitsBelow = natural <= below;
   const fitsAbove = natural <= above;
-  // ★★ `forceBelow` 只在**内容落地那一次**由调用方钉住，沿用开卡时定的那一边，
-  //   保证「转圈在哪一边，内容就在哪一边」。之后（用户点展开标签/展开签名）
-  //   一律传 null，仍按上面那三句话重新判 —— owner 第七轮要的翻边行为一字不动。
+  // ★★ `forceBelow` 只在**內容完成實作那一次**由呼叫方釘住，沿用開卡時定的那一邊，
+  //   保證「轉圈在哪一邊，內容就在哪一邊」。之後（使用者點展開標籤/展開簽名）
+  //   一律傳 null，仍按上面那三句話重新判 —— owner 第七輪要的翻邊行為一字不動。
   const useBelow =
     typeof options.forceBelow === "boolean"
       ? options.forceBelow
@@ -495,7 +495,7 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
     top: Math.round(top),
     maxHeight: room,
     below: useBelow,
-    // 给测试与排查用：这次到底是「放得下」还是「两边都放不下只能挑大的」。
+    // 給測試與排查用：這次到底是「放得下」還是「兩邊都放不下只能挑大的」。
     fits: useBelow ? fitsBelow : fitsAbove,
   };
 }

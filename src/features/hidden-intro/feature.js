@@ -45,9 +45,9 @@ export function createHiddenIntroFeature({
     (document.head || document.documentElement).appendChild(style);
   };
 
-  // 个人页的子页是路径段（/user/{uid}/activity·/article·/practice·/following·/follower），
-  // 主页只有 /user/{uid} 本身；更深的路径洛谷返回 404，一律不认。个人介绍只属于主页。
-  // hash 不再参与判定：洛谷已放弃 hash 路由，/user/{uid}#practice 渲染出来的就是主页。
+  // 個人頁的子頁是路徑段（/user/{uid}/activity·/article·/practice·/following·/follower），
+  // 主頁只有 /user/{uid} 本身；更深的路徑洛谷回傳 404，一律不認。個人介紹只屬於主頁。
+  // hash 不再參與判定：洛谷已放棄 hash 路由，/user/{uid}#practice 繪製出來的就是主頁。
   const USER_ROUTE_PATTERN = /^\/(?:user|space)\/(\d+)(?:\/([^/]*))?\/?$/;
 
   function currentUserRoute() {

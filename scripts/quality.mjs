@@ -64,9 +64,9 @@ const budget = JSON.parse(budgetText);
 const browserQa = JSON.parse(browserQaText);
 const artifactText = artifact.toString("utf8");
 const artifactSha256 = createHash("sha256").update(artifact).digest("hex");
-// 真机 QA 的哈希戳用「行为哈希」比对：只豁免 `@description` 一行，
-// 其余（含每一条生效元数据与脚本体）分毫不动。理由与反证见
-// scripts/artifact-behaviour-hash.mjs 与 test/artifact-behaviour-hash.test.mjs。
+// 真機 QA 的雜湊戳用「行為雜湊」比對：只豁免 `@description` 一行，
+// 其餘（含每一條生效中繼資料與指令碼體）分毫不動。理由與反證見
+// scripts/artifact-behaviour-hash.mjs 與 test/artifact-behaviour-hash.test.mjs。
 const behaviorSha256 = behaviourHashOf(artifact.toString("utf8"));
 const parseSamples = [];
 for (let index = 0; index < 25; index++) {
@@ -190,9 +190,9 @@ if (
   throw new Error(
     "Production manifest does not pin a complete optional renderer",
   );
-// 受限内容按需块。正式版产物指向的 release 可能还没有这个块（2.14.0 之前都没有），
-// 所以这里按「清单声明了才校验」处理；块必须存在这件事由
-// test/restricted-lazy-bundle.test.mjs 的结构守卫无条件盯着。
+// 受限內容按需塊。正式版產物指向的 release 可能還沒有這個塊（2.14.0 之前都沒有），
+// 所以這裡按「清單宣告了才檢核」處理；塊必須存在這件事由
+// test/restricted-lazy-bundle.test.mjs 的結構守衛無條件盯著。
 const restrictedDescriptor = manifest.optionalBundles?.restrictedContent || null;
 const restrictedFile =
   restrictedDescriptor?.path && manifest.files?.[restrictedDescriptor.path];
@@ -224,7 +224,7 @@ if (
 )
   throw new Error("Optional restricted content gzip size drift");
 
-// hover 卡按需块：同 restrictedContent，「清单声明了才校验」。
+// hover 卡按需塊：同 restrictedContent，「清單宣告了才檢核」。
 const hoverDescriptor = manifest.optionalBundles?.hoverCard || null;
 const hoverFile =
   hoverDescriptor?.path && manifest.files?.[hoverDescriptor.path];
@@ -256,12 +256,12 @@ if (
 )
   throw new Error("Optional hover card gzip size drift");
 
-// ★★★ 这道门原先**只量正式版产物**（按 `LuoguSP.user.js` 的 @version 取 manifest），
-// canary 完全不在测量范围内。后果在 2026-08-14 真实发生过两次：
-//   一次是启动 @require 超预算 4601 B 零症状地过了两轮；
-//   一次是 hover 块超预算 76 B 发出去了，`quality budgets passed` 照样打印。
-// 「永远红不了的门等于没有门」—— 所以这里把**当前 canary 频道**的可选块也量进来。
-// ★ 判据仍是「清单声明了就必须钉全」而不是「必须存在」：没有 canary 频道就跳过。
+// ★★★ 這道門原先**只量正式版產物**（按 `LuoguSP.user.js` 的 @version 取 manifest），
+// canary 完全不在測量範圍內。後果在 2026-08-14 真實發生過兩次：
+//   一次是啟動 @require 超預算 4601 B 零症狀地過了兩輪；
+//   一次是 hover 塊超預算 76 B 發出去了，`quality budgets passed` 照樣列印。
+// 「永遠紅不了的門等於沒有門」—— 所以這裡把**當前 canary 頻道**的可選塊也量進來。
+// ★ 判據仍是「清單宣告了就必須釘全」而不是「必須存在」：沒有 canary 頻道就跳過。
 const canaryOptionalBundles = await (async () => {
   let channel;
   try {
@@ -434,12 +434,12 @@ if (writeReport) {
 
 if (check) {
   const failures = [];
-  // 依赖安装的一致性不再需要本仓自建的门：两边 CI 都跑 `pnpm install
-  // --frozen-lockfile`（lock 与 package.json 对不上它直接拒装），而本地与 CI
-  // 用同一个 pnpm 版本由 package.json 的 packageManager 字段强制 —— pnpm 12
-  // 在版本不符时以 ERR_PNPM_BAD_PM_VERSION 硬失败，不是警告。
-  // 这替掉了原来的 lock-sync 门（npm ci --dry-run）与 npm 大版本断言：
-  // 那两道门是为「日常 pnpm、CI 却跑 npm ci」这个双轨形态而存在的，双轨已取消。
+  // 依賴安裝的一致性不再需要本儲存庫自建的門：兩邊 CI 都跑 `pnpm install
+  // --frozen-lockfile`（lock 與 package.json 對不上它直接拒裝），而本機與 CI
+  // 用同一個 pnpm 版本由 package.json 的 packageManager 欄位強制 —— pnpm 12
+  // 在版本不符時以 ERR_PNPM_BAD_PM_VERSION 硬失敗，不是警告。
+  // 這替掉了原來的 lock-sync 門（npm ci --dry-run）與 npm 大版本斷言：
+  // 那兩道門是為「日常 pnpm、CI 卻跑 npm ci」這個雙軌形態而存在的，雙軌已取消。
   if (report.artifact.bytes > budget.artifact.maxBytes)
     failures.push(
       `artifact bytes ${report.artifact.bytes} > ${budget.artifact.maxBytes}`,
@@ -460,7 +460,7 @@ if (check) {
           "no passing browser QA report"
         }`,
       );
-    // 老报告没有行为哈希 → 退回整份文件比对（严格口径，不放水）。
+    // 老報告沒有行為雜湊 → 退回整份檔案比對（嚴格口徑，不放水）。
     if (
       report.browserQa.behaviorSha256
         ? report.browserQa.behaviorSha256 !== report.artifact.behaviorSha256
@@ -572,8 +572,8 @@ if (check) {
         `optional hover card gzip bytes ${report.optionalHoverCard.gzipBytes} > ${budget.optionalHoverCard.maxGzipBytes}`,
       );
   }
-  // canary 的可选块走同一套预算。名字→预算键的映射写死，映射不到的块**要报出来**，
-  // 否则新增一个块又会变成「没人量」。
+  // canary 的可選塊走同一套預算。名字→預算鍵的映射寫死，映射不到的塊**要報出來**，
+  // 否則新增一個塊又會變成「沒人量」。
   if (report.canaryOptionalBundles) {
     const budgetKeys = {
       markdownRenderer: "optionalRenderer",

@@ -8,9 +8,9 @@ import { createRestrictedContentFeature } from "../src/features/restricted-conte
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relative) => readFileSync(resolve(root, relative), "utf8");
 
-// 「显示受限文章与剪贴板」原本是启动包里最大的一块（实测 44506 B，占 121348 B 的 37%），
-// 却只在洛谷「安全访问中心」拦截页上才用得到，把所有人的每次页面加载都拖慢了。
-// 拆分后启动包 83321 B（预算 120000，余量 36679），重机械 44291 B / gzip 16236 B 按需拉。
+// 「顯示受限文章與剪貼板」原本是啟動包裡最大的一塊（實測 44506 B，佔 121348 B 的 37%），
+// 卻只在洛谷「安全訪問中心」攔截頁上才用得到，把所有人的每次頁面載入都拖慢了。
+// 拆分後啟動包 83321 B（預算 120000，餘量 36679），重機械 44291 B / gzip 16236 B 按需拉。
 
 const storage = { get: () => true, set: () => {} };
 
@@ -65,12 +65,12 @@ test("功能描述符不加载重机械就能给设置页用", () => {
   assert.equal(calls.load, 0);
 });
 
-// ★ 这就是本次拆分的全部意义：普通页面一个字节都不该拉。
+// ★ 這就是本次拆分的全部意義：普通頁面一個位元組都不該拉。
 test("不是拦截页时一个字节都不拉", async () => {
   for (const page of [
-    { title: "首页 - 洛谷" }, // 标题不匹配
+    { title: "首页 - 洛谷" }, // 標題不匹配
     { path: "/problem/P1001" }, // 路由不匹配
-    { target: "https://www.luogu.com/article/别的文章" }, // pre#url 指向别处
+    { target: "https://www.luogu.com/article/别的文章" }, // pre#url 指向別處
   ]) {
     const { feature, calls } = harness({ page });
     const dispose = feature.mount({ isCurrent: () => true });
@@ -93,7 +93,7 @@ test("拦截页才按需加载并把 mount 交给块里的实现", async () => {
   assert.equal(calls.dispose, 1);
 });
 
-// ★ mount 同步返回、块异步到达 —— 中间被 dispose 了就不许再挂上去。
+// ★ mount 同步回傳、塊非同步到達 —— 中間被 dispose 了就不許再掛上去。
 test("块到达前已被释放则不再挂载", async () => {
   let release = null;
   const { feature, calls } = harness({
@@ -104,7 +104,7 @@ test("块到达前已被释放则不再挂载", async () => {
       }),
   });
   const dispose = feature.mount({ isCurrent: () => true });
-  await settle(); // loadBundle 走在微任务上，等它真的被调用
+  await settle(); // loadBundle 走在微任務上，等它真的被呼叫
   assert.equal(typeof release, "function");
   dispose();
   release();
@@ -137,7 +137,7 @@ test("加载失败只报一次，不反复重试", async () => {
   assert.equal(errors.length, 1);
 });
 
-// ★ 没人接线就等于功能不存在，必须报出来 —— 静默会把它伪装成「功能没做」。
+// ★ 沒人串接就等於功能不存在，必須報出來 —— 靜默會把它偽裝成「功能沒做」。
 test("加载器没接线时报错，不静默也不抛", async () => {
   const { feature, errors } = harness({ loadBundle: null });
   const dispose = feature.mount({ isCurrent: () => true });
@@ -147,7 +147,7 @@ test("加载器没接线时报错，不静默也不抛", async () => {
   dispose();
 });
 
-// 加载层必须留在启动包并同步起手，否则拦截页会闪一下原始内容。
+// 載入層必須留在啟動包並同步起手，否則攔截頁會閃一下原始內容。
 test("onRoute 同步起加载层，且不为此把块拉下来", async () => {
   let started = 0;
   const { feature, calls } = harness({ gate: { start: () => void (started += 1) } });
@@ -166,9 +166,9 @@ test("块加载过之后 onRoute 才转发给它", async () => {
   assert.equal(calls.onRoute, 1);
 });
 
-// ---- 结构守卫 ----
-// 行为测试拦不住「声明了却没人接」：只要有一处接线漏了，功能就静默消失，
-// 而所有行为测试仍然全绿（它们注入的是自己的 loadBundle）。
+// ---- 結構守衛 ----
+// 行為測試攔不住「宣告了卻沒人接」：只要有一處串接漏了，功能就靜默消失，
+// 而所有行為測試仍然全綠（它們注入的是自己的 loadBundle）。
 
 test("应用根引的是薄壳，不是重机械", () => {
   const app = read("src/app/create-luogusp-app.js");
@@ -202,10 +202,10 @@ test("构建脚本把块写进 manifest.optionalBundles 与 files，并注入 de
   assert.match(build, /restrictedContent: restrictedContentBundle/);
 });
 
-// ★ canary.10 真机回归：早期加载层在 document-start 就用
-// `body>*{visibility:hidden}` 遮住了**所有** /article/*、/paste/* 页面，
-// 旧代码由 document-boot 在探测失败时释放。薄壳提前 return 却忘了释放，
-// 结果每一个正常文章/剪贴板页面都被永久遮成空白。
+// ★ canary.10 真機迴歸：早期載入層在 document-start 就用
+// `body>*{visibility:hidden}` 遮住了**所有** /article/*、/paste/* 頁面，
+// 舊程式碼由 document-boot 在探測失敗時釋放。薄殼提前 return 卻忘了釋放，
+// 結果每一個正常文章/剪貼板頁面都被永久遮成空白。
 test("不是拦截页时必须放掉早期加载层，否则正常文章页会一直空白", async () => {
   let released = 0;
   const gate = { start: () => {}, release: () => void (released += 1) };
@@ -217,11 +217,11 @@ test("不是拦截页时必须放掉早期加载层，否则正常文章页会�
   dispose();
 });
 
-// ★ canary.10 真机回归：`TypeError: Illegal invocation`。
-// `{ setTimeout, clearTimeout }` 简写会让 `clock.setTimeout(...)` 以 `this === clock`
-// 调用原生方法。在用户脚本沙箱里侥幸能过；一旦模块随按需块经 blob: 动态 import
-// 在**页面 realm** 执行，原生方法就会拒绝这个 this。
-// 行为测试拦不住它（测试都注入自己的时钟），所以只能结构守卫。
+// ★ canary.10 真機迴歸：`TypeError: Illegal invocation`。
+// `{ setTimeout, clearTimeout }` 簡寫會讓 `clock.setTimeout(...)` 以 `this === clock`
+// 呼叫原生方法。在使用者指令碼沙箱裡僥倖能過；一旦模組隨按需塊經 blob: 動態 import
+// 在**頁面 realm** 執行，原生方法就會拒絕這個 this。
+// 行為測試攔不住它（測試都注入自己的時鐘），所以只能結構守衛。
 test("源码里不得出现裸引用全局定时器的简写", () => {
   const offenders = [];
   const walk = (dir) => {
@@ -230,8 +230,8 @@ test("源码里不得出现裸引用全局定时器的简写", () => {
       if (entry.isDirectory()) walk(relative);
       else if (entry.name.endsWith(".js")) {
         const text = read(relative);
-        // 只匹配真的赋值 / 属性位置（`clock = {…}`、`clock: {…}`），
-        // 否则会误报到讲这条坑的注释文本上。
+        // 只匹配真的賦值 / 屬性位置（`clock = {…}`、`clock: {…}`），
+        // 否則會誤報到講這條坑的註解文字上。
         if (/[=:]\s*\{\s*setTimeout\s*,\s*clearTimeout\s*\}/.test(text))
           offenders.push(relative);
       }

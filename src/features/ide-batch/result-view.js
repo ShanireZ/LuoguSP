@@ -1,8 +1,8 @@
-// IDE 批量测试的**结果呈现**：输出归一化、逐行差异、三栏面板。
+// IDE 批量測試的**結果呈現**：輸出歸一化、逐行差異、三欄面板。
 //
-// ★ 从 `feature.js` 搬出来，理由只有一个：那个文件顶着 850 行的预算上限（搬之前 793）。
-//   搬的全是无闭包依赖的东西 —— 不读 IDE 的任何局部状态、不碰选择器表，
-//   所以行为逐字节不变。
+// ★ 從 `feature.js` 搬出來，理由只有一個：那個檔案頂著 850 行的預算上限（搬之前 793）。
+//   搬的全是無閉包依賴的東西 —— 不讀 IDE 的任何局部狀態、不碰選擇器表，
+//   所以行為逐位元組不變。
 import { makeCopyButton } from "../../browser/copy-button.js";
 
 export function normalizeIdeOut(s) {
@@ -14,9 +14,9 @@ export function normalizeIdeOut(s) {
     .replace(/\n+$/, "");
 }
 
-// 期望与实际逐行比对，返回不一致的行号集合。
-// ★ 以前内联在 `applyIdeResult` 里。单独拎出来是为了能直接测 ——
-//   它是「哪几行标红」的唯一判据。
+// 期望與實際逐行比對，回傳不一致的行號集合。
+// ★ 以前內聯在 `applyIdeResult` 裡。單獨拎出來是為了能直接測 ——
+//   它是「哪幾行標紅」的唯一判據。
 export function diffLineNumbers(expectedLines, actualLines) {
   const bad = new Set();
   const max = Math.max(expectedLines.length, actualLines.length);

@@ -14,7 +14,7 @@ const config = JSON.parse(
   fs.readFileSync(path.join(root, "config", "cdn.json"), "utf8"),
 );
 
-// wrangler --version 的真实输出（2026-08-15 本机实测）：版本号前面还有 banner。
+// wrangler --version 的真實輸出（2026-08-15 本機實測）：版本號前面還有 banner。
 const REAL_WRANGLER_VERSION_OUTPUT = `
  ⛅️ wrangler 4.123.0
 ───────────────────
@@ -29,15 +29,15 @@ test("版本号从 wrangler 的 banner 输出里读得出来", () => {
 test("下限比较逐段按数值走，不是字符串序", () => {
   assert.equal(satisfiesMinimum("4.107.0", "4.107.0"), true, "相等即满足");
   assert.equal(satisfiesMinimum("4.123.0", "4.107.0"), true);
-  // ★ 字符串比较会把 "4.99.0" 判成大于 "4.107.0"（"9" > "1"），逐段数值不会。
+  // ★ 字串比較會把 "4.99.0" 判成大於 "4.107.0"（"9" > "1"），逐段數值不會。
   assert.equal(satisfiesMinimum("4.99.0", "4.107.0"), false);
   assert.equal(satisfiesMinimum("3.200.0", "4.107.0"), false);
   assert.equal(satisfiesMinimum("4.107.1", "4.107.0"), true);
   assert.equal(satisfiesMinimum("garbage", "4.107.0"), false);
 });
 
-// ★★★ 反证：这道门顶替的是原来那个精确 pin。只断言「够新时放行」永远绿 ——
-//    要钉死的是「太旧必须拦下，而且要说清楚怎么办」。
+// ★★★ 反證：這道門頂替的是原來那個精確 pin。只斷言「夠新時放行」永遠綠 ——
+//    要釘死的是「太舊必須攔下，而且要說清楚怎麼辦」。
 test("全局 CLI 低于已验证下限必须拦下并给出修法", () => {
   assert.throws(
     () =>
@@ -54,7 +54,7 @@ test("全局 CLI 低于已验证下限必须拦下并给出修法", () => {
     },
   );
 
-  // 读不出版本号也必须失败，不许当作「大概没事」放过去。
+  // 讀不出版本號也必須失敗，不許當作「大概沒事」放過去。
   assert.throws(
     () =>
       assertCliBaseline({

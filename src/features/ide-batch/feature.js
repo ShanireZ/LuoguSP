@@ -31,10 +31,10 @@ export function createIdeBatchFeature({
   };
 
   // ============================================================
-  // IDE 模式一键测试所有样例
-  // 洛谷新版题目页（columba）IDE 模式（#ide）下，逐组驱动题面样例的原生「运行」，
-  // 结果从输出面板 DOM 捕获（结果经页面常驻 WS 推送，网络层拿不到——勿改走拦截）。
-  // 锚点与配色均来自 2026-07 洛谷 columba IDE 的真实页面观测。
+  // IDE 模式一鍵測試所有樣例
+  // 洛谷新版題目頁（columba）IDE 模式（#ide）下，逐組驅動題面樣例的原生「執行」，
+  // 結果從輸出面板 DOM 捕獲（結果經頁面常駐 WS 推送，網路層拿不到——勿改走攔截）。
+  // 錨點與配色均來自 2026-07 洛谷 columba IDE 的真實頁面觀測。
   // ============================================================
   function ideToolbarByTitle(title) {
     for (const tb of document.querySelectorAll(SELECTORS.ideToolbar)) {
@@ -45,10 +45,10 @@ export function createIdeBatchFeature({
   }
 
   const IDE_VIEW = {
-    activeTab: "custom", // custom=原生输入输出 / samples=样例面板
+    activeTab: "custom", // custom=原生輸入輸出 / samples=樣例面板
     tabBar: null,
     panel: null,
-    ioLayout: null, // 原生 输入|输出 水平分栏（tab 切换时显隐）
+    ioLayout: null, // 原生 輸入|輸出 水平分欄（tab 切換時顯隱）
     rowsEl: null,
     summaryEl: null,
     stopBtn: null,
@@ -79,9 +79,9 @@ export function createIdeBatchFeature({
     if (!pid) return null;
     const p = lentilleProblem();
     if (p && p.pid === pid && Array.isArray(p.samples)) return p.samples;
-    // SPA 换题后 lentille-context 滞留旧题（真机实测）→ 新版内容接口兜底。
-    // 注意：旧 `?_contentOnly=1` 在 columba 页面已死（返回整页 HTML），
-    // 正确姿势是带 x-lentille-request 头（真机实测 2026-07-22）。
+    // SPA 換題後 lentille-context 滯留舊題（真機實測）→ 新版內容介面備援。
+    // 注意：舊 `?_contentOnly=1` 在 columba 頁面已死（回傳整頁 HTML），
+    // 正確姿勢是帶 x-lentille-request 頭（真機實測 2026-07-22）。
     try {
       const res = await fetch(`/problem/${pid}`, {
         headers: { "x-lentille-request": "content-only" },
@@ -97,7 +97,7 @@ export function createIdeBatchFeature({
     return null;
   }
   function sampleRunButtons() {
-    // 「输入 #N」「输出 #N」各一块都带「运行」；只取输入块的，按 DOM 序=样例序
+    // 「輸入 #N」「輸出 #N」各一塊都帶「執行」；只取輸入塊的，按 DOM 序=樣例序
     const btns = [];
     for (const block of document.querySelectorAll(SELECTORS.ideSampleBlock)) {
       if (!/^(输入|Input)/i.test((block.textContent || "").trim())) continue;
@@ -111,7 +111,7 @@ export function createIdeBatchFeature({
   function readIdeCode() {
     const content = document.querySelector(SELECTORS.cmContent);
     if (!content) return "";
-    // 洛谷构建把 CM6 的 cmView 命名为 cmTile；拿不到就退化为可见文本（空代码检测够用）
+    // 洛谷建置把 CM6 的 cmView 命名為 cmTile；拿不到就退化為可見文字（空程式碼檢測夠用）
     const view = content.cmTile && content.cmTile.view;
     if (view && view.state && view.state.doc) return view.state.doc.toString();
     return content.textContent || "";
@@ -193,8 +193,8 @@ export function createIdeBatchFeature({
         : null,
     };
   }
-  // 完成锚点：胶囊 存在→消失→重现（实测清空 300~560ms、结果 1~3.5s）
-  // 注意：此处不看 stopReq——设计口径是「当前组跑完即停」，停止只在组间生效
+  // 完成錨點：膠囊 存在→消失→重現（實測清空 300~560ms、結果 1~3.5s）
+  // 注意：此處不看 stopReq——設計口徑是「當前組跑完即停」，停止只在組間生效
   async function waitIdePill(
     present,
     timeoutMs,
@@ -205,7 +205,7 @@ export function createIdeBatchFeature({
     while (Date.now() - t0 < timeoutMs) {
       if (!isCurrent()) return null;
       const parts = outputParts();
-      if (!parts) return null; // IDE 已卸载
+      if (!parts) return null; // IDE 已卸載
       if (!!parts.pill === present) return parts.pill || true;
       if (!(await wait(150))) return null;
     }
@@ -248,14 +248,14 @@ export function createIdeBatchFeature({
     };
   }
 
-  // 提示状态机搬到了 batch-hint.js（那边记着它为什么必须恢复成固定文案）。
+  // 提示狀態機搬到了 batch-hint.js（那邊記著它為什麼必須恢復成固定文案）。
   const ideHint = createBatchButtonHint({
     findButton: () => document.querySelector(".luogusp-ide-batch-btn"),
   });
   const ideBatchHint = (msg, running = false) => ideHint.show(msg, running);
 
-  // 判定口径同洛谷：CRLF 归一、去行尾空格、去末尾空行。仅用于 diff 渲染与交叉校验，
-  // 最终判定以原生胶囊为准（AC/WA 由洛谷前端本地比较）。
+  // 判定口徑同洛谷：CRLF 歸一、去行尾空格、去末尾空行。僅用於 diff 繪製與交叉檢核，
+  // 最終判定以原生膠囊為準（AC/WA 由洛谷前端本機比較）。
   function applyIdeResult(i, r, sample) {
     const p = ideRowParts(i);
     if (!p) return;
@@ -267,7 +267,7 @@ export function createIdeBatchFeature({
     p.detail.innerHTML = "";
     p.detail.classList.remove("luogusp-ide-log");
     if (r.verdict === "CE") {
-      // CE：不显示三栏，直接展示从输出框捕获的编译日志
+      // CE：不顯示三欄，直接展示從輸出框捕獲的編譯紀錄
       p.meta.textContent = "";
       p.detail.classList.add("luogusp-ide-log");
       p.detail.appendChild(
@@ -287,14 +287,14 @@ export function createIdeBatchFeature({
       note.textContent = r.note;
       p.detail.appendChild(note);
       if (r.output == null) {
-        p.detail.classList.add("luogusp-ide-log"); // UKE 无产物，只留说明
+        p.detail.classList.add("luogusp-ide-log"); // UKE 無產物，只留說明
         return;
       }
     }
     if (r.verdict === "RE" && r.detail) {
       const note = document.createElement("p");
       note.className = "luogusp-ide-note";
-      note.textContent = r.detail; // RE 原因位于原生 run-result
+      note.textContent = r.detail; // RE 原因位於原生 run-result
       p.detail.appendChild(note);
       p.meta.textContent = "";
     }
@@ -350,14 +350,14 @@ export function createIdeBatchFeature({
       IDE_VIEW.summaryEl.textContent += " · 结果可能已过期，建议重新测试";
   }
   function hookIdeStaleAndGuard(controls) {
-    // 代码变更 → 过期标注（CM6 是 contenteditable，input/keydown 均会冒泡）
+    // 程式碼變更 → 過期標註（CM6 是 contenteditable，input/keydown 均會冒泡）
     const stale = (e) => {
       if (e.target && e.target.closest && e.target.closest(SELECTORS.cmContent))
         controls.markStale();
     };
     document.addEventListener("input", stale, true);
     document.addEventListener("keydown", stale, true);
-    // 批测中拦掉用户手点原生 运行/自测（程序化点击带 driving 标记放行）
+    // 批測中攔掉使用者手點原生 執行/自測（處理程序化點擊帶 driving 標記放行）
     const guard = (e) => {
       if (!controls.isRunning() || controls.isDriving()) return;
       const t =
@@ -379,10 +379,10 @@ export function createIdeBatchFeature({
     };
   }
 
-  // 克隆原生控件时，模板身上的浮泡/读屏名字会一起被抄走 —— 换了文字也换不掉它。
-  // 侧栏「插件设置」就是这么把「文章广场」的浮泡带出来的（2026-08-20 owner 报的）。
-  // ★ 这里是同形防御：IDE 页要登录，我没法量「自测」按钮到底带不带 title，
-  //   所以按最坏情况剥净；真站上若本来就没有，这两行等于空转。data-v-* 是作用域 CSS，绝不能碰。
+  // 克隆原生控件時，範本身上的浮泡/讀屏名字會一起被抄走 —— 換了文字也換不掉它。
+  // 側欄「外掛設定」就是這麼把「文章廣場」的浮泡帶出來的（2026-08-20 owner 報的）。
+  // ★ 這裡是同形防禦：IDE 頁要登入，我沒法量「自測」按鈕到底帶不帶 title，
+  //   所以按最壞情況剝淨；真站上若本來就沒有，這兩行等於空轉。data-v-* 是作用域 CSS，絕不能碰。
   function dropInheritedNames(el) {
     for (const node of [el, ...el.querySelectorAll("*")])
       for (const name of ["title", "aria-label", "aria-labelledby"])
@@ -398,7 +398,7 @@ export function createIdeBatchFeature({
       (b) => (b.textContent || "").trim() === "自测",
     );
     if (!selfTest) return;
-    // 克隆原生「自测」按钮继承洛谷样式（含 data-v 作用域），只换文字
+    // 克隆原生「自測」按鈕繼承洛谷樣式（含 data-v 作用域），只換文字
     const btn = selfTest.cloneNode(true);
     btn.textContent = IDE_BATCH_LABEL;
     dropInheritedNames(btn);
@@ -416,7 +416,7 @@ export function createIdeBatchFeature({
     if (IDE_VIEW.tabBar && document.contains(IDE_VIEW.tabBar)) return;
     const inputTb = ideToolbarByTitle("输入");
     if (!inputTb) return;
-    const ioLayout = inputTb.closest(".panel-layout"); // 底部 输入|输出 水平分栏
+    const ioLayout = inputTb.closest(".panel-layout"); // 底部 輸入|輸出 水平分欄
     const host = ioLayout && ioLayout.parentElement;
     if (!host) return;
     host
@@ -440,7 +440,7 @@ export function createIdeBatchFeature({
       '<span class="luogusp-ide-headbtns"></span>' +
       "</div>" +
       '<div class="luogusp-ide-rows"></div>';
-    // 停止/重新测试：同样克隆原生「自测」继承样式
+    // 停止/重新測試：同樣克隆原生「自測」繼承樣式
     const tpl = [
       ...document.querySelectorAll(`${SELECTORS.ideToolbar} button`),
     ].find(
@@ -555,7 +555,7 @@ export function createIdeBatchFeature({
   }
 
   function unmountIdeBatchUI() {
-    IDE_VIEW.activeTab = "custom"; // 复位，防再次进入时默认落在空面板
+    IDE_VIEW.activeTab = "custom"; // 復位，防再次進入時預設落在空面板
     IDE_VIEW.tabBar = IDE_VIEW.panel = IDE_VIEW.ioLayout = null;
     IDE_VIEW.rowsEl = IDE_VIEW.summaryEl = IDE_VIEW.stopBtn = null;
   }

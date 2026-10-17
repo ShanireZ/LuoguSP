@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
 
-// 用户脚本产物的「行为哈希」。
+// 使用者指令碼產物的「行為雜湊」。
 //
-// ★★★ 为什么不用整份文件的 sha256：`reports/browser-qa.json` 用它来证明
-//    「这份产物真的在浏览器里跑过」。但 `@description` 是**纯展示文本** ——
-//    油猴只把它显示在管理面板里，改它不可能改变任何运行时行为。
-//    而那份报告是**手工维护**的（仓库里没有脚本生成它，也没装 Playwright），
-//    一旦因为改了一行说明就作废，就再也补不回来。
+// ★★★ 為什麼不用整份檔案的 sha256：`reports/browser-qa.json` 用它來證明
+//    「這份產物真的在瀏覽器裡跑過」。但 `@description` 是**純展示文字** ——
+//    油猴只把它顯示在管理面板裡，改它不可能改變任何執行環境行為。
+//    而那份報告是**手動維護**的（儲存庫裡沒有指令碼生成它，也沒裝 Playwright），
+//    一旦因為改了一行說明就作廢，就再也補不回來。
 //
-// ★ 所以只豁免 `@description` 这一行，其余分毫不动：
-//   `@require`（钉死的 CDN 产物）、`@match`、`@grant`、`@connect`、`@run-at`、
-//   `@sandbox` 全都改变行为，一个都不豁免；脚本体更是原样参与。
-//   这是把门**修准**，不是放松。
+// ★ 所以只豁免 `@description` 這一行，其餘分毫不動：
+//   `@require`（釘死的 CDN 產物）、`@match`、`@grant`、`@connect`、`@run-at`、
+//   `@sandbox` 全都改變行為，一個都不豁免；指令碼體更是原樣參與。
+//   這是把門**修準**，不是放鬆。
 const DESCRIPTION_LINE = /^\/\/ @description\s.*$/m;
 const PLACEHOLDER = "// @description  <not part of the behaviour hash>";
 

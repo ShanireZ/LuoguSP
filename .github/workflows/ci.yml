@@ -19,10 +19,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # ★ 必须排在 setup-node 之前：下面那步的 `cache: pnpm` 会去调 pnpm 定位 store，
-      #   找不到可执行文件就在「Set up Node」当场失败，后面全被跳过。
-      #   版本不写在这里 —— action 读 package.json 的 packageManager 字段，
-      #   与本地、与 pnpm 自身的版本校验共用同一个来源。
+      # ★ 必須排在 setup-node 之前：下面那步的 `cache: pnpm` 會去調 pnpm 定位 store，
+      #   找不到執行檔就在「Set up Node」當場失敗，後面全被跳過。
+      #   版本不寫在這裡 —— action 讀 package.json 的 packageManager 欄位，
+      #   與本機、與 pnpm 自身的版本檢核共用同一個來源。
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
 
@@ -32,10 +32,10 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
 
-      # `--frozen-lockfile` 是这里唯一的 lock 一致性判据：pnpm-lock.yaml 与
-      # package.json 对不上就直接拒装。本仓曾经维护两份 lockfile 并靠
-      # scripts/lock-sync.mjs 把「只刷新了 pnpm 那份」搬到本地报错，
-      # 2026-08-17 全量切 pnpm 后单一 lockfile，那道门连同 npm 轨一并撤除。
+      # `--frozen-lockfile` 是這裡唯一的 lock 一致性判據：pnpm-lock.yaml 與
+      # package.json 對不上就直接拒裝。本儲存庫曾經維護兩份 lockfile 並靠
+      # scripts/lock-sync.mjs 把「只刷新了 pnpm 那份」搬到本機回報錯誤，
+      # 2026-08-17 全量切 pnpm 後單一 lockfile，那道門連同 npm 軌一併撤除。
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 

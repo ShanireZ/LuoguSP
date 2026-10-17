@@ -12,13 +12,13 @@ import {
   completeRestrictedArticleInteraction,
 } from "../src/features/restricted-content/article-interaction-state.js";
 
-// 契约来源（2026-08-13 在真实登录态下实测，见 handoff/26-8-13.md）：
+// 契約來源（2026-08-13 在真實登入態下實測，見 handoff/26-8-13.md）：
 //   GET /user/{authorUid}/article?page=N   Header: x-lentille-request: content-only
 //   → { data: { articles: { perPage: 10, count: 26, result: [ … ] } } }
 //   result[i] = { lid, title, category, time, author, upvote, replyCount,
 //                 favorCount, status, solutionFor, promoteStatus, collection, content }
-// 受限文章 2l4x53kj 实测 upvote=24 / favorCount=22 / replyCount=50，
-// 与真机点赞实测的真值 24 一致（保存站快照当时是 19 / 17）。
+// 受限文章 2l4x53kj 實測 upvote=24 / favorCount=22 / replyCount=50，
+// 與真機點贊實測的真值 24 一致（保存站快照當時是 19 / 17）。
 
 const LID = "2l4x53kj";
 const AUTHOR = 697932;
@@ -31,7 +31,7 @@ function listPayload(rows, { perPage = 10, count = rows.length } = {}) {
   return { data: { articles: { perPage, count, result: rows } } };
 }
 
-// fetchPage 桩：按页号返回预置载荷，并记录每次调用的 (path, init)。
+// fetchPage 樁：按頁號回傳預置載荷，並記錄每次呼叫的 (path, init)。
 function stubFetch(pages, options = {}) {
   const calls = [];
   const fetchPage = (path, signal, init) => {
@@ -42,7 +42,7 @@ function stubFetch(pages, options = {}) {
     const entry = pages[page];
     if (entry === undefined) return Promise.resolve({ ok: false });
     if (entry === "waf")
-      // 拦截页是 HTTP 200 + text/html，`json()` 会抛。
+      // 攔截頁是 HTTP 200 + text/html，`json()` 會拋。
       return Promise.resolve({ ok: true, json: () => Promise.reject(new SyntaxError("Unexpected token <")) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve(entry) });
   };
@@ -83,7 +83,7 @@ test("载荷解析只接受 data.articles.result 是数组的形状", () => {
   assert.equal(parseArticleListPayload({ data: {} }), null);
   assert.equal(parseArticleListPayload({ data: { articles: [] } }), null);
   assert.equal(parseArticleListPayload({ data: { articles: { result: {} } } }), null);
-  // perPage / count 缺失或非法时降级为 null，而不是编一个数字出来。
+  // perPage / count 缺失或非法時降級為 null，而不是編一個數字出來。
   const loose = parseArticleListPayload({ data: { articles: { result: [], perPage: "x", count: -1 } } });
   assert.equal(loose.perPage, null);
   assert.equal(loose.count, null);
@@ -108,14 +108,14 @@ test("命中项取三个计数；0 是合法计数，不是缺失", () => {
   });
 });
 
-// ★ canary.7 踩过的坑：Number(null) === 0 且 Number.isFinite(0) 为真。
-// 只判 isFinite 会把「字段缺失」伪造成 0，再反过来盖掉保存站的真实值。
+// ★ canary.7 踩過的坑：Number(null) === 0 且 Number.isFinite(0) 為真。
+// 只判 isFinite 會把「欄位缺失」偽造成 0，再反過來蓋掉保存站的真實值。
 test("upvote 或 favorCount 缺失时整体作废，绝不伪造 0", () => {
   for (const bad of [null, undefined, "", "abc", NaN]) {
     assert.equal(pickLiveCounts([row(LID, { upvote: bad })], LID), null, `upvote=${String(bad)}`);
     assert.equal(pickLiveCounts([row(LID, { favorCount: bad })], LID), null, `favorCount=${String(bad)}`);
   }
-  // replyCount 允许缺失：调用方回落到已加载的评论条数。
+  // replyCount 允許缺失：呼叫方回落到已載入的評論條數。
   assert.deepEqual(pickLiveCounts([row(LID, { replyCount: null })], LID), {
     upvote: 1,
     favorCount: 2,
@@ -168,7 +168,7 @@ test("列表页数超出上限时只扫前 N 页，并把截断报出来", async
   });
   assert.equal(result, null);
   assert.equal(calls.length, 3);
-  // 默默少扫几页会让「没找到」看起来像「洛谷没有这条数据」。
+  // 默默少掃幾頁會讓「沒找到」看起來像「洛谷沒有這條資料」。
   assert.deepEqual(truncations, [
     { lid: LID, totalPages: 50, scannedPages: 3, category: null },
   ]);
@@ -208,7 +208,7 @@ test("作者 uid 或 lid 非法时一次请求都不发", async () => {
   assert.equal(await resolveLiveArticleCounts(), null);
 });
 
-// ---- 与合并层的接线 ----
+// ---- 與合併層的串接 ----
 
 const archivedArticle = { lid: LID, upvote: 19, favorCount: 17, replyCount: 45 };
 
@@ -224,13 +224,13 @@ test("实时计数无条件压过已确认记录的计数（后者只是更早�
   assert.equal(merged.article.upvote, 24);
   assert.equal(merged.article.favorCount, 22);
   assert.equal(merged.article.replyCount, 50);
-  // 个人状态仍然只认已确认记录。
+  // 個人狀態仍然只認已確認記錄。
   assert.equal(merged.voted, 1);
   assert.equal(merged.favored, true);
 });
 
-// ★ 列表 API 不含个人状态。就算哪天洛谷给它加上了，也不许从这条路进来 ——
-// 这正是「不用 false 伪造未收藏」那条规则的延伸。
+// ★ 列表 API 不含個人狀態。就算哪天洛谷給它加上了，也不許從這條路進來 ——
+// 這正是「不用 false 偽造未收藏」那條規則的延伸。
 test("live 里即使带了个人状态也不得泄漏进结果", () => {
   const merged = completeRestrictedArticleInteraction({
     article: { ...archivedArticle },
@@ -257,7 +257,7 @@ test("拿不到实时计数时行为与改动前完全一致", () => {
   const withoutLive = completeRestrictedArticleInteraction(base);
   const withNullLive = completeRestrictedArticleInteraction({ ...base, live: null });
   assert.deepEqual(withNullLive, withoutLive);
-  // 确认记录比存档新 → 沿用确认计数；replyCount 保持调用方传入的评论条数。
+  // 確認記錄比存檔新 → 沿用確認計數；replyCount 保持呼叫方傳入的評論條數。
   assert.equal(withoutLive.article.upvote, 20);
   assert.equal(withoutLive.article.favorCount, 18);
   assert.equal(withoutLive.article.replyCount, 45);
@@ -290,8 +290,8 @@ test("live 缺 replyCount 时保留调用方传入的评论条数", () => {
   assert.equal(merged.article.upvote, 24);
 });
 
-// ★ `?category=N` 实测生效（作者 697932：26 篇 → category=3 只剩 4 篇），
-// 而保存站存档里就带 category，所以扫页前就能把搜索空间缩小若干倍。
+// ★ `?category=N` 實測生效（作者 697932：26 篇 → category=3 只剩 4 篇），
+// 而保存站存檔裡就帶 category，所以掃頁前就能把搜尋空間縮小若干倍。
 test("给了分类就带 category 过滤扫，命中后不再全量扫", async () => {
   const { fetchPage, calls } = stubFetch({
     1: listPayload([row(LID, { upvote: 24, favorCount: 22, replyCount: 50 })], { count: 4 }),
@@ -309,7 +309,7 @@ test("给了分类就带 category 过滤扫，命中后不再全量扫", async (
   ]);
 });
 
-// 存档里的 category 可能已经过期（文章被改分类），过滤扫不到必须退回全量扫。
+// 存檔裡的 category 可能已經過期（文章被改分類），過濾掃不到必須退回全量掃。
 test("分类过滤扫不到时退回全量扫", async () => {
   const calls = [];
   const fetchPage = (path, signal, init) => {
@@ -336,7 +336,7 @@ test("非法分类不进 URL", async () => {
   }
 });
 
-// 40 页一次性并发发出去对洛谷不礼貌，也容易踩限流。
+// 40 頁一次性並行發出去對洛谷不禮貌，也容易踩限流。
 test("剩余页按并发上限分批，不是一次性全撒出去", async () => {
   const inFlight = { now: 0, peak: 0 };
   const pages = {};
@@ -358,8 +358,8 @@ test("剩余页按并发上限分批，不是一次性全撒出去", async () =>
   assert.ok(inFlight.peak <= 3, `峰值并发 ${inFlight.peak} 应当 <= 3`);
 });
 
-// ★ 保存站只有入档时间；实测 2l4x53kj 入档 2026-01-02、真实发表 2025-10-01，
-// 差了三个月。把入档时间当发表时间显示是错的。
+// ★ 保存站只有入檔時間；實測 2l4x53kj 入檔 2026-01-02、真實發表 2025-10-01，
+// 差了三個月。把入檔時間當發表時間顯示是錯的。
 test("发表时间取 live 真值；缺失或非正数则留 null", () => {
   assert.equal(pickLiveCounts([row(LID, { time: 1759309175 })], LID).time, 1759309175);
   for (const bad of [null, undefined, "", 0, -1, "abc"])
@@ -377,7 +377,7 @@ test("合并层用 live 的发表时间覆盖存档入档时间", () => {
     live: { upvote: 24, favorCount: 22, replyCount: 50, time: 1759309175 },
   });
   assert.equal(merged.article.time, 1759309175);
-  // 拿不到真值时保留调用方传入的值，不擅自改成 0。
+  // 拿不到真值時保留呼叫方傳入的值，不擅自改成 0。
   const fallback = completeRestrictedArticleInteraction({
     article: { ...archivedArticle, time: archivedSeconds },
     archived: {},
@@ -389,7 +389,7 @@ test("合并层用 live 的发表时间覆盖存档入档时间", () => {
   assert.equal(fallback.article.time, archivedSeconds);
 });
 
-// ★ 页数预算跨两次尝试共享：否则「分类过滤扫不到 → 全量扫」会把请求数翻倍。
+// ★ 頁數預算跨兩次嘗試共享：否則「分類過濾掃不到 → 全量掃」會把請求數翻倍。
 test("分类回退不得让请求数翻倍：页数预算跨尝试共享", async () => {
   const calls = [];
   const fetchPage = (path) => {
@@ -401,14 +401,14 @@ test("分类回退不得让请求数翻倍：页数预算跨尝试共享", async
   };
   const result = await resolve(fetchPage, { category: 3, maxPages: 4, concurrency: 2 });
   assert.equal(result, null);
-  // 4 页预算 = 两次尝试合计最多 4 次请求，不是每次 4 页。
+  // 4 頁預算 = 兩次嘗試合計最多 4 次請求，不是每次 4 頁。
   assert.equal(calls.length, 4, calls.join(" "));
   assert.ok(calls.some((p) => p.includes("category=3")));
 });
 
-// owner 拍板接上：此前 feature.js 只能硬写 solutionFor:null / status:2。
-// 官方组件读的是 article.solutionFor.pid（链到 problem.solution），
-// 所以原样透传洛谷自己的字段，形状不由我们构造。
+// owner 拍板接上：此前 feature.js 只能硬寫 solutionFor:null / status:2。
+// 官方元件讀的是 article.solutionFor.pid（鏈到 problem.solution），
+// 所以原樣透傳洛谷自己的欄位，形狀不由我們建構。
 test("题解归属与审核状态原样透传，非对象的 solutionFor 一律作废", () => {
   const sol = { pid: "P3372", title: "【模板】线段树 1" };
   const hit = pickLiveCounts([row(LID, { status: 2, solutionFor: sol })], LID);
@@ -430,7 +430,7 @@ test("合并层把 solutionFor 与 status 覆盖到官方 article 上", () => {
   });
   assert.equal(merged.article.status, 3);
   assert.deepEqual(merged.article.solutionFor, sol);
-  // 拿不到 live 时保留调用方传入的硬编码值，不擅自改。
+  // 拿不到 live 時保留呼叫方傳入的硬編碼值，不擅自改。
   const fallback = completeRestrictedArticleInteraction({
     article: { ...archivedArticle, status: 2, solutionFor: null },
     archived: {},
@@ -443,10 +443,10 @@ test("合并层把 solutionFor 与 status 覆盖到官方 article 上", () => {
   assert.equal(fallback.article.solutionFor, null);
 });
 
-// ★ 结构守卫：`article-live-counts.js` 写死了「截断必须报出来 —— 默默少扫几页会让
-//   『没找到』看起来像『洛谷没有这条数据』」，而这条回调的**唯一**生产调用点在
-//   restricted-content/feature.js。此前那里根本没传 onTruncated，截断被静默吞掉，
-//   正好是注释禁止的那种失效。行为本身在上面已经测过，这里只钉住「接线还在」。
+// ★ 結構守衛：`article-live-counts.js` 寫死了「截斷必須報出來 —— 默默少掃幾頁會讓
+//   『沒找到』看起來像『洛谷沒有這條資料』」，而這條回呼的**唯一**生產呼叫點在
+//   restricted-content/feature.js。此前那裡根本沒傳 onTruncated，截斷被靜默吞掉，
+//   正好是註解禁止的那種失效。行為本身在上面已經測過，這裡只釘住「串接還在」。
 test("受限文章页把 onTruncated 接了线，截断不会被静默吞掉", () => {
   const root = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
   const source = readFileSync(

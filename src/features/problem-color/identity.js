@@ -1,17 +1,17 @@
-// ★★★ pid 的字符集判据，全仓**唯一**一份（hover 卡那边由 anchors.js 再导出）。
-//   放在这里而不是 anchors.js：本文件同时进启动包（problem-color）与 hover 卡按需块，
-//   而 anchors.js 只在后者里。`sources.js` 曾经自己写过一份漏掉下划线的，
-//   于是 `AT_abc397_a` 这类题在数据层被当成非法 pid 直接退出（owner 2026-08-14 第五轮）。
+// ★★★ pid 的字元集判據，全倉**唯一**一份（hover 卡那邊由 anchors.js 再匯出）。
+//   放在這裡而不是 anchors.js：本檔案同時進啟動包（problem-color）與 hover 卡按需塊，
+//   而 anchors.js 只在後者裡。`sources.js` 曾經自己寫過一份漏掉下劃線的，
+//   於是 `AT_abc397_a` 這類題在資料層被當成非法 pid 直接退出（owner 2026-08-14 第五輪）。
 //
-// ★★ 为什么它必须参与 `isProblemId`（2026-08-15 实测复现）：pid 的两个来源
-//   —— void 锚点的**可见文本**与 `?forum=` 的**取值** —— 都是页面内容，攻击者可控
-//   （讨论区是用户生成内容），而 pipeline.js 会把它原样拼进 `/problem/${pid}?_contentOnly=1`。
-//   旧判据只要求「含字母且含数字」，于是：
-//     `P1000#zzz`               → 井号截断，实际请求 `/problem/P1000`（连 query 都被吃掉），
-//                                 于是**把别的题的难度染到这个锚点上**；
-//     `a1/../../api/user/search` → 实际请求 `https://www.luogu.com.cn/api/user/search`，
-//                                 带着同源 Cookie 打到一个完全不相干的接口。
-//   两条都是真机可构造的，不是理论风险。字符集守卫把它们整类关死。
+// ★★ 為什麼它必須參與 `isProblemId`（2026-08-15 實測重現）：pid 的兩個來源
+//   —— void 錨點的**可見文字**與 `?forum=` 的**取值** —— 都是頁面內容，攻擊者可控
+//   （討論區是使用者生成內容），而 pipeline.js 會把它原樣拼進 `/problem/${pid}?_contentOnly=1`。
+//   舊判據只要求「含字母且含數字」，於是：
+//     `P1000#zzz`               → 井號截斷，實際請求 `/problem/P1000`（連 query 都被吃掉），
+//                                 於是**把別的題的難度染到這個錨點上**；
+//     `a1/../../api/user/search` → 實際請求 `https://www.luogu.com.cn/api/user/search`，
+//                                 帶著同源 Cookie 打到一個完全不相干的介面。
+//   兩條都是真機可建構的，不是理論風險。字元集守衛把它們整類關死。
 export const PID_PATTERN = /^[A-Za-z0-9_]+$/;
 
 export function createProblemIdentityResolver(config) {
@@ -123,8 +123,8 @@ export function createProblemIdentityResolver(config) {
   return Object.freeze({ resolve });
 }
 
-// 评测记录注入的 5..7 在新旧难度数据之间存在歧义：相同数值可能对应不同当前档位。
-// 只复用编号含义未变化的 0..4；高档题交给题目页接口按 pid 获取当前难度。
+// 評測記錄注入的 5..7 在新舊難度資料之間存在歧義：相同數值可能對應不同當前檔位。
+// 只重複使用編號含義未變化的 0..4；高檔題交給題目頁介面按 pid 獲取當前難度。
 export function recordDifficultyForHarvest(difficulty) {
   return Number.isInteger(difficulty) && difficulty >= 0 && difficulty <= 4
     ? difficulty

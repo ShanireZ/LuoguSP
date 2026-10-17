@@ -33,11 +33,11 @@ export function createProblemPipeline(config) {
     throw new TypeError("Problem Pipeline requires a color adapter");
 
   const DIFFICULTY_RE = /"difficulty":\s*(\d+)/;
-  // 两种缓存都在接收后 5 分钟过期；读取不续期，不轮询服务器。
-  // colors = 最多 1000 条查询结果，按写入顺序淘汰。
-  // ★harvested 与它分开：整批数据是本页自带的 payload，不是请求结果，条数由页面决定。
-  //   曾经两者共用一个 1000 条的 LRU——练习页一次收 1363 题，后来的直接把先收的挤掉，
-  //   而收取顺序与页面渲染顺序一致，被挤掉的恰好是屏幕最上面那批，整批优化等于白做。
+  // 兩種快取都在接收後 5 分鐘過期；讀取不續期，不輪詢伺服器。
+  // colors = 最多 1000 條查詢結果，按寫入順序淘汰。
+  // ★harvested 與它分開：整批資料是本頁自帶的 payload，不是請求結果，條數由頁面決定。
+  //   曾經兩者共用一個 1000 條的 LRU——練習頁一次收 1363 題，後來的直接把先收的擠掉，
+  //   而收取順序與頁面繪製順序一致，被擠掉的恰好是螢幕最上面那批，整批優化等於白做。
   const colors = new Map();
   const harvested = new Map();
   const harvestedLists = new WeakSet();
@@ -109,10 +109,10 @@ export function createProblemPipeline(config) {
       harvestedLists.add(batch.source);
     }
   };
-  // ★ pid 已经过 identity.js 的字符集守卫，编码后逐字节不变；这里编码是**第二道闸**：
-  //   pid 的来源里有页面可控文本，一个 `#` 就能把 query 连同后半段路径吃掉、
-  //   一个 `/` 就能把请求打到别的同源接口去（2026-08-15 实测复现，见 identity.js）。
-  //   判据坏掉时应当请求不到东西，而不是请求到别的东西。
+  // ★ pid 已經過 identity.js 的字元集守衛，編碼後逐位元組不變；這裡編碼是**第二道閘**：
+  //   pid 的來源裡有頁面可控文字，一個 `#` 就能把 query 連同後半段路徑吃掉、
+  //   一個 `/` 就能把請求打到別的同源介面去（2026-08-15 實測重現，見 identity.js）。
+  //   判據壞掉時應當請求不到東西，而不是請求到別的東西。
   const problemPath = (pid, query = "") =>
     `/problem/${encodeURIComponent(pid)}${query}`;
   const fetchDifficulty = async (pid, signal) => {
@@ -125,10 +125,10 @@ export function createProblemPipeline(config) {
         );
       } catch (error) {
         if (signal.aborted) return null;
-        // 已删除、无权访问或尚未公开的题目都可能返回 403/404；它们没有可着色难度，
-        // 也不需要再请求完整页面或污染控制台。
+        // 已刪除、無權訪問或尚未公開的題目都可能回傳 403/404；它們沒有可著色難度，
+        // 也不需要再請求完整頁面或汙染控制檯。
         if (error && (error.status === 403 || error.status === 404)) return null;
-        /* 临时网络错误不能永久降级 _contentOnly。 */
+        /* 臨時網路錯誤不能永久降級 _contentOnly。 */
       }
       if (text != null) {
         try {
@@ -196,8 +196,8 @@ export function createProblemPipeline(config) {
       apply(known.color);
       return;
     }
-    // 洛谷记录分页会复用同一批锚点。先撤销旧题号的样式，避免新题查询失败时
-    // （例如题目已删除而返回 403）继续显示上一页题目的难度色。
+    // 洛谷記錄分頁會重複使用同一批錨點。先撤銷舊題號的樣式，避免新題查詢失敗時
+    // （例如題目已刪除而回傳 403）繼續顯示上一頁題目的難度色。
     if (appliedPid && appliedPid !== taskIdentity.pid && typeof documentAdapter.clearColor === "function")
       documentAdapter.clearColor(anchor, appliedPid);
     if (!requestsReady) return;

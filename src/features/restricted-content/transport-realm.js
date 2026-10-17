@@ -1,11 +1,11 @@
-// 受限文章页由官方前端在**页面主世界**运行，而用户脚本管理器未必把脚本放在同一个世界。
-// 2026-08-12 在 Tampermonkey 实测：即使脚本声明 @sandbox raw、管理器也报告
-// sandboxMode="raw"，只要用了 @grant（本脚本需要 GM_xmlhttpRequest），
-// 脚本拿到的 window 仍然不是页面的 window —— unsafeWindow 才是。
-// 把 fetch / XMLHttpRequest 包装打在错误的 window 上不会报任何错，只会静默失去
-// 评论回退与官方写入观察，外观和「功能没做」完全一样。所以这里显式选中页面 realm，
-// 并且连 Request / Response / URL / Headers 一起取自同一个 realm：
-// 跨 realm 的 new Request(pageRequest, init) 会失败，instanceof 也会假阴性。
+// 受限文章頁由官方前端在**頁面主世界**執行，而使用者指令碼管理器未必把指令碼放在同一個世界。
+// 2026-08-12 在 Tampermonkey 實測：即使指令碼宣告 @sandbox raw、管理器也報告
+// sandboxMode="raw"，只要用了 @grant（本指令碼需要 GM_xmlhttpRequest），
+// 指令碼拿到的 window 仍然不是頁面的 window —— unsafeWindow 才是。
+// 把 fetch / XMLHttpRequest 包裝打在錯誤的 window 上不會報任何錯，只會靜默失去
+// 評論退回與官方寫入觀察，外觀和「功能沒做」完全一樣。所以這裡顯式選中頁面 realm，
+// 並且連 Request / Response / URL / Headers 一起取自同一個 realm：
+// 跨 realm 的 new Request(pageRequest, init) 會失敗，instanceof 也會假陰性。
 const REQUIRED_CONSTRUCTORS = ["Response", "URL", "Request", "Headers"];
 
 function usableRealm(candidate) {

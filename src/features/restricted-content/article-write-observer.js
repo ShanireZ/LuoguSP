@@ -1,9 +1,9 @@
-// 把一次「官方写请求 + 服务器响应」翻译成已确认的互动状态。
-// 契约取自官方 article.show 组件（columba chunk columba~0bd2df6a7ee2b996.js）：
-//   POST /article/{lid}/vote?vote=<-1|0|1> → 响应体 {upvotes, voted}，组件直接覆盖计数与个人状态；
-//   POST /article/{lid}/favor[?remove=1]   → 响应体不参与状态，组件自行 favored=!favored、favorCount±1。
-// 因此点赞的计数是服务器确认值，收藏的计数在响应体缺计数时按同一套 ±1 推导。
-// 非 2xx 一律返回 null：写失败不得留下任何乐观状态（含持久化）。
+// 把一次「官方寫請求 + 伺服器回應」翻譯成已確認的互動狀態。
+// 契約取自官方 article.show 元件（columba chunk columba~0bd2df6a7ee2b996.js）：
+//   POST /article/{lid}/vote?vote=<-1|0|1> → 回應體 {upvotes, voted}，元件直接覆蓋計數與個人狀態；
+//   POST /article/{lid}/favor[?remove=1]   → 回應體不參與狀態，元件自行 favored=!favored、favorCount±1。
+// 因此點讚的計數是伺服器確認值，收藏的計數在回應體缺計數時按同一套 ±1 推導。
+// 非 2xx 一律回傳 null：寫失敗不得留下任何樂觀狀態（含持久化）。
 const VOTE_VALUES = new Set([-1, 0, 1]);
 
 function parseBody(responseText) {

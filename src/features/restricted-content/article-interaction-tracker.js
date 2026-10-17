@@ -6,13 +6,13 @@ const countOrNull = (value) =>
   !Number.isFinite(Number(value))
     ? null
     : Number(value);
-// 官方 lentille viewer 是 userSummary 形状（uid）；容忍 id 只是为了不因字段改名静默失效。
+// 官方 lentille viewer 是 userSummary 形狀（uid）；容忍 id 只是為了不因欄位改名靜默失效。
 const viewerUid = (viewer) =>
   Number(viewer && (viewer.uid != null ? viewer.uid : viewer.id)) || null;
 
-// 单一互动状态模型的运行时入口：持有当前页面正在显示的公共计数与个人状态，
-// 观察官方写请求的真实响应，成功时同时更新内存快照与账号隔离的持久记录。
-// 匿名访客只更新内存快照（供收藏计数 ±1 推导），不落盘。
+// 單一互動狀態模型的執行環境入口：持有當前頁面正在顯示的公共計數與個人狀態，
+// 觀察官方寫請求的真實回應，成功時同時更新記憶體快照與帳號隔離的持久記錄。
+// 匿名訪客只更新記憶體快照（供收藏計數 ±1 推導），不寫入磁碟。
 export function createArticleInteractionTracker(config) {
   const { store, origin, lid, uid, onPersistFailure } = config || {};
   let current = { upvote: null, favorCount: null, voted: null, favored: null };
@@ -20,7 +20,7 @@ export function createArticleInteractionTracker(config) {
   const seed = (state) => {
     const next = state && typeof state === "object" ? state : {};
     current = {
-      // ★同 store：Number(null) === 0，只判 isFinite 会把未知计数伪造成 0。
+      // ★同 store：Number(null) === 0，只判 isFinite 會把未知計數偽造成 0。
       upvote: countOrNull(next.upvote),
       favorCount: countOrNull(next.favorCount),
       voted: next.voted === 1 || next.voted === -1 || next.voted === 0
@@ -44,8 +44,8 @@ export function createArticleInteractionTracker(config) {
     if (!confirmed) return null;
     const { kind, ...patch } = confirmed;
     current = { ...current, ...patch };
-    // 官方已经确认了这次互动，但状态无处可存 —— 刷新后必然撤不回。
-    // 静默降级会把「持久化根本没生效」伪装成「功能没做」，所以必须报出来。
+    // 官方已經確認了這次互動，但狀態無處可存 —— 刷新後必然撤不回。
+    // 靜默降級會把「持久化根本沒生效」偽裝成「功能沒做」，所以必須報出來。
     const saved = store ? store.save({ uid, lid, ...patch }) : null;
     if (!saved && typeof onPersistFailure === "function")
       onPersistFailure({
@@ -62,8 +62,8 @@ export function createArticleInteractionTracker(config) {
   });
 }
 
-// 引导受限文章页时的单一入口：读回本账号已确认的状态、与保存站快照合并成官方
-// `data` 形状，并用同一份合并结果给 tracker 打底，避免显示值与内部状态分家。
+// 引導受限文章頁時的單一入口：讀回本帳號已確認的狀態、與保存站快照合併成官方
+// `data` 形狀，並用同一份合併結果給 tracker 打底，避免顯示值與內部狀態分家。
 export function prepareRestrictedArticleInteraction(config) {
   const {
     store,

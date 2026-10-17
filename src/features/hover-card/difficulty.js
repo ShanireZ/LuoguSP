@@ -1,5 +1,5 @@
-// 悬停卡这一侧的难度读法。★ 表本身**不在这里** —— 唯一一份在
-// `core/luogu-difficulty.js`，那里也记着它为什么必须只有一份。
+// 懸停卡這一側的難度讀法。★ 表本身**不在這裡** —— 唯一一份在
+// `core/luogu-difficulty.js`，那裡也記著它為什麼必須只有一份。
 import {
   DIFFICULTY_COLORS,
   DIFFICULTY_NAMES,
@@ -9,9 +9,9 @@ import {
 const inRange = (value) =>
   Number.isInteger(value) && value >= 0 && value < TIERS;
 
-// ★ 越界/读不到时回落到第 0 档「暂无评定」。owner 2026-08-14 明确保留这个行为
-//   （我提过它与铁律 #2「不伪造未知」有张力）—— 洛谷自己的 0 档就叫这个名，
-//   而 `/problem/{pid}` 一直给得出 difficulty，是隐患不是现象。**别再改回来。**
+// ★ 越界/讀不到時回落到第 0 檔「暫無評定」。owner 2026-08-14 明確保留這個行為
+//   （我提過它與鐵律 #2「不偽造未知」有張力）—— 洛谷自己的 0 檔就叫這個名，
+//   而 `/problem/{pid}` 一直給得出 difficulty，是隱患不是現象。**別再改回來。**
 export const difficultyName = (value) =>
   inRange(value) ? DIFFICULTY_NAMES[value] : DIFFICULTY_NAMES[0];
 

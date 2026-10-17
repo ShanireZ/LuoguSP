@@ -2,7 +2,7 @@
 // @name         LuoguSP Canary
 // @namespace    https://github.com/ShanireZ/LuoguSP/canary
 // @version      2.14.3-canary.2
-// @description  [Canary] LuoguSP 2.14.3 验收版本（第 2 轮：设置刷新确认框随卸载收走、发布目录防呆）
+// @description  [Canary] LuoguSP 2.14.3 驗收版本（第 2 輪：設定刷新確認框隨卸載收走、發佈目錄防呆）
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
 // @match        https://www.luogu.com.cn/*

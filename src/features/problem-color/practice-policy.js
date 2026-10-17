@@ -1,7 +1,7 @@
 const ATTEMPTED_PROBLEMS_HEADING = "尝试过的题目";
 const PRACTICE_PATH = /^\/user\/\d+\/practice\/?$/;
-// 评测记录列表的题号由洛谷按难度上色；学习模式会关掉这层颜色。
-// 插件再染一次，要么叠在原生颜色上，要么把用户刻意隐藏的难度漏回去。
+// 評測記錄列表的題號由洛谷按難度上色；學習模式會關掉這層顏色。
+// 外掛再染一次，要麼疊在原生顏色上，要麼把使用者刻意隱藏的難度漏回去。
 const RECORD_LIST_PATH = /^\/record\/list\/?$/;
 
 function directHeading(card) {

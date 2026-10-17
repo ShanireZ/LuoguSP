@@ -1,38 +1,38 @@
 # AGENTS.md — LuoguSP
 
-> 继承 [`../AGENTS.md`](../AGENTS.md)；勿假定自动加载。
+> 繼承 [`../AGENTS.md`](../AGENTS.md)；勿假定自動載入。
 
-LuoguSP 是洛谷浏览器用户脚本。源码在 `src/`，`LuoguSP.user.js` 是可复现 loader 产物，`cdn/releases/<version>/` 是不可变 CDN 发布。使用说明见 [`README.md`](README.md)，不在此复述。
+LuoguSP 是洛谷瀏覽器使用者指令碼。原始碼在 `src/`，`LuoguSP.user.js` 是可重現 loader 產物，`cdn/releases/<version>/` 是不可變 CDN 發佈。使用說明見 [`README.md`](README.md)，不在此複述。
 
-## 命令与验收
+## 命令與驗收
 
-从仓库根运行；Node/pnpm 要求与包管理版本以 `package.json` 为准，唯一 lockfile 是 `pnpm-lock.yaml`。命令定义与两套 CI 对齐；下表不是已通过记录。
+從儲存庫根執行；Node/pnpm 要求與包管理版本以 `package.json` 為準，唯一 lockfile 是 `pnpm-lock.yaml`。命令定義與兩套 CI 對齊；下表不是已通過記錄。
 
-| 何时 | 命令 / 前置 | 能证明什么 / 边界 |
+| 何時 | 命令 / 前置 | 能證明什麼 / 邊界 |
 |---|---|---|
-| 准备依赖 | `pnpm install --frozen-lockfile`；运行时匹配 | 锁文件与 package 一致；不等于行为验收 |
-| 普通源码/合同变更 | `pnpm check`；依赖已装 | baseline:check、可复现构建检查、质量预算、Node 全套测试；不含已发布产物的浏览器 QA |
-| Baseline 诊断 | `pnpm baseline:check` | 查询边界与全部 esbuild 浏览器产物固定 target 消费点；已含于 check |
-| 查看发布计划 | `pnpm release -- --plan --version <version>` | 查看计划，不改生产；不是发布或 QA 通过 |
-| 已授权发布 | `pnpm release -- --version <version>`；全局 wrangler 已准备/登录 | 构建、部署不可变 CDN 并同步版本文件，然后停在真实浏览器 QA；会外部写入，publish 仅兼容别名 |
-| 发布后注入准备 | `pnpm qa:prepare` | 获取当前 promoted 的依赖并在系统临时目录生成注入物；非离线检查 |
-| 发布后、提交/推送前 | `pnpm qa:browser`；Chrome/Edge 或 Playwright Chromium 可用 | 测两条 @require 实际指向的 promoted 字节，写 reports/browser-qa.json；离线 fixture 不证明真实洛谷 DOM/线上全链路 |
+| 準備依賴 | `pnpm install --frozen-lockfile`；執行環境匹配 | 鎖定檔與 package 一致；不等於行為驗收 |
+| 普通原始碼/合同變更 | `pnpm check`；依賴已裝 | baseline:check、可重現建置檢查、品質預算、Node 全套測試；不含已發佈產物的瀏覽器 QA |
+| Baseline 診斷 | `pnpm baseline:check` | 查詢邊界與全部 esbuild 瀏覽器產物固定 target 消費點；已含於 check |
+| 查看發佈計畫 | `pnpm release -- --plan --version <version>` | 查看計畫，不改生產；不是發佈或 QA 通過 |
+| 已授權發佈 | `pnpm release -- --version <version>`；全域 wrangler 已準備/登入 | 建置、部署不可變 CDN 並同步版本檔案，然後停在真實瀏覽器 QA；會外部寫入，publish 僅相容別名 |
+| 發佈後注入準備 | `pnpm qa:prepare` | 獲取當前 promoted 的依賴並在系統暫存目錄生成注入物；非離線檢查 |
+| 發佈後、提交/推送前 | `pnpm qa:browser`；Chrome/Edge 或 Playwright Chromium 可用 | 測兩條 @require 實際指向的 promoted 位元組，寫 reports/browser-qa.json；離線 fixture 不證明真實洛谷 DOM/線上全連線路徑 |
 
-验收须区分工作树 check、发布字节 QA、手工线上洛谷行为与自定义源验证，逐项报告命令/结果/未覆盖项。qa:browser 应在 release 后跑，不能用工作树测试替代；优先系统 Chrome/Edge，缺失才回退 bundled Chromium。
+驗收須區分工作樹 check、發佈位元組 QA、手動線上洛谷行為與自定義源驗證，逐項報告命令/結果/未覆蓋項。qa:browser 應在 release 後跑，不能用工作樹測試替代；優先系統 Chrome/Edge，缺失才退回 bundled Chromium。
 
-## 发布、数据与安全合同
+## 發佈、資料與安全合同
 
-- 不编辑或覆盖 `cdn/releases/` 既有目录/哈希文件。`@require #sha256=` 钉住字节，发布路径不可变。
-- `wrangler` 为全局 CLI，不由 npx 临时锁版；`scripts/cdn/publish.mjs` 先测全局版本，低于 `config/cdn.json` 的 `cli.wrangler.minimum` 即停。降低这个已验证下限须重验真实发布。
-- 发布脚本负责同步 `src/userscript.meta.js`、`LuoguSP.user.js`、package/lockfile、README 版本 badge、CDN manifest、release reports，不手工维护第二套版本源。pnpm 版本只取 packageManager，由 pnpm 自身硬校验；GitHub/CNB CI 均 frozen install + check。
-- QA stamp 使用 `scripts/artifact-behaviour-hash.mjs`：仅豁免 @description 一行，所有其他 metadata/body 都计入 behaviour hash；单改 description 不使真实 QA 失效。
-- 获批修复/增量验证后聚焦 commit 本地 main；agent 不 push，owner 批量推进 GitHub，CNB 按工作区同步入口执行。推送/同步后核两端分支头与 CI；延后推送不弱化本地门禁。
-- 项目 release 指不可变 CDN 部署；没有明确要求不创建 GitHub/CNB Release 对象。
-- token、请求头、cookie、浏览器 storage 不得出现在日志或入库 QA 产物。临时注入/浏览器产物放仓外，约定的 reports/browser-qa.json 由 QA 脚本生成；保留无关用户修改。
+- 不編輯或覆蓋 `cdn/releases/` 既有目錄/雜湊檔案。`@require #sha256=` 釘住位元組，發佈路徑不可變。
+- `wrangler` 為全域 CLI，不由 npx 臨時鎖版；`scripts/cdn/publish.mjs` 先測全域版本，低於 `config/cdn.json` 的 `cli.wrangler.minimum` 即停。降低這個已驗證下限須重驗真實發布。
+- 發佈指令碼負責同步 `src/userscript.meta.js`、`LuoguSP.user.js`、package/lockfile、README 版本 badge、CDN manifest、release reports，不手動維護第二套版本源。pnpm 版本只取 packageManager，由 pnpm 自身硬檢核；GitHub/CNB CI 均 frozen install + check。
+- QA stamp 使用 `scripts/artifact-behaviour-hash.mjs`：僅豁免 @description 一行，所有其他 metadata/body 都計入 behaviour hash；單改 description 不使真實 QA 失效。
+- 獲批修復/增量驗證後聚焦 commit 本機 main；agent 不 push，owner 批量推進 GitHub，CNB 按工作區同步入口執行。推送/同步後核兩端分支頭與 CI；延後推送不弱化本機門禁。
+- 專案 release 指不可變 CDN 部署；沒有明確要求不建立 GitHub/CNB Release 物件。
+- token、請求頭、cookie、瀏覽器 storage 不得出現在紀錄或入庫 QA 產物。臨時注入/瀏覽器產物放倉外，約定的 reports/browser-qa.json 由 QA 指令碼生成；保留無關使用者修改。
 
-## 外部接口与兼容
+## 外部介面與相容
 
-- Baseline：`runtime: browser-tool`、`featureTarget: newly`；生产语法固定在 `baseline-targets.mjs` 的获准 Widely 边界。六字段/工具快照在 `baseline.config.json`，不复制第二份声明；Baseline 不补 Web API polyfill，也不替代真实洛谷页面验收。
-- 洛谷 DOM 与嵌入 payload 是会变动的外部接口：先 shape check，失败关闭；每次兼容修复增加回归 fixture。
-- `/user/{uid}/practice` 只给“尝试过的题目”着色。“已通过的题目”已有难度分组，不重染色、不抓取、不批量缓存。
-- Issue tracker：本仓 GitHub Issues；triage、domain、OKF 沿用 [`docs/agents/index.md`](docs/agents/index.md)。
+- Baseline：`runtime: browser-tool`、`featureTarget: newly`；生產語法固定在 `baseline-targets.mjs` 的獲准 Widely 邊界。六欄位/工具快照在 `baseline.config.json`，不復制第二份宣告；Baseline 不補 Web API polyfill，也不替代真實洛谷頁面驗收。
+- 洛谷 DOM 與嵌入 payload 是會變動的外部介面：先 shape check，失敗關閉；每次相容修復增加回歸 fixture。
+- `/user/{uid}/practice` 只給“嘗試過的題目”著色。“已通過的題目”已有難度分組，不重染色、不抓取、不批量快取。
+- Issue tracker：本儲存庫 GitHub Issues；triage、domain、OKF 沿用 [`docs/agents/index.md`](docs/agents/index.md)。

@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { relabelArchiveTime } from "../src/features/restricted-content/archive-time-label.js";
 
-// 保存站只有入档时间；实测 2l4x53kj 入档 2026-01-02、真实发表 2025-10-01，差三个月。
-// 官方模板把它渲染成「创建时间」（文章）/「发布时间」（剪贴板，旧壳是「发表时间」），
-// 等于用存档时间冒充真值。
-// .cn 上没有任何他人剪贴板发表时间的只读来源（/paste/{id} 被拦、/user/{uid}/paste 404、
-// /paste 只列自己的），所以剪贴板永远只能显示存档时间 —— 那就得如实标注。
+// 保存站只有入檔時間；實測 2l4x53kj 入檔 2026-01-02、真實發表 2025-10-01，差三個月。
+// 官方範本把它繪製成「建立時間」（文章）/「發佈時間」（剪貼板，舊殼是「發表時間」），
+// 等於用存檔時間冒充真值。
+// .cn 上沒有任何他人剪貼板發表時間的唯讀來源（/paste/{id} 被攔、/user/{uid}/paste 404、
+// /paste 只列自己的），所以剪貼板永遠只能顯示存檔時間 —— 那就得如實標註。
 
-// 最小 DOM 替身：只实现本模块用到的 childNodes / querySelectorAll / nodeValue。
+// 最小 DOM 替身：只實作本模組用到的 childNodes / querySelectorAll / nodeValue。
 function text(value) {
   return { nodeType: 3, nodeValue: value };
 }
@@ -41,7 +41,7 @@ test("剪贴板现行文案「发布时间」同样改成存档时间", () => {
   assert.equal(flatten(row), "存档时间 2025-12-12 00:04");
 });
 
-// ★ 观察器会反复跑 inject，重复替换必须是空操作。
+// ★ 觀察器會反覆跑 inject，重複替換必須是空操作。
 test("幂等：改过之后再调用不产生变更", () => {
   const bar = element([text("创建时间：2026-01-02")]);
   assert.equal(relabelArchiveTime([bar], "创建时间"), 1);
@@ -50,7 +50,7 @@ test("幂等：改过之后再调用不产生变更", () => {
   assert.equal(flatten(bar), "存档时间：2026-01-02");
 });
 
-// ★ 整段 textContent 赋值会抹掉兄弟元素 —— LuoguSP 自己补的「更新时间」span 就在同一行。
+// ★ 整段 textContent 賦值會抹掉兄弟元素 —— LuoguSP 自己補的「更新時間」span 就在同一行。
 test("只改文本节点，不动兄弟元素", () => {
   const sibling = element([text("更新时间：2026-08-13 09:31:39")]);
   const bar = element([text("创建时间：2026-01-02"), sibling]);
@@ -78,6 +78,6 @@ test("入参垃圾不抛", () => {
   assert.equal(relabelArchiveTime([null, undefined, {}, 1], "创建时间"), 0);
   assert.equal(relabelArchiveTime([element([text("创建时间：x")])], ""), 0);
   assert.equal(relabelArchiveTime([element([text("创建时间：x")])], null), 0);
-  // 目标就是「存档时间」时直接返回，避免自我替换死循环式的无意义改动。
+  // 目標就是「存檔時間」時直接回傳，避免自我替換死循環式的無意義改動。
   assert.equal(relabelArchiveTime([element([text("存档时间：x")])], "存档时间"), 0);
 });

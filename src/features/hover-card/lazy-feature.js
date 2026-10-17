@@ -1,52 +1,52 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 
-// hover 卡的启动侧薄壳。与受限内容那次同一个形状：**只有用户真的把指针停在
-// 题号或用户名上，才去拉那个块**。绝大多数页面浏览根本不会触发。
+// hover 卡的啟動側薄殼。與受限內容那次同一個形狀：**只有使用者真的把指針停在
+// 題號或使用者名上，才去拉那個塊**。絕大多數頁面瀏覽根本不會觸發。
 //
-// ★ 设置项必须在不加载块的前提下就能列出来，所以 id / key / label 由本壳持有。
-// ★ 这里不做锚点解析（那是块里的事），只做一件最便宜的判断：指针下面有没有可能是
-//   题号或用户链接。判断错了顶多多拉一次块（一次，之后就常驻），判断漏了才是缺陷。
+// ★ 設定項必須在不載入塊的前提下就能列出來，所以 id / key / label 由本殼持有。
+// ★ 這裡不做錨點解析（那是塊裡的事），只做一件最便宜的判斷：指針下面有沒有可能是
+//   題號或使用者連結。判斷錯了頂多多拉一次塊（一次，之後就常駐），判斷漏了才是缺陷。
 //
-// ★★★ owner 报过两轮「第一次悬停不弹卡」。这一层有**两个**独立原因，都修了：
+// ★★★ owner 報過兩輪「第一次懸停不彈卡」。這一層有**兩個**獨立原因，都修了：
 //
-//  1. 块是**被这一次 mouseover 拉下来的**，等它加载完挂上委托监听时，那个事件早就
-//     派发完了；用户停着不动就再也没有新事件。→ 挂载时把**指针当时的坐标**交给块，
-//     由块自己解析并**立刻开卡**（`mount({ replayAt })`）。
-//     ★ 不再补发合成事件：跨 realm 造事件脆，而且合成事件还要再等 300ms 停留，
-//       体感仍然是「第一次悬停不弹」。
+//  1. 塊是**被這一次 mouseover 拉下來的**，等它載入完掛上委託監聽時，那個事件早就
+//     派發完了；使用者停著不動就再也沒有新事件。→ 掛載時把**指針當時的座標**交給塊，
+//     由塊自己解析並**立刻開卡**（`mount({ replayAt })`）。
+//     ★ 不再補發合成事件：跨 realm 造事件脆，而且合成事件還要再等 300ms 停留，
+//       體感仍然是「第一次懸停不彈」。
 //
-//  2. ★★★ **薄壳看不见的元素，块永远没机会加载。** 私信页的联系人行里，用户名是个
-//     **裸 span**（整行只有头像带 uid），压根不匹配候选选择器 —— 于是悬停名字毫无反应，
-//     非得先蹭一下头像把块拉下来，之后名字才开始工作。owner 报的就是这个。
-//     真机扫过 /chat · /record/list · /article · /discuss · /problem/list 五类页面，
-//     **只有 /chat 是裸 span**，其余的用户名都在 `a[href*="/user/"]` 里。
-//     但「按元素猜」这条路本身就会一直漏 —— 所以判据换成**按页面**：
-//     这一页只要有可预览的东西，指针一动就把块拉下来。
+//  2. ★★★ **薄殼看不見的元素，塊永遠沒機會載入。** 私信頁的聯繫人行裡，使用者名是個
+//     **裸 span**（整行只有頭像帶 uid），壓根不匹配候選選擇器 —— 於是懸停名字毫無反應，
+//     非得先蹭一下頭像把塊拉下來，之後名字才開始工作。owner 報的就是這個。
+//     真機掃過 /chat · /record/list · /article · /discuss · /problem/list 五類頁面，
+//     **只有 /chat 是裸 span**，其餘的使用者名都在 `a[href*="/user/"]` 裡。
+//     但「按元素猜」這條路本身就會一直漏 —— 所以判據換成**按頁面**：
+//     這一頁只要有可預覽的東西，指針一動就把塊拉下來。
 
-// 候选锚点选择器按**当前开着的类别**拼：只开了题目卡就别为用户名去拉块。
+// 候選錨點選擇器按**當前開著的類別**拼：只開了題目卡就別為使用者名去拉塊。
 const PROBLEM_CANDIDATES = 'a[href*="/problem/"]';
 const USER_CANDIDATES = 'a[href*="/user/"], img[src*="/upload/usericon/"]';
-// 站点框架（顶栏 + 左右抽屉）里的锚点永远不会出卡（判据在块里的 anchors.js），
-// 所以连块都不必为它们拉下来。★ 这是**纯省事**的收紧，不是判据：
-// 少拉一次块顶多慢一点，多拉一次块什么也不会坏。
+// 站台框架（頂欄 + 左右抽屜）裡的錨點永遠不會出卡（判據在塊裡的 anchors.js），
+// 所以連塊都不必為它們拉下來。★ 這是**純省事**的收緊，不是判據：
+// 少拉一次塊頂多慢一點，多拉一次塊什麼也不會壞。
 const CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
 
-// ★★★ 屏蔽洛谷原生的个人悬停卡。owner 2026-08-14 第五轮：文章广场、讨论区、
-//   提交记录、题目页出题人……到处都是原生卡和我们的卡一起弹。
+// ★★★ 屏蔽洛谷原生的個人懸停卡。owner 2026-08-14 第五輪：文章廣場、討論區、
+//   提交記錄、題目頁出題人……到處都是原生卡和我們的卡一起彈。
 //
-// 结构取自 `DropdownWrapper` 组件原文（loader chunk）：
+// 結構取自 `DropdownWrapper` 元件原文（loader chunk）：
 //     <wrapper><trigger .../><Teleport to="#app">
-//       <div class="dropdown {shown}">{shown ? 卡片内容 : 空}</div>
+//       <div class="dropdown {shown}">{shown ? 卡片內容 : 空}</div>
 //     </Teleport></wrapper>
-//   用户卡本体是那个 `class="float-card"` 的节点（`UserFloatCard` 的根）。
-//   全站 chunk 里 `"float-card"` **只有这一处**用到，所以按它认不会误伤。
+//   使用者卡本體是那個 `class="float-card"` 的節點（`UserFloatCard` 的根）。
+//   全站 chunk 裡 `"float-card"` **只有這一處**用到，所以按它認不會誤傷。
 //
-// ★ 为什么用 CSS 而不是掐事件：原生触发器的 `mouseover` 监听挂在触发元素上，
-//   要拦就得在 document 捕获阶段 `stopPropagation` —— 那会连带掐掉那棵子树上
-//   别人的一切 mouseover，代价不可控。CSS 只影响显示，坏不了任何行为。
-//   代价是原生那边照样会发一次 `/api/user/info/{uid}`（约 1 KB），可以接受。
-// ★ 只在**用户卡开关打开时**才注入：关掉我们的卡就该把原生卡还给用户。
-//   `:has()` 那条连空的下拉盒子一起藏掉；下面那条是没有 `:has()` 时的兜底。
+// ★ 為什麼用 CSS 而不是掐事件：原生觸發器的 `mouseover` 監聽掛在觸發元素上，
+//   要攔就得在 document 捕獲階段 `stopPropagation` —— 那會連帶掐掉那棵子樹上
+//   別人的一切 mouseover，代價不可控。CSS 隻影響顯示，壞不了任何行為。
+//   代價是原生那邊照樣會發一次 `/api/user/info/{uid}`（約 1 KB），可以接受。
+// ★ 只在**使用者卡開關打開時**才注入：關掉我們的卡就該把原生卡還給使用者。
+//   `:has()` 那條連空的下拉盒子一起藏掉；下面那條是沒有 `:has()` 時的備援。
 const NATIVE_SUPPRESS_ID = "luogusp-hc-native-suppress";
 const NATIVE_SUPPRESS_CSS =
   ".dropdown:has(> .float-card){display:none !important;}" +
@@ -66,11 +66,11 @@ const suppressNativeCard = (on) => {
   head.appendChild(style);
 };
 
-// ★ owner 2026-08-14 第四轮把开关拆成两个：「题目悬停显示预览卡」与
-//   「用户名/头像悬停显示预览卡」。两个开关**共用同一个块、同一次挂载** ——
-//   分别挂两次会得到两张卡片元素、两套委托监听。做法是引用计数：
-//   哪一类被打开就把它记进 active，块在 hover 时按 active 过滤；
-//   两类都关掉了才真正卸载。
+// ★ owner 2026-08-14 第四輪把開關拆成兩個：「題目懸停顯示預覽卡」與
+//   「使用者名/頭像懸停顯示預覽卡」。兩個開關**共用同一個塊、同一次掛載** ——
+//   分別掛兩次會得到兩張卡片元素、兩套委託監聽。做法是引用計數：
+//   哪一類被打開就把它記進 active，塊在 hover 時按 active 過濾；
+//   兩類都關掉了才真正卸載。
 export function createHoverCardFeatures(config) {
   const {
     storage,
@@ -86,7 +86,7 @@ export function createHoverCardFeatures(config) {
   const ensureFeature = () => {
     if (feature) return Promise.resolve(feature);
     if (unavailable) return Promise.resolve(null);
-    // 没人接线就等于功能不存在，必须报出来 —— 静默会伪装成「功能没做」。
+    // 沒人串接就等於功能不存在，必須報出來 —— 靜默會偽裝成「功能沒做」。
     if (typeof loadBundle !== "function") {
       unavailable = true;
       logError(new TypeError("hover 卡功能块的加载器未接线"));
@@ -119,11 +119,11 @@ export function createHoverCardFeatures(config) {
     return pending;
   };
 
-  // 当前开着的类别。块通过 `isEnabled` 现问，所以在设置里改开关**立刻生效**，不必重挂。
+  // 當前開著的類別。塊通過 `isEnabled` 現問，所以在設定裡改開關**立刻生效**，不必重掛。
   const active = new Set();
-  // 这一页上到底有没有可预览的东西（站点框架里的不算 —— 每页顶栏都有我自己的头像，
-  // 拿它当依据就等于「所有页面都加载」）。★ 只缓存**肯定**的结论：SPA 的内容是后到的，
-  // 一开始没有不代表以后没有；扫一次要遍历全页，所以没结论时按 500ms 限流。
+  // 這一頁上到底有沒有可預覽的東西（站台框架裡的不算 —— 每頁頂欄都有我自己的頭像，
+  // 拿它當依據就等於「所有頁面都載入」）。★ 只快取**肯定**的結論：SPA 的內容是後到的，
+  // 一開始沒有不代表以後沒有；掃一次要遍歷全頁，所以沒結論時按 500ms 限流。
   let pageHasTargets = false;
   let lastScanAt = 0;
   const pageWorthLoading = (selector, now) => {
@@ -144,8 +144,8 @@ export function createHoverCardFeatures(config) {
     ]
       .filter(Boolean)
       .join(", ");
-  // ★ 两个开关共用**一次**挂载：各挂各的会得到两张卡片元素、两套委托监听。
-  //   所以做引用计数 —— 第一个打开时装壳，最后一个关掉时才拆。
+  // ★ 兩個開關共用**一次**掛載：各掛各的會得到兩張卡片元素、兩套委託監聽。
+  //   所以做引用計數 —— 第一個打開時裝殼，最後一個關掉時才拆。
   let shellDispose = null;
   let refs = 0;
   let innerDispose = null;
@@ -153,8 +153,8 @@ export function createHoverCardFeatures(config) {
   const mountShell = () => {
     if (!document.body) return () => {};
     let released = false;
-    // 指针最后落在哪儿。★ 探针**一直挂到块真正接管为止**，就是为了让这个坐标保持新鲜：
-    //   块在路上时用户还在移动，补发要按最新位置来。
+    // 指針最後落在哪兒。★ 探針**一直掛到塊真正接管為止**，就是為了讓這個座標保持新鮮：
+    //   塊在路上時使用者還在移動，補發要按最新位置來。
     let point = null;
     const detach = () => document.removeEventListener("mouseover", probe, true);
     function probe(event) {
@@ -164,15 +164,15 @@ export function createHoverCardFeatures(config) {
       if (!selector) return;
       if (typeof event.clientX === "number")
         point = { x: event.clientX, y: event.clientY };
-      // 指针**正压在**候选上 → 一定要拉；否则看这一页值不值得拉。
-      // ★ 后一条才是关键：它把「薄壳看不见某个元素」这一整类 bug 从根上去掉了 ——
-      //   块由**页面**决定加不加载，不再由「指针碰巧压在什么上」决定。
+      // 指針**正壓在**候選上 → 一定要拉；否則看這一頁值不值得拉。
+      // ★ 後一條才是關鍵：它把「薄殼看不見某個元素」這一整類 bug 從根上去掉了 ——
+      //   塊由**頁面**決定加不載入，不再由「指針碰巧壓在什麼上」決定。
       const onCandidate = !node.closest(CHROME_SELECTOR) && !!node.closest(selector);
       if (!onCandidate && !pageWorthLoading(selector, Date.now())) return;
       ensureFeature().then((loaded) => {
         if (released || !loaded || innerDispose) return;
         try {
-          // 把指针坐标交给块：那一次悬停的事件它接不到，只能靠坐标自己补。
+          // 把指針座標交給塊：那一次懸停的事件它接不到，只能靠座標自己補。
           innerDispose = loaded.mount({ replayAt: point });
         } catch (error) {
           logError(error);
@@ -192,7 +192,7 @@ export function createHoverCardFeatures(config) {
 
   const mountFor = (kind) => {
     active.add(kind);
-    // 我们的用户卡一上场，就把原生那张藏起来 —— 两张一起弹是 owner 报的问题。
+    // 我們的使用者卡一上場，就把原生那張藏起來 —— 兩張一起彈是 owner 報的問題。
     if (kind === "user") suppressNativeCard(true);
     if (refs === 0) shellDispose = mountShell();
     refs += 1;

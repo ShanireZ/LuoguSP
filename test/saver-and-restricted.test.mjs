@@ -85,7 +85,7 @@ test("Columba scaffold parser reads the shell paste.show and article.show share"
   assert.deepEqual(parsed.theme, { dark: false });
   assert.match(parsed.globalsRaw, /__feInitLocalTime/);
 
-  // 正则在第一个 </script> 处停下，大小写变体仍能把壳截断，必须拒掉。
+  // 正則在第一個 </script> 處停下，大小寫變體仍能把殼截斷，必須拒掉。
   assert.equal(
     parseColumbaScaffold(
       columbaScaffoldFixture().replace(
@@ -434,9 +434,9 @@ test("Saver Workflow manual refresh locks only on business success", async () =>
   assert.deepEqual(await workflow.requestRefresh("article", "abc"), {
     kind: "accepted",
   });
-  // ★ 不发 forceUpdate。上游维护者明确表示没打算把这个权限交给公开不鉴权的入口
-  // （laikit-dev/luogu-saver#85），而我们要它的唯一理由——补真实发表时间——在
-  // 上游 #84 之后已由保存站在跳过路径上自己完成，不再需要强制重写。
+  // ★ 不發 forceUpdate。上游維護者明確表示沒打算把這個權限交給公開不鑑權的入口
+  // （laikit-dev/luogu-saver#85），而我們要它的唯一理由——補真實發表時間——在
+  // 上游 #84 之後已由保存站在跳過路徑上自己完成，不再需要強制重寫。
   assert.deepEqual(requests, [
     {
       path: "/workflow/create/template/article-save-pipeline",
@@ -863,15 +863,15 @@ test("reply fetch installer replaces its own wrapper and restores safely", async
   installer.dispose();
   assert.equal(host.fetch, laterPagePatch);
 
-  // 后置包装器日后拆除时可能恢复旧引用；已 dispose 的 LuoguSP 包装必须保持惰性透传。
+  // 後置包裝器日後拆除時可能恢復舊引用；已 dispose 的 LuoguSP 包裝必須保持惰性透傳。
   host.fetch = staleWrapper;
   const revived = await host.fetch("/article/abc/replies");
   assert.equal(await revived.text(), "fallback");
 });
 
-// ★ WebIDL 的接口常量挂在构造器**和**原型两处。只挂构造器时 `xhr.DONE` 是 undefined，
-//   任何写 `xhr.readyState === xhr.DONE` 的第三方代码都会永远判假 ——
-//   而我们换掉的是页面的全局 XMLHttpRequest，页面上跑什么不归我们挑。
+// ★ WebIDL 的介面常數掛在建構器**和**原型兩處。只掛建構器時 `xhr.DONE` 是 undefined，
+//   任何寫 `xhr.readyState === xhr.DONE` 的第三方程式碼都會永遠判假 ——
+//   而我們換掉的是頁面的全域 XMLHttpRequest，頁面上跑什麼不歸我們挑。
 test("reply XHR adapter exposes the readyState constants on instances too", () => {
   const { FakeXhr } = xhrHarness({ status: 200, responseText: "", response: "" });
   const { XMLHttpRequest: AdaptedXhr } = createRestrictedReplyXhrAdapter({
@@ -895,9 +895,9 @@ test("reply XHR adapter exposes the readyState constants on instances too", () =
   }
 });
 
-// ★ XHR 实例可以复用（同一个对象再 open 一次）。不复位 completed/fallback 的话，
-//   第二次请求的所有事件都会被 handleNative 早退吞掉，readyState 恒为 4，
-//   responseText 恒是上一次的回退体 —— 第二次请求彻底哑掉。
+// ★ XHR 執行個體可以重複使用（同一個物件再 open 一次）。不復位 completed/fallback 的話，
+//   第二次請求的所有事件都會被 handleNative 早退吞掉，readyState 恆為 4，
+//   responseText 恆是上一次的退回體 —— 第二次請求徹底啞掉。
 test("reply XHR adapter resets its fallback state when the instance is reused", async () => {
   const live = JSON.stringify({ replySlice: [{ id: 91, content: "live" }] });
   let next = { status: 0, statusText: "", responseText: "", response: "" };
@@ -947,7 +947,7 @@ test("reply XHR adapter resets its fallback state when the instance is reused", 
       xhr.onloadend = resolve;
     });
 
-  // 第一趟：洛谷挂了 → 用保存站回退。
+  // 第一趟：洛谷掛了 → 用保存站退回。
   let done = once();
   xhr.open("GET", "/article/abc/replies");
   xhr.send();
@@ -955,7 +955,7 @@ test("reply XHR adapter resets its fallback state when the instance is reused", 
   assert.deepEqual(JSON.parse(xhr.responseText).replySlice.length, 1);
   assert.equal(xhr.getResponseHeader("x-luogusp-source"), "saver");
 
-  // 第二趟复用同一个实例：洛谷这次好了，必须原样透传，不许还端着上一次的回退体。
+  // 第二趟重複使用同一個執行個體：洛谷這次好了，必須原樣透傳，不許還端著上一次的退回體。
   next = { status: 200, statusText: "OK", responseText: live, response: live };
   done = once();
   xhr.open("GET", "/article/abc/replies?sort=time-d");

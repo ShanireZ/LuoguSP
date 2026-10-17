@@ -1,50 +1,50 @@
-# LuoguSP 源码模块化报告
+# LuoguSP 原始碼模組化報告
 
 日期：2026-07-26
 
-## 结论
+## 結論
 
-LuoguSP 已完成“源码模块化、发布时单文件打包”的架构迁移。开发源码改为
-ES Modules，发布入口仍是根目录 `LuoguSP.user.js`，安装地址、metadata、
-权限、四个 `@require`、五个设置 key 和用户行为保持不变。
+LuoguSP 已完成“原始碼模組化、發佈時單檔案打包”的架構遷移。開發原始碼改為
+ES Modules，發佈入口仍是根目錄 `LuoguSP.user.js`，安裝位址、metadata、
+權限、四個 `@require`、五個設定 key 和使用者行為保持不變。
 
-CDN loader 没有进入生产实现；当前仍以单文件 IIFE 作为唯一发布架构。
+CDN loader 沒有進入生產實作；當前仍以單檔案 IIFE 作為唯一發布架構。
 
-## 迁移前后
+## 遷移前後
 
-| 指标 | 迁移前 Git blob | 当前 |
+| 指標 | 遷移前 Git blob | 當前 |
 |---|---:|---:|
-| `LuoguSP.user.js` 字节 | 176,879 | 164,401 |
-| gzip 字节 | 51,122 | 40,495 |
-| 发布文件行数 | 4,632 | 4,029 |
-| `createLuoguSPApp` 所在文件行数 | 2,760 | 128 |
-| Node 测试 | 65/65 | 66/66 |
-| 生产 Node/CJS 导出分支 | 有 | 无 |
+| `LuoguSP.user.js` 位元組 | 176,879 | 164,401 |
+| gzip 位元組 | 51,122 | 40,495 |
+| 發佈檔案行數 | 4,632 | 4,029 |
+| `createLuoguSPApp` 所在檔案行數 | 2,760 | 128 |
+| Node 測試 | 65/65 | 66/66 |
+| 生產 Node/CJS 匯出分支 | 有 | 無 |
 
-发布文件体积变化是 esbuild 的稳定格式化副作用，不是本次迁移的主要目标。
-主要收益是源码边界、直接测试和装配复杂度下降。
+發佈檔案體積變化是 esbuild 的穩定格式化副作用，不是本次遷移的主要目標。
+主要收益是原始碼邊界、直接測試和裝配複雜度下降。
 
-## 目录边界
+## 目錄邊界
 
-- `src/core/`：GET 调度、路由适配、页面生命周期。禁止直接访问
+- `src/core/`：GET 排程、路由適配、頁面生命週期。禁止直接訪問
   `window`、`document`、`localStorage`。
-- `src/browser/`：跨功能复用的浏览器 DOM helper。
-- `src/features/<feature>/`：功能 descriptor、DOM 选择器、观察器状态、
-  样式和浏览器适配。
-- `src/app/`：统一 descriptor 约束和应用装配。
-- `src/entry.js`：浏览器启动与受限页早期 loading gate。
-- `src/userscript.meta.js`：userscript metadata 单独来源。
-- `LuoguSP.user.js`：自动生成的单一 IIFE 发布产物。
+- `src/browser/`：跨功能重複使用的瀏覽器 DOM helper。
+- `src/features/<feature>/`：功能 descriptor、DOM 選擇器、觀察器狀態、
+  樣式和瀏覽器適配。
+- `src/app/`：統一 descriptor 約束和應用裝配。
+- `src/entry.js`：瀏覽器啟動與受限頁早期 loading gate。
+- `src/userscript.meta.js`：userscript metadata 單獨來源。
+- `LuoguSP.user.js`：自動生成的單一 IIFE 發佈產物。
 
-五个可配置功能分别返回同一种 descriptor：
+五個可設定功能分別回傳同一種 descriptor：
 
 ```text
 { id, key, label, storageKey, defaultEnabled, enabled, mount, onRoute? }
 ```
 
-设置面板直接读取这些 descriptor，不再维护第二份 key/label 注册表。
+設定面板直接讀取這些 descriptor，不再維護第二份 key/label 註冊表。
 
-## 构建和测试
+## 建置和測試
 
 ```bash
 npm run build
@@ -53,33 +53,33 @@ npm test
 npm run check
 ```
 
-- esbuild 版本通过 `package-lock.json` 精确锁定。
-- `build:check` 在内存中重新构建并逐字节比较 `LuoguSP.user.js`。
-- 行为测试直接导入 `src` 模块；发布契约测试继续检查最终 userscript。
-- `npm run check` 串联可复现构建、质量预算和 66 个测试。
+- esbuild 版本通過 `package-lock.json` 精確鎖定。
+- `build:check` 在記憶體中重新建置並逐位元組比較 `LuoguSP.user.js`。
+- 行為測試直接匯入 `src` 模組；發佈契約測試繼續檢查最終 userscript。
+- `npm run check` 串聯可重現建置、品質預算和 66 個測試。
 
-## 质量预算
+## 品質預算
 
-预算定义在 `config/quality-budget.json`，实测快照位于
+預算定義在 `config/quality-budget.json`，實測快照位於
 `reports/quality-report.json`。
 
-当前主要数据：
+當前主要資料：
 
-- 发布包：164,401 B；gzip 40,495 B。
-- Node `vm.Script` 25 次解析中位数：低于 1 ms；只作为趋势数据。
-- 真实 Chromium 中四个 `@require` 与 userscript 的同步解析/启动最大值：
-  20.3 ms，预算不超过 50 ms；不包含网络下载时间。
-- `@require`：4 个，在线实测合计 473,733 B；gzip 143,935 B。
-- `createLuoguSPApp`：128 行，预算不超过 300 行。
-- 最大功能源码文件：802 行，预算不超过 850 行。
-- `core` 浏览器全局引用：0。
+- 發佈包：164,401 B；gzip 40,495 B。
+- Node `vm.Script` 25 次解析中位數：低於 1 ms；只作為趨勢資料。
+- 真實 Chromium 中四個 `@require` 與 userscript 的同步解析/啟動最大值：
+  20.3 ms，預算不超過 50 ms；不包含網路下載時間。
+- `@require`：4 個，線上實測合計 473,733 B；gzip 143,935 B。
+- `createLuoguSPApp`：128 行，預算不超過 300 行。
+- 最大功能原始碼檔案：802 行，預算不超過 850 行。
+- `core` 瀏覽器全域引用：0。
 
-“branchPoints”是基于源码 token 的趋势指标，不等同于严格的 AST
-cyclomatic complexity；它用于比较同一脚本的后续变化。
+“branchPoints”是基於原始碼 token 的趨勢指標，不等同於嚴格的 AST
+cyclomatic complexity；它用於比較同一指令碼的後續變化。
 
-## 功能复杂度快照
+## 功能複雜度快照
 
-| 功能目录 | 文件数 | 行数 | 函数指标 | 分支点指标 |
+| 功能目錄 | 檔案數 | 行數 | 函式指標 | 分支點指標 |
 |---|---:|---:|---:|---:|
 | chat-shortcut | 1 | 125 | 17 | 38 |
 | hidden-intro | 2 | 473 | 70 | 133 |
@@ -88,11 +88,11 @@ cyclomatic complexity；它用于比较同一脚本的后续变化。
 | restricted-content | 12 | 1,602 | 205 | 404 |
 | settings | 2 | 229 | 24 | 36 |
 
-IDE 和受限内容仍是主要复杂度来源。它们已经脱离装配入口，但后续若继续
-优化，应优先按 view、browser driver、document builder 拆分，而不是为了
-行数删除行为。
+IDE 和受限內容仍是主要複雜度來源。它們已經脫離裝配入口，但後續若繼續
+優化，應優先按 view、browser driver、document builder 拆分，而不是為了
+行數刪除行為。
 
-## 保持不变的发布契约
+## 保持不變的發佈契約
 
 - metadata 版本：2.12.5。
 - `@match https://www.luogu.com.cn/*`。
@@ -100,28 +100,28 @@ IDE 和受限内容仍是主要复杂度来源。它们已经脱离装配入口�
 - `@run-at document-start`。
 - GitHub homepage/support URL。
 - CNB update/download URL。
-- 四个固定版本 `@require`。
-- 五个设置 key 与默认开启语义。
+- 四個固定版本 `@require`。
+- 五個設定 key 與預設開啟語義。
 
-## 真实页面验证
+## 真實頁面驗證
 
-本次在未登录的真实 Chromium / `www.luogu.com.cn` 页面，用固定版本的四个
-`@require` 加当前构建产物完成了以下检查：
+本次在未登入的真實 Chromium / `www.luogu.com.cn` 頁面，用固定版本的四個
+`@require` 加當前建置產物完成了以下檢查：
 
-- 首页原生导航中设置入口仅 1 个；设置弹层显示 5 项既定 key，默认均开启。
-- P1001 题目页面包屑题号被着为 `rgb(254, 76, 97)`。
-- 用户页执行 `/user/3 -> /user/3/activity -> /user/3` 的真实 SPA 往返；
-  动态页补显 1 张简介卡，回主页后插件卡清理为 0，原生简介恢复为 1。
-- SPA 往返后设置入口仍为 1 个，三份功能样式均未重复。
-- 已存档受限文章 `9vrutkkt` 成功重建为洛谷原生文章壳，正文、目录、评论、
-  “申请更新”和“国际站原文”均正常，且未再出现失败卡。
-- 刷新的基线路由与受限文章页中，LuoguSP 和洛谷自身的 console
-  error/warn 均为 0。
-- 同一构建的三次同步解析/启动为 18.5 ms、20.3 ms、17.7 ms。
+- 首頁原生導覽中設定入口僅 1 個；設定彈層顯示 5 項既定 key，預設均開啟。
+- P1001 題目頁麵包屑題號被著為 `rgb(254, 76, 97)`。
+- 使用者頁執行 `/user/3 -> /user/3/activity -> /user/3` 的真實 SPA 往返；
+  動態頁補顯 1 張簡介卡，回主頁後外掛卡清理為 0，原生簡介恢復為 1。
+- SPA 往返後設定入口仍為 1 個，三份功能樣式均未重複。
+- 已存檔受限文章 `9vrutkkt` 成功重建為洛谷原生文章殼，正文、目錄、評論、
+  “申請更新”和“國際站原文”均正常，且未再出現失敗卡。
+- 刷新的基線路由與受限文章頁中，LuoguSP 和洛谷自身的 console
+  error/warn 均為 0。
+- 同一建置的三次同步解析/啟動為 18.5 ms、20.3 ms、17.7 ms。
 
-结构化证据位于 `reports/browser-qa.json`。质量门会比较其中的
-`artifactSha256` 与当前 userscript，避免把旧浏览器结果套到新产物。
+結構化證據位於 `reports/browser-qa.json`。品質門會比較其中的
+`artifactSha256` 與當前 userscript，避免把舊瀏覽器結果套到新產物。
 
-当前浏览器无法安装 userscript 扩展或在 `document-start` 注入，因此受限页
-首帧 loading gate 仍由模块测试覆盖。IDE 批量运行和私信 Ctrl+Click 需要
-登录态或专用路由夹具，本次未登录验证未覆盖；它们仍是发布前人工回归清单。
+當前瀏覽器無法安裝 userscript 擴充或在 `document-start` 注入，因此受限頁
+首影格 loading gate 仍由模組測試覆蓋。IDE 批量執行和私信 Ctrl+Click 需要
+登入態或專用路由夾具，本次未登入驗證未覆蓋；它們仍是發佈前人工迴歸清單。

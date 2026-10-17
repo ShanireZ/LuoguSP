@@ -1,14 +1,14 @@
-// 受限文章的「已确认互动状态」持久层。
-// 唯一写入来源是洛谷官方写接口的成功响应（见 article-write-observer.js）；
-// 保存站快照是公共存档，永远不进这里。记录按「当前登录 UID + 文章 ID」隔离：
-// 匿名访客既不读也不写，账号切换后读不到上一个账号的状态。
+// 受限文章的「已確認互動狀態」持久層。
+// 唯一寫入來源是洛谷官方寫介面的成功回應（見 article-write-observer.js）；
+// 保存站快照是公共存檔，永遠不進這裡。記錄按「當前登入 UID + 文章 ID」隔離：
+// 匿名訪客既不讀也不寫，帳號切換後讀不到上一個帳號的狀態。
 const STORE_KEY = "luogusp.article-interaction.v2";
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 200;
 const FIELDS = ["voted", "favored", "upvote", "favorCount"];
 
-// ★ Number(null) === 0 且 Number.isFinite(0) 为真：只判 isFinite 会把「未确认」的计数
-// 悄悄变成 0，反过来盖掉保存站快照里的真实值。未知必须留 null。
+// ★ Number(null) === 0 且 Number.isFinite(0) 為真：只判 isFinite 會把「未確認」的計數
+// 悄悄變成 0，反過來蓋掉保存站快照裡的真實值。未知必須留 null。
 const countOrNull = (value) =>
   value === null || value === undefined || value === "" ||
   !Number.isFinite(Number(value))
@@ -60,7 +60,7 @@ export function createArticleInteractionStore(config) {
     try {
       parsed = raw ? JSON.parse(raw) : null;
     } catch (error) {
-      /* 损坏的负载按空表处理，下一次写入会整体覆盖 */
+      /* 損壞的負載按空表處理，下一次寫入會整體覆蓋 */
     }
     const entries = new Map();
     if (parsed && typeof parsed === "object")
@@ -78,7 +78,7 @@ export function createArticleInteractionStore(config) {
     try {
       storage.setItem(key, JSON.stringify(Object.fromEntries(kept)));
     } catch (error) {
-      /* 存储不可用（隐私模式、配额）时静默降级 */
+      /* 儲存不可用（隱私模式、配額）時靜默降級 */
     }
   };
 

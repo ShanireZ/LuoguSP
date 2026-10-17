@@ -41,8 +41,8 @@ export function createRestrictedReplyXhrAdapter(config) {
   )
     throw new TypeError("Reply XHR adapter configuration is invalid");
   const repliesPath = `/article/${lid}/replies`;
-  // 官方前端用 axios（adapter 顺序 xhr→http→fetch），点赞/收藏/评论写入实际都走 XHR。
-  // 这里只旁观已完成的写请求，不改方法、URL、请求头、请求体或响应。
+  // 官方前端用 axios（adapter 順序 xhr→http→fetch），點贊/收藏/評論寫入實際都走 XHR。
+  // 這裡只旁觀已完成的寫請求，不改方法、URL、請求頭、請求體或回應。
   const writePaths = new Set([
     `/article/${lid}/favor`,
     `/article/${lid}/vote`,
@@ -69,7 +69,7 @@ export function createRestrictedReplyXhrAdapter(config) {
       if (!url || typeof onWrite !== "function") return;
       let responseText = "";
       try {
-        // responseType 为 json/blob 时读 responseText 会抛 InvalidStateError。
+        // responseType 為 json/blob 時讀 responseText 會拋 InvalidStateError。
         const body =
           this.native.responseType && this.native.responseType !== "text"
             ? this.native.response
@@ -81,7 +81,7 @@ export function createRestrictedReplyXhrAdapter(config) {
               ? JSON.stringify(body)
               : "";
       } catch (error) {
-        /* 响应体不可读时按空体处理，个人状态仍可由请求意图确认 */
+        /* 回應體不可讀時按空體處理，個人狀態仍可由請求意圖確認 */
       }
       try {
         onWrite({
@@ -91,7 +91,7 @@ export function createRestrictedReplyXhrAdapter(config) {
           responseText,
         });
       } catch (error) {
-        /* 观察失败绝不影响官方写入本身 */
+        /* 觀察失敗絕不影響官方寫入本身 */
       }
     }
 
@@ -160,13 +160,13 @@ export function createRestrictedReplyXhrAdapter(config) {
       try {
         requestUrl = new URLCtor(String(rawUrl), origin);
       } catch (error) {
-        /* 无法解析的请求按普通 XHR 透传 */
+        /* 無法解析的請求按普通 XHR 透傳 */
       }
-      // ★ XHR 实例是可以复用的（同一个对象再 open 一次）。不在这里复位，
-      //   上一次留下的 `completed` 会让 handleNative 对新请求的所有事件早退，
-      //   `fallback` 还会让 readyState 恒为 4、responseText 恒是上一次的回退体 ——
-      //   等于第二次请求彻底哑掉。官方前端走 axios、每次新建实例，所以踩不到；
-      //   但我们换掉的是**全局** XMLHttpRequest，页面上任何别的代码都可能复用。
+      // ★ XHR 執行個體是可以重複使用的（同一個物件再 open 一次）。不在這裡復位，
+      //   上一次留下的 `completed` 會讓 handleNative 對新請求的所有事件早退，
+      //   `fallback` 還會讓 readyState 恆為 4、responseText 恆是上一次的退回體 ——
+      //   等於第二次請求徹底啞掉。官方前端走 axios、每次新建執行個體，所以踩不到；
+      //   但我們換掉的是**全域** XMLHttpRequest，頁面上任何別的程式碼都可能重複使用。
       this.completed = false;
       this.fallback = null;
       this.aborted = false;
@@ -280,10 +280,10 @@ export function createRestrictedReplyXhrAdapter(config) {
     }
   }
 
-  // ★ WebIDL 的接口常量挂在**构造器和原型两处**（`XMLHttpRequest.DONE` 与
-  //   `xhr.DONE` 都必须是 4）。只挂构造器时 `xhr.DONE` 是 undefined，任何写
-  //   `xhr.readyState === xhr.DONE` 的库都会永远判假 —— 而我们换掉的是全局对象，
-  //   页面上的第三方代码不归我们挑。两处都挂，代价三行。
+  // ★ WebIDL 的介面常數掛在**建構器和原型兩處**（`XMLHttpRequest.DONE` 與
+  //   `xhr.DONE` 都必須是 4）。只掛建構器時 `xhr.DONE` 是 undefined，任何寫
+  //   `xhr.readyState === xhr.DONE` 的庫都會永遠判假 —— 而我們換掉的是全域物件，
+  //   頁面上的第三方程式碼不歸我們挑。兩處都掛，代價三行。
   for (const [name, value] of Object.entries({
     UNSENT: 0,
     OPENED: 1,

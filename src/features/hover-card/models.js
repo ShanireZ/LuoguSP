@@ -1,13 +1,13 @@
 import { difficultyColor, difficultyName } from "./difficulty.js";
 
-// 把洛谷各接口的原始载荷翻译成卡片视图模型。纯函数，不碰 DOM 不发请求。
+// 把洛谷各介面的原始載荷翻譯成卡片視圖模型。純函式，不碰 DOM 不發請求。
 //
-// 数据来源与实证见 handoff/26-8-13.md。这里只重复三条最容易被写错的：
-//   1. `problem.tags` 是**数字 id**，必须配 `/_lfe/tags` 字典；字典里**没有难度**
-//      （6 个 type 全是 Region/Algorithm/Origin/Time/SpecialProblem/Others）。
-//   2. 用户的 `elo` 真数据在**顶层 `data.elo`**；`user.elo` / `user.eloValue` 恒为 null。
-//   3. `user.verified` **只在看自己时返回**，且与页面上的 ✅ 无关 ——
-//      ✅ 由 `ccfLevel > 0` 驱动，气球由 `xcpcLevel > 0` 驱动（41 用户双向零反例）。
+// 資料來源與實證見 handoff/26-8-13.md。這裡只重複三條最容易被寫錯的：
+//   1. `problem.tags` 是**數字 id**，必須配 `/_lfe/tags` 字典；字典裡**沒有難度**
+//      （6 個 type 全是 Region/Algorithm/Origin/Time/SpecialProblem/Others）。
+//   2. 使用者的 `elo` 真資料在**頂層 `data.elo`**；`user.elo` / `user.eloValue` 恆為 null。
+//   3. `user.verified` **只在看自己時回傳**，且與頁面上的 ✅ 無關 ——
+//      ✅ 由 `ccfLevel > 0` 驅動，氣球由 `xcpcLevel > 0` 驅動（41 使用者雙向零反例）。
 
 const numberOrNull = (value) =>
   value === null || value === undefined || value === "" ||
@@ -17,7 +17,7 @@ const numberOrNull = (value) =>
 
 const boolOrNull = (value) => (typeof value === "boolean" ? value : null);
 
-// 通过率。分母为 0 时是「还没人交过」，不是 0% —— 别显示成 0%。
+// 通過率。分母為 0 時是「還沒人交過」，不是 0% —— 別顯示成 0%。
 export function acceptanceRate(accepted, submitted) {
   const a = numberOrNull(accepted);
   const s = numberOrNull(submitted);
@@ -37,7 +37,7 @@ export function buildTagDictionary(payload) {
   if (!names.size) return null;
   return Object.freeze({
     version: numberOrNull(payload.version),
-    // 认不出的 id 一律丢掉，不显示「标签 523」这种对用户毫无意义的东西。
+    // 認不出的 id 一律丟掉，不顯示「標籤 523」這種對使用者毫無意義的東西。
     resolve: (ids) =>
       (Array.isArray(ids) ? ids : [])
         .map((id) => names.get(numberOrNull(id)))
@@ -45,9 +45,9 @@ export function buildTagDictionary(payload) {
   });
 }
 
-// 上次尝试：来自旧版 `/record/list` 页面的 `_feInjection.currentData.records`。
-// ★ 不能用 problem detail 的 `lastCodeAt` 代替 —— 那是 IDE 里最后保存代码的时间，
-//   不是最后一次提交（两者数值可能恰好相同，语义不同）。
+// 上次嘗試：來自舊版 `/record/list` 頁面的 `_feInjection.currentData.records`。
+// ★ 不能用 problem detail 的 `lastCodeAt` 代替 —— 那是 IDE 裡最後保存程式碼的時間，
+//   不是最後一次提交（兩者數值可能恰好相同，語義不同）。
 export function pickLastAttempt(records) {
   const rows = Array.isArray(records)
     ? records
@@ -94,7 +94,7 @@ export function buildProblemCard(config) {
     acceptedCount: numberOrNull(problem.totalAccepted),
     submittedCount: numberOrNull(problem.totalSubmit),
     acceptanceRate: acceptanceRate(problem.totalAccepted, problem.totalSubmit),
-    // 标签默认折叠由视图层决定；这里只负责把 id 翻成名字。
+    // 標籤預設摺疊由視圖層決定；這裡只負責把 id 翻成名字。
     tags:
       tagDictionary && typeof tagDictionary.resolve === "function"
         ? Object.freeze(tagDictionary.resolve(problem.tags))
@@ -114,11 +114,11 @@ export function buildProblemCard(config) {
   });
 }
 
-// 关系枚举。★★ 2026-08-14 找到了权威来源：**`GET /_lfe/config`**（98 KB，洛谷前端的
-// 全套配置：路由表 + 所有枚举）。里面的 `UserRelationship` 就是
+// 關係枚舉。★★ 2026-08-14 找到了權威來源：**`GET /_lfe/config`**（98 KB，洛谷前端的
+// 全套設定：路由表 + 所有枚舉）。裡面的 `UserRelationship` 就是
 //   [{type:"Unrelated",id:0},{type:"Following",id:1},{type:"Blacklisted",id:2}]
-// —— 上一轮「洛谷没有独立的枚举字典端点」的结论作废，只是名字不叫 relationships/dicts/enums。
-// 三个之外一律当「未知」，视图层据此不显示可点的按钮。
+// —— 上一輪「洛谷沒有獨立的枚舉字典端點」的結論作廢，只是名字不叫 relationships/dicts/enums。
+// 三個之外一律當「未知」，視圖層據此不顯示可點的按鈕。
 export const RELATIONSHIP_UNRELATED = 0;
 export const RELATIONSHIP_FOLLOWING = 1;
 export const RELATIONSHIP_BLACKLISTED = 2;
@@ -132,16 +132,16 @@ export const relationOf = (value) => {
   return (n !== null && RELATION_NAMES[n]) || "unknown";
 };
 
-// 获奖。★ 形状实测是**套了一层**的：`data.prizes[i] = { prize: {year, contest, event, prize} }`，
-// 其中 **`contest` 已经是简称**（"CSP-S" / "NOIP" / "ICPC Regional" / "CCPC 分站赛"），
-// 而 `event` 是那段又臭又长的全称（"被认为是第 50 届 ICPC 国际大学生程序设计竞赛…上海站"）。
-// ★ 洛谷个人页上只渲染 `[year] contest` + `prize`，**不渲染 event** —— 上一轮我把 event 也
-//   摆上去了，于是 XCPC 类的奖项把整行撑爆（owner 2026-08-14 报的就是这条）。
-// 而且**按年份升序**（697932 实测 2024 CSP-J 在前、2025 CSP-S 在后，洛谷个人页也照这个顺序列）。
-// 旧代码 `slice(0, 4)` 取的是最早的 4 条、视图又只画第一条 ——
-// 于是**永远只显示最早那一个奖**，最近拿的反而看不见（owner 追问过两次的就是这个）。
-// 这里改成按年份**降序**并保留最近 4 条；没有年份的排在最后，不参与比较。
-// owner 2026-08-14：只显示**最近 3 条**。
+// 獲獎。★ 形狀實測是**套了一層**的：`data.prizes[i] = { prize: {year, contest, event, prize} }`，
+// 其中 **`contest` 已經是簡稱**（"CSP-S" / "NOIP" / "ICPC Regional" / "CCPC 分站賽"），
+// 而 `event` 是那段又臭又長的全稱（"被認為是第 50 屆 ICPC 國際大學生處理程序設計競賽…上海站"）。
+// ★ 洛谷個人頁上只繪製 `[year] contest` + `prize`，**不繪製 event** —— 上一輪我把 event 也
+//   擺上去了，於是 XCPC 類的獎項把整行撐爆（owner 2026-08-14 報的就是這條）。
+// 而且**按年份升序**（697932 實測 2024 CSP-J 在前、2025 CSP-S 在後，洛谷個人頁也照這個順序列）。
+// 舊程式碼 `slice(0, 4)` 取的是最早的 4 條、視圖又只畫第一條 ——
+// 於是**永遠只顯示最早那一個獎**，最近拿的反而看不見（owner 追問過兩次的就是這個）。
+// 這裡改成按年份**降序**並保留最近 4 條；沒有年份的排在最後，不參與比較。
+// owner 2026-08-14：只顯示**最近 3 條**。
 const PRIZE_LIMIT = 3;
 export function pickPrizes(prizes) {
   const rows = Array.isArray(prizes) ? prizes.filter((row) => row && row.prize) : [];
@@ -162,15 +162,15 @@ export function pickPrizes(prizes) {
 }
 
 export function buildUserCard(info, page) {
-  // 主载荷=原生卡的 /api/user/info/{uid}；补载荷=/user/{uid}（可能 403，那就只是少几行）。
+  // 主載荷=原生卡的 /api/user/info/{uid}；補載荷=/user/{uid}（可能 403，那就只是少幾行）。
   const user = (info && info.user) || null;
   const data = (page && page.data) || null;
   const fallback = data && data.user;
   const source = user || fallback;
   const uid = numberOrNull(source && source.uid);
   if (!source || uid === null) return null;
-  // ★ Elo：主接口的 `elo` / `eloValue` 是真值；`/user/{uid}` 里那两个字段恒 null，
-  //   它的真值在顶层 `data.elo` 数组里。两边都试，先信主接口。
+  // ★ Elo：主介面的 `elo` / `eloValue` 是真值；`/user/{uid}` 裡那兩個欄位恆 null，
+  //   它的真值在頂層 `data.elo` 陣列裡。兩邊都試，先信主介面。
   const eloList = data && Array.isArray(data.elo) ? data.elo : [];
   const latestElo =
     (source.elo && typeof source.elo === "object" ? source.elo : null) ||
@@ -184,7 +184,7 @@ export function buildUserCard(info, page) {
     name: typeof source.name === "string" ? source.name : `用户 ${uid}`,
     color: typeof source.color === "string" ? source.color : null,
     avatar: typeof source.avatar === "string" ? source.avatar : null,
-    // 原生卡的页头背景图。拿不到时洛谷自己会回落到一张固定图（见 card-view）。
+    // 原生卡的頁頭背景圖。拿不到時洛谷自己會回落到一張固定圖（見 card-view）。
     background:
       typeof source.background === "string" && source.background
         ? source.background
@@ -199,9 +199,9 @@ export function buildUserCard(info, page) {
     isBanned: source.isBanned === true,
     ccfLevel: numberOrNull(source.ccfLevel),
     xcpcLevel: numberOrNull(source.xcpcLevel),
-    // ★★ 「通过 / 提交」**只认 `/user/{uid}` 的口径**：两个接口同名字段含义不同
-    //    （实测 697932：主接口 5441、页面载荷 710，洛谷个人页写的是 710）。
-    //    拿不到补载荷就是 null，宁可不画这一行也不换一个口径。
+    // ★★ 「通過 / 提交」**只認 `/user/{uid}` 的口徑**：兩個介面同名欄位含義不同
+    //    （實測 697932：主介面 5441、頁面載荷 710，洛谷個人頁寫的是 710）。
+    //    拿不到補載荷就是 null，寧可不畫這一行也不換一個口徑。
     passedCount: fallback ? numberOrNull(fallback.passedProblemCount) : null,
     submittedCount: fallback ? numberOrNull(fallback.submittedProblemCount) : null,
     ranking: numberOrNull(source.ranking),

@@ -4,10 +4,10 @@ import {
   resolveRestrictedTransportRealm,
 } from "../src/features/restricted-content/transport-realm.js";
 
-// 官方前端跑在页面主世界，而用户脚本管理器可能把脚本放进沙箱作用域：
-// 2026-08-12 实测 Tampermonkey 即使报告 sandboxMode="raw"，只要用了 @grant，
-// window 仍然不是页面的 window，unsafeWindow 才是。包装打错地方不会报错，
-// 只会静默失去评论回退与写观察 —— 所以这里必须显式选中页面 realm。
+// 官方前端跑在頁面主世界，而使用者指令碼管理器可能把指令碼放進沙箱作用域：
+// 2026-08-12 實測 Tampermonkey 即使報告 sandboxMode="raw"，只要用了 @grant，
+// window 仍然不是頁面的 window，unsafeWindow 才是。包裝打錯地方不會回報錯誤，
+// 只會靜默失去評論退回與寫觀察 —— 所以這裡必須顯式選中頁面 realm。
 const realmFixture = (tag) => ({
   tag,
   XMLHttpRequest: class {},
@@ -28,7 +28,7 @@ test("the restricted transport binds to the page realm when the script is sandbo
   });
   assert.equal(sandboxed.host, pageWindow);
   assert.equal(sandboxed.sandboxed, true);
-  // ★构造器必须同样来自页面 realm：跨 realm 的 Request/Response 会让写适配器失败。
+  // ★建構器必須同樣來自頁面 realm：跨 realm 的 Request/Response 會讓寫適配器失敗。
   assert.deepEqual(
     [
       sandboxed.Response,
@@ -62,7 +62,7 @@ test("the restricted transport stays on the script window when it already is the
 test("an unusable page realm falls back instead of installing a half-broken transport", () => {
   const scriptWindow = realmFixture("script");
 
-  // 管理器给了 unsafeWindow，但缺构造器（或被隔离得读不到）→ 退回脚本世界。
+  // 管理器給了 unsafeWindow，但缺建構器（或被隔離得讀不到）→ 退回指令碼世界。
   for (const pageWindow of [
     { XMLHttpRequest: class {} },
     { ...realmFixture("page"), Request: undefined },

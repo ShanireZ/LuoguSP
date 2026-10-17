@@ -1,7 +1,7 @@
-// 洛谷 columba 页的壳：#lentille-context、csrf、主题、当前前端脚本。
-// 文章和剪贴板都从 /ranking、/discuss 收同一份壳，只替换 template 和 data。
-// 旧剪贴板走 lfe 的 window._feInjection；2026-09 实测 /image 401、/theme/list 404，
-// 那条壳已经收不到。
+// 洛谷 columba 頁的殼：#lentille-context、csrf、主題、當前前端指令碼。
+// 文章和剪貼板都從 /ranking、/discuss 收同一份殼，只替換 template 和 data。
+// 舊剪貼板走 lfe 的 window._feInjection；2026-09 實測 /image 401、/theme/list 404，
+// 那條殼已經收不到。
 
 export function parseColumbaScaffold(scaffold) {
   if (typeof scaffold !== "string") return null;
@@ -29,7 +29,7 @@ export function parseColumbaScaffold(scaffold) {
       /<link rel="stylesheet" href="(https:\/\/fecdn\.luogu\.com\.cn\/[^"]+)"/g,
     ),
   ].map((match) => match[1]);
-  // globals 会原样嵌进 <script>。出现 </script> 会把壳文档截断。
+  // globals 會原樣嵌進 <script>。出現 </script> 會把殼文件截斷。
   if (!ctxRaw || !scripts.length || /<\/script/i.test(globalsRaw)) return null;
   let context;
   try {

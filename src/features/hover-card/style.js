@@ -1,6 +1,6 @@
-// hover 卡样式。跟着洛谷的观感走：白底、细边、圆角 4px、阴影浅。
-// ★ 卡片用 position:fixed —— 锚点常在 overflow:hidden 的容器里（讨论区行、题解列表），
-//   用 absolute 会被裁掉。
+// hover 卡樣式。跟著洛谷的觀感走：白底、細邊、圓角 4px、陰影淺。
+// ★ 卡片用 position:fixed —— 錨點常在 overflow:hidden 的容器裡（討論區行、題解列表），
+//   用 absolute 會被裁掉。
 export const HOVER_CARD_STYLE = `
 /* ★ 宽度固定、并且**永远不出视口**：高度由 placeCard 按可用空间钉 max-height，
    内容再长也只在卡片内部出滚动条（owner 2026-08-14：展开标签后卡片顶出界）。 */

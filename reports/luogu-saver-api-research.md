@@ -1,31 +1,31 @@
-# Luogu Saver API 与文章交互数据调查
+# Luogu Saver API 與文章交互資料調查
 
-> 调查时间：2026-08-12（Asia/Shanghai）  
-> 源码基线：`laikit-dev/luogu-saver` `master` 提交  
+> 調查時間：2026-08-12（Asia/Shanghai）  
+> 原始碼基線：`laikit-dev/luogu-saver` `master` 提交  
 > [`898f230b31db6f817d9d0bbcfcc848505eca759c`](https://github.com/laikit-dev/luogu-saver/commit/898f230b31db6f817d9d0bbcfcc848505eca759c)
 
-## 结论
+## 結論
 
-1. `https://api.luogu.me` 就是 Luogu Saver 当前公开的后端 API，现有
+1. `https://api.luogu.me` 就是 Luogu Saver 當前公開的後端 API，現有
    LuoguSP 使用的 `/article/query/:id`、`/paste/query/:id`、
-   `/article/comments/:id` 都来自该仓库的 Koa 路由，不是另一套实时洛谷代理。
-2. 保存站文章查询包含 `upvote` 和 `favorCount`，但它们是最近一次成功存档时
-   写入数据库的公共计数快照，不是请求时的实时数据。
-3. 保存站不保存、也不返回访问者的 `favored`、`voted`、`canReply`、`canEdit`。
-   这四个字段不能由 `api.luogu.me` 构造，必须优先使用当前浏览器中同源洛谷文章
-   上下文；获取不到时应按未知/不可交互降级，不应用 `false` 伪造状态。
-4. 保存站评论是存档回退，不是实时评论：服务端从
-   `https://www.luogu.com/article/{lid}/replies` 分页抓取，默认六小时过期。
-   过期的 GET 会异步派发刷新，但本次响应仍返回旧评论列表。
-5. 保存站没有云剪贴板评论、点赞、收藏模型或路由。剪贴板回退页应继续只读，
-   不应渲染文章的交互按钮。
+   `/article/comments/:id` 都來自該儲存庫的 Koa 路由，不是另一套即時洛谷代理。
+2. 保存站文章查詢包含 `upvote` 和 `favorCount`，但它們是最近一次成功存檔時
+   寫入資料庫的公共計數快照，不是請求時的即時資料。
+3. 保存站不保存、也不回傳訪問者的 `favored`、`voted`、`canReply`、`canEdit`。
+   這四個欄位不能由 `api.luogu.me` 建構，必須優先使用當前瀏覽器中同源洛谷文章
+   上下文；獲取不到時應按未知/不可交互降級，不應用 `false` 偽造狀態。
+4. 保存站評論是存檔退回，不是即時評論：伺服器端從
+   `https://www.luogu.com/article/{lid}/replies` 分頁抓取，預設六小時過期。
+   過期的 GET 會非同步派發刷新，但本次回應仍回傳舊評論列表。
+5. 保存站沒有云剪貼板評論、點贊、收藏模型或路由。剪貼板退回頁應繼續唯讀，
+   不應繪製文章的交互按鈕。
 
-## API 数据形状
+## API 資料形狀
 
 ### `GET /article/query/:id`
 
-路由读取保存站的 `Article` 数据库实体，服务端渲染 Markdown 后以
-`{ code, message, data }` 包装返回。关键形状为：
+路由讀取保存站的 `Article` 資料庫實體，伺服器端繪製 Markdown 後以
+`{ code, message, data }` 包裝回傳。關鍵形狀為：
 
 ```json
 {
@@ -49,19 +49,19 @@
 }
 ```
 
-一手证据：
+一手證據：
 
-- [article router，查询并返回实体](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/article.router.ts#L50-L62)
-- [Article 实体的 `upvote` / `favorCount`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/entities/article.ts#L43-L50)
-- [当前前端定义的保存站 Article 响应字段](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/frontend/src/types/article.d.ts#L3-L25)
-- [2026-08-12 实测样本响应](https://api.luogu.me/article/query/ci3c3mr1)
+- [article router，查詢並回傳實體](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/article.router.ts#L50-L62)
+- [Article 實體的 `upvote` / `favorCount`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/entities/article.ts#L43-L50)
+- [當前前端定義的保存站 Article 回應欄位](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/frontend/src/types/article.d.ts#L3-L25)
+- [2026-08-12 實測樣本回應](https://api.luogu.me/article/query/ci3c3mr1)
 
-实测样本的 `data` 共有 `id/title/content/authorId/category/upvote/favorCount/...`
-等字段，不存在 `favored`、`voted`、`canReply`、`canEdit`。
+實測樣本的 `data` 共有 `id/title/content/authorId/category/upvote/favorCount/...`
+等欄位，不存在 `favored`、`voted`、`canReply`、`canEdit`。
 
 ### `GET /paste/query/:id`
 
-剪贴板查询同样返回保存站数据库实体：
+剪貼板查詢同樣回傳保存站資料庫實體：
 
 ```json
 {
@@ -80,16 +80,16 @@
 }
 ```
 
-该实体只有内容、作者、删除与时间等存档字段，没有任何交互字段或评论关系。
+該實體只有內容、作者、刪除與時間等存檔欄位，沒有任何交互欄位或評論關係。
 
-一手证据：
+一手證據：
 
 - [paste router](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/paste.router.ts#L9-L27)
-- [Paste 数据库实体](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/entities/paste.ts#L21-L57)
-- [前端 Paste 类型](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/frontend/src/types/paste.d.ts#L3-L13)
-- [2026-08-12 实测样本响应](https://api.luogu.me/paste/query/40hfk7qm)
+- [Paste 資料庫實體](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/entities/paste.ts#L21-L57)
+- [前端 Paste 類型](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/frontend/src/types/paste.d.ts#L3-L13)
+- [2026-08-12 實測樣本回應](https://api.luogu.me/paste/query/40hfk7qm)
 
-实测样本的 `data` 只有
+實測樣本的 `data` 只有
 `id/content/authorId/deleted/createdAt/updatedAt/deleteReason/contentHash/author/renderedContent`。
 
 ### `GET /article/comments/:id`
@@ -119,60 +119,60 @@
 }
 ```
 
-`commentsStale=true` 时，路由会后台派发一个评论刷新任务，然后立即返回当前数据库
-中的列表。因此这个 GET 不保证返回刷新后的内容，并且在过期情况下存在
-后台副作用。
+`commentsStale=true` 時，路由會後台派發一個評論刷新任務，然後立即回傳當前資料庫
+中的列表。因此這個 GET 不保證回傳刷新後的內容，並且在過期情況下存在
+後台副作用。
 
-一手证据：
+一手證據：
 
-- [评论查询、过期派发和响应映射](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/article.router.ts#L117-L154)
-- [六小时 TTL 和 200 页上限](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/shared/comment.ts#L10-L16)
-- [2026-08-12 实测样本：85 条评论，`commentsStale=false`](https://api.luogu.me/article/comments/ci3c3mr1)
+- [評論查詢、過期派發和回應映射](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/article.router.ts#L117-L154)
+- [六小時 TTL 和 200 頁上限](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/shared/comment.ts#L10-L16)
+- [2026-08-12 實測樣本：85 條評論，`commentsStale=false`](https://api.luogu.me/article/comments/ci3c3mr1)
 
-## 数据从哪里来
+## 資料從哪裡來
 
-### 文章和计数
+### 文章和計數
 
-`article-save-pipeline` 的抓取任务从
-`https://www.luogu.com/article/{id}` 读取 `resp.data.article`，再将文章内容、
-`upvote`、`favorCount` 写入保存站数据库。
+`article-save-pipeline` 的抓取任務從
+`https://www.luogu.com/article/{id}` 讀取 `resp.data.article`，再將文章內容、
+`upvote`、`favorCount` 寫入保存站資料庫。
 
-洛谷源响应的类型其实包含外层 `favored`、`voted`、`canReply`、`canEdit`，
-但保存任务只取 `resp.data.article`；随后的数据库实体和写入映射也都没有这些
-个人状态/权限字段。
+洛谷源回應的類型其實包含外層 `favored`、`voted`、`canReply`、`canEdit`，
+但保存任務只取 `resp.data.article`；隨後的資料庫實體和寫入映射也都沒有這些
+個人狀態/權限欄位。
 
-一手证据：
+一手證據：
 
-- [洛谷 `ArticleData` 源类型包含四个交互字段](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/types/luogu-api.d.ts#L626-L632)
-- [存档任务只取 `resp.data.article`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/article.handler.ts#L16-L30)
-- [存档写入映射只保留公共计数](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/article.service.ts#L328-L345)
+- [洛谷 `ArticleData` 源類型包含四個交互欄位](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/types/luogu-api.d.ts#L626-L632)
+- [存檔任務只取 `resp.data.article`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/article.handler.ts#L16-L30)
+- [存檔寫入映射只保留公共計數](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/article.service.ts#L328-L345)
 
-抓取工具可选接受 Cookie，但文章、剪贴板和评论 handler 调用时都没有传第三个
-Cookie 参数。这些任务是保存站服务器的匿名抓取，不具有 LuoguSP 访问者的洛谷
-会话；网络失败或 429 时还可以由保存站服务器改用 Tor。
+抓取工具可選接受 Cookie，但文章、剪貼板和評論 handler 呼叫時都沒有傳第三個
+Cookie 參數。這些任務是保存站伺服器的匿名抓取，不具有 LuoguSP 訪問者的洛谷
+工作階段；網路失敗或 429 時還可以由保存站伺服器改用 Tor。
 
-- [抓取工具的可选 Cookie 与 Tor 回退](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/utils/fetch.ts#L146-L210)
+- [抓取工具的可選 Cookie 與 Tor 退回](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/utils/fetch.ts#L146-L210)
 
-### 评论
+### 評論
 
-`save:comments` 任务按 `after={lastCommentId}` 从
+`save:comments` 任務按 `after={lastCommentId}` 從
 `https://www.luogu.com/article/{lid}/replies?sort=&after=...` 抓取 `replySlice`，
-去重后用一个事务整体替换已存评论并更新 `commentsFetchedAt`。
+去重後用一個交易整體替換已存評論並更新 `commentsFetchedAt`。
 
-- [洛谷评论分页抓取与存档](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/comments.handler.ts#L43-L100)
-- [评论的整体替换事务](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/comment.service.ts#L35-L67)
+- [洛谷評論分頁抓取與存檔](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/comments.handler.ts#L43-L100)
+- [評論的整體替換交易](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/comment.service.ts#L35-L67)
 
-### 剪贴板
+### 剪貼板
 
-`paste-save-pipeline` 从 `https://www.luogu.com/paste/{id}` 读取
-`resp.currentData.paste`，只保存剪贴板 ID、内容和作者，没有评论抓取分支。
+`paste-save-pipeline` 從 `https://www.luogu.com/paste/{id}` 讀取
+`resp.currentData.paste`，只保存剪貼板 ID、內容和作者，沒有評論抓取分支。
 
-- [剪贴板抓取 handler](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/paste.handler.ts#L16-L30)
-- [剪贴板存储映射](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/paste.service.ts#L45-L76)
+- [剪貼板抓取 handler](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/workers/handlers/task/save/paste.handler.ts#L16-L30)
+- [剪貼板儲存映射](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/paste.service.ts#L45-L76)
 
-## Refresh API 语义
+## Refresh API 語義
 
-### 文章/剪贴板收录与更新
+### 文章/剪貼板收錄與更新
 
 ```http
 POST /workflow/create/template/article-save-pipeline
@@ -188,33 +188,33 @@ Content-Type: application/json
 { "targetId": "paste-id" }
 ```
 
-成功响应的 `data` 是工作流描述符，包含 `workflowId`、`taskIds`、
-`reportTaskIds`、`trackTaskIds`；它表示任务已创建，不表示存档立即完成。
-可通过 `GET /workflow/query/:workflowId` 查询工作流状态。
+成功回應的 `data` 是工作流描述符，包含 `workflowId`、`taskIds`、
+`reportTaskIds`、`trackTaskIds`；它表示任務已建立，不表示存檔立即完成。
+可通過 `GET /workflow/query/:workflowId` 查詢工作流狀態。
 
-`article-save-pipeline` 是公开模板，支持 `forceUpdate=true`，并会同时创建文章与评论任务。
-默认 `forceUpdate=false` 时，如果标题和内容哈希未变，保存层会直接跳过更新；
-这意味着“只有点赞/收藏计数改变”不会刷新存档计数。要刷新计数必须显式传
+`article-save-pipeline` 是公開範本，支援 `forceUpdate=true`，並會同時建立文章與評論任務。
+預設 `forceUpdate=false` 時，如果標題和內容雜湊未變，保存層會直接跳過更新；
+這意味著“只有點贊/收藏計數改變”不會刷新存檔計數。要刷新計數必須顯式傳
 `forceUpdate: true`。
 
-`paste-save-pipeline` 当前模板不会把 `forceUpdate` 传给任务；剪贴板本身也没有
-本需求所需的交互计数。
+`paste-save-pipeline` 當前範本不會把 `forceUpdate` 傳給任務；剪貼板本身也沒有
+本需求所需的交互計數。
 
-一手证据：
+一手證據：
 
-- [公开工作流模板权限与 article `forceUpdate`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/lib/workflow-templates.ts#L43-L85)
-- [paste 模板不传 `forceUpdate`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/lib/workflow-templates.ts#L178-L205)
-- [哈希未变时的跳过条件](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/helpers/hashed-content.helper.ts#L72-L84)
-- [工作流创建与查询路由](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/workflow.router.ts#L27-L59)
-- [工作流响应形状](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/frontend/src/api/workflow.ts#L4-L41)
+- [公開工作流範本權限與 article `forceUpdate`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/lib/workflow-templates.ts#L43-L85)
+- [paste 範本不傳 `forceUpdate`](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/lib/workflow-templates.ts#L178-L205)
+- [雜湊未變時的跳過條件](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/services/helpers/hashed-content.helper.ts#L72-L84)
+- [工作流建立與查詢路由](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/workflow.router.ts#L27-L59)
+- [工作流回應形狀](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/frontend/src/api/workflow.ts#L4-L41)
 
-### 评论手动刷新
+### 評論手動刷新
 
 ```http
 POST /article/comments/:id/refresh
 ```
 
-成功时返回：
+成功時回傳：
 
 ```json
 {
@@ -224,75 +224,75 @@ POST /article/comments/:id/refresh
 }
 ```
 
-这个 POST 只向保存站队列派发刷新任务，不返回新评论。客户端需在任务完成后
-重新 GET，并仍以 `commentsStale/commentsFetchedAt` 判断新鲜度。
+這個 POST 只向保存站佇列派發刷新任務，不回傳新評論。用戶端需在任務完成後
+重新 GET，並仍以 `commentsStale/commentsFetchedAt` 判斷新鮮度。
 
-- [评论 refresh 路由与 `{ taskId }` 响应](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/article.router.ts#L156-L175)
+- [評論 refresh 路由與 `{ taskId }` 回應](https://github.com/laikit-dev/luogu-saver/blob/898f230b31db6f817d9d0bbcfcc848505eca759c/packages/backend/src/routers/article.router.ts#L156-L175)
 
-## 对 LuoguSP 2.14.0-canary 的直接建议
+## 對 LuoguSP 2.14.0-canary 的直接建議
 
-1. 评论读取顺序应是洛谷同源 `/article/{id}/replies` 优先，失败才读
-   `api.luogu.me/article/comments/{id}`。保存站回退应保留并传递
-   `commentsStale/commentsFetchedAt`，不应标记为“实时”。
-2. 文章数值的降级来源可以是保存站 `upvote/favorCount`，但它们只能当作
-   存档快照。`favored/voted/canReply/canEdit` 必须来自当前浏览器的洛谷文章
-   上下文，保存站无法补齐。
-3. 点赞、收藏和发表评论必须调用浏览器中的洛谷同源写入接口。
-   `api.luogu.me` 的 POST 是“更新保存站存档”，不是“以当前洛谷账号互动”，
-   不能代替洛谷写入。
-4. 如果 LuoguSP 的“手动更新文章存档”还要更新公共点赞/收藏计数，
-   article workflow 请求应显式传入 `forceUpdate: true`；否则文章内容不变时计数也
-   不会落库。
-5. 剪贴板保持只读，界面不显示点赞、收藏、评论输入框或可点击的交互计数。
+1. 評論讀取順序應是洛谷同源 `/article/{id}/replies` 優先，失敗才讀
+   `api.luogu.me/article/comments/{id}`。保存站退回應保留並傳遞
+   `commentsStale/commentsFetchedAt`，不應標記為“即時”。
+2. 文章數值的降級來源可以是保存站 `upvote/favorCount`，但它們只能當作
+   存檔快照。`favored/voted/canReply/canEdit` 必須來自當前瀏覽器的洛谷文章
+   上下文，保存站無法補齊。
+3. 點贊、收藏和發表評論必須呼叫瀏覽器中的洛谷同源寫入介面。
+   `api.luogu.me` 的 POST 是“更新保存站存檔”，不是“以當前洛谷帳號互動”，
+   不能代替洛谷寫入。
+4. 如果 LuoguSP 的“手動更新文章存檔”還要更新公共點贊/收藏計數，
+   article workflow 請求應顯式傳入 `forceUpdate: true`；否則文章內容不變時計數也
+   不會寫入資料庫。
+5. 剪貼板保持唯讀，介面不顯示點贊、收藏、評論輸入框或可點擊的交互計數。
 
-## 补充调查（2026-08-12 夜）：洛谷侧只读接口与官方写契约
+## 補充調查（2026-08-12 夜）：洛谷側唯讀介面與官方寫契約
 
-### 受限文章没有可用的官方只读状态接口
+### 受限文章沒有可用的官方唯讀狀態介面
 
-对受限文章 `2l4x53kj` 实测，三种读法都被「安全访问中心」拦截页替换
-（HTTP 200、`text/html`、2680 字节，标题 `安全访问中心 - 洛谷`）：
+對受限文章 `2l4x53kj` 實測，三種讀法都被「安全訪問中心」攔截頁替換
+（HTTP 200、`text/html`、2680 位元組，標題 `安全访问中心 - 洛谷`）：
 
-| 请求 | 结果 |
+| 請求 | 結果 |
 |---|---|
-| `GET /article/2l4x53kj` | 拦截页 |
-| `GET /article/2l4x53kj` + `x-luogu-type: content-only` | 拦截页 |
-| `GET /article/2l4x53kj?_contentOnly=1` | 拦截页 |
+| `GET /article/2l4x53kj` | 攔截頁 |
+| `GET /article/2l4x53kj` + `x-luogu-type: content-only` | 攔截頁 |
+| `GET /article/2l4x53kj?_contentOnly=1` | 攔截頁 |
 
-结论：受限文章不存在可带当前 `.cn` 登录态读回 `favored` / `voted` 的同源只读接口。
-`favored` / `voted` 只能来自官方写响应，并按账号隔离本地持久化。
+結論：受限文章不存在可帶當前 `.cn` 登入態讀回 `favored` / `voted` 的同源唯讀介面。
+`favored` / `voted` 只能來自官方寫回應，並按帳號隔離本機持久化。
 
-### 官方 article.show 的互动写契约
+### 官方 article.show 的互動寫契約
 
-源码基线：columba `20260730-2078`，
-`https://fecdn.luogu.com.cn/columba/columba~0bd2df6a7ee2b996.js`（`article.show` 页面组件）。
+原始碼基線：columba `20260730-2078`，
+`https://fecdn.luogu.com.cn/columba/columba~0bd2df6a7ee2b996.js`（`article.show` 頁面元件）。
 
 ```js
-// 收藏：响应体不参与状态，客户端自行推导
+// 收藏：回應體不參與狀態，用戶端自行推導
 await post({ name: "article.favor", params: { lid }, query: favored ? { remove: 1 } : {} });
 data.favored = !favored;
 data.article.favorCount = data.article.favorCount + (favored ? -1 : 1);
 
-// 点赞：响应体是权威
+// 點贊：回應體是權威
 const vote = data.article.voted === intent ? 0 : intent;
 const { data: body } = await post({ name: "article.vote", params: { lid }, query: { vote } });
 data.article.upvote = body.upvotes;
 data.article.voted = body.voted;
 ```
 
-要点：
+要點：
 
-1. 撤回点赞发 `?vote=0`，取消收藏发 `?remove=1`；两者都由**当前显示的个人状态**决定，
-   所以个人状态一旦丢失就无法撤回。
-2. 点赞响应体形状是 `{ upvotes, voted }`（`post` 是 axios 实例，`.data` 即 HTTP 响应体）。
-3. 状态容器是 `lentille current data`，即 `lentille-context` 的 `data`；组件直接改它。
-4. 官方前端用 axios，默认 `adapter: ["xhr","http","fetch"]` →
-   **这些写请求实际走 XMLHttpRequest**。要观察写响应必须挂在 XHR 层，只挂 fetch 收不到。
-5. CSRF 由官方 `useAxiosDefaults` 从文档里的 `meta[name=csrf-token]` 读取并设为
-   `X-CSRF-TOKEN` 请求头；同源 XHR 自带 Cookie。LuoguSP 重建文档时写入的是活取的真实 CSRF。
+1. 撤回點贊發 `?vote=0`，取消收藏發 `?remove=1`；兩者都由**當前顯示的個人狀態**決定，
+   所以個人狀態一旦丟失就無法撤回。
+2. 點贊回應體形狀是 `{ upvotes, voted }`（`post` 是 axios 執行個體，`.data` 即 HTTP 回應體）。
+3. 狀態容器是 `lentille current data`，即 `lentille-context` 的 `data`；元件直接改它。
+4. 官方前端用 axios，預設 `adapter: ["xhr","http","fetch"]` →
+   **這些寫請求實際走 XMLHttpRequest**。要觀察寫回應必須掛在 XHR 層，只掛 fetch 收不到。
+5. CSRF 由官方 `useAxiosDefaults` 從文件裡的 `meta[name=csrf-token]` 讀取並設為
+   `X-CSRF-TOKEN` 請求頭；同源 XHR 自帶 Cookie。LuoguSP 重建文件時寫入的是活取的真實 CSRF。
 
-## 调查限制
+## 調查限制
 
-- 本调查只调用了公开 GET 接口。为保持只读，未向保存站提交任何 workflow
+- 本調查只呼叫了公開 GET 介面。為保持唯讀，未向保存站提交任何 workflow
   或 comments refresh POST。
-- 实测响应是 2026-08-12 的瞬时样本；稳定实现依据以上述固定提交的路由、
-  实体和 handler 源码为准。
+- 實測回應是 2026-08-12 的瞬時樣本；穩定實作依據以上述固定提交的路由、
+  實體和 handler 原始碼為準。

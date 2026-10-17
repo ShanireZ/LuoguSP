@@ -8,10 +8,10 @@ import { pickPublishTime } from "../src/features/restricted-content/publish-time
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relative) => readFileSync(resolve(root, relative), "utf8");
 
-// 保存站上游 laikit-dev/luogu-saver#84 之后，存档载荷自带 `publishTime`＝洛谷真实发表时间（秒）。
-// 在此之前唯一的真值来源是作者专栏列表现扫（article-live-counts.js 的 live.time），
-// 那条路要发若干请求且有 2.5s 预算，扫不到就没有。两者都没有时**必须**返回 null ——
-// 入档时间（createdAt）与真实发表时间实测能差三个月（2l4x53kj），绝不能顶替。
+// 保存站上游 laikit-dev/luogu-saver#84 之後，存檔載荷自帶 `publishTime`＝洛谷真實發表時間（秒）。
+// 在此之前唯一的真值來源是作者專欄列表現掃（article-live-counts.js 的 live.time），
+// 那條路要發若干請求且有 2.5s 預算，掃不到就沒有。兩者都沒有時**必須**回傳 null ——
+// 入檔時間（createdAt）與真實發表時間實測能差三個月（2l4x53kj），絕不能頂替。
 
 test("保存站的 publishTime 直接可用", () => {
   assert.equal(pickPublishTime({ publishTime: 1759276800 }, null), 1759276800);
@@ -36,8 +36,8 @@ test("两者都没有就是 null，绝不拿入档时间顶替", () => {
   assert.equal(pickPublishTime(undefined, undefined), null);
 });
 
-// ★ Number(null) === 0 且 Number.isFinite(0) 为真 —— 这个坑本项目已经咬过四次。
-// 0 是「洛谷没有给值」，不是 1970-01-01。
+// ★ Number(null) === 0 且 Number.isFinite(0) 為真 —— 這個坑本專案已經咬過四次。
+// 0 是「洛谷沒有給值」，不是 1970-01-01。
 test("0、负数、非整数、空串一律当作没有", () => {
   for (const value of [0, -1, -1759276800, 1.5, "", "  ", Number.NaN, Infinity]) {
     assert.equal(pickPublishTime({ publishTime: value }, null), null, `publishTime=${String(value)}`);
@@ -49,24 +49,24 @@ test("坏的 publishTime 不会挡住可用的实时值", () => {
   assert.equal(pickPublishTime({ publishTime: 0 }, { time: 1759276800 }), 1759276800);
 });
 
-// 上游把列定成 INT UNSIGNED，超出范围的值不可能是真的发表时间。
+// 上游把列定成 INT UNSIGNED，超出範圍的值不可能是真的發表時間。
 test("超出 INT UNSIGNED 的值不接受", () => {
   assert.equal(pickPublishTime({ publishTime: 4294967295 }, null), 4294967295);
   assert.equal(pickPublishTime({ publishTime: 4294967296 }, null), null);
   assert.equal(pickPublishTime({ publishTime: 1759276800000 }, null), null);
 });
 
-// 保存站的 BIGINT 列会以字符串出现在 JSON 里（评论的 time 就是这样），
-// publishTime 现在是 INT UNSIGNED 所以是数字，但调用方不该因为哪天变了就崩。
+// 保存站的 BIGINT 列會以字串出現在 JSON 裡（評論的 time 就是這樣），
+// publishTime 現在是 INT UNSIGNED 所以是數字，但呼叫方不該因為哪天變了就崩。
 test("纯数字字符串按数字接受", () => {
   assert.equal(pickPublishTime({ publishTime: "1759276800" }, null), 1759276800);
 });
 
-// ---- 结构守卫 ----
-// 四个接线点全在 feature.js 的重建/挂载路径上，行为测试要把整个特性挂进 jsdom 才够得着，
-// 而漏接一处的表现是「静默退回入档时间」——页面照常渲染，只是时间是错的，没有任何测试会红。
-// ★ 钉整条表达式，不钉字段名：只钉 "pickPublishTime" 的话，把判据改回 `live && live.time`
-//   仍然能过（本项目上一次写假门就是这么栽的）。
+// ---- 結構守衛 ----
+// 四個串接點全在 feature.js 的重建/掛載路徑上，行為測試要把整個特性掛進 jsdom 才夠得著，
+// 而漏接一處的表現是「靜默退回入檔時間」——頁面照常繪製，只是時間是錯的，沒有任何測試會紅。
+// ★ 釘整條表達式，不釘欄位名：只釘 "pickPublishTime" 的話，把判據改回 `live && live.time`
+//   仍然能過（本專案上一次寫假門就是這麼栽的）。
 
 test("文章与剪贴板的重建时间都走 pickPublishTime，回落才是入档时间", () => {
   const source = read("src/features/restricted-content/feature.js");
@@ -104,8 +104,8 @@ test("两处「存档时间」文案的判据与取值同源", () => {
   );
 });
 
-// 撤掉 forceUpdate 之后，行为测试只钉「这一次发出的请求体」；
-// 结构守卫再钉一遍「源码里根本不存在这个字段」，免得哪天有人顺手加回去。
+// 撤掉 forceUpdate 之後，行為測試只釘「這一次發出的請求體」；
+// 結構守衛再釘一遍「原始碼里根本不存在這個欄位」，免得哪天有人順手加回去。
 test("发给保存站的更新请求不带 forceUpdate", () => {
   assert.doesNotMatch(
     read("src/features/restricted-content/saver-workflow.js"),

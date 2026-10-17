@@ -1,25 +1,25 @@
-// 关注 / 取消关注。契约 2026-08-13 在 owner 授权下实测抓取（对 owner 自己的另一个账号
-// 关注→取消，状态已复核还原）：
+// 關注 / 取消關注。契約 2026-08-13 在 owner 授權下實測抓取（對 owner 自己的另一個帳號
+// 關注→取消，狀態已複核還原）：
 //
-//   POST /api/user/updateRelationShip      ← 注意 Ship 的 S 大写；同源，无 query
+//   POST /api/user/updateRelationShip      ← 注意 Ship 的 S 大寫；同源，無 query
 //   Content-Type: application/json
 //   X-CSRF-TOKEN: <meta[name=csrf-token]>
 //   X-Requested-With: XMLHttpRequest
-//   {"uid": 116524, "relationship": 1}     ← 1 = 关注，0 = 取消
+//   {"uid": 116524, "relationship": 1}     ← 1 = 關注，0 = 取消
 //   → 200 {"_empty":true}
 //
-// ★★ 响应体**不回传新状态**（就是个 `{"_empty":true}`）。这与 `article.favor` 完全同款：
-//    客户端自己 toggle 并 `followerCount ± 1`。所以必须**乐观更新 + 失败回滚** ——
-//    这正是 canary.7 在收藏计数上踩过的那个坑，别再踩第二遍。
+// ★★ 回應體**不回傳新狀態**（就是個 `{"_empty":true}`）。這與 `article.favor` 完全同款：
+//    用戶端自己 toggle 並 `followerCount ± 1`。所以必須**樂觀更新 + 失敗回復** ——
+//    這正是 canary.7 在收藏計數上踩過的那個坑，別再踩第二遍。
 
 export const FOLLOW_ENDPOINT = "/api/user/updateRelationShip";
-// ★★ 枚举来自 `GET /_lfe/config` 的 `UserRelationship`（2026-08-14 实测）：
-//    [{Unrelated,0},{Following,1},{Blacklisted,2}]。上一轮「洛谷没有枚举字典端点」作废。
+// ★★ 枚舉來自 `GET /_lfe/config` 的 `UserRelationship`（2026-08-14 實測）：
+//    [{Unrelated,0},{Following,1},{Blacklisted,2}]。上一輪「洛谷沒有枚舉字典端點」作廢。
 export const RELATIONSHIP_UNRELATED = 0;
 export const RELATIONSHIP_FOLLOWING = 1;
 export const RELATIONSHIP_BLACKLISTED = 2;
 
-// 同一个端点同时管关注与拉黑，区别只在 relationship 的取值。
+// 同一個端點同時管關注與拉黑，區別只在 relationship 的取值。
 export function buildRelationRequest(config) {
   const { uid, relationship, csrfToken } = config || {};
   const target = Number(uid);
@@ -53,10 +53,10 @@ export function buildFollowRequest(config) {
   });
 }
 
-// 屏蔽 / 取消屏蔽。★ 原生的两条硬规则，照抄：
-//   1. **正在关注的人不能拉黑**（洛谷自己会拒，并提示「你无法拉黑正在关注的人」）；
-//   2. 动作前必须确认 —— 这是替用户对第三方做的、有社交后果的写入。
-// 未知关系一律不许操作。
+// 屏蔽 / 取消屏蔽。★ 原生的兩條硬規則，照抄：
+//   1. **正在關注的人不能拉黑**（洛谷自己會拒，並提示「你無法拉黑正在關注的人」）；
+//   2. 動作前必須確認 —— 這是替使用者對第三方做的、有社交後果的寫入。
+// 未知關係一律不許操作。
 export function planBlockToggle(state) {
   const relation = state && state.relation;
   if (relation !== "unrelated" && relation !== "blacklisted") return null;
@@ -69,8 +69,8 @@ export function planBlockToggle(state) {
   });
 }
 
-// 乐观切换：立刻回一个「先按成功算」的状态，同时给出精确的回滚状态。
-// 洛谷未知的关系值不允许操作 —— 猜错方向会替用户做错事。拉黑状态下也不许改关注。
+// 樂觀切換：立刻回一個「先按成功算」的狀態，同時給出精確的回復狀態。
+// 洛谷未知的關係值不允許操作 —— 猜錯方向會替使用者做錯事。拉黑狀態下也不許改關注。
 export function planFollowToggle(state) {
   const relation = state && state.relation;
   if (relation !== "following" && relation !== "unrelated") return null;
@@ -98,7 +98,7 @@ export function createFollowAction(config) {
     logError = () => {},
   } = config || {};
 
-  // 同一个用户的写请求串行化：连点两次不能让两个请求竞速，最后落地的状态会随机。
+  // 同一個使用者的寫請求串行化：連點兩次不能讓兩個請求競速，最後完成實作的狀態會隨機。
   const inFlight = new Set();
 
   const send = async (uid, plan, relationship, label) => {
@@ -107,7 +107,7 @@ export function createFollowAction(config) {
       relationship,
       csrfToken: typeof csrfToken === "function" ? csrfToken() : csrfToken,
     });
-    // 拿不到 CSRF 就别发 —— 发出去只会被洛谷拒绝，还白改一次界面。
+    // 拿不到 CSRF 就別發 —— 發出去只會被洛谷拒絕，還白改一次介面。
     if (!payload) return null;
     inFlight.add(uid);
     if (typeof onState === "function") onState(uid, plan.optimistic, "pending");
@@ -122,7 +122,7 @@ export function createFollowAction(config) {
       return plan.optimistic;
     } catch (error) {
       logError(error);
-      // ★ 回滚。响应体不带状态，服务器没确认就必须退回原样，不能留一个假的「已关注」。
+      // ★ 回復。回應體不帶狀態，伺服器沒確認就必須退回原樣，不能留一個假的「已關注」。
       if (typeof onState === "function") onState(uid, plan.rollback, "failed");
       return null;
     } finally {
@@ -144,9 +144,9 @@ export function createFollowAction(config) {
     );
   };
 
-  // ★★ 屏蔽是替用户对**第三方**做的社交动作，必须先让他点头 —— 但**确认在视图层做**
-  //    （卡内就地确认，owner 2026-08-14 拍板），这里拿到调用就直接发。
-  //    结构守卫盯着「视图层必须先问一句」，见 test/hover-card-render.test.mjs。
+  // ★★ 屏蔽是替使用者對**第三方**做的社交動作，必須先讓他點頭 —— 但**確認在視圖層做**
+  //    （卡內就地確認，owner 2026-08-14 拍板），這裡拿到呼叫就直接發。
+  //    結構守衛盯著「視圖層必須先問一句」，見 test/hover-card-render.test.mjs。
   const block = async (state) => {
     const uid = Number(state && state.uid);
     if (!Number.isSafeInteger(uid) || uid <= 0) return null;

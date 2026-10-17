@@ -1,52 +1,52 @@
-# LuoguSP（`luogusp`）— 提示词
+# LuoguSP（`luogusp`）— 提示詞
 
-> ★ **本项目不是 BetaPass 平台**，只借用 `BetaPass/std/` 的制作标准（五件套、画幅、安全区、
-> 「先图后字」的合成纪律）。资产**不进** `BetaPass/src/web/assets/platform/`，也不登记它的
-> `manifest.json`；`validate.cjs` 那条「正好 25 张」的硬断言与本项目无关。
+> ★ **本專案不是 BetaPass 平台**，只借用 `BetaPass/std/` 的製作標準（五件套、畫幅、安全區、
+> 「先圖後字」的合成紀律）。資產**不進** `BetaPass/src/web/assets/platform/`，也不登記它的
+> `manifest.json`；`validate.cjs` 那條「正好 25 張」的硬斷言與本專案無關。
 >
-> | 落位 | 路径 |
+> | 落位 | 路徑 |
 > | --- | --- |
-> | BetaPass 镜像 | `BetaPass/std/brand/luogusp/` |
-> | 项目完整副本 | `LuoguSP/assets/brand/` |
-> | 脚本 | `BetaPass/std/candidates/_build/`（只存 BetaPass） |
+> | BetaPass 鏡像 | `BetaPass/std/brand/luogusp/` |
+> | 專案完整副本 | `LuoguSP/assets/brand/` |
+> | 指令碼 | `BetaPass/std/candidates/_build/`（只存 BetaPass） |
 >
-> 正文一律写工作区相对路径、不用 Markdown 相对链接 —— 两份副本要能逐字节相同。
+> 正文一律寫工作區相對路徑、不用 Markdown 相對連結 —— 兩份副本要能逐位元組相同。
 >
-> ★★ **本项目是公开发布物**（GitHub 与 CNB 双仓、CDN 分发、GPL-3.0），与暂不公开的枢衡不同：
-> 这套视觉一落地就是对外的。因此它有一条别的项目没有的硬约束 —— **它是第三方站点的第三方插件**，
-> 画面里不得出现被增强站点的标志、字标、吉祥物或可辨认的页面外观。`LuoguSP` 是**自己的**牌子，
-> 不是那个站点的子品牌。九档难度色的复用口径见「视觉方向 · 商标边界」。
+> ★★ **本專案是公開發布物**（GitHub 與 CNB 雙倉、CDN 散布、GPL-3.0），與暫不公開的樞衡不同：
+> 這套視覺一完成實作就是對外的。因此它有一條別的專案沒有的硬約束 —— **它是第三方站台的第三方外掛**，
+> 畫面裡不得出現被增強站台的標誌、字標、吉祥物或可辨認的頁面外觀。`LuoguSP` 是**自己的**牌子，
+> 不是那個站台的子品牌。九檔難度色的重複使用口徑見「視覺方向 · 商標邊界」。
 >
-> ★ 全文十六进制**一律小写**，正是为了让九档色能与 `LuoguSP/src/core/luogu-difficulty.js` 的
-> `DIFFICULTY_COLORS` 逐字相等 —— 改成大写「统一风格」会让 grep 对不上。
+> ★ 全文十六進制**一律小寫**，正是為了讓九檔色能與 `LuoguSP/src/core/luogu-difficulty.js` 的
+> `DIFFICULTY_COLORS` 逐字相等 —— 改成大寫「統一風格」會讓 grep 對不上。
 
-## 项目档案
+## 專案檔案
 
-| 项 | 值 |
+| 項 | 值 |
 | --- | --- |
-| code / 显示名 | `luogusp` / LuoguSP |
-| 定位 | 面向洛谷的 Tampermonkey 用户脚本：题号染难度色、题目与用户悬停预览卡、个人介绍显形、受限文章与剪贴板解限、IDE 模式一键测全样例 |
-| 最终文字 | ★ **单语单行主标 `LuoguSP`，没有副标**（照 `horus` 先例） |
-| 字体 | 拉丁 **Fira Code Bold**（OFL）· 当前字体与授权副本在本目录 `fonts/` |
-| 色板 | 夜墨 `#0e1116` · 石板 `#161b22` · 冷钢灰蓝 `#7c8899` · 暖白 `#eceff4` · 界面蓝 `#3498db` · 九档难度色（唯一彩色源） |
-| 视觉方向 | **增强镜片覆在朴素灰条目上，镜片下的条目按九档难度色被点亮** |
+| code / 顯示名 | `luogusp` / LuoguSP |
+| 定位 | 面向洛谷的 Tampermonkey 使用者指令碼：題號染難度色、題目與使用者懸停預覽卡、個人介紹顯形、受限文章與剪貼板解限、IDE 模式一鍵測全樣例 |
+| 最終文字 | ★ **單語單行主標 `LuoguSP`，沒有副標**（照 `horus` 先例） |
+| 字體 | 拉丁 **Fira Code Bold**（OFL）· 當前字體與授權副本在本目錄 `fonts/` |
+| 色板 | 夜墨 `#0e1116` · 石板 `#161b22` · 冷鋼灰藍 `#7c8899` · 暖白 `#eceff4` · 介面藍 `#3498db` · 九檔難度色（唯一彩色源） |
+| 視覺方向 | **增強鏡片覆在樸素灰條目上，鏡片下的條目按九檔難度色被點亮** |
 
-### 为什么没有中文主标（我拍的，owner 可否决）
+### 為什麼沒有中文主標（我拍的，owner 可否決）
 
-项目自称只有一种形态：`LuoguSP/src/userscript.meta.js` 的 `@name` 是 `LuoguSP`，README 标题是
-`LuoguSP`，导航栏那一项叫「插件设置」—— 那是功能名不是产品名。**编一个中文名是产品决策，
-不是设计决策**，所以这里照 `horus`（单行 `HORUS`）的先例走单语单行。
+專案自稱只有一種形態：`LuoguSP/src/userscript.meta.js` 的 `@name` 是 `LuoguSP`，README 標題是
+`LuoguSP`，導覽欄那一項叫「外掛設定」—— 那是功能名不是產品名。**編一箇中文名是產品決策，
+不是設計決策**，所以這裡照 `horus`（單行 `HORUS`）的先例走單語單行。
 
-owner 若要两行，两条现成的路：
+owner 若要兩行，兩條現成的路：
 
-- 加一行描述性副标 `USERSCRIPT`（全大写、宽字距、`#7c8899`），不算新造品牌；
-- 或者定一个中文名 —— 那要 owner 自己拍，我不代拍。
+- 加一行描述性副標 `USERSCRIPT`（全大寫、寬字距、`#7c8899`），不算新造品牌；
+- 或者定一箇中文名 —— 那要 owner 自己拍，我不代拍。
 
-### 九档难度色（唯一权威）
+### 九檔難度色（唯一權威）
 
-取自 `LuoguSP/src/core/luogu-difficulty.js` 的 `DIFFICULTY_COLORS`，那是全仓**唯一**一份色表 ——
-它存在的理由正是此前两处各存一份、且两份同时是错的（第 5 / 8 档填成了 Tailwind 的值）。
-**顺序不可改、色值不可近似**：
+取自 `LuoguSP/src/core/luogu-difficulty.js` 的 `DIFFICULTY_COLORS`，那是全倉**唯一**一份色表 ——
+它存在的理由正是此前兩處各存一份、且兩份同時是錯的（第 5 / 8 檔填成了 Tailwind 的值）。
+**順序不可改、色值不可近似**：
 
 | # | 色名 | 色值 |
 | --- | --- | --- |
@@ -60,37 +60,37 @@ owner 若要两行，两条现成的路：
 | 8 | `purple-3` | `#9d3dcf` |
 | 9 | `lapis-4` | `#0e1d69` |
 
-第 1 档是「暂无评定」，第 9 档是最难的一档；这是一道**难度阶梯**，不是彩虹。
+第 1 檔是「暫無評定」，第 9 檔是最難的一檔；這是一道**難度階梯**，不是彩虹。
 
-## 视觉方向
+## 視覺方向
 
-这个插件不生产内容，它**就地把已经在那儿的东西点亮**：题号本来是黑字，它染成难度色；
-个人介绍本来没被渲染，它显出来；文章本来被拦，它取回来；样例本来要一组组手点，它一次跑完。
-所以主体不是一件器物，而是**一层关系** —— **一片增强镜片压在一叠朴素灰条目上，被镜片盖到的
-那几条当场吃上难度色**；镜片之外的条目仍然是灰的，那是「原页面还在，没有被替换」。
+這個外掛不生產內容，它**就地把已經在那兒的東西點亮**：題號本來是黑字，它染成難度色；
+個人介紹本來沒被繪製，它顯出來；文章本來被攔，它取回來；樣例本來要一組組手點，它一次跑完。
+所以主體不是一件器物，而是**一層關係** —— **一片增強鏡片壓在一疊樸素灰條目上，被鏡片蓋到的
+那幾條當場吃上難度色**；鏡片之外的條目仍然是灰的，那是「原頁面還在，沒有被替換」。
 
-★ 灰条用 `#bfbfbf` —— 它正好就是第 1 档「暂无评定」的颜色。**未被增强 ＝ 暂无评定**，
-这不是凑出来的巧合，是同一套色表本来的含义。
+★ 灰條用 `#bfbfbf` —— 它正好就是第 1 檔「暫無評定」的顏色。**未被增強 ＝ 暫無評定**，
+這不是湊出來的巧合，是同一套色表本來的含義。
 
-★ **九色只允许出现在色阶那一处。** 画面其余部分严格是夜墨 / 石板 / 冷钢灰蓝 / 暖白的单色世界，
-边缘光与点睛只用界面蓝 `#3498db`（取证自插件自己的按钮与链接色，见 `LuoguSP/src/features/`
-下悬停卡的样式；它同时也是第 7 档 `blue-3`）。放开这一条，九色立刻退化成 AI 彩虹渐变 ——
-那是这批图里最容易掉进去的坑，因为九个颜色摆在一起本来就长得像渐变。
+★ **九色只允許出現在色階那一處。** 畫面其餘部分嚴格是夜墨 / 石板 / 冷鋼灰藍 / 暖白的單色世界，
+邊緣光與點睛只用介面藍 `#3498db`（取證自外掛自己的按鈕與連結色，見 `LuoguSP/src/features/`
+下懸停卡的樣式；它同時也是第 7 檔 `blue-3`）。放開這一條，九色立刻退化成 AI 彩虹漸變 ——
+那是這批圖裡最容易掉進去的坑，因為九個顏色擺在一起本來就長得像漸變。
 
-★ **`puzzle piece` 必须写进 Avoid**：拼图块是浏览器扩展的通用陈词，生成模型看到
-"browser extension / userscript" 几乎一定会塞一块进来 —— 它对应枢衡那边的螃蟹。同理要挡住
-猴子与猿（用户脚本管理器的名字里带 monkey）、放大镜、齿轮、尖括号代码符号、带三个圆点的浏览器窗框。
+★ **`puzzle piece` 必須寫進 Avoid**：拼圖塊是瀏覽器擴充的通用陳詞，生成模型看到
+"browser extension / userscript" 幾乎一定會塞一塊進來 —— 它對應樞衡那邊的螃蟹。同理要擋住
+猴子與猿（使用者指令碼管理器的名字裡帶 monkey）、放大鏡、齒輪、尖括號程式碼符號、帶三個圓點的瀏覽器窗框。
 
-★ **背景里的条目行必须是抽象色条，不得出现任何可读字符。** 这一条比另外四个项目都吃紧 ——
-画的本来就是一叠文字列表，模型会本能地往里写字。出现可读字母、数字或伪 UI 即判废。
+★ **背景裡的條目行必須是抽象色條，不得出現任何可讀字元。** 這一條比另外四個專案都吃緊 ——
+畫的本來就是一疊文字列表，模型會本能地往裡寫字。出現可讀字母、數字或偽 UI 即判廢。
 
-### 商标边界
+### 商標邊界
 
-九档色值是被增强站点的设计令牌，我们复用它是因为**这个产品的工作本身就是把那九个颜色渲染出来**；
-色值不是标志。但画面里不得出现那个站点的标志、字标、吉祥物、导航条或任何可辨认的页面外观，
-条目行一律是抽象色块。★ **对外发布前 owner 需再确认一次这条口径。**
+九檔色值是被增強站台的設計權杖，我們重複使用它是因為**這個產品的工作本身就是把那九個顏色繪製出來**；
+色值不是標誌。但畫面裡不得出現那個站台的標誌、字標、吉祥物、導覽條或任何可辨認的頁面外觀，
+條目行一律是抽象色塊。★ **對外發布前 owner 需再確認一次這條口徑。**
 
-## 1. Logo 原生生成（随后抠图）
+## 1. Logo 原生生成（隨後摳圖）
 
 ```text
 Use case: logo-brand
@@ -105,7 +105,7 @@ Constraints: one uniform backdrop with no shadow, gradient, texture, floor or re
 Avoid: puzzle piece, jigsaw, monkey or ape or any animal mascot, magnifying glass, gear, cog, angle-bracket code symbol, browser window chrome with three dots, cursor arrow, rainbow gradient, neon cyberpunk, glowing tech-blue orb, circuit board, rounded app-icon plate behind the mark, any existing website logo wordmark or mascot
 ```
 
-抠图后入库 `LuoguSP/assets/brand/luogusp-logo.png`。
+摳圖後入庫 `LuoguSP/assets/brand/luogusp-logo.png`。
 
 ## 2. 徽章背景原生生成（3:1）
 
@@ -123,9 +123,9 @@ Constraints: no text, no letters, no numbers, no logo, no watermark, no frame, n
 Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear, angle-bracket code symbol, rainbow gradient across the whole image, neon cyberpunk, glowing blue network globe, circuit board, any existing website logo or recognizable page design, cluttered left side
 ```
 
-入库 `LuoguSP/assets/brand/luogusp-badge-bg.webp`。
+入庫 `LuoguSP/assets/brand/luogusp-badge-bg.webp`。
 
-## 3. 竖版背景原生生成（4:5）
+## 3. 豎版背景原生生成（4:5）
 
 ```text
 Use case: stylized-concept
@@ -141,35 +141,35 @@ Constraints: no text, no letters, no numbers, no logo, no watermark, no frame, n
 Avoid: puzzle piece, jigsaw, monkey or ape or any mascot, magnifying glass, gear, angle-bracket code symbol, full-image rainbow gradient, neon, glowing blue globe, circuit board, any existing website logo or recognizable page design, a small logo floating in an empty box
 ```
 
-入库 `LuoguSP/assets/brand/luogusp-stage-bg.webp`。
+入庫 `LuoguSP/assets/brand/luogusp-stage-bg.webp`。
 
-## 4. 后期合成
+## 4. 後期合成
 
-- **徽章**：左侧 1/4 叠 `luogusp-logo.png`；中段排单行 `LuoguSP`；右侧只保留镜片 HERO。
-  实际定稿主标为 Fira Code Bold 80px、`#eceff4`、字距 9.5px，组合中心 x=485px；这样末尾 `SP`
-  不压进右侧镜片主体。
-- ★ **单行主标的排版算术（可复核）**：Fira Code 字身宽约 0.6em，`LuoguSP` 七个字符 →
-  7 × 0.6 × 80 ≈ 336px，再加字距约 67px，合计约 403px；组合中心 x=485px 时主体大致落在
-  x=284→686，既不挤左侧 Logo，也不会盖住右侧 HERO。
-- **竖版宣传图**：中央偏下叠 Logo（占画布宽约 33%，420px），主标排在 Logo 下方；整组中心
-  y=68%，与上半部的背景镜片错层，避免两个方形器物正面重叠。
-- ★ **这是本批唯一的单语单行。** 中段只有一个词，字号必须取上限、字距拉到 0.12–0.16em，
-  否则左侧 Logo 与右侧 HERO 之间会空出一大块 —— 和枢衡两字主标是同一个问题的同一种解法。
-- ★ Logo 是**方形**器物，徽章左侧 1/4 那格按**高度**定尺即可（与横向的枢衡不同）。
-- ✅ `BetaPass/std/candidates/_build/build-non-platform-assets.cjs` 已支持 `subtitle` 为空时完全收掉副标行，
-  并为 LuoguSP 使用上面的单行版式参数。
-- ✅ Fira Code Bold 与 OFL 授权副本已落本目录 `fonts/`，确定性合成不依赖系统字体。
+- **徽章**：左側 1/4 疊 `luogusp-logo.png`；中段排單行 `LuoguSP`；右側只保留鏡片 HERO。
+  實際定稿主標為 Fira Code Bold 80px、`#eceff4`、字距 9.5px，組合中心 x=485px；這樣末尾 `SP`
+  不壓進右側鏡片主體。
+- ★ **單行主標的排版算術（可複核）**：Fira Code 字身寬約 0.6em，`LuoguSP` 七個字元 →
+  7 × 0.6 × 80 ≈ 336px，再加字距約 67px，合計約 403px；組合中心 x=485px 時主體大致落在
+  x=284→686，既不擠左側 Logo，也不會蓋住右側 HERO。
+- **豎版宣傳圖**：中央偏下疊 Logo（佔畫布寬約 33%，420px），主標排在 Logo 下方；整組中心
+  y=68%，與上半部的背景鏡片錯層，避免兩個方形器物正面重疊。
+- ★ **這是本批唯一的單語單行。** 中段只有一個詞，字號必須取上限、字距拉到 0.12–0.16em，
+  否則左側 Logo 與右側 HERO 之間會空出一大塊 —— 和樞衡兩字主標是同一個問題的同一種解法。
+- ★ Logo 是**方形**器物，徽章左側 1/4 那格按**高度**定尺即可（與橫向的樞衡不同）。
+- ✅ `BetaPass/std/candidates/_build/build-non-platform-assets.cjs` 已支援 `subtitle` 為空時完全收掉副標行，
+  併為 LuoguSP 使用上面的單行版式參數。
+- ✅ Fira Code Bold 與 OFL 授權副本已落本目錄 `fonts/`，確定性合成不依賴系統字體。
 
-## 5. 自检
+## 5. 自檢
 
-- **色带恰好九条**，顺序与色值逐条对 `LuoguSP/src/core/luogu-difficulty.js` 的 `DIFFICULTY_COLORS`：
-  **用取色器实测，不靠眼看**。少一条、多一条、被排成彩虹，任一即判废。
-- **第 9 档 `#0e1d69` 必须与夜墨底 `#0e1116` 分得开**（加冷白细描边，或提亮相邻面）。这两个色
-  差得极近，不处理就是「九条只看得见八条」—— 而那样的图第一眼看上去完全正常，正因为如此
-  这条要当门来跑，不能靠印象。
-- **镜片之外必须还留着灰条**。整幅都是彩色就丢掉了「只增强、不替换」这层意思，退化成一张色卡。
-- **不得出现任何可读字符**（条目行、预览面板、边角一律算），也不得出现伪 UI、浏览器窗框、光标。
-- 不得出现拼图块、猴子或任何动物吉祥物、放大镜、齿轮、尖括号代码符号、通用科技蓝光球。
-- **不得出现被增强站点的标志、字标、吉祥物或可辨认的页面外观。**
-- `LuoguSP` 大小写逐字正确（首字母 `L` 与末两位 `SP` 大写，其余小写），
-  不写成 `LUOGUSP` / `luogusp` / `LuoguSp` / `Luogusp`。
+- **色帶恰好九條**，順序與色值逐條對 `LuoguSP/src/core/luogu-difficulty.js` 的 `DIFFICULTY_COLORS`：
+  **用取色器實測，不靠眼看**。少一條、多一條、被排成彩虹，任一即判廢。
+- **第 9 檔 `#0e1d69` 必須與夜墨底 `#0e1116` 分得開**（加冷白細描邊，或提亮相鄰面）。這兩個色
+  差得極近，不處理就是「九條只看得見八條」—— 而那樣的圖第一眼看上去完全正常，正因為如此
+  這條要當門來跑，不能靠印象。
+- **鏡片之外必須還留著灰條**。整幅都是彩色就丟掉了「只增強、不替換」這層意思，退化成一張色卡。
+- **不得出現任何可讀字元**（條目行、預覽面板、邊角一律算），也不得出現偽 UI、瀏覽器窗框、游標。
+- 不得出現拼圖塊、猴子或任何動物吉祥物、放大鏡、齒輪、尖括號程式碼符號、通用科技藍光球。
+- **不得出現被增強站台的標誌、字標、吉祥物或可辨認的頁面外觀。**
+- `LuoguSP` 大小寫逐字正確（首字母 `L` 與末兩位 `SP` 大寫，其餘小寫），
+  不寫成 `LUOGUSP` / `luogusp` / `LuoguSp` / `Luogusp`。

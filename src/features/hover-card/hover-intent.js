@@ -1,10 +1,10 @@
-// 悬停意图：鼠标只是路过还是真的停下来看。
+// 懸停意圖：滑鼠只是路過還是真的停下來看。
 //
-// 卡片要发网络请求（题目详情 11–35 KB、记录列表 4 KB、用户页 1–12 KB），所以不能
-// mouseenter 就打。停留够久才算「想看」，离开后留一小段宽限期，让鼠标能从锚点移到卡片上
-// 而不把卡片收走 —— 否则卡片上的「关注」按钮永远点不到。
+// 卡片要髮網路請求（題目詳情 11–35 KB、記錄列表 4 KB、使用者頁 1–12 KB），所以不能
+// mouseenter 就打。停留夠久才算「想看」，離開後留一小段寬限期，讓滑鼠能從錨點移到卡片上
+// 而不把卡片收走 —— 否則卡片上的「關注」按鈕永遠點不到。
 //
-// 纯状态机：定时器由外部注入，可用假时钟测。
+// 純狀態機：定時器由外部注入，可用假時鐘測。
 
 const DEFAULT_OPEN_DELAY_MS = 300;
 const DEFAULT_CLOSE_GRACE_MS = 160;
@@ -26,7 +26,7 @@ export function createHoverIntent(config) {
 
   let openTimer = null;
   let closeTimer = null;
-  // 当前已打开的目标；null = 关闭状态。
+  // 當前已打開的目標；null = 關閉狀態。
   let current = null;
   let pendingTarget = null;
 
@@ -52,19 +52,19 @@ export function createHoverIntent(config) {
   };
 
   return Object.freeze({
-    // 指针进入锚点（或进入已打开的卡片本体，此时 target 传 current 即可）。
+    // 指針進入錨點（或進入已打開的卡片本體，此時 target 傳 current 即可）。
     enter(target) {
       if (target == null) return;
       cancelClose();
-      // 同一个目标已经开着 → 别重复请求。
-      // ★★ 但**必须先把待打开的别的目标掐掉**。canary.15 真机复现过：练习页的题号是
-      //    零间距铺开的，下一行题号就贴在上一行下沿（实测 A.bottom=193，B.top=193），
-      //    而卡片落在 bottom+4 —— 指针从题号挪到卡片，**必然横穿一个别的题号**。
-      //    那一穿会排一个 300ms 的待打开；紧接着指针进了卡片，走 `onOut` 里
-      //    「移到卡片上不算离开」的快路径**跳过了 leave()**（leave 本来会 cancelOpen），
-      //    然后这里又早退，于是那个待打开活着走完 300ms，把当前卡关掉、换成隔壁那道题。
-      //    症状就是 owner 说的「鼠标移到卡片过程中卡片就消失」。
-      //    修法是一行 cancelOpen()：回到已开着的目标，等于放弃一切别的候选。
+      // 同一個目標已經開著 → 別重複請求。
+      // ★★ 但**必須先把待打開的別的目標掐掉**。canary.15 真機重現過：練習頁的題號是
+      //    零間距鋪開的，下一行題號就貼在上一行下沿（實測 A.bottom=193，B.top=193），
+      //    而卡片落在 bottom+4 —— 指針從題號挪到卡片，**必然橫穿一個別的題號**。
+      //    那一穿會排一個 300ms 的待打開；緊接著指針進了卡片，走 `onOut` 裡
+      //    「移到卡片上不算離開」的快路徑**跳過了 leave()**（leave 本來會 cancelOpen），
+      //    然後這裡又早退，於是那個待打開活著走完 300ms，把當前卡關掉、換成隔壁那道題。
+      //    症狀就是 owner 說的「滑鼠移到卡片過程中卡片就消失」。
+      //    修法是一行 cancelOpen()：回到已開著的目標，等於放棄一切別的候選。
       if (current !== null && current === target) {
         cancelOpen();
         return;
@@ -77,13 +77,13 @@ export function createHoverIntent(config) {
         const opening = pendingTarget;
         pendingTarget = null;
         if (opening == null) return;
-        // 切到新目标：先关旧的，保证同时只有一张卡。
+        // 切到新目標：先關舊的，保證同時只有一張卡。
         if (current !== null && current !== opening) closeNow();
         current = opening;
         if (typeof onOpen === "function") onOpen(opening);
       }, openDelayMs);
     },
-    // 指针离开。留宽限期，让鼠标能移到卡片上。
+    // 指針離開。留寬限期，讓滑鼠能移到卡片上。
     leave() {
       cancelOpen();
       if (current === null) return;
@@ -93,9 +93,9 @@ export function createHoverIntent(config) {
         closeNow();
       }, closeGraceMs);
     },
-    // 立即打开，不走 300ms 停留。★ 只给一种情况用：块是被用户这一次悬停**拉下来的**，
-    // 等它加载完，用户其实已经停了几百毫秒了 —— 再要求他重新停 300ms，
-    // 体感就是「第一次悬停不弹」（owner 报过两轮）。
+    // 立即打開，不走 300ms 停留。★ 只給一種情況用：塊是被使用者這一次懸停**拉下來的**，
+    // 等它載入完，使用者其實已經停了幾百毫秒了 —— 再要求他重新停 300ms，
+    // 體感就是「第一次懸停不彈」（owner 報過兩輪）。
     open(target) {
       if (target == null) return;
       cancelOpen();
@@ -105,7 +105,7 @@ export function createHoverIntent(config) {
       current = target;
       if (typeof onOpen === "function") onOpen(target);
     },
-    // 立即关闭（滚动、路由切换、Esc、功能被卸载）。
+    // 立即關閉（捲動、路由切換、Esc、功能被卸載）。
     dismiss: closeNow,
     getState: () =>
       Object.freeze({

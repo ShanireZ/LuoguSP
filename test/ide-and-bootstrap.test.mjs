@@ -256,21 +256,21 @@ test("IDE Batch Runner remounts only when the document generation changes", () =
   assert.equal(unmounts, 2);
 });
 
-// ★ `diffLineNumbers` / `normalizeIdeOut` 是 2.14.1 减肥时从 feature.js 里拎出来的。
-//   拎出来之前它内联在 applyIdeResult 里、没有直接覆盖，而它是「哪几行标红」的**唯一**判据。
-//   顺手把它钉住 —— 减肥是零行为变化的重构，这几条就是那个「零」的凭据。
+// ★ `diffLineNumbers` / `normalizeIdeOut` 是 2.14.1 減肥時從 feature.js 裡拎出來的。
+//   拎出來之前它內聯在 applyIdeResult 裡、沒有直接覆蓋，而它是「哪幾行標紅」的**唯一**判據。
+//   順手把它釘住 —— 減肥是零行為變化的重構，這幾條就是那個「零」的憑證。
 test("逐行差异：只标出真正不同的行，长度不齐也算差异", async () => {
   const { diffLineNumbers, normalizeIdeOut } = await import(
     "../src/features/ide-batch/result-view.js"
   );
   assert.deepEqual([...diffLineNumbers(["a", "b"], ["a", "b"])], []);
   assert.deepEqual([...diffLineNumbers(["a", "b"], ["a", "c"])], [1]);
-  // 实际比期望短：缺的那几行也要算差异。
+  // 實際比期望短：缺的那幾行也要算差異。
   assert.deepEqual([...diffLineNumbers(["a", "b", "c"], ["a"])], [1, 2]);
-  // 实际比期望长：多出来的同样算。
+  // 實際比期望長：多出來的同樣算。
   assert.deepEqual([...diffLineNumbers(["a"], ["a", "b"])], [1]);
 
-  // 归一化：CRLF、行尾空白、末尾多余空行都要抹平 —— 否则整屏标红。
+  // 歸一化：CRLF、行尾空白、末尾多餘空行都要抹平 —— 否則整屏標紅。
   assert.equal(normalizeIdeOut("a\r\nb\r\n"), "a\nb");
   assert.equal(normalizeIdeOut("a  \t\nb"), "a\nb");
   assert.equal(normalizeIdeOut("a\n\n\n"), "a");
@@ -278,9 +278,9 @@ test("逐行差异：只标出真正不同的行，长度不齐也算差异", as
   assert.equal(normalizeIdeOut(undefined), "");
 });
 
-// ★ 一次性提示的恢复目标必须是**固定文案**。旧写法拿当时的 `textContent` 当快照，
-//   1500ms 内的第二条提示会把第一条提示存成「原文案」，按钮从此再也变不回「一键测试」。
-//   「重新测试」按钮从不禁用（提示只禁用「一键测试」那一枚），连点两下就能复现。
+// ★ 一次性提示的恢復目標必須是**固定文案**。舊寫法拿當時的 `textContent` 當快照，
+//   1500ms 內的第二條提示會把第一條提示存成「原文案」，按鈕從此再也變不回「一鍵測試」。
+//   「重新測試」按鈕從不禁用（提示只禁用「一鍵測試」那一枚），連點兩下就能重現。
 test("批测提示连发两条后仍然恢复成「一键测试」", () => {
   const timers = new Map();
   let nextId = 1;
@@ -298,10 +298,10 @@ test("批测提示连发两条后仍然恢复成「一键测试」", () => {
   assert.equal(hint.show("本题无样例"), true);
   assert.equal(button.textContent, "本题无样例");
   assert.equal(button.disabled, true);
-  // 第一条还没到点，第二条就来了。
+  // 第一條還沒到點，第二條就來了。
   assert.equal(hint.show("页面已切换"), true);
   assert.equal(button.textContent, "页面已切换");
-  // 只剩最后那一个定时器；先前那个必须已被取消，否则它到点会写回错的文案。
+  // 只剩最後那一個定時器；先前那個必須已被取消，否則它到點會寫回錯的文案。
   assert.equal(timers.size, 1);
 
   for (const fire of [...timers.values()]) fire();
@@ -319,7 +319,7 @@ test("批测提示到点时重新定位按钮，并尊重仍在运行的状态",
     },
     clearTimeout: () => {},
   };
-  // Vue 在提示期间把按钮重种了一枚 —— 恢复必须落在新节点上。
+  // Vue 在提示期間把按鈕重種了一枚 —— 恢復必須落在新節點上。
   let button = { textContent: IDE_BATCH_LABEL, disabled: false };
   const stale = button;
   const hint = createBatchButtonHint({ findButton: () => button, clock });

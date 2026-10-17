@@ -93,7 +93,7 @@ Object.defineProperty(globalThis, "__LUOGUSP_CDN_RUNTIME__", {
   value: runtime,
   configurable: true,
 });
-// 受限内容功能块：只在真的落到「安全访问中心」拦截页时才拉（见 features/restricted-content/lazy-feature.js）。
+// 受限內容功能塊：只在真的落到「安全訪問中心」攔截頁時才拉（見 features/restricted-content/lazy-feature.js）。
 const restrictedContentLoader = createOptionalBundleLoader({
   bundle: __LUOGUSP_RESTRICTED_CONTENT_BUNDLE__,
   origin: __LUOGUSP_CDN_ORIGIN__,
@@ -111,7 +111,7 @@ const hoverCardLoader = createOptionalBundleLoader({
 runLuoguSP(installRestrictedEarlyGate(), {
   hoverCardLoadBundle: () =>
     hoverCardLoader.load().then((result) => result.module),
-  // 卡片数据全部同源，用页面自己的 fetch（带 Cookie 与 CSRF）。
+  // 卡片資料全部同源，用頁面自己的 fetch（帶 Cookie 與 CSRF）。
   hoverCardFetchPage: (path, signal, init) =>
     fetch(path, { credentials: "same-origin", ...(init || {}), signal }),
   restrictedContentLoadBundle: () =>

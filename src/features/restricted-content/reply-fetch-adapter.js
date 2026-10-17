@@ -51,7 +51,7 @@ export function createRestrictedReplyFetchAdapter(config) {
     try {
       requestUrl = new URLCtor(rawUrl, origin);
     } catch (error) {
-      /* 无法解析的请求交给原 fetch */
+      /* 無法解析的請求交給原 fetch */
     }
     if (
       method !== "GET" ||

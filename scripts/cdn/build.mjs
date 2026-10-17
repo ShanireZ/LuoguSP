@@ -144,8 +144,8 @@ const markdownRendererBundle = Object.freeze({
   sri: markdownRendererFile.sri,
   dependencies: rendererStackDependencies,
 });
-// 受限内容按需块：启动包里最大的一块（实测 44506 B / 37%），却只在
-// 「安全访问中心」拦截页才用得到。拆出来后启动包降到约 83 KB。
+// 受限內容按需塊：啟動包裡最大的一塊（實測 44506 B / 37%），卻只在
+// 「安全訪問中心」攔截頁才用得到。拆出來後啟動包降到約 83 KB。
 const restrictedContentResult = await build({
   absWorkingDir: root,
   entryPoints: ["src/cdn/restricted-content-bundle.js"],
@@ -184,7 +184,7 @@ const restrictedContentBundle = Object.freeze({
   sha256: restrictedContentFile.sha256,
   sri: restrictedContentFile.sri,
 });
-// hover 预览卡按需块：只有指针真的停在题号或用户名上才拉。
+// hover 預覽卡按需塊：只有指針真的停在題號或使用者名上才拉。
 const hoverCardResult = await build({
   absWorkingDir: root,
   entryPoints: ["src/cdn/hover-card-bundle.js"],

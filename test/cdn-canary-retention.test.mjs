@@ -30,15 +30,15 @@ test("CDN staging keeps only the current canary release", async () => {
       release.includes("-canary."),
     );
 
-    // ★★ 规则是「**部署里最多一个 canary，且必须是频道指向的那个**」。
-    //    频道指向的**不一定是 canary** —— `build.mjs` 把频道写成「刚构建的那个版本」，
-    //    所以转正式版时它就指向 2.14.0 这种稳定版，此时**一个 canary 都不该留**
-    //    （旧 canary 本来就该随转正一起下线）。
-    //    ★ 这一支是 2.14.0 转正时才第一次跑到的：原断言写死 `[channel.release]`，
-    //      在稳定版那一支必红，把发布拦在了预检上 —— 拦得对，只是断言没覆盖到。
+    // ★★ 規則是「**部署裡最多一個 canary，且必須是頻道指向的那個**」。
+    //    頻道指向的**不一定是 canary** —— `build.mjs` 把頻道寫成「剛建置的那個版本」，
+    //    所以轉正式版時它就指向 2.14.0 這種穩定版，此時**一個 canary 都不該留**
+    //    （舊 canary 本來就該隨轉正一起下線）。
+    //    ★ 這一支是 2.14.0 轉正時才第一次跑到的：原斷言寫死 `[channel.release]`，
+    //      在穩定版那一支必紅，把發佈攔在了預檢上 —— 攔得對，只是斷言沒覆蓋到。
     const channelIsCanary = channel.release.includes("-canary.");
     assert.deepEqual(stagedCanaries, channelIsCanary ? [channel.release] : []);
-    // 正式版无论如何都要在：老用户的 @require 钉着它们。
+    // 正式版無論如何都要在：老使用者的 @require 釘著它們。
     assert.equal(stagedReleases.includes("2.13.10"), true);
     assert.equal(stagedReleases.includes(channel.release), true);
   } finally {
@@ -46,10 +46,10 @@ test("CDN staging keeps only the current canary release", async () => {
   }
 });
 
-// ★★ 紧接着守卫的下一行就是 `rm(output, { recursive: true, force: true })`，
-//    而**源目录也叫 `cdn`**。显式 `--output` 此前唯一的判据是 `basename === "cdn"`，
-//    于是 `--output cdn` 会把 `cdn/releases` 整个删掉 —— 那正是这个脚本
-//    存在的全部理由（那批字节被用户已安装脚本的 `@require #sha256=` 钉死）。
+// ★★ 緊接著守衛的下一行就是 `rm(output, { recursive: true, force: true })`，
+//    而**源目錄也叫 `cdn`**。顯式 `--output` 此前唯一的判據是 `basename === "cdn"`，
+//    於是 `--output cdn` 會把 `cdn/releases` 整個刪掉 —— 那正是這個指令碼
+//    存在的全部理由（那批位元組被使用者已安裝指令碼的 `@require #sha256=` 釘死）。
 test("CDN staging refuses to overwrite the repository's own cdn/ source tree", async () => {
   const before = await readdir(path.join(root, "cdn/releases"));
   for (const target of ["cdn", path.join(root, "cdn"), "cdn/releases/../"]) {
