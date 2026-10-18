@@ -400,7 +400,7 @@ test("Elo：主接口读 user.elo，个人页载荷读顶层 data.elo", () => {
 });
 
 // ★ ✅ 由 ccfLevel>0 驅動、氣球由 xcpcLevel>0 驅動（41 使用者雙向零反例）；
-// user.verified 只在看自己時回傳，且與 ✅ 無關，所以模型里根本不該出現它。
+// user.verified 只在看自己時回傳，且與 ✅ 無關，所以模型裡根本不該出現它。
 test("徽章驱动字段只认 ccfLevel 与 xcpcLevel", () => {
   const card = buildUserCard(userInfoPayload, userPagePayload);
   assert.equal(card.ccfLevel, 7);
@@ -632,7 +632,7 @@ import {
 } from "../src/features/hover-card/luogu-native.js";
 
 // owner 2026-08-14 最終拍板（★ 同日改過兩次口徑，只認這一版）：
-//   <1000 无单位无小数；1000~999999 用 k 保留两位小数；>=1000000 用 m 保留兩位小數。
+//   <1000 無單位無小數；1000~999999 用 k 保留兩位小數；>=1000000 用 m 保留兩位小數。
 //   四個呼叫點共用這一套（使用者卡通過/提交、關注、粉絲、題目卡通過/提交）。
 test("计数缩写按 owner 的口径：k / m 一律两位小数", () => {
   assert.equal(abbreviateCount(0), "0");
@@ -698,7 +698,7 @@ test("等级色对齐实测值，未知落到 Gray", () => {
 });
 
 // ★★ 分檔與配色抄自 OiLevel / XcpcLevel 元件原文：[[8,gold],[6,blue],[3,green]]，
-// **level < 3 一个图标都不画**。旧口径「> 0 就顯示」是抽樣偏差（抽到的人都在 6~7 檔）。
+// **level < 3 一個圖示都不畫**。舊口徑「> 0 就顯示」是抽樣偏差（抽到的人都在 6~7 檔）。
 test("徽章分档：低于 3 级不画图标，配色按档走", () => {
   assert.equal(badgeTierColor(8), "#ffc116");
   assert.equal(badgeTierColor(9), "#ffc116");

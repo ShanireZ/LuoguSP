@@ -105,7 +105,7 @@ test("两处「存档时间」文案的判据与取值同源", () => {
 });
 
 // 撤掉 forceUpdate 之後，行為測試只釘「這一次發出的請求體」；
-// 結構守衛再釘一遍「原始碼里根本不存在這個欄位」，免得哪天有人順手加回去。
+// 結構守衛再釘一遍「原始碼裡根本不存在這個欄位」，免得哪天有人順手加回去。
 test("发给保存站的更新请求不带 forceUpdate", () => {
   assert.doesNotMatch(
     read("src/features/restricted-content/saver-workflow.js"),

@@ -94,7 +94,7 @@ try {
     const measured = await page.evaluate(() => ({
       ms: globalThis.__LUOGUSP_QA_END - globalThis.__LUOGUSP_QA_START,
       runtime: !!globalThis.__LUOGUSP_CDN_RUNTIME__,
-      // 設定入口的標記是 `.luogusp-setting-entry`（settings/feature.js 里加的那個類）。
+      // 設定入口的標記是 `.luogusp-setting-entry`（settings/feature.js 裡加的那個類）。
       settingsEntry: !!document.querySelector(".luogusp-setting-entry"),
       // 入口是克隆範本條目來的，所以浮泡與讀屏名字都可能是範本那條的（真站上範本
       // 是「文章廣場」）。這裡收的是入口自己那一層能被瀏覽器當浮泡用的名字。
