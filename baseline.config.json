@@ -14,8 +14,8 @@
     "reason": "洛谷用户脚本运行于用户自带浏览器；发布审查包含移动 Chromium、Firefox Android 与 Samsung Internet，但实际支持仍受 Tampermonkey 和洛谷页面能力约束。"
   },
   "approvedPolicyMinimums": {
-    "chrome": "123",
-    "edge": "123",
+    "chrome": "124",
+    "edge": "124",
     "firefox": "125",
     "safari": "17.4",
     "ios_saf": "17.4",
@@ -35,7 +35,7 @@
     "自定义 CDN 源点完整性验证与真实洛谷页面实测"
   ],
   "snapshot": {
-    "approvedAt": "2026-10-17",
+    "approvedAt": "2026-10-18",
     "browserslist": "4.28.8",
     "esbuild": "0.27.2",
     "baselineBrowserMapping": "2.11.17",
