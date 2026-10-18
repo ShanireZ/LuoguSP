@@ -568,9 +568,9 @@ test("构建脚本把 hover 块写进 manifest 与 files，并注入 define", ()
   assert.match(build, /hoverCard: hoverCardBundle/);
 });
 
-// ★★ owner 2026-08-14 第四輪：滾輪捲動時指針還在卡里，卡片卻消失了 —— 根因是
+// ★★ owner 2026-08-14 第四輪：滾輪捲動時指針還在卡裡，卡片卻消失了 —— 根因是
 //    捲動處理器無條件 dismiss。卡片自己是可滾的（內容超高走 overflow:auto），
-//    在卡里滾本來就不該關它。這條是**行為守衛攔不住**的串接（捲動發生在真實瀏覽器裡），
+//    在卡裡滾本來就不該關它。這條是**行為守衛攔不住**的串接（捲動發生在真實瀏覽器裡），
 //    所以用結構守衛盯住那兩個判據都在。
 test("滚动时指针若还在卡片里就不许关卡", () => {
   const feature = read("src/features/hover-card/feature.js");

@@ -208,7 +208,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     const clone = unit.cloneNode(true);
     const link = clone.matches("a") ? clone : clone.querySelector("a");
     if (!link) return;
-    // ★ 浮泡文字不在 <a> 上，在外面那層 <li title="文章广场"> 上（2026-08-20 在真站上量過：
+    // ★ 浮泡文字不在 <a> 上，在外面那層 <li title="文章廣場"> 上（2026-08-20 在真站上量過：
     //   新側欄每條都是 `<li title="…"><a>…</a></li>`，而範本恰好取到 /article 那條 ——
     //   它是最後一個「既有圖標又有文字」的條目）。只改 <a> 裡的文字，滑鼠一懸停仍報範本的名字。
     //   所以凡是能產生浮泡或讀屏名字的屬性，連 clone 根帶整棵子樹一起剝淨，再按自己的名字重設。

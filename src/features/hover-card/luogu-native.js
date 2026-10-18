@@ -30,8 +30,8 @@ export const levelColor = (color) =>
 //   上一輪 41 個使用者零反例，是因為抽到的人都在 6~7 檔，恰好全是 blue-3。
 //
 //   兩個圖標的著色**是反的**，照抄元件裡的 inline style：
-//     OiLevel(✅)   --fa-primary-color:#fff      --fa-secondary-color:<等级色>
-//     XcpcLevel(🎈) --fa-primary-color:<等级色>  --fa-secondary-color:#fff
+//     OiLevel(✅)   --fa-primary-color:#fff      --fa-secondary-color:<等級色>
+//     XcpcLevel(🎈) --fa-primary-color:<等級色>  --fa-secondary-color:#fff
 //   兩者都帶 --fa-secondary-opacity:1（FA 預設 .4，不覆蓋會淡掉一半）。
 const BADGE_TIERS = Object.freeze([
   Object.freeze([8, "#ffc116"]),

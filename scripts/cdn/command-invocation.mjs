@@ -4,7 +4,7 @@
 // `spawnSync("npm", …, { shell: false })` 得到 ENOENT，直接指 `.CMD` 則被
 // Node 20+ 拒絕（EINVAL）。兩條都實測過（2026-08-15）。
 //
-// ★ 這裡原先對 npm / npx 用的是另一套辦法：拼出 `<node 所在目录>/node_modules/
+// ★ 這裡原先對 npm / npx 用的是另一套辦法：拼出 `<node 所在目錄>/node_modules/
 //   npm/bin/npm-cli.js` 再用當前 node 去跑。**那套辦法在 2026-08-15 失效了** ——
 //   本機 Node 改由 pnpm 管理（`pnpm runtime set node -g`），而 pnpm 裝的 Node
 //   執行環境**不附帶 npm**，`node.EXE` 旁邊根本沒有 `node_modules/`，算出來的是一個

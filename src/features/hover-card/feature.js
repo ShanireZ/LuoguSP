@@ -125,7 +125,7 @@ export function createHoverCardFeature(config) {
       return rects[0] || anchor.getBoundingClientRect();
     };
 
-    // ★★★ 2.14.1「卡片跳走」。開卡時卡里只有一個轉圈（≈42px），內容一到是 ≈320px，
+    // ★★★ 2.14.1「卡片跳走」。開卡時卡裡只有一個轉圈（≈42px），內容一到是 ≈320px，
     //   兩次定位量到的高度差近 8 倍 —— 錨點下方餘量 44~320px 時必然翻邊。
     //   所以開卡那一次按「內容將會有多高」定邊，內容完成實作那一次沿用同一邊。
     //   ★ 之後（使用者點展開）`openSide` 已經交還成 null，仍按第七輪的三句話自由重判。
@@ -250,7 +250,7 @@ export function createHoverCardFeature(config) {
     };
     // ★★ owner 2026-08-14 第四輪：滾輪捲動時，指針明明還在卡片裡，卡片卻消失了。
     //    根因是這裡無條件 dismiss。卡片自己是可滾的（內容超高時 overflow:auto），
-    //    在卡里滾本來就不該關它 —— 而且此時頁面根本沒動，關掉純屬誤傷。
+    //    在卡裡滾本來就不該關它 —— 而且此時頁面根本沒動，關掉純屬誤傷。
     //    判據用**指針最後落點**去問 `elementFromPoint`：捲動事件不帶座標，
     //    而 `pointer` 是每次 mouseover 更新的，捲動期間指針沒動，它就是準的。
     const pointerInsideCard = () => {

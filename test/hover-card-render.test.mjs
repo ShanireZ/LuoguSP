@@ -135,7 +135,7 @@ test("徽章画成 duotone SVG，不再是 CCF / XCPC 文字", () => {
   assert.doesNotMatch(host.textContent, /CCF\s*\d|XCPC\s*\d/);
 });
 
-// ★ 元件原文：level < 3 一个图标都不画。旧口径是「> 0 就畫」。
+// ★ 元件原文：level < 3 一個圖示都不畫。舊口徑是「> 0 就畫」。
 test("等级低于 3 不画徽章", () => {
   const host = mount(() => renderUserCard(userCard({ ccfLevel: 2, xcpcLevel: 1 }), { origin: "" }));
   assert.equal(host.querySelectorAll("svg.luogusp-hc-fa").length, 0);
@@ -637,7 +637,7 @@ test("整个 hover 块里不再有 window.confirm", () => {
   }
 });
 
-// ★★★ 2.14.1「卡片跳走」。開卡時卡里只有一個 16px 轉圈（連內邊距 ≈42px），
+// ★★★ 2.14.1「卡片跳走」。開卡時卡裡只有一個 16px 轉圈（連內邊距 ≈42px），
 //    內容一到是 ≈320px。兩次定位量到的高度差近 8 倍，於是**錨點下方餘量
 //    44~320px 時必然**先落下方、內容一完成實作又翻上方 —— 那是視口下部一大片區域。
 //    下面第一條先把這個 BUG 原樣重現出來（反證必須重現原始缺陷形態），
@@ -669,7 +669,7 @@ test("不给占位高度，转圈与内容会落在两边 —— 这就是「卡
 test("加载态按「内容将会有多高」定边，转圈与内容同边", () => {
   const viewport = { width: 1280, height: 900 };
   const anchor = { left: 400, right: 480, top: 680, bottom: 700 };
-  // 開卡：卡里只有轉圈，但按內容的高度定邊。
+  // 開卡：卡裡只有轉圈，但按內容的高度定邊。
   const opened = placeCard(jumpProbe(SPINNER_H), anchor, viewport, {
     assumeMinHeight: CONTENT_H,
   });

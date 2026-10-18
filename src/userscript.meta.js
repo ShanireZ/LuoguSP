@@ -2,7 +2,7 @@
 // @name         LuoguSP
 // @namespace    https://github.com/ShanireZ/LuoguSP
 // @version      2.14.6
-// @description  LuoguSP：题号显示难度颜色 / 题目悬停显示预览卡 / 用户名/头像悬停显示预览卡 / 个人页显示个人介绍 / 受限文章与剪贴板解限 / IDE 模式一键测试所有样例
+// @description  LuoguSP：題號顯示難度顏色 / 題目懸停顯示預覽卡 / 使用者名稱/頭像懸停顯示預覽卡 / 個人頁顯示個人介紹 / 受限文章與剪貼板解限 / IDE 模式一鍵測試所有樣例
 // @author       ShanireZ, realskc (Until 1.8.2)
 // @license      GPL-3.0
 // @match        https://www.luogu.com.cn/*
