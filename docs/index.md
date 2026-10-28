@@ -10,6 +10,7 @@ okf_version: "0.2"
 - [Agent conventions](agents/index.md) — contributor context and issue workflow.
 - [Brand assets](../assets/brand/PROVENANCE.md) — artwork and font licensing.
 
-Public documents use English. Concept pages have OKF v0.2 YAML frontmatter;
+Each document uses its intended language consistently; preserve localized
+editions and their navigation. Concept pages have OKF v0.2 YAML frontmatter;
 indexes provide navigation. Keep internal operating records outside Git.
 Check links, source targets and affected contract tests after documentation edits.

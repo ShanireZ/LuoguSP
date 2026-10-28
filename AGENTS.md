@@ -15,8 +15,10 @@ GitHub is authoritative; CNB is a separately authorized mirror.
   pnpm-lock.yaml is the only dependency lockfile.
 - baseline.config.json owns browser policy and tool snapshots;
   baseline-targets.mjs owns frozen esbuild targets. Preserve fail-closed guards.
-- Public documentation uses English. Preserve application labels, immutable
-  release bytes, third-party licenses and unrelated changes.
+- Keep each document's prose consistent with its intended language: English
+  editions use English, and localized editions use their respective languages.
+  Preserve translated editions and their navigation, application labels,
+  immutable release bytes, third-party licenses and unrelated changes.
 - Internal operating records, research logs, publication approvals and asset
   production history belong in the workspace, outside Git.
 
