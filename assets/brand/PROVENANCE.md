@@ -1,28 +1,24 @@
-# LuoguSP 品牌資產
+# LuoguSP brand assets
 
-本目錄是當前採用版本的完整自包含副本；與 `BetaPass/std/brand/luogusp/` 逐位元組鏡像。
-生成、合成與檢核指令碼只保存在 `BetaPass/std/candidates/_build/`，不複製進專案。
+This directory contains the adopted artwork, source images and font files.
 
-## 當前檔案
+| File | Purpose |
+| --- | --- |
+| luogusp-logo-source.png | Adopted logo source. |
+| luogusp-logo.png | Transparent 1024 × 1024 logo. |
+| luogusp-badge-bg-source.png | Landscape source without text. |
+| luogusp-badge-bg.webp | 1248 × 416 landscape background. |
+| luogusp-badge.webp | 1248 × 416 final landscape artwork. |
+| luogusp-stage-bg-source.png | Portrait source without text. |
+| luogusp-stage-bg.webp | 1280 × 1600 portrait background. |
+| luogusp.webp | 1280 × 1600 final portrait artwork. |
+| fonts/ | Font files and bundled license. |
 
-| 檔案 | 用途 |
-|---|---|
-| `luogusp-logo-source.png` | 採用的 Logo 原生源或品牌定稿源 |
-| `luogusp-logo.png` | 1024×1024 透明 Logo 定稿 |
-| `luogusp-badge-bg-source.png` | 橫版原生無字源圖 |
-| `luogusp-badge-bg.webp` | 1248×416 無字橫版背景 |
-| `luogusp-badge.webp` | 1248×416 帶字橫版定稿 |
-| `luogusp-stage-bg-source.png` | 豎版原生無字源圖 |
-| `luogusp-stage-bg.webp` | 1280×1600 無字豎版背景 |
-| `luogusp.webp` | 1280×1600 帶字豎版定稿 |
-| `prompts-luogusp.md` | Logo、橫版、豎版提示詞與合成規範 |
-| `fonts/` | 實際合成使用的字體與現有授權文字 |
-| `generation-notes.md` | 原生生成、篩選與修正記錄 |
+The wordmark uses Fira Code Bold under the bundled
+[SIL Open Font License 1.1](fonts/FiraCode-OFL.txt).
 
-## 字體
-
-Fira Code Bold 用於單行 LuoguSP 字標；OFL 1.1 授權文字隨字體保存。
-
-## 版本紀律
-
-這裡只保留當前採用版本。被否決的生成結果、帶 `v1` / `v2` 的過渡命名和舊建置中間圖不保留；需要重現時以本目錄源圖、提示詞和 BetaPass 內的指令碼為準。
+The mark depicts an enhancement lens and an ordered difficulty ladder.
+Canonical colors are DIFFICULTY_COLORS in
+[src/core/luogu-difficulty.js](../../src/core/luogu-difficulty.js).
+Keep the LuoguSP identity distinct from Luogu: artwork must not reproduce
+the website's logo, wordmark, mascot or recognizable page design.

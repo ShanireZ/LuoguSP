@@ -253,18 +253,8 @@ test("Phase 7 removes temporary compatibility facades and keeps one document com
   assert.equal(runtimeScript.includes("module.exports"), false);
 });
 
-// 這一組合同盯兩件不同的事，別混在一起：
-//
-//  A. **當前原始碼**的功能集 —— `@description` 與 README 必須跟著它走。
-//     （防止再次漂移：功能改了名、加了開關，文案不跟著改就沒人發現。）
-//  B. **已經發出去的 2.13.10** 的 runtime 裡確實含有的標籤 —— 只有這部分能對
-//     正式版產物做包含斷言。
-//
-// ★ 兩者現在**故意不一致**：hover 卡的兩個開關與受限內容的新名字都還在 canary 裡，
-//   正式版 runtime 裡沒有那幾行字。owner 2026-08-14 要求文案先行，
-//   所以 `@description` 已經寫成了原始碼的樣子，轉 2.14.0 時 B 組會自動追上。
-// ★ 改 `@description` 不會讓真機 QA 的戳失效 —— 那個戳用的是**行為雜湊**，
-//   只豁免這一行（見 scripts/artifact-behaviour-hash.mjs）。
+// Source/runtime UI labels, localized metadata and the English README describe
+// the same six features. Check each representation without rewriting release bytes.
 const SOURCE_LABELS = Object.freeze([
   "题号显示难度颜色",
   "题目悬停显示预览卡",
@@ -273,22 +263,28 @@ const SOURCE_LABELS = Object.freeze([
   "受限文章与剪贴板解限",
   "IDE 模式一键测试所有样例",
 ]);
-// ★ 2.14.0 轉正之後兩組重新合一：hover 卡的兩個開關與受限內容的新名字都隨這一版發出去了。
-//   下一次開 canary 週期、原始碼又走在前面時，這裡再拆開寫死那一版 runtime 真正含有的標籤。
 const SHIPPED_LABELS = SOURCE_LABELS;
+const DESCRIPTION_LABELS = Object.freeze([
+  "題號顯示難度顏色",
+  "題目懸停顯示預覽卡",
+  "使用者名稱/頭像懸停顯示預覽卡",
+  "個人頁顯示個人介紹",
+  "受限文章與剪貼板解限",
+  "IDE 模式一鍵測試所有樣例",
+]);
 
 test("description and README follow the current source feature set", () => {
   assert.equal(
     metadata.get("description"),
-    `LuoguSP：${SOURCE_LABELS.join(" / ")}`,
+    `LuoguSP：${DESCRIPTION_LABELS.join(" / ")}`,
   );
   const readmeLabels = [
-  "題號顯示難度顏色",
-  "題目懸停顯示預覽卡",
-  "使用者名/頭像懸停顯示預覽卡",
-  "個人頁顯示個人介紹",
-  "受限文章與剪貼簿解限",
-  "IDE 模式一鍵測試所有範例",
+    "Problem difficulty colors",
+    "Problem hover previews",
+    "User hover previews",
+    "Profile introductions",
+    "Restricted articles and pastes",
+    "IDE sample batch testing",
   ];
   for (const label of readmeLabels)
     assert.equal(readme.includes(`**${label}**`), true, label);

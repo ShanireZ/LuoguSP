@@ -1,3 +1,4 @@
 /dist/
 /node_modules/
-/.npm-cache/
+/.npm-cache/# Local policy input; public support is in docs/browser-support.md.
+/docs/web-baseline.md
