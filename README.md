@@ -4,6 +4,8 @@
 ![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
 [![Version: 2.14.6](https://img.shields.io/badge/version-2.14.6-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
 
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文(TW)](README.zh-TW.md) | [日本語](README.ja.md)
+
 A Tampermonkey userscript that enhances Luogu problem pages, profiles, IDE mode,
 articles and pastes.
 

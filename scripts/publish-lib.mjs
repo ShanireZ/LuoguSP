@@ -3,6 +3,20 @@ import { resolveBootstrapOrigin } from "./cdn/origin-policy.mjs";
 
 const VERSION_PATTERN = /^\/\/ @version\s+(\S+)$/gm;
 const REQUIRE_PATTERN = /^\/\/ @require\s+(\S+)$/gm;
+export const README_EDITIONS = Object.freeze([
+  "README.md", "README.zh-CN.md", "README.zh-TW.md", "README.ja.md",
+]);
+
+export function readmeEditionsWithVersion(texts, currentVersion, nextVersion) {
+  return Object.fromEntries(README_EDITIONS.map((name) => {
+    const text = texts[name];
+    if (typeof text !== "string") throw new Error(`Missing README edition: ${name}`);
+    const versions = [...text.matchAll(/\[!\[Version: (\d+\.\d+\.\d+)\]\(/g)];
+    if (versions.length !== 1 || versions[0][1] !== currentVersion)
+      throw new Error(`README version drift: ${name}`);
+    return [name, readmeTextWithVersion(text, nextVersion)];
+  }));
+}
 
 export function userscriptVersion(metadata) {
   const versions = [

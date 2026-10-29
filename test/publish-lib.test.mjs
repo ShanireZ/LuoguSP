@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, copyFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   isResumablePublish,
@@ -11,8 +13,56 @@ import {
   userscriptVersion,
   verifyStagedActivation,
 } from "../scripts/publish-lib.mjs";
+import * as publishHelpers from "../scripts/publish-lib.mjs";
 
 const sha = "a".repeat(64);
+test("real release preflight rejects a stale or missing translated edition", () => {
+  const base = tmpdir();
+  const root = mkdtempSync(path.join(base, "luogusp-readme-publication-20261029-"));
+  try {
+    const required = ["scripts/publish.mjs", "scripts/publish-lib.mjs", "scripts/cdn/origin-policy.mjs", "src/userscript.meta.js", "LuoguSP.user.js", "package.json", "README.md", "README.zh-CN.md", "README.zh-TW.md", "README.ja.md", "reports/quality-report.json", "cdn/channels/canary.json", "config/cdn.json"];
+    for (const file of required) {
+      mkdirSync(path.dirname(path.join(root, file)), {recursive: true});
+      copyFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), path.join(root, file));
+    }
+    mkdirSync(path.join(root, "cdn/releases"), {recursive: true});
+    // The publisher runs this suite after promotion too. Simulate that state.
+    const live = userscriptVersion(readFileSync(path.join(root, "LuoguSP.user.js"), "utf8"));
+    const parts = live.split(".").map(Number);
+    const promoted = `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+    for (const name of ["src/userscript.meta.js", "LuoguSP.user.js", "package.json", ...publishHelpers.README_EDITIONS]) {
+      const file = path.join(root, name);
+      writeFileSync(file, readFileSync(file, "utf8").replaceAll(live, promoted));
+    }
+    const run = () => spawnSync(process.execPath, ["scripts/publish.mjs", "--plan", "--version", "999.0.0"], {cwd: root, encoding: "utf8", windowsHide: true});
+    assert.equal(run().status, 0);
+    const file = path.join(root, "README.zh-TW.md");
+    writeFileSync(file, readFileSync(file, "utf8").replaceAll(promoted, "0.0.0"));
+    const stale = run();
+    assert.notEqual(stale.status, 0);
+    assert.match(stale.stderr, /README version drift: README.zh-TW.md/);
+    rmSync(path.join(root, "README.ja.md"));
+    const missing = run();
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /README.ja.md/);
+  } finally {
+    assert.equal(path.dirname(root), base);
+    assert.ok(path.basename(root).startsWith("luogusp-readme-publication-20261029-"));
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+test("release versions validate and update every README edition", () => {
+  assert.equal(typeof publishHelpers.readmeEditionsWithVersion, "function");
+  const names = ["README.md", "README.zh-CN.md", "README.zh-TW.md", "README.ja.md"];
+  const badge = "[![Version: 2.14.6](https://img.shields.io/badge/version-2.14.6-blue.svg)](LuoguSP.user.js)\n";
+  const texts = Object.fromEntries(names.map(name => [name, badge]));
+  const changed = publishHelpers.readmeEditionsWithVersion(texts, "2.14.6", "2.14.7");
+  for (const name of names) assert.match(changed[name], /Version: 2\.14\.7/);
+  assert.match(texts["README.ja.md"], /2\.14\.6/);
+  const absent = {...texts};delete absent["README.ja.md"];
+  assert.throws(() => publishHelpers.readmeEditionsWithVersion(absent,"2.14.6","2.14.7"), /README.ja.md/);
+  assert.throws(() => publishHelpers.readmeEditionsWithVersion({...texts,"README.zh-TW.md":badge.replaceAll("2.14.6","2.14.5")},"2.14.6","2.14.7"), /README.zh-TW.md/);
+});
 const rendererPath =
   "releases/3.0.0/render/markdown-renderer.aaaaaaaaaaaaaaaa.js";
 const rendererFile = {

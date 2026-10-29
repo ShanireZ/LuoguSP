@@ -1,4 +1,29 @@
 /dist/
 /node_modules/
-/.npm-cache/# Local policy input; public support is in docs/browser-support.md.
+/.npm-cache/
+# Local policy input; public support is in docs/browser-support.md.
 /docs/web-baseline.md
+
+# Local configuration, credentials and disposable operating records.
+/.local/
+/.scratch/
+/handoff/
+/vardata/
+/credentials/
+/.env
+/.env.*
+!/.env.example
+/*.bundle
+/.cache/
+.DS_Store
+Thumbs.db
+
+# Generated operator receipts; required de-identified QA/quality inputs stay tracked.
+/reports/publish.json
+/reports/cdn-publish.json
+/reports/cdn-deployment.json
+/reports/cdn-origin-preflight.json
+/reports/cdn-production-readiness.json
+/reports/cdn-qa-readiness.json
+/reports/cdn-chunk-analysis.json
+/reports/renderer-upgrade.json

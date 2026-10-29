@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 import {
   isResumablePublish,
   packageTextWithVersion,
-  readmeTextWithVersion,
+  README_EDITIONS,
+  readmeEditionsWithVersion,
   userscriptVersion,
   verifyStagedActivation,
 } from "./publish-lib.mjs";
@@ -27,7 +28,6 @@ const requestedVersion = argument("--version");
 const metadataPath = resolve(root, "src/userscript.meta.js");
 const artifactPath = resolve(root, "LuoguSP.user.js");
 const packagePath = resolve(root, "package.json");
-const readmePath = resolve(root, "README.md");
 const qualityReportPath = resolve(root, "reports/quality-report.json");
 const channelPath = resolve(root, "cdn/channels/canary.json");
 const reportPath = resolve(root, "reports/publish.json");
@@ -43,7 +43,7 @@ const [
   initialMetadata,
   initialArtifact,
   initialPackage,
-  initialReadme,
+  initialReadmes,
   initialQualityReport,
   initialChannel,
   previousReport,
@@ -52,7 +52,7 @@ const [
   readFile(metadataPath, "utf8"),
   readFile(artifactPath, "utf8"),
   readFile(packagePath, "utf8"),
-  readFile(readmePath, "utf8"),
+  Promise.all(README_EDITIONS.map(async (name) => [name, await readFile(resolve(root, name), "utf8")])).then(Object.fromEntries),
   readFile(qualityReportPath, "utf8"),
   readFile(channelPath, "utf8"),
   readJsonIfPresent(reportPath),
@@ -77,7 +77,7 @@ const compareVersions = (left, right) => {
 };
 const initialPackageVersion = JSON.parse(initialPackage).version;
 const initialReadmeVersion =
-  initialReadme.match(
+  initialReadmes["README.md"].match(
     /\[!\[Version: (\d+\.\d+\.\d+)\]\(/,
   )?.[1];
 if (
@@ -90,6 +90,7 @@ if (
   throw new Error(
     "Preflight version drift: userscript, source metadata, package, and README must agree",
   );
+const nextReadmes = readmeEditionsWithVersion(initialReadmes, currentVersion, version);
 if (compareVersions(version, currentVersion) <= 0)
   throw new Error(
     `Target version ${version} must be newer than current production ${currentVersion}`,
@@ -195,7 +196,7 @@ const restoreProduction = async () => {
     writeFile(metadataPath, initialMetadata, "utf8"),
     writeFile(artifactPath, initialArtifact, "utf8"),
     writeFile(packagePath, initialPackage, "utf8"),
-    writeFile(readmePath, initialReadme, "utf8"),
+    ...README_EDITIONS.map((name) => writeFile(resolve(root, name), initialReadmes[name], "utf8")),
     writeFile(qualityReportPath, initialQualityReport, "utf8"),
   ]);
 };
@@ -308,11 +309,7 @@ try {
       packageTextWithVersion(initialPackage, version),
       "utf8",
     ),
-    writeFile(
-      readmePath,
-      readmeTextWithVersion(initialReadme, version),
-      "utf8",
-    ),
+    ...README_EDITIONS.map((name) => writeFile(resolve(root, name), nextReadmes[name], "utf8")),
   ]);
 
   beginPhase("activation verification");
