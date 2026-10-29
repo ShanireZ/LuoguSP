@@ -80,7 +80,7 @@ test("pnpm release uses the guarded CDN publisher", () => {
   // 精確版本是**有意**硬編碼的絆線：packageManager 是全倉唯一的 pnpm 版本來源
   // （本機、GitHub CI、.cnb.yml 都從它取），升版必須過這一條，不許無聲漂移。
   // 同時它也釘住「精確版本」這個形態 —— 寫成 ^12 之類的範圍會當場紅。
-  assert.equal(packageJson.packageManager, "pnpm@12.14.0");
+  assert.equal(packageJson.packageManager, "pnpm@12.16.1");
   assert.equal(packageJson.scripts.release, packageJson.scripts.publish);
   assert.match(pnpmWorkspace, /allowBuilds:\s+esbuild: true/);
 });
