@@ -1,8 +1,9 @@
 # LuoguSP
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
-![Userscript](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square)
-[![Version: 2.14.6](https://img.shields.io/badge/version-2.14.6-2f80ed.svg?style=flat-square)](LuoguSP.user.js)
+![Userscript: Tampermonkey](https://img.shields.io/badge/userscript-Tampermonkey-00485B.svg?style=flat-square&logo=tampermonkey&logoColor=white)
+[![Version: 2.14.6](https://img.shields.io/badge/version-2.14.6-blue.svg?style=flat-square)](LuoguSP.user.js)
+[![CI](https://img.shields.io/github/actions/workflow/status/ShanireZ/LuoguSP/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/ShanireZ/LuoguSP/actions/workflows/ci.yml)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文(TW)](README.zh-TW.md) | [日本語](README.ja.md)
 
