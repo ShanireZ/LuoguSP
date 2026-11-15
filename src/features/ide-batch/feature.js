@@ -9,11 +9,7 @@ import { createIdeBatchRunner } from "./runner.js";
 import { IDE_BATCH_STYLE } from "./style.js";
 import { observeIdeOutput } from "./output-observer.js";
 
-export function createIdeBatchFeature({
-  storage,
-  idePreparationAdapter,
-  problemData,
-}) {
+export function createIdeBatchFeature({ storage, problemData }) {
   const SELECTORS = {
     ideToolbar: ".ide-toolbar",
     ideToolbarText: ".title .text",
@@ -24,11 +20,12 @@ export function createIdeBatchFeature({
     cmContent: ".cm-content",
   };
   const injectStyle = () => {
-    if (document.getElementById("luogusp-ide-style")) return;
+    if (IDE_VIEW.style?.isConnected) return;
     const style = document.createElement("style");
     style.id = "luogusp-ide-style";
     style.textContent = IDE_BATCH_STYLE;
     (document.head || document.documentElement).appendChild(style);
+    IDE_VIEW.style = style;
   };
 
   // ============================================================
@@ -47,9 +44,12 @@ export function createIdeBatchFeature({
 
   const IDE_VIEW = {
     activeTab: "custom", // custom=原生輸入輸出 / samples=範例面板
+    button: null,
+    style: null,
     tabBar: null,
     panel: null,
     ioLayout: null, // 原生 輸入|輸出 水平分欄（tab 切換時顯隱）
+    hiddenInput: null,
     rowsEl: null,
     summaryEl: null,
     stopBtn: null,
@@ -101,7 +101,6 @@ export function createIdeBatchFeature({
   }
 
   let ideSubmitWaiter = null;
-  let ideSubmitPatchDispose = null;
   function cancelIdeSubmitWaiter(runId) {
     if (!ideSubmitWaiter) return;
     if (runId != null && ideSubmitWaiter.runId !== runId) return;
@@ -110,7 +109,6 @@ export function createIdeBatchFeature({
     waiter.resolve(null);
   }
   function installIdeSubmitObserver() {
-    if (ideSubmitPatchDispose) return ideSubmitPatchDispose;
     const rawOpen = XMLHttpRequest.prototype.open;
     const rawSend = XMLHttpRequest.prototype.send;
     const submitRequests = new WeakMap();
@@ -124,29 +122,29 @@ export function createIdeBatchFeature({
       return rawOpen.apply(this, arguments);
     };
     const send = function () {
-      if (active && submitRequests.get(this))
-        this.addEventListener("loadend", () => {
-          if (ideSubmitWaiter) {
-            const w = ideSubmitWaiter;
+      const waiter = active && submitRequests.get(this) && ideSubmitWaiter;
+      if (waiter)
+        this.addEventListener(
+          "loadend",
+          () => {
+            if (!active || ideSubmitWaiter !== waiter) return;
             ideSubmitWaiter = null;
-            w.resolve(this.status);
-          }
-        });
+            waiter.resolve(this.status);
+          },
+          { once: true },
+        );
       return rawSend.apply(this, arguments);
     };
     XMLHttpRequest.prototype.open = open;
     XMLHttpRequest.prototype.send = send;
-    const dispose = () => {
+    return () => {
       active = false;
       cancelIdeSubmitWaiter();
       if (XMLHttpRequest.prototype.open === open)
         XMLHttpRequest.prototype.open = rawOpen;
       if (XMLHttpRequest.prototype.send === send)
         XMLHttpRequest.prototype.send = rawSend;
-      if (ideSubmitPatchDispose === dispose) ideSubmitPatchDispose = null;
     };
-    ideSubmitPatchDispose = dispose;
-    return dispose;
   }
   function waitIdeSubmit(ms, runId) {
     cancelIdeSubmitWaiter();
@@ -225,9 +223,8 @@ export function createIdeBatchFeature({
 
   // 提示狀態機搬到了 batch-hint.js（那邊記著它為什麼必須恢復成固定文案）。
   const ideHint = createBatchButtonHint({
-    findButton: () => document.querySelector(".luogusp-ide-batch-btn"),
+    findButton: () => IDE_VIEW.button,
   });
-  const ideBatchHint = (msg, running = false) => ideHint.show(msg, running);
 
   // 判定口徑同洛谷：CRLF 歸一、去行尾空格、去末尾空行。僅用於 diff 繪製與交叉檢核，
   // 最終判定以原生膠囊為準（AC/WA 由洛谷前端本機比較）。
@@ -384,11 +381,12 @@ export function createIdeBatchFeature({
     const tb = ideToolbarByTitle("代码");
     if (!tb) return;
     const actions = tb.querySelector(SELECTORS.ideToolbarActions);
-    if (!actions || actions.querySelector(".luogusp-ide-batch-btn")) return;
+    if (!actions || IDE_VIEW.button?.parentElement === actions) return;
     const selfTest = [...actions.querySelectorAll("button")].find(
       (b) => (b.textContent || "").trim() === "自测",
     );
     if (!selfTest) return;
+    IDE_VIEW.button?.remove();
     // 克隆原生「自測」按鈕繼承洛谷樣式（含 data-v 作用域），只換文字
     const btn = selfTest.cloneNode(true);
     btn.textContent = IDE_BATCH_LABEL;
@@ -401,18 +399,25 @@ export function createIdeBatchFeature({
       controls.start();
     });
     actions.insertBefore(btn, selfTest);
+    IDE_VIEW.button = btn;
   }
 
   function mountIdeTabs(controls) {
-    if (IDE_VIEW.tabBar && document.contains(IDE_VIEW.tabBar)) return;
     const inputTb = ideToolbarByTitle("输入");
     if (!inputTb) return;
     const ioLayout = inputTb.closest(".panel-layout"); // 底部 輸入|輸出 水平分欄
     const host = ioLayout && ioLayout.parentElement;
     if (!host) return;
-    host
-      .querySelectorAll(".luogusp-ide-tabbar, .luogusp-ide-panel")
-      .forEach((e) => e.remove());
+    if (
+      IDE_VIEW.ioLayout === ioLayout &&
+      IDE_VIEW.tabBar?.parentElement === host &&
+      IDE_VIEW.panel?.parentElement === host
+    )
+      return;
+    if (IDE_VIEW.ioLayout) {
+      controls.invalidate();
+      unmountIdeTabs();
+    }
     const tabBar = document.createElement("div");
     tabBar.className = "luogusp-ide-tabbar";
     tabBar.innerHTML =
@@ -471,11 +476,27 @@ export function createIdeBatchFeature({
     IDE_VIEW.activeTab = tab;
     syncIdeTabVisibility();
   }
+  function restoreIdeInput() {
+    const previous = IDE_VIEW.hiddenInput;
+    IDE_VIEW.hiddenInput = null;
+    if (!previous) return;
+    const { style } = previous.layout;
+    if (style.display === "none" && style.getPropertyPriority("display") === "")
+      style.setProperty("display", previous.display, previous.priority);
+  }
   function syncIdeTabVisibility() {
     const { tabBar, panel, ioLayout } = IDE_VIEW;
     if (!tabBar || !document.contains(tabBar) || !panel || !ioLayout) return;
     const samples = IDE_VIEW.activeTab === "samples";
-    ioLayout.style.display = samples ? "none" : "";
+    if (samples && !IDE_VIEW.hiddenInput) {
+      IDE_VIEW.hiddenInput = {
+        layout: ioLayout,
+        display: ioLayout.style.display,
+        priority: ioLayout.style.getPropertyPriority("display"),
+      };
+      ioLayout.style.display = "none";
+    }
+    if (!samples) restoreIdeInput();
     panel.style.display = samples ? "" : "none";
     tabBar.querySelectorAll(".luogusp-ide-tab").forEach((t) => {
       t.classList.toggle("on", (t.dataset.tab === "samples") === samples);
@@ -536,19 +557,38 @@ export function createIdeBatchFeature({
 
   function ensureIdeBatchUI(controls) {
     if (!ideModeActive()) {
-      unmountIdeBatchUI();
       controls.invalidate();
+      unmountIdeBatchUI();
       return;
     }
+    injectStyle();
     mountIdeButton(controls);
     mountIdeTabs(controls);
     syncIdeTabVisibility();
   }
 
-  function unmountIdeBatchUI() {
-    IDE_VIEW.activeTab = "custom"; // 復位，防再次進入時預設落在空面板
+  function unmountIdeTabs() {
+    restoreIdeInput();
+    IDE_VIEW.tabBar?.remove();
+    IDE_VIEW.panel?.remove();
+    IDE_VIEW.activeTab = "custom";
     IDE_VIEW.tabBar = IDE_VIEW.panel = IDE_VIEW.ioLayout = null;
     IDE_VIEW.rowsEl = IDE_VIEW.summaryEl = IDE_VIEW.stopBtn = null;
+  }
+
+  function unmountIdeBatchUI() {
+    ideHint.cancel();
+    unmountIdeTabs();
+    IDE_VIEW.button?.remove();
+    IDE_VIEW.style?.remove();
+    IDE_VIEW.button = IDE_VIEW.style = null;
+  }
+
+  let disabledSelfTest = null;
+  function restoreIdeRunControls() {
+    if (IDE_VIEW.button) IDE_VIEW.button.disabled = false;
+    if (disabledSelfTest) disabledSelfTest.disabled = false;
+    disabledSelfTest = null;
   }
 
   const ideBrowserDriver = {
@@ -605,7 +645,6 @@ export function createIdeBatchFeature({
         count,
         input,
         inputSnapshot: input ? input.value : null,
-        batchButton: document.querySelector(".luogusp-ide-batch-btn"),
         selfTest,
       };
     },
@@ -615,10 +654,13 @@ export function createIdeBatchFeature({
       `${location.pathname}${location.search}${location.hash}` ===
         context.routeToken,
     sourceMatches: (context) => readIdeCode() === context.source,
-    hint: (message) => ideBatchHint(message),
+    hint: (message) => ideHint.show(message),
     begin: (context) => {
-      if (context.batchButton) context.batchButton.disabled = true;
-      if (context.selfTest) context.selfTest.disabled = true;
+      if (IDE_VIEW.button) IDE_VIEW.button.disabled = true;
+      if (context.selfTest && !context.selfTest.disabled) {
+        context.selfTest.disabled = true;
+        disabledSelfTest = context.selfTest;
+      }
       if (IDE_VIEW.stopBtn) {
         IDE_VIEW.stopBtn.style.display = "";
         IDE_VIEW.stopBtn.disabled = false;
@@ -656,13 +698,15 @@ export function createIdeBatchFeature({
         context.input.dispatchEvent(new Event("input", { bubbles: true }));
       }
     },
-    finish: (context, results, { stale }) => {
-      if (context.batchButton) context.batchButton.disabled = false;
-      if (context.selfTest) context.selfTest.disabled = false;
+    finish: (_context, results, { stale }) => {
+      restoreIdeRunControls();
       if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.style.display = "none";
       finishIdeSummary(results, stale);
     },
-    cancel: () => cancelIdeSubmitWaiter(),
+    cancel: () => {
+      cancelIdeSubmitWaiter();
+      restoreIdeRunControls();
+    },
     markStale: showIdeStale,
     mount: (controls) => {
       ideBrowserDriver.controls = controls;
@@ -694,60 +738,29 @@ export function createIdeBatchFeature({
         observer.disconnect();
         unpatchSubmit();
         unhook();
-        ideHint.cancel();
         if (frame !== null) cancelAnimationFrame(frame);
-        cancelIdeSubmitWaiter();
         unmountIdeBatchUI();
       };
     },
   };
 
-  const idePreparation = idePreparationAdapter;
-  const ideDriver = idePreparation
-    ? {
-        prepare: async ({ signal }) => {
-          idePreparation.mountTabs();
-          const pid = idePreparation.currentPid();
-          const samples = await idePreparation.loadSamples(signal);
-          if (
-            !pid ||
-            idePreparation.currentPid() !== pid ||
-            !idePreparation.isModeActive()
-          )
-            return { kind: "hint", message: "页面已切换" };
-          if (!samples || !samples.length)
-            return { kind: "hint", message: "本题无样例" };
-          return { kind: "ready", count: 0, pid, samples };
-        },
-        isCurrent: () => true,
-        hint: (message) => idePreparation.hint(message),
-        runSample: async () => ({ verdict: "UKE" }),
-      }
-    : ideBrowserDriver;
   const ideBatchRunner = createIdeBatchRunner({
-    ideDriver,
+    ideDriver: ideBrowserDriver,
     clock: {
       setTimeout: (fn, ms) => setTimeout(fn, ms),
       clearTimeout: (id) => clearTimeout(id),
     },
     logError: (error) => console.error("LuoguSP ide batch:", error),
   });
-  const startIdeBatch = () => ideBatchRunner.start();
-
-  const descriptor = defineConfigurableFeature({
+  return defineConfigurableFeature({
     id: "ide-batch",
     key: "ideBatchSampleTest",
     label: "IDE 模式一键测试所有样例",
     storage,
     mount: () => {
-      injectStyle();
+      if (location.hash !== "#ide") return;
       ideBatchRunner.mount();
       return () => ideBatchRunner.unmount();
     },
-  });
-  return Object.freeze({
-    ...descriptor,
-    start: startIdeBatch,
-    getState: () => ideBatchRunner.getState(),
   });
 }

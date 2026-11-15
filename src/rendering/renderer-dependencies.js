@@ -1,9 +1,9 @@
 export const MARKDOWN_RENDERER_API_VERSION = 1;
 
 export const rendererStackDependencies = Object.freeze({
-  katex: "0.18.1",
+  katex: "0.18.2",
   marked: "18.0.7",
-  dompurify: "3.4.13",
+  dompurify: "3.4.17",
   "highlight.js": "11.11.1",
 });
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderMarkdownLite } from "../src/features/hidden-intro/markdown-lite.js";
+import { renderMarkdownLite } from "../src/rendering/markdown-lite.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixtures = JSON.parse(

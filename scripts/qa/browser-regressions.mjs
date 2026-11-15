@@ -371,7 +371,7 @@ test("user preview falls back to one GET when the native page has no lookup", as
   assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["fetch"]);
 });
 
-async function ideFixture(t) {
+async function ideFixture(t, submitReply = (route) => route.fulfill({ json: {} })) {
   const submit = Promise.withResolvers();
   const submitted = [];
   const toolbar = (title, actions = "") => `<div class="ide-toolbar"><div class="title"><span class="text">${title}</span></div><div class="actions">${actions}</div></div>`;
@@ -381,7 +381,7 @@ async function ideFixture(t) {
       ${toolbar("代码", "<button>自测</button>")}<div contenteditable="true" class="cm-content">code</div>
       <div class="io-sample-block">输入 #1 <button>运行</button></div>
       <div class="io-sample-block">输入 #2 <button>运行</button></div>
-      <div><div class="panel-layout">
+      <div><div class="panel-layout" style="display:flex">
         <div>${toolbar("输入")}<textarea class="ide-textarea"></textarea></div>
         <div id="output">${toolbar("输出", '<span>AC</span><span class="run-result"></span>')}<textarea class="ide-textarea"></textarea></div>
       </div></div>
@@ -401,12 +401,58 @@ async function ideFixture(t) {
       if (url.pathname === "/api/ide_submit") {
         submitted.push(route.request().postData());
         submit.resolve();
-        return route.fulfill({ json: {} });
+        return submitReply(route, submitted.length);
       }
     },
   });
   return { page, requests, submitted, firstSubmit: submit.promise };
 }
+
+test("leaving IDE restores reused native panels and discards late submissions", async (t) => {
+  const first = responseGate(t);
+  const second = responseGate(t);
+  const { page, firstSubmit } = await ideFixture(t, async (route, index) => {
+    await (index === 1 ? first : second).promise;
+    return route.fulfill({ status: index === 1 ? 503 : 200, json: {} });
+  });
+  const nativeInput = page.locator(".panel-layout");
+  const selfTest = page.getByRole("button", { name: "自测", exact: true });
+  const batch = page.locator(".luogusp-ide-batch-btn");
+  await batch.click();
+  await firstSubmit;
+  await nativeInput.waitFor({ state: "hidden" });
+  assert.equal(await selfTest.isDisabled(), true);
+
+  await page.evaluate(() => history.pushState({}, "", "/problem/P1000"));
+  await batch.waitFor({ state: "detached" });
+  assert.equal(await page.locator(".luogusp-ide-tabbar, .luogusp-ide-panel, #luogusp-ide-style").count(), 0);
+  assert.equal(await nativeInput.evaluate((element) => element.style.display), "flex");
+  assert.equal(await selfTest.isEnabled(), true);
+
+  await page.evaluate(() => {
+    window.finishSample("AC");
+    history.pushState({}, "", "/problem/P1000#ide");
+  });
+  await batch.waitFor();
+  assert.equal(await batch.count(), 1);
+  assert.equal(await page.locator(".luogusp-ide-tabbar").count(), 1);
+  assert.equal(await nativeInput.isVisible(), true);
+
+  const nextSubmit = page.waitForRequest((request) => request.url().endsWith("/api/ide_submit"));
+  await batch.click();
+  await nextSubmit;
+  await page.locator(".luogusp-ide-stop").click();
+  const waitingOldResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/ide_submit") && response.status() === 503);
+  first.release();
+  const oldResponse = await waitingOldResponse;
+  await oldResponse.finished();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  assert.equal(await page.getByText("运行中", { exact: true }).count(), 1);
+  await page.evaluate(() => window.finishSample("AC"));
+  second.release();
+  await page.getByText("1/2 通过 · 已停止", { exact: true }).waitFor();
+});
 
 test("IDE identifies the inserted line, jumps to it and finishes only the current sample on stop", async (t) => {
   const { page, requests, firstSubmit } = await ideFixture(t);

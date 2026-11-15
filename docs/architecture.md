@@ -13,8 +13,9 @@ status: stable
 | src/core/ | GET scheduling, routes and lifecycle; no direct browser globals. |
 | src/browser/ | Shared browser and DOM helpers. |
 | src/features/ | Descriptors, selectors, observers, styling and browser adapters. |
+| src/rendering/ | Full and lightweight Markdown renderers. |
 | src/app/ | Descriptor contracts and application assembly. |
-| src/entry.js | Browser startup and restricted-page loading gate. |
+| src/bootstrap/ | Browser startup and restricted-page loading gate. |
 | src/userscript.meta.js | Userscript metadata source. |
 | LuoguSP.user.js | Reproducibly generated loader. |
 | cdn/releases/ | Immutable versioned payloads and hashes. |
@@ -45,7 +46,9 @@ and display basic information before profile-only fields arrive.
 IDE batch runs observe mutations in the native output panel from
 before the submit click until the result, deadline or cancellation.
 Each batch captures the source at start. Edits stop later submissions and mark
-results from that batch stale.
+results from that batch stale. Leaving the IDE removes its batch controls and
+restores the native input layout. Each submit response belongs to the sample
+that dispatched it.
 Output highlighting aligns insertions and deletions within a bounded comparison.
 
 The profile introduction renderer sanitizes author markup before inserting

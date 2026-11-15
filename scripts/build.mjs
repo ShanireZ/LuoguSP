@@ -34,9 +34,9 @@ const firstPartyRequires = requireUrls.filter((value) => {
     url.pathname.startsWith("/releases/")
   );
 });
-if (![0, 2].includes(firstPartyRequires.length))
+if (firstPartyRequires.length !== 2)
   throw new Error(
-    "Production metadata must contain zero or two first-party CDN @require entries",
+    "Production metadata must contain two first-party CDN @require entries",
   );
 if (
   firstPartyRequires.some(
@@ -44,10 +44,7 @@ if (
   )
 )
   throw new Error("First-party CDN @require entries must pin SHA-256");
-const cdnBacked = firstPartyRequires.length === 2;
-const entryPoint = cdnBacked
-  ? "src/cdn/loader-entry.js"
-  : "src/entry.js";
+const entryPoint = "src/cdn/loader-entry.js";
 
 const result = await build({
   absWorkingDir: root,
@@ -58,11 +55,10 @@ const result = await build({
   platform: "browser",
   target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
-  legalComments: cdnBacked ? "none" : "inline",
-  minify: cdnBacked,
-  treeShaking: cdnBacked,
+  legalComments: "none",
+  minify: true,
+  treeShaking: true,
   banner: { js: metadata },
-  metafile: true,
   write: false,
 });
 

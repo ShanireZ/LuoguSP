@@ -71,7 +71,6 @@ export function createLuoguSPApp(options = {}) {
   const ideBatchFeature = createIdeBatchFeature({
     storage,
     problemData: problemResources?.data,
-    idePreparationAdapter: options.idePreparationAdapter,
   });
   const restrictedContentFeature = createRestrictedContentFeature({
     storage,
@@ -134,12 +133,5 @@ export function createLuoguSPApp(options = {}) {
     bootstrapAdapter.start();
   };
 
-  const app = { bootstrapBrowser };
-  if (options.exposeTestInterface) {
-    app.test = Object.freeze({
-      startIdeBatch: ideBatchFeature.start,
-      ideState: ideBatchFeature.getState,
-    });
-  }
-  return Object.freeze(app);
+  return Object.freeze({ bootstrapBrowser });
 }
