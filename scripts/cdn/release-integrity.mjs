@@ -1,125 +1,137 @@
-const HASHED_MANIFEST_PATTERN = /^manifest\.([a-f0-9]{16})\.json$/;
+import { createHash } from "node:crypto";
+import { lstat, readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-function looksLineEndingDamaged(disk, expectedBytes) {
-  // A CRLF-expanded checkout is longer than the blob by exactly one byte per line.
-  return disk.length > expectedBytes && disk.includes(0x0d);
-}
+const HASHED_MANIFEST = /^manifest\.([a-f0-9]{16})\.json$/;
+const SHA256 = /^[a-f0-9]{64}$/;
+const PATH_SEGMENT = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i;
+export const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+export const digest = (body) => createHash("sha256").update(body).digest("hex");
 
-function describe(problem) {
-  const suffix = problem.hint ? ` — ${problem.hint}` : "";
-  return `${problem.path}: ${problem.reason}${suffix}`;
-}
-
-/**
- * Verify that every byte under cdn/releases still matches the hashes its own
- * manifest pins. The published artifacts are addressed by content hash and the
- * installed userscript pins them with `@require …#sha256=`, so a working tree
- * that drifted from the committed blobs — a CRLF checkout on Windows is the
- * realistic way — would upload bytes that fail integrity for every user who
- * already has an older release installed.
- */
-export async function collectReleaseIntegrityProblems(options) {
-  const {
-    releasesDir,
-    readdir,
-    readFile,
-    digest,
-    join = (...parts) => parts.join("/"),
-  } = options || {};
-  if (
-    typeof readdir !== "function" ||
-    typeof readFile !== "function" ||
-    typeof digest !== "function" ||
-    typeof releasesDir !== "string"
-  )
-    throw new TypeError("Release integrity check requires a filesystem");
-
-  const problems = [];
-  const releases = (await readdir(releasesDir)).slice().sort();
-  if (!releases.length)
-    problems.push({ path: releasesDir, reason: "no release directories" });
-
-  for (const release of releases) {
-    const releaseDir = join(releasesDir, release);
-    const manifestPath = join(releaseDir, "manifest.json");
-    let manifestBody;
-    try {
-      manifestBody = await readFile(manifestPath);
-    } catch (error) {
-      problems.push({ path: manifestPath, reason: "manifest is unreadable" });
-      continue;
-    }
-    let manifest;
-    try {
-      manifest = JSON.parse(manifestBody.toString("utf8"));
-    } catch (error) {
-      problems.push({ path: manifestPath, reason: "manifest is not JSON" });
-      continue;
-    }
-
-    const files = manifest.files || {};
-    if (!Object.keys(files).length)
-      problems.push({ path: manifestPath, reason: "manifest pins no files" });
-
-    for (const [path, file] of Object.entries(files)) {
-      let body;
-      try {
-        body = await readFile(join(releasesDir, "..", path));
-      } catch (error) {
-        problems.push({ path, reason: "pinned file is missing" });
-        continue;
-      }
-      if (body.length !== file.bytes || digest(body) !== file.sha256)
-        problems.push({
-          path,
-          reason: `content drifted from the manifest (${body.length}B vs ${file.bytes}B pinned)`,
-          hint: looksLineEndingDamaged(body, file.bytes)
-            ? "the working tree looks CRLF-expanded; check core.autocrlf and .gitattributes"
-            : null,
-        });
-    }
-
-    // The manifest is served twice: once under its own content hash and once as
-    // manifest.json. Both are outside manifest.files, so verify them directly.
-    const entries = await readdir(releaseDir);
-    const hashed = entries.filter((name) =>
-      HASHED_MANIFEST_PATTERN.test(name),
-    );
-    if (hashed.length !== 1) {
-      problems.push({
-        path: releaseDir,
-        reason: `expected exactly one hashed manifest, found ${hashed.length}`,
-      });
-      continue;
-    }
-    const hashedPath = join(releaseDir, hashed[0]);
-    const hashedBody = await readFile(hashedPath);
-    const hashedDigest = digest(hashedBody);
-    const [, nameHash] = hashed[0].match(HASHED_MANIFEST_PATTERN);
-    if (!hashedDigest.startsWith(nameHash))
-      problems.push({
-        path: hashedPath,
-        reason: "content does not match the hash in its own filename",
-        hint: looksLineEndingDamaged(hashedBody, manifestBody.length)
-          ? "the working tree looks CRLF-expanded; check core.autocrlf and .gitattributes"
-          : null,
-      });
-    if (!hashedBody.equals(manifestBody))
-      problems.push({
-        path: hashedPath,
-        reason: "hashed manifest and manifest.json are not byte-identical",
-      });
+async function requireEntry(path, method, description) {
+  let status;
+  try {
+    status = await lstat(path);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    throw new Error(`${path}: ${description} is missing`);
   }
-  return problems;
+  // lstat examines links and Windows junctions themselves rather than their targets.
+  if (!status[method]()) throw new Error(`${path}: not a regular ${description}`);
 }
 
-export function releaseIntegrityError(problems) {
-  return new Error(
-    [
-      `Refusing to deploy: ${problems.length} CDN artifact(s) do not match their pinned hashes.`,
-      ...problems.map((problem) => `  ${describe(problem)}`),
-      "Published releases are immutable and addressed by content hash; uploading these bytes would break the",
-      "@require integrity check for every user who already has one of these releases installed.",
-    ].join("\n"),
-  );
+export function requireRegularDirectory(path) {
+  return requireEntry(path, "isDirectory", "directory");
+}
+
+export async function readRegularFile(path) {
+  await requireEntry(path, "isFile", "file");
+  return readFile(path);
+}
+
+function object(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Read the exact regular files in a portable path allowlist. */
+export async function readExactFiles(root, filenames) {
+  const directories = new Map([["", new Map()]]);
+  for (const filename of filenames) {
+    let parent = "";
+    const segments = filename.split("/");
+    for (const [index, segment] of segments.entries()) {
+      const directory = index < segments.length - 1;
+      const entries = directories.get(parent);
+      const alias = segment.toLowerCase();
+      const existing = entries.get(alias);
+      if (existing && (existing.name !== segment || existing.directory !== directory))
+        throw new Error(`${filename}: ambiguous pinned path`);
+      entries.set(alias, { name: segment, directory });
+      parent = parent ? `${parent}/${segment}` : segment;
+      if (directory && !directories.has(parent)) directories.set(parent, new Map());
+    }
+  }
+
+  const files = new Map();
+  for (const [directory, expectedEntries] of directories) {
+    const path = join(root, directory);
+    await requireRegularDirectory(path);
+    const missing = new Set([...expectedEntries.values()].map(({ name }) => name));
+    for (const name of await readdir(path)) {
+      if (!missing.delete(name)) throw new Error(`${join(path, name)}: unlisted CDN entry`);
+      if (!expectedEntries.get(name.toLowerCase()).directory) {
+        files.set(
+          directory ? `${directory}/${name}` : name,
+          await readRegularFile(join(path, name)),
+        );
+      }
+    }
+    if (missing.size)
+      throw new Error(`${join(path, missing.values().next().value)}: pinned file or directory is missing`);
+  }
+  return files;
+}
+
+export async function snapshotRelease(releasesRoot, version) {
+  if (!RELEASE_VERSION.test(version)) throw new Error(`${version}: invalid CDN release directory name`);
+  const root = join(releasesRoot, version);
+  await requireRegularDirectory(root);
+  const manifestBody = await readRegularFile(join(root, "manifest.json"));
+  const manifest = JSON.parse(manifestBody);
+  if (!object(manifest) || ![1, 2, 3].includes(manifest.schemaVersion) || manifest.release !== version)
+    throw new Error(`${root}: manifest release or schema does not match the release directory`);
+  const prefix = `releases/${version}/`;
+  if (!object(manifest.files) || !Object.keys(manifest.files).length)
+    throw new Error(`${root}: manifest pins no files`);
+  for (const [filename, record] of Object.entries(manifest.files)) {
+    const segments = filename.slice(prefix.length).split("/");
+    if (
+      !filename.startsWith(prefix) ||
+      segments.some((name) => !PATH_SEGMENT.test(name) || WINDOWS_DEVICE.test(name)) ||
+      segments[0].toLowerCase().startsWith("manifest.")
+    )
+      throw new Error(`${filename}: unsafe pinned path in release ${version}`);
+    if (
+      !object(record) ||
+      record.path !== filename ||
+      !Number.isSafeInteger(record.bytes) ||
+      record.bytes < 0 ||
+      typeof record.sha256 !== "string" ||
+      !SHA256.test(record.sha256)
+    )
+      throw new Error(`${filename}: invalid pinned file record`);
+  }
+
+  const hashedNames = (await readdir(root)).filter((name) => HASHED_MANIFEST.test(name));
+  if (hashedNames.length !== 1)
+    throw new Error(`${root}: expected exactly one hashed manifest, found ${hashedNames.length}`);
+  const [hashed] = hashedNames;
+  const files = await readExactFiles(root, [
+    "manifest.json",
+    hashed,
+    ...Object.keys(manifest.files).map((filename) => filename.slice(prefix.length)),
+  ]);
+  const sha256 = digest(manifestBody);
+  const hashedBody = files.get(hashed);
+  if (!files.get("manifest.json").equals(manifestBody) || !hashedBody.equals(manifestBody))
+    throw new Error(`${root}: hashed manifest and manifest.json are not byte-identical`);
+  if (hashed !== `manifest.${sha256.slice(0, 16)}.json`)
+    throw new Error(`${root}: manifest content does not match the hash in its own filename`);
+
+  for (const [name, file] of Object.entries(manifest.files)) {
+    const body = files.get(name.slice(prefix.length));
+    if (body.length === file.bytes && digest(body) === file.sha256) continue;
+    const hint = body.length > file.bytes && body.includes(0x0d)
+      ? "; the working tree looks CRLF-expanded, check core.autocrlf and .gitattributes"
+      : "";
+    throw new Error(`${name}: content drifted from the manifest (${body.length}B vs ${file.bytes}B pinned)${hint}`);
+  }
+
+  return {
+    manifest,
+    sha256,
+    path: prefix + hashed,
+    files: new Map([...files].map(([name, bytes]) => [prefix + name, bytes])),
+  };
 }

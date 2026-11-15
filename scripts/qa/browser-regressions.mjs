@@ -542,7 +542,10 @@ for (const first of ["vote", "favor"]) {
 for (const transport of ["fetch", "xhr"]) {
   test(`restricted article ${transport} persists only confirmed votes and favorites`, async (t) => {
     // Playwright routes only the first request of a redirect chain.
+    const redirectHits = [];
+    let protectedWrites = 0;
     const redirectTarget = createServer((req, res) => {
+      redirectHits.push(req.method);
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Headers", "x-csrf-token");
       res.setHeader("Access-Control-Allow-Private-Network", "true");
@@ -567,6 +570,7 @@ for (const transport of ["fetch", "xhr"]) {
         }
         if (url.pathname !== "/article/123/favor") return;
         if (!url.search) {
+          if (route.request().headers()["x-csrf-token"] === "fixture-token") protectedWrites++;
           return route.fulfill({
             status: 302, headers: { location: `http://127.0.0.1:${redirectTarget.address().port}/fixture-redirect` },
           });
@@ -597,22 +601,34 @@ for (const transport of ["fetch", "xhr"]) {
         xhr.send();
       });
     }, { path, transport, responseKind });
-    const unconfirmed = page.getByRole("status").filter({ hasText: "无法确认点赞或收藏结果" });
+    const voteNotice = page.locator("#luogusp-rst-write-vote-unconfirmed");
+    const favorNotice = page.locator("#luogusp-rst-write-favor-unconfirmed");
+    if (transport === "fetch") {
+      await assert.rejects(post("/article/123/favor"), /Failed to fetch/);
+      assert.equal(protectedWrites, 1);
+      assert.deepEqual(redirectHits, []);
+      assert.equal(await favorNotice.count(), 0);
+    } else {
+      assert.deepEqual(await post("/article/123/favor"), { status: 200, body: '{"_empty":true}' });
+      assert.equal(protectedWrites, 0);
+      assert.equal(redirectHits.filter((method) => method === "GET").length, 1);
+      await favorNotice.waitFor();
+    }
     const cases = [
       ["/article/123/vote?vote=1", undefined, '{"upvotes":10,"voted":null}'],
       ["/article/123/vote", undefined, '{"upvotes":10,"voted":0}'],
-      ["/article/123/favor", undefined, '{"_empty":true}'],
       ["/article/123/favor?remove=1", "html", "<html>Sign in</html>"],
       ["/article/123/favor?remove=1", "error", '{"success":false,"data":{}}'],
     ];
     for (const [path, responseKind, body] of cases) {
       assert.deepEqual(await post(path, responseKind), { status: 200, body });
-      await unconfirmed.waitFor();
+      await (path.includes("/vote") ? voteNotice : favorNotice).waitFor();
       assert.equal(await readArticleInteraction(page), undefined);
-      await unconfirmed.evaluate((node) => node.remove());
     }
-    assert.equal((await post("/article/123/vote?vote=0")).status, 200);
     assert.equal((await post("/article/123/favor?remove=1")).status, 204);
+    await favorNotice.waitFor({ state: "detached" });
+    assert.equal(await voteNotice.count(), 1);
+    assert.equal((await post("/article/123/vote?vote=0")).status, 200);
     await page.waitForFunction(() => {
       const entry = JSON.parse(localStorage.getItem("luogusp.article-interaction.v2") ?? "{}")["42:123"];
       return entry?.favored === false && entry.voted === 0;
@@ -621,9 +637,109 @@ for (const transport of ["fetch", "xhr"]) {
     assert.ok(Number.isFinite(voteAt) && Number.isFinite(favorAt));
     assert.equal(at, Math.max(voteAt, favorAt));
     assert.deepEqual(state, { voted: 0, favored: false, upvote: 10, favorCount: 2 });
-    assert.equal(await unconfirmed.count(), 0);
+    await voteNotice.waitFor({ state: "detached" });
   });
 }
+
+test("restricted reply adapters accept only aligned JSON and preserve cancellation", async (t) => {
+  const redirectTarget = createServer((req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "application/json");
+    res.end('{"replySlice":[{"id":44}]}');
+  });
+  const listening = once(redirectTarget, "listening");
+  redirectTarget.listen(0, "127.0.0.1");
+  await listening;
+  t.after(() => redirectTarget.close());
+  const held = responseGate(t);
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    commentsPayload: { code: 200, data: { comments: [{ id: 31, content: "Saved reply", time: 100, author: { id: 78, name: "Fixture author" } }] } },
+    reply(route, url) {
+      if (url.origin !== origin || url.pathname !== "/article/123/replies") return;
+      switch (url.searchParams.get("sort")) {
+        case "redirect": return route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:${redirectTarget.address().port}/archived-fixture-redirect` } });
+        case "mime": return route.fulfill({ body: '{"replySlice":[{"id":44}]}', contentType: "text/html" });
+        case "offline": return route.abort();
+        case "pending": return held.promise.then(() => route.abort().catch(() => {}));
+        default: return route.fulfill({ json: { replySlice: [{ id: 99 }] } });
+      }
+    },
+  });
+  await page.context().grantPermissions(["local-network-access"], { origin });
+  await page.getByRole("button", { name: "Native action" }).waitFor();
+  for (const transport of ["fetch", "xhr"]) {
+    const responses = await page.evaluate(async (transport) => {
+      const read = async (test) => {
+        const path = `/article/123/replies?sort=${test}`;
+        if (transport === "fetch") {
+          const response = await fetch(path);
+          return [response.headers.get("x-luogusp-source"), (await response.json()).replySlice.map(({ id }) => id)];
+        }
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("GET", path);
+          xhr.responseType = "json";
+          xhr.addEventListener("load", (event) => {
+            if (!(event instanceof ProgressEvent) || event.currentTarget !== xhr) return reject(new Error("Non-native event interface"));
+            resolve([xhr.getResponseHeader("x-luogusp-source"), xhr.response.replySlice.map(({ id }) => id)]);
+          });
+          xhr.onerror = () => reject(new Error("Missing fallback"));
+          xhr.send();
+        });
+      };
+      return await Promise.all(["native", "redirect", "mime", "offline"].map(read));
+    }, transport);
+    assert.deepEqual(responses, [[null, [99]], ["saver", [31]], ["saver", [31]], ["saver", [31]]]);
+  }
+  const cancellations = await page.evaluate(async () => {
+    const path = "/article/123/replies?sort=pending";
+    const controller = new AbortController();
+    const cancellation = fetch(path, { signal: controller.signal }).then(() => "resolved", (error) => error.name);
+    controller.abort();
+    const events = [];
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", path);
+    for (const type of ["abort", "error", "load", "loadend"])
+      xhr.addEventListener(type, (event) => events.push([type, event.isTrusted, xhr.status]));
+    xhr.send();
+    xhr.abort();
+    return [await cancellation, events, xhr.readyState];
+  });
+  assert.deepEqual(cancellations, ["AbortError", [["abort", true, 0], ["loadend", true, 0]], 0]);
+});
+
+test("reconstructed article retains unrelated native XHR EventTarget behavior", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    reply(route, url) {
+      if (url.origin === origin && url.pathname === "/fixture-xhr")
+        return route.fulfill({ body: "native response", contentType: "text/plain" });
+    },
+  });
+  await page.getByRole("button", { name: "Native action" }).waitFor();
+  const result = await page.evaluate(async () => {
+    const xhr = new XMLHttpRequest();
+    const observed = [];
+    const single = (event) => observed.push(["once", event.target === xhr, event.currentTarget === xhr, event.isTrusted]);
+    const object = { handleEvent(event) { observed.push(["object", this === object, event instanceof ProgressEvent, event.isTrusted]); } };
+    xhr.addEventListener("load", single, { once: true });
+    xhr.addEventListener("load", object);
+    xhr.addEventListener("fixture", (event) => event.preventDefault());
+    const accepted = xhr.dispatchEvent(new Event("fixture", { cancelable: true }));
+    const send = () => new Promise((resolve) => {
+      xhr.addEventListener("loadend", () => resolve(xhr.responseText), { once: true });
+      xhr.open("GET", "/fixture-xhr");
+      xhr.send();
+    });
+    const first = await send();
+    const second = await send();
+    return [xhr instanceof EventTarget, first, second, accepted, observed];
+  });
+  assert.deepEqual(result, [true, "native response", "native response", false, [
+    ["once", true, true, true], ["object", true, true, true], ["object", true, true, true],
+  ]]);
+});
 
 test("restricted article fetch honors Request method, body and header overrides", async (t) => {
   const wire = [];
@@ -665,23 +781,41 @@ test("restricted article warns when browser storage rejects a confirmed write", 
     initScript: `
       const setItem = Storage.prototype.setItem;
       Storage.prototype.setItem = function (key, value) {
-        if (key === "luogusp.article-interaction.v2")
+        if (key === "luogusp.article-interaction.v2" && !globalThis.allowArchiveSave)
           throw new DOMException("Fixture quota exceeded", "QuotaExceededError");
         return setItem.call(this, key, value);
       };
     `,
     reply(route, url) {
-      if (url.origin === origin && url.pathname === "/article/123/favor")
-        return route.fulfill({ json: { _empty: true } });
+      if (url.origin === origin && url.pathname === "/article/123/favor") {
+        return url.search
+          ? route.fulfill({ contentType: "text/html", body: "Unconfirmed" })
+          : route.fulfill({ json: { _empty: true } });
+      }
+      if (url.origin === origin && url.pathname === "/article/123/vote")
+        return route.fulfill({ json: { upvotes: 1, voted: 1 } });
     },
   });
   await page.getByRole("button", { name: "Native action" }).waitFor();
+  await page.evaluate(() => fetch("/article/123/favor?remove=1", { method: "POST" }));
+  const uncertain = page.locator("#luogusp-rst-write-favor-unconfirmed");
+  const unsaved = page.locator("#luogusp-rst-write-favor-unsaved");
+  await uncertain.waitFor();
   assert.deepEqual(await page.evaluate(async () => {
     const response = await fetch("/article/123/favor", { method: "POST" });
     return response.json();
   }), { _empty: true });
-  await page.getByRole("status").filter({ hasText: "浏览器未能保存点赞或收藏状态" }).waitFor();
+  await unsaved.waitFor();
+  assert.equal(await uncertain.count(), 0);
   assert.equal(await readArticleInteraction(page), undefined);
+  await page.evaluate(async () => {
+    globalThis.allowArchiveSave = true;
+    await fetch("/article/123/vote?vote=1", { method: "POST" });
+  });
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("luogusp.article-interaction.v2"))["42:123"]?.voted === 1);
+  assert.equal(await unsaved.count(), 1);
+  await page.evaluate(() => fetch("/article/123/favor", { method: "POST" }));
+  await unsaved.waitFor({ state: "detached" });
   await page.getByRole("button", { name: "Native action" }).click();
   await page.getByRole("button", { name: "Clicked" }).waitFor();
 });
@@ -938,6 +1072,39 @@ const stalledNative = restrictedStreams + `
   };
 `;
 
+test("restricted live-count cutoff aborts the list body and dispatches no later pages", async (t) => {
+  const listPath = "/user/42/article";
+  const { page } = await restrictedFixture(t, "article", "123", {
+    ...archiveArticle, authorId: 42, category: 3, upvote: 19, favorCount: 17,
+  }, {
+    nativeScript: nativeArticle,
+    useClock: true,
+    initScript: restrictedStreams + `
+      globalThis.fetch = (input, init) => {
+        const url = new URL(input, location.origin);
+        if (url.pathname === ${JSON.stringify(listPath)}) {
+          return Promise.resolve(restrictedStream(init.signal, url.pathname, 3000,
+            '{"data":{"articles":{"perPage":10,"count":100,"result":[]}}}'));
+        }
+        if (url.pathname === "/ranking")
+          return Promise.resolve(restrictedStream(init.signal, url.pathname, 5000, ${JSON.stringify(nativeScaffold("/ranking"))}));
+        return restrictedFetch(input, init);
+      };
+    `,
+  });
+  await page.clock.runFor(50);
+  await waitForRestrictedHeaders(page, listPath);
+  await waitForRestrictedHeaders(page, "/ranking");
+  await page.clock.runFor(5500);
+  await page.getByText("Saved text").waitFor();
+  const trace = await page.evaluate(path => restrictedTrace.filter(entry => entry[1] === path), listPath);
+  assert.equal(trace.length, 2);
+  const [[startEvent, startPath, start], [endEvent, endPath, end]] = trace;
+  assert.deepEqual([startEvent, startPath, endEvent, endPath, end - start], ["headers", listPath, "abort", listPath, 2500]);
+  const { article } = JSON.parse(await page.locator("#lentille-context").textContent()).data;
+  assert.deepEqual([article.upvote, article.favorCount], [19, 17]);
+});
+
 test("restricted native scaffold and author deadlines include streamed response bodies", async (t) => {
   const { page, requests } = await restrictedFixture(t, "article", "123", {
     ...archiveArticle, authorId: 42,
@@ -1081,6 +1248,69 @@ test("settings traps focus and Enter chooses the focused refresh action", async 
   await confirm.waitFor({ state: "hidden" });
   await page.keyboard.press("Enter");
   assert.equal(requests.filter(r => r.type === "document").length, 2);
+});
+
+test("settings fit small viewports and stay clickable above user previews", async (t) => {
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="user-link" style="position:fixed;left:120px;top:80px" href="/user/123">User</a>'),
+    viewport: { width: 320, height: 480 },
+    reply(route, url) {
+      if (url.origin !== origin) return;
+      const user = { uid: 123, name: "Layout fixture", slogan: "Some text", followerCount: 7 };
+      if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user } });
+      if (url.pathname === "/user/123") return route.fulfill({ json: { data: { user } } });
+    },
+  });
+  const entry = page.locator(".luogusp-setting-entry");
+  const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+  async function assertFits(locator) {
+    const box = await locator.boundingBox();
+    const size = page.viewportSize();
+    assert.ok(box.x >= 0 && box.x + box.width <= size.width + 1, JSON.stringify(box));
+    assert.ok(box.y >= 0 && box.y + box.height <= size.height + 1, JSON.stringify(box));
+  }
+  await entry.press("Enter");
+  await assertFits(modal);
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 640, height: 200 });
+  await entry.press("Enter");
+  await assertFits(modal);
+  await modal.getByRole("button", { name: "关闭" }).click();
+  assert.ok(await focused(entry));
+  await page.locator("#user-link").press("Alt+ArrowDown");
+  await card(page).getByRole("link", { name: "Layout fixture" }).waitFor();
+  await assertFits(card(page));
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 640, height: 420 });
+  await page.locator("#user-link").hover();
+  await card(page).getByRole("link", { name: "Layout fixture" }).waitFor();
+  await entry.press("Enter");
+  const first = modal.getByRole("checkbox").first();
+  const wasChecked = await first.isChecked();
+  await first.click();
+  assert.equal(await first.isChecked(), !wasChecked);
+  await page.keyboard.press("Escape");
+  assert.ok(await focused(entry));
+});
+
+test("intro copy announces failed and successful fallback without losing focus or animating", async (t) => {
+  const { page } = await fixture(t, {
+    path: "/user/42", reducedMotion: "reduce",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction: "~~~cpp\nint main(){}\n~~~" } }),
+    initScript: 'Object.defineProperty(navigator, "clipboard", {value: undefined}); document.execCommand = () => window.copyWorks === true;',
+  });
+  const intro = page.locator(".luogusp-intro-card");
+  const button = intro.getByRole("button", { name: "复制代码" });
+  await button.press("Enter");
+  assert.equal(await button.getAttribute("title"), "复制失败");
+  assert.ok(await focused(button));
+  assert.equal(await button.evaluate(node => getComputedStyle(node).transitionDuration), "0s");
+  assert.equal(await intro.getByRole("status").textContent(), "复制失败");
+  await page.evaluate(() => { window.copyWorks = true; });
+  await button.press("Enter");
+  assert.equal(await intro.getByRole("status").textContent(), "已复制");
+  assert.ok(await focused(button));
 });
 
 for (const reducedMotion of ["no-preference", "reduce"]) {
@@ -1430,6 +1660,111 @@ for (const input of ["pointer", "keyboard"]) {
     await card(page).getByText("P1000 Native preview", { exact: true }).waitFor();
   });
 }
+
+for (const fault of ["blocked bundle", "failed mount"]) {
+  test(`user preview leaves the native card available after a ${fault}`, async (t) => {
+    const { page } = await fixture(t, {
+      html: fixtureHtml('<a id="user-trigger" href="/user/123">User trigger</a><div class="dropdown"><div class="float-card">Native user card</div></div>'),
+      expectedConsoleError: /^LuoguSP hover card bundle:/,
+    });
+    const native = page.getByText("Native user card");
+    assert.equal(await native.isVisible(), true);
+    await page.evaluate((fault) => {
+      const fail = () => { throw new Error("Blocked user preview fixture"); };
+      if (fault === "blocked bundle") URL.createObjectURL = fail;
+      else document.elementFromPoint = fail;
+    }, fault);
+    const failed = page.waitForEvent("console", { predicate: message => /^LuoguSP hover card bundle:/.test(message.text()) });
+    await page.locator("#user-trigger").hover();
+    await failed;
+    assert.equal(await card(page).count(), 0);
+    assert.equal(await native.isVisible(), true);
+  });
+}
+
+test("user preview relinquishes the native card on close and retries transient profile failures", async (t) => {
+  let attempts = 0;
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="user-trigger" href="/user/123">User trigger</a><div class="dropdown"><div class="float-card">Native user card</div></div>'),
+    reply(route, url) {
+      if (url.pathname === "/api/user/info/123" || url.pathname === "/user/123") {
+        attempts++;
+        if (attempts <= 2) return route.fulfill({ status: 503, json: {} });
+        return route.fulfill({ json: url.pathname.startsWith("/api/") ?
+          { user: { uid: 123, name: "Recovered user" } } :
+          { data: { user: { uid: 123 }, gu: { rating: 980 } } } });
+      }
+    },
+  });
+  const native = page.getByText("Native user card");
+  const trigger = page.locator("#user-trigger");
+  const preview = card(page);
+  await trigger.focus();
+  await page.keyboard.press("Alt+ArrowDown");
+  await preview.getByText("拿不到这条数据。").waitFor();
+  assert.equal(await native.isVisible(), true);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Alt+ArrowDown");
+  await preview.getByRole("link", { name: "Recovered user" }).waitFor();
+  await preview.getByText("980").waitFor();
+  assert.equal(await native.isVisible(), false);
+  assert.equal(attempts, 4);
+  await page.keyboard.press("Escape");
+  assert.equal(await native.isVisible(), true);
+  assert.equal(await focused(trigger), true);
+});
+
+test("user preview loads verified Luogu images without referrers, credentials, or redirect hops", async (t) => {
+  const cdn = "https://cdn.luogu.com.cn";
+  const avatar = `${cdn}/upload/usericon/123.png`;
+  const redirect = `${cdn}/upload/image_hosting/redirect.png`;
+  const fallback = `${cdn}/images/bg/fe/DSCF0530-shrink.jpg`;
+  const external = "https://preview-media.example.test";
+  const image = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+  const seen = [];
+  const routeHeaders = { "access-control-allow-origin": "*" };
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="safe-user" href="/user/123">Safe user</a><a id="offsite-user" href="/user/456">Offsite user</a>'),
+    async reply(route, url) {
+      if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user: {
+        uid: 123, name: "Safe avatar", avatar, background: redirect,
+      } } });
+      if (url.pathname === "/api/user/info/456") return route.fulfill({ json: { user: {
+        uid: 456, name: "Offsite profile", avatar: external + "/avatar", background: external + "/cover",
+      } } });
+      if (/^\/user\/(123|456)$/.test(url.pathname)) return route.fulfill({ status: 403, json: {} });
+      if (url.origin !== cdn) return route.abort();
+      const req = route.request();
+      seen.push({ href: url.href, referer: await req.headerValue("referer"), cookie: await req.headerValue("cookie") });
+      if (url.href === redirect) return route.fulfill({ status: 302,
+        headers: { ...routeHeaders, location: external + "/redirected" } });
+      return route.fulfill({ headers: routeHeaders, contentType: "image/gif", body: image });
+    },
+  });
+  await page.context().addCookies([{ name: "preview-media", value: "fixture", url: cdn }]);
+  const unwanted = [];
+  page.on("request", request => {
+    if (request.url().startsWith(external)) unwanted.push(request.url());
+  });
+  await page.locator("#safe-user").focus();
+  await page.keyboard.press("Alt+ArrowDown");
+  const preview = card(page);
+  await preview.getByRole("link", { name: "Safe avatar" }).waitFor();
+  await page.waitForFunction(() => ["avatar", "cover"].every(name =>
+    document.querySelector(`.luogusp-hc-${name}`)?.naturalWidth === 1));
+  assert.deepEqual(seen.map(({ href }) => href).sort(), [avatar, redirect, fallback].sort());
+  assert.ok(seen.every(({ referer, cookie }) => referer === null && cookie === null));
+  const avatarBlob = await preview.locator(".luogusp-hc-avatar").getAttribute("src");
+  assert.match(avatarBlob, /^blob:/);
+  await page.keyboard.press("Escape");
+  assert.equal(await page.evaluate(url => fetch(url).then(() => true, () => false), avatarBlob), false);
+  await page.locator("#offsite-user").focus();
+  await page.keyboard.press("Alt+ArrowDown");
+  await preview.getByRole("link", { name: "Offsite profile" }).waitFor();
+  await page.waitForFunction(() => document.querySelector(".luogusp-hc-cover")?.naturalWidth === 1);
+  assert.equal(await preview.locator(".luogusp-hc-avatar").getAttribute("src"), null);
+  assert.deepEqual(unwanted, []);
+});
 
 test("user preview joins a native XHR and shows basic fields ahead of the profile", async (t) => {
   const basic = responseGate(t);
@@ -1865,6 +2200,8 @@ async function ideFixture(t, submitReply = (route, index) =>
             const { status, data } = JSON.parse(xhr.responseText);
             if (status !== 200 && data?.type === 'compile' && data.success === false)
               Promise.resolve().then(() => window.finishSample('CE', data.desc));
+            if (status !== 200 && data?.type === 'execute')
+              Promise.resolve().then(() => window.finishSample(data.output === ['a\\nb\\nc\\nd', 'ok'][index] ? 'AC' : 'WA', data.output));
           }, { once: true });
           xhr.addEventListener('loadend', () => {
             if (xhr.status === 200) {
@@ -2198,6 +2535,37 @@ test("IDE reports a fast inline compile failure and can test again", async (t) =
   await page.getByRole("button", { name: "重新测试", exact: true }).click();
   await page.getByText("2/2 通过", { exact: true }).waitFor();
   assert.deepEqual(submitted.map(body => body.input), ["first", "first", "second"]);
+});
+
+test("IDE recognizes inline terminal execution before loadend and can test again", async (t) => {
+  const { page, submitted } = await ideFixture(t, (route, index) => route.fulfill({ json:
+    index <= 2 ? { status: 500, data: { type: "execute", output: index === 1 ? "wrong answer" : "ok", execute: {} } }
+      : { status: 200, data: { rid: index } },
+  }));
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.getByText("1/2 通过 · 1 WA", { exact: true }).waitFor();
+  assert.deepEqual(await page.locator(".luogusp-ide-pill").allTextContents(), ["WA", "AC"]);
+  assert.deepEqual(submitted.map(body => body.input), ["first", "second"]);
+  await page.evaluate(() => { window.autoFinishSamples = true; });
+  await page.getByRole("button", { name: "重新测试", exact: true }).click();
+  await page.getByText("2/2 通过", { exact: true }).waitFor();
+  assert.deepEqual(submitted.map(body => body.input), ["first", "second", "first", "second"]);
+});
+
+test("IDE waits for the inline response output instead of taking an intervening pill", async (t) => {
+  const { page } = await ideFixture(t, (route, index) => route.fulfill({ json: {
+    status: 500, data: { type: "execute", output: index === 1 ? "wrong answer" : "ok", execute: {} },
+  } }));
+  await page.evaluate(() => {
+    const render = window.finishSample;
+    window.finishSample = (verdict, output) => {
+      render("AC", "previous output");
+      setTimeout(() => render(verdict, output), 25);
+    };
+  });
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.getByText("1/2 通过 · 1 WA", { exact: true }).waitFor();
+  assert.deepEqual(await page.locator(".luogusp-ide-pill").allTextContents(), ["WA", "AC"]);
 });
 
 test("IDE identifies the inserted line, jumps to it and finishes only the current sample on stop", async (t) => {

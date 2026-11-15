@@ -19,7 +19,7 @@ import {
   rstPreparationError,
   rstTrustedCdnUrl,
   rstUserSummary,
-  showRstArticleWriteNotice,
+  setRstArticleWriteNotice,
 } from "./presentation.js";
 import {
   buildColumbaDocument,
@@ -300,10 +300,11 @@ export function createRestrictedContentFeature({
       }),
     ]);
     const comments = commentsResult.kind === "available" ? commentsResult.data.comments : [];
-    const showWriteNotice = (kind, message) => {
+    const setWriteNotice = (kind, message) => {
       if (location.pathname === info.path)
-        showRstArticleWriteNotice(kind, message);
+        setRstArticleWriteNotice(kind, message);
     };
+    const actionText = { vote: "点赞", favor: "收藏" };
     const { interaction, tracker: interactionTracker } =
       prepareRestrictedArticleInteraction({
         store: rstInteractionStore,
@@ -313,15 +314,16 @@ export function createRestrictedContentFeature({
         // 存檔快照的新鮮度：只有比已確認記錄更新，保存站計數才允許覆蓋。
         archivedAt: Date.parse(data.updatedAt || data.createdAt) || null,
         live,
-        onUnconfirmed: () => showWriteNotice(
-          "unconfirmed", "无法确认点赞或收藏结果，请刷新后查看。",
+        onUnconfirmed: (kind) => setWriteNotice(
+          `${kind}-unconfirmed`, `无法确认${actionText[kind]}结果，请刷新后查看。`,
         ),
-        onPersistFailure: ({ reason }) => showWriteNotice(
-          "unsaved",
-          reason === "no-account"
-            ? "洛谷已确认操作，但当前页面无法识别登录账号，刷新后可能无法恢复互动状态。"
-            : "洛谷已确认操作，但浏览器未能保存点赞或收藏状态。刷新后可能无法恢复。",
-        ),
+        onConfirmed: ({ kind, failure }) => {
+          setWriteNotice(`${kind}-unconfirmed`, null);
+          const message = failure === "no-account"
+            ? `洛谷已确认${actionText[kind]}操作，但当前页面无法识别登录账号，刷新后可能无法恢复互动状态。`
+            : `洛谷已确认操作，但浏览器未能保存${actionText[kind]}状态。刷新后可能无法恢复。`;
+          setWriteNotice(`${kind}-unsaved`, failure ? message : null);
+        },
         article: {
           lid: info.id,
           title: data.title || "",

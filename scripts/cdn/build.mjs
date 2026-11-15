@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,10 @@ import {
   rendererStackDependencies,
 } from "../../src/rendering/renderer-dependencies.js";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
+import { committedReleaseFiles } from "./committed-releases.mjs";
+import {
+  RELEASE_VERSION, readRegularFile, requireRegularDirectory, snapshotRelease,
+} from "./release-integrity.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const releasesRoot = resolve(root, "cdn/releases");
@@ -34,17 +38,15 @@ const dryRun = process.argv.includes("--dry-run");
 
 if (
   typeof version !== "string" ||
-  !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)
+  !RELEASE_VERSION.test(version)
 )
   throw new Error(
     "Pass an immutable release version with --version, for example 2.13.0-canary.1",
   );
-if (overwrite && verifyExisting)
-  throw new Error("--overwrite and --verify-existing cannot be combined");
-if (dryRun && (overwrite || verifyExisting))
-  throw new Error(
-    "--dry-run cannot be combined with --overwrite or --verify-existing",
-  );
+if (overwrite)
+  throw new Error("--overwrite is disabled: CDN release paths are immutable");
+if (dryRun && verifyExisting)
+  throw new Error("--dry-run cannot be combined with --verify-existing");
 
 const releaseDir = resolve(releasesRoot, version);
 if (
@@ -53,25 +55,26 @@ if (
 )
   throw new Error("Refusing to write outside cdn/releases");
 
-let releaseExists = false;
-try {
-  await stat(releaseDir);
-  releaseExists = true;
-  if (!dryRun && !overwrite && !verifyExisting)
-    throw new Error(
-      `CDN release ${version} already exists; release paths are immutable`,
-    );
-  if (overwrite) await rm(releaseDir, { recursive: true, force: true });
-} catch (error) {
-  if (error.code !== "ENOENT") throw error;
+let existingRelease;
+if (!dryRun) {
+  await requireRegularDirectory(resolve(root, "cdn"));
+  await requireRegularDirectory(releasesRoot);
+  await requireRegularDirectory(channelsRoot);
+  await readRegularFile(resolve(channelsRoot, "canary.json"));
+  if (verifyExisting) {
+    existingRelease = await snapshotRelease(releasesRoot, version);
+  } else {
+    const occupied = await lstat(releaseDir).then(() => true, (error) => {
+      if (error.code !== "ENOENT") throw error;
+      return false;
+    });
+    if (occupied || committedReleaseFiles(root, version).has(version))
+      throw new Error(`CDN release ${version} already exists; release paths are immutable`);
+  }
 }
-if (verifyExisting && !releaseExists)
-  throw new Error(
-    `Cannot resume CDN release ${version}: the local immutable release is missing`,
-  );
 if (!verifyExisting && !dryRun) {
-  await mkdir(releaseDir, { recursive: true });
-  await mkdir(channelsRoot, { recursive: true });
+  // Reserve a new release directory without following a concurrent replacement.
+  await mkdir(releaseDir);
 }
 
 const digest = (body) => createHash("sha256").update(body).digest("hex");
@@ -310,17 +313,11 @@ for (const [outputPath, metadata] of Object.entries(
   )}`;
 }
 
-const existingManifestBody = verifyExisting
-  ? await readFile(resolve(releaseDir, "manifest.json"))
-  : null;
-const existingManifest = existingManifestBody
-  ? JSON.parse(existingManifestBody)
-  : null;
 const manifest = {
   schemaVersion: 3,
   release: version,
   loaderApiVersion: 1,
-  generatedAt: existingManifest?.generatedAt || new Date().toISOString(),
+  generatedAt: existingRelease?.manifest.generatedAt || new Date().toISOString(),
   origin: cdnOrigin,
   compat: {
     earlyGate: compatEarlyGate,
@@ -339,41 +336,18 @@ const manifest = {
   files,
 };
 if (verifyExisting) {
-  if (JSON.stringify(existingManifest) !== JSON.stringify(manifest))
+  if (JSON.stringify(existingRelease.manifest) !== JSON.stringify(manifest))
     throw new Error(
       `Cannot resume CDN release ${version}: current source build differs from the existing immutable release; increase @version`,
     );
-  for (const [deploymentPath, record] of Object.entries(files)) {
-    const localPath = resolve(root, "cdn", deploymentPath);
-    if (
-      localPath === releaseDir ||
-      !localPath.startsWith(`${releaseDir}${sep}`)
-    )
-      throw new Error(
-        `Cannot resume CDN release ${version}: manifest path escapes the release directory`,
-      );
-    const body = await readFile(localPath);
-    if (
-      body.length !== record.bytes ||
-      digest(body) !== record.sha256 ||
-      sri(body) !== record.sri
-    )
-      throw new Error(
-        `Cannot resume CDN release ${version}: local asset integrity failed for ${deploymentPath}`,
-      );
-  }
-  const existingManifestSha256 = digest(existingManifestBody);
-  const existingManifestPath = `releases/${version}/manifest.${existingManifestSha256.slice(0, 16)}.json`;
-  const [pinnedManifest, channelBody] = await Promise.all([
-    readFile(resolve(root, "cdn", existingManifestPath)),
-    readFile(resolve(channelsRoot, "canary.json"), "utf8"),
-  ]);
-  const channel = JSON.parse(channelBody);
+  const channel = JSON.parse(await readRegularFile(resolve(channelsRoot, "canary.json")));
   if (
-    !pinnedManifest.equals(existingManifestBody) ||
+    channel.schemaVersion !== 2 ||
+    channel.channel !== "canary" ||
     channel.release !== version ||
-    channel.manifestPath !== existingManifestPath ||
-    channel.manifestSha256 !== existingManifestSha256
+    channel.origin !== cdnOrigin ||
+    channel.manifestPath !== existingRelease.path ||
+    channel.manifestSha256 !== existingRelease.sha256
   )
     throw new Error(
       `Cannot resume CDN release ${version}: local manifest or canary channel integrity failed`,

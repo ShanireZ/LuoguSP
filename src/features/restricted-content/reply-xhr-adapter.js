@@ -1,35 +1,17 @@
-const EVENT_TYPES = [
-  "readystatechange",
-  "loadstart",
-  "progress",
-  "abort",
-  "error",
-  "load",
-  "timeout",
-  "loadend",
-];
-
-function fallbackPayload(replies, requestUrl) {
-  let list = replies;
-  if (requestUrl.searchParams.get("sort") === "time-d")
-    list = [...replies].sort((left, right) => right.time - left.time);
-  const after = Number(requestUrl.searchParams.get("after"));
-  let start = 0;
-  if (after) {
-    const index = list.findIndex((reply) => reply.id === after);
-    start = index >= 0 ? index + 1 : list.length;
-  }
-  return { replySlice: list.slice(start, start + 20) };
-}
+import { matchesNativeReplyResponse, saverReplyPayload } from "./reply-response.js";
 
 export function createRestrictedReplyXhrAdapter(config) {
   const {
     XMLHttpRequest: NativeXhr,
     URL: URLCtor,
+    Event: EventCtor = Event,
+    ProgressEvent: ProgressEventCtor = globalThis.ProgressEvent,
     origin,
     lid,
     replies,
     onWrite,
+    isActive = () => true,
+    getBaseUrl = () => origin,
   } = config || {};
   if (
     typeof NativeXhr !== "function" ||
@@ -41,250 +23,189 @@ export function createRestrictedReplyXhrAdapter(config) {
   )
     throw new TypeError("Reply XHR adapter configuration is invalid");
   const repliesPath = `/article/${lid}/replies`;
-  // 官方前端用 axios（adapter 順序 xhr→http→fetch），點贊/收藏/評論寫入實際都走 XHR。
-  // 這裡只旁觀已完成的寫請求，不改方法、URL、請求頭、請求體或回應。
-  const writePaths = new Set([
-    `/article/${lid}/favor`,
-    `/article/${lid}/vote`,
-  ]);
+  const writePaths = new Set([`/article/${lid}/favor`, `/article/${lid}/vote`]);
 
-  class RestrictedReplyXhr {
-    constructor() {
-      this.native = new NativeXhr();
-      this.listeners = new Map();
-      this.targetUrl = null;
-      this.writeUrl = null;
-      this.fallback = null;
-      this.completed = false;
-      for (const type of EVENT_TYPES) {
-        this[`on${type}`] = null;
-        this.native[`on${type}`] = (event) => this.handleNative(type, event);
+  // Keep the real XHR as the EventTarget. Only a failed reply read needs
+  // replacement response data or events.
+  class RestrictedReplyXhr extends NativeXhr {
+    #request = null;
+
+    constructor(...args) {
+      super(...args);
+      this.addEventListener("readystatechange", (event) => this.#onReady(event), true);
+      for (const type of ["error", "timeout"])
+        this.addEventListener(type, (event) => this.#onFailure(event), true);
+    }
+
+    open(method, rawUrl, ...options) {
+      const previous = this.#request;
+      const url = this.#targetUrl(method, rawUrl, options);
+      this.#request = url && {
+        replyUrl: method.toUpperCase() === "GET" ? url : null,
+        writeUrl: method.toUpperCase() === "POST" ? url.href : null,
+        checked: false,
+        aborting: false,
+        fallback: null,
+      };
+      try {
+        return super.open(method, rawUrl, ...options);
+      } catch (error) {
+        this.#request = previous;
+        throw error;
       }
     }
 
-    reportWrite() {
-      const url = this.writeUrl;
-      this.writeUrl = null;
-      if (!url || typeof onWrite !== "function") return;
+    #targetUrl(method, rawUrl, options) {
+      if (!isActive() || typeof method !== "string" ||
+        (typeof rawUrl !== "string" && !(rawUrl instanceof URLCtor)) ||
+        options[1] != null || options[2] != null) return null;
       try {
-        const { status, responseType, responseURL } = this.native;
-        const header = (name) => this.native.getResponseHeader?.(name);
+        const url = new URLCtor(rawUrl, getBaseUrl());
+        if (url.origin !== origin || url.username || url.password) return null;
+        const verb = method.toUpperCase();
+        if ((verb === "GET" && url.pathname === repliesPath) ||
+          (verb === "POST" && typeof onWrite === "function" && writePaths.has(url.pathname))) {
+          url.hash = "";
+          return url;
+        }
+      } catch {
+        // Leave URL validation to the native open method.
+      }
+      return null;
+    }
+
+    #onReady(event) {
+      const request = this.#request;
+      if (!request || this.readyState !== this.DONE) return;
+      if (request.writeUrl) {
+        const url = request.writeUrl;
+        request.writeUrl = null;
+        this.#reportWrite(url);
+      }
+      if (!request.replyUrl || request.checked || request.aborting) return;
+      if (!super.status) {
+        // A network failure fires DONE before error/timeout. Expose the fallback
+        // during its replacement DONE event. Explicit abort uses the native one.
+        event.stopImmediatePropagation();
+        return;
+      }
+      request.checked = true;
+      if (!this.#hasNativeReplies(request.replyUrl))
+        this.#setFallback(request);
+    }
+
+    #hasNativeReplies(url) {
+      if (!matchesNativeReplyResponse(
+        url.href, super.responseURL, super.status, super.getResponseHeader("content-type"),
+      )) return false;
+      try {
+        const payload = this.responseType === "json"
+          ? super.response
+          : JSON.parse(super.responseText);
+        return !!payload && Array.isArray(payload.replySlice);
+      } catch {
+        return false;
+      }
+    }
+
+    #setFallback(request) {
+      const payload = saverReplyPayload(replies, request.replyUrl);
+      request.fallback = { payload, text: JSON.stringify(payload) };
+    }
+
+    #onFailure(event) {
+      const request = this.#request;
+      if (!request?.replyUrl || request.checked || request.aborting || this.readyState !== this.DONE) return;
+      request.checked = true;
+      this.#setFallback(request);
+      event.stopImmediatePropagation();
+      this.dispatchEvent(new EventCtor("readystatechange"));
+      if (this.#request === request && !request.aborting) {
+        const progress = { lengthComputable: true, loaded: request.fallback.text.length, total: request.fallback.text.length };
+        this.dispatchEvent(ProgressEventCtor
+          ? new ProgressEventCtor("load", progress)
+          : new EventCtor("load"));
+      }
+    }
+
+    #reportWrite(url) {
+      try {
+        const { status, responseType, responseURL } = this;
         let responseText;
-        if (!responseType || responseType === "text")
-          responseText = this.native.responseText;
-        else if (responseType === "json" && this.native.response !== null)
-          responseText = JSON.stringify(this.native.response);
-        else if (status === 204 || status === 205)
-          responseText = "";
+        if (!responseType || responseType === "text") responseText = this.responseText;
+        else if (responseType === "json" && this.response !== null)
+          responseText = JSON.stringify(this.response);
+        else if (status === 204 || status === 205) responseText = "";
         onWrite({
           method: "POST",
           url,
           status,
           responseUrl: responseURL,
-          contentType: header("content-type"),
+          contentType: this.getResponseHeader("content-type"),
           responseText,
         });
-      } catch (error) {
-        /* 觀察失敗絕不影響官方寫入本身 */
+      } catch {
+        // A write observation must leave the original response available.
       }
-    }
-
-    handleNative(type, event) {
-      if (!this.targetUrl) {
-        if (type === "loadend") this.reportWrite();
-        return this.emit(type, event);
-      }
-      if (this.completed) return;
-      if (type === "abort") {
-        this.completed = true;
-        this.emit("abort", event);
-        this.emit("loadend", event);
-        return;
-      }
-      if (type !== "loadend") return;
-      let valid = false;
-      if (this.native.status >= 200 && this.native.status < 300) {
-        try {
-          const payload =
-            this.native.responseType === "json" &&
-            this.native.response &&
-            typeof this.native.response === "object"
-              ? this.native.response
-              : JSON.parse(this.native.responseText);
-          valid = !!payload && Array.isArray(payload.replySlice);
-        } catch (error) {
-          valid = false;
-        }
-      }
-      if (!valid) {
-        const payload = fallbackPayload(replies, this.targetUrl);
-        const responseText = JSON.stringify(payload);
-        this.fallback = {
-          status: 200,
-          statusText: "OK",
-          responseText,
-          response:
-            this.native.responseType === "json" ? payload : responseText,
-          responseURL: this.targetUrl.href,
-        };
-      }
-      this.completed = true;
-      this.emit("readystatechange", event);
-      this.emit("load", event);
-      this.emit("loadend", event);
-    }
-
-    emit(type, sourceEvent) {
-      const event = {
-        type,
-        target: this,
-        currentTarget: this,
-        lengthComputable: sourceEvent?.lengthComputable || false,
-        loaded: sourceEvent?.loaded || 0,
-        total: sourceEvent?.total || 0,
-      };
-      const handler = this[`on${type}`];
-      if (typeof handler === "function") handler.call(this, event);
-      for (const listener of this.listeners.get(type) || [])
-        listener.call(this, event);
-    }
-
-    open(method, rawUrl, ...rest) {
-      let requestUrl = null;
-      try {
-        requestUrl = new URLCtor(String(rawUrl), origin);
-      } catch (error) {
-        /* 無法解析的請求按普通 XHR 透傳 */
-      }
-      // ★ XHR 執行個體是可以重複使用的（同一個物件再 open 一次）。不在這裡復位，
-      //   上一次留下的 `completed` 會讓 handleNative 對新請求的所有事件早退，
-      //   `fallback` 還會讓 readyState 恆為 4、responseText 恆是上一次的退回體 ——
-      //   等於第二次請求徹底啞掉。官方前端走 axios、每次新建執行個體，所以踩不到；
-      //   但我們換掉的是**全域** XMLHttpRequest，頁面上任何別的程式碼都可能重複使用。
-      this.completed = false;
-      this.fallback = null;
-      const verb = String(method).toUpperCase();
-      this.targetUrl =
-        verb === "GET" &&
-        requestUrl?.origin === origin &&
-        requestUrl.pathname === repliesPath
-          ? requestUrl
-          : null;
-      this.writeUrl =
-        verb === "POST" &&
-        requestUrl?.origin === origin &&
-        writePaths.has(requestUrl.pathname)
-          ? requestUrl.href
-          : null;
-      return this.native.open(method, rawUrl, ...rest);
-    }
-
-    send(body) {
-      return this.native.send(body);
     }
 
     abort() {
-      return this.native.abort();
+      if (this.#request) {
+        this.#request.aborting = true;
+        this.#request.fallback = null;
+      }
+      return super.abort();
     }
 
-    setRequestHeader(name, value) {
-      return this.native.setRequestHeader(name, value);
+    get status() {
+      return this.#request?.fallback ? 200 : super.status;
     }
 
-    overrideMimeType(value) {
-      return this.native.overrideMimeType(value);
+    get statusText() {
+      return this.#request?.fallback ? "OK" : super.statusText;
+    }
+
+    get #isWaitingForReply() {
+      const request = this.#request;
+      return request?.replyUrl && !request.checked && !request.aborting;
+    }
+
+    get #isTextResponse() {
+      return this.responseType === "" || this.responseType === "text";
+    }
+
+    get responseText() {
+      if (!this.#isTextResponse) return super.responseText;
+      return this.#request?.fallback?.text ?? (this.#isWaitingForReply ? "" : super.responseText);
+    }
+
+    get response() {
+      const fallback = this.#request?.fallback;
+      if (fallback && this.responseType === "json") return fallback.payload;
+      if (fallback || this.#isWaitingForReply) return this.#isTextResponse ? fallback?.text ?? "" : null;
+      return super.response;
+    }
+
+    get responseXML() {
+      return this.#request?.fallback || this.#isWaitingForReply ? null : super.responseXML;
+    }
+
+    get responseURL() {
+      return this.#request?.fallback ? this.#request.replyUrl.href : super.responseURL;
     }
 
     getAllResponseHeaders() {
-      return this.fallback
+      return this.#request?.fallback
         ? "content-type: application/json\r\nx-luogusp-source: saver\r\n"
-        : this.native.getAllResponseHeaders();
+        : super.getAllResponseHeaders();
     }
 
     getResponseHeader(name) {
-      if (!this.fallback) return this.native.getResponseHeader(name);
+      if (!this.#request?.fallback) return super.getResponseHeader(name);
       if (/^content-type$/i.test(name)) return "application/json";
       if (/^x-luogusp-source$/i.test(name)) return "saver";
       return null;
     }
-
-    addEventListener(type, listener) {
-      if (typeof listener !== "function") return;
-      const listeners = this.listeners.get(type) || new Set();
-      listeners.add(listener);
-      this.listeners.set(type, listeners);
-    }
-
-    removeEventListener(type, listener) {
-      this.listeners.get(type)?.delete(listener);
-    }
-
-    dispatchEvent(event) {
-      this.emit(event.type, event);
-      return true;
-    }
-
-    get readyState() {
-      return this.fallback ? 4 : this.native.readyState;
-    }
-    get status() {
-      return this.fallback ? this.fallback.status : this.native.status;
-    }
-    get statusText() {
-      return this.fallback ? this.fallback.statusText : this.native.statusText;
-    }
-    get responseText() {
-      return this.fallback
-        ? this.fallback.responseText
-        : this.native.responseText;
-    }
-    get response() {
-      return this.fallback ? this.fallback.response : this.native.response;
-    }
-    get responseURL() {
-      return this.fallback
-        ? this.fallback.responseURL
-        : this.native.responseURL;
-    }
-    get responseXML() {
-      return this.fallback ? null : this.native.responseXML;
-    }
-    get upload() {
-      return this.native.upload;
-    }
-    get responseType() {
-      return this.native.responseType;
-    }
-    set responseType(value) {
-      this.native.responseType = value;
-    }
-    get timeout() {
-      return this.native.timeout;
-    }
-    set timeout(value) {
-      this.native.timeout = value;
-    }
-    get withCredentials() {
-      return this.native.withCredentials;
-    }
-    set withCredentials(value) {
-      this.native.withCredentials = value;
-    }
-  }
-
-  // ★ WebIDL 的介面常數掛在**建構器和原型兩處**（`XMLHttpRequest.DONE` 與
-  //   `xhr.DONE` 都必須是 4）。只掛建構器時 `xhr.DONE` 是 undefined，任何寫
-  //   `xhr.readyState === xhr.DONE` 的庫都會永遠判假 —— 而我們換掉的是全域物件，
-  //   頁面上的第三方程式碼不歸我們挑。兩處都掛，代價三行。
-  for (const [name, value] of Object.entries({
-    UNSENT: 0,
-    OPENED: 1,
-    HEADERS_RECEIVED: 2,
-    LOADING: 3,
-    DONE: 4,
-  })) {
-    Object.defineProperty(RestrictedReplyXhr, name, { value });
-    Object.defineProperty(RestrictedReplyXhr.prototype, name, { value });
   }
 
   return Object.freeze({ XMLHttpRequest: RestrictedReplyXhr });

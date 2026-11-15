@@ -1,4 +1,4 @@
-import { PID_PATTERN } from "./anchors.js";
+import { PID_PATTERN } from "../problem-color/identity.js";
 import {
   buildProblemCard,
   buildTagDictionary,
@@ -6,39 +6,15 @@ import {
   pickLastAttempt,
 } from "./models.js";
 
-// 卡片資料源。★ 鐵律：一切資料只從 `.com.cn` 國內站或 `api.luogu.me` 保存站取，
-// **絕不走 `www.luogu.com` 國際站** —— 普通使用者沒有代理，訪問不到。
-// 本模組全部請求都是當前站同源。
-//
-//   題目：GET /problem/{pid}                 + x-lentille-request: content-only
-//   標籤：GET /_lfe/tags                     （字典，帶 version，可長快取）
-//   上次嘗試：GET /record/list?user=&pid=    + x-lentille-request: content-only
-//   使用者（主）：GET /api/user/info/{uid}     ★ 洛谷**原生懸停卡自己用的介面**
-//   使用者（補）：GET /user/{uid}               + 同 header，只為拿主介面沒有的兩樣東西
-//
-// ★★★ 使用者資料為什麼是兩個來源（owner 2026-08-14：「能用原生介面的用原生卡片的介面」）：
-//   主介面 `/api/user/info/{uid}` 是原生 UserFloatCard 調的那個（路由名 api.user.get_info，
-//   在 `/_lfe/config` 的 routes 裡可查）。它有三個決定性好處：
-//     1. **951 B**，而 `/user/{uid}` 是 12~20 KB；
-//     2. **`eloValue` / `elo` 在這裡是真值**（在 `/user/{uid}` 裡恆為 null）；
-//     3. **未通過實名認證的使用者照樣 200**，而 `/user/{uid}` 直接 403
-//        （`errorMessage: "该用户未通过实名认证"`）—— owner 報的「拿不到這條資料」就是它。
-//   它缺兩樣：`gu`（咕值）與 `prizes`（獲獎），所以補一發 `/user/{uid}`，**取不到就少畫幾行**。
-//
-// ★★★ 一個必須記死的陷阱：**兩個介面都有 `submittedProblemCount`，含義不一樣**。
-//   實測 697932：主介面 5441、`/user/{uid}` 710，而洛谷個人頁上寫的「提交」是 **710**。
-//   所以「通過 / 提交」這一行**只認 `/user/{uid}` 的口徑**，拿不到就不畫 ——
-//   混著用會讓我們顯示一個比洛谷自己大 8 倍的數字。
-//
-// 全部按 key 快取並共享在途請求：hover 會反覆進出同一個錨點，不能每次都打網路。
-
 const LENTILLE_INIT = Object.freeze({
   headers: Object.freeze({ "x-lentille-request": "content-only" }),
 });
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 60;
 const RETRY_COOLDOWN_MS = 2000;
+const USER_DEADLINE_MS = 3500;
 const RETRYABLE_READ = Symbol("retryable hover read");
+const TEMPORARY_USER_READ = Object.freeze({ retry: true });
 
 export function createHoverCardSources(config) {
   const {
@@ -207,73 +183,130 @@ export function createHoverCardSources(config) {
     return model;
   };
 
-  // 洛谷說得出口的失敗原因（例如「該使用者未通過實名認證」），按目標 key 記下來。
-  // ★ 只轉述洛谷自己的話，**不編原因** —— 說不出就讓視圖退回籠統的那句。
-  const reasons = new Map();
-
-  // 兩個使用者介面的回應體**即使不是 2xx 也是 JSON**（lentille 的錯誤頁就是
-  // `{status:403, data:{errorMessage:"该用户未通过实名认证"}}`），所以照樣解析，
-  // 只是把「有沒有拿到 user」和「失敗原因」分開回傳。
-  const readMaybe = async (path, init, signal) => {
+  const readUserBranch = async (branch, uid, account, signal) => {
     try {
-      const response = await fetchPage(path, signal, init);
-      if (!response) return null;
-      return await response.json();
+      const info = branch === "info";
+      if (info) {
+        const native = await nativeUserInfo?.read(uid, account, signal);
+        if (Number(native?.user?.uid) === uid) return { payload: native };
+      }
+      if (signal.aborted || viewer() !== account) return TEMPORARY_USER_READ;
+      const path = info ? `/api/user/info/${uid}` : `/user/${uid}`;
+      const response = await fetchPage(path, signal, info ? null : LENTILLE_INIT);
+      if (!response || response.status === 408 || response.status === 429 || response.status >= 500)
+        return TEMPORARY_USER_READ;
+      const payload = await Promise.resolve().then(() => response.json()).catch(() => null);
+      if (response.ok === false) {
+        const message = payload?.data?.errorMessage;
+        return { reason: typeof message === "string" ? message : null };
+      }
+      const profile = info ? payload?.user : payload?.data?.user;
+      return Number(profile?.uid) === uid ? { payload } : TEMPORARY_USER_READ;
     } catch {
-      return null;
+      return TEMPORARY_USER_READ;
     }
   };
 
-  const user = (uid, onUpdate) => {
+  const userModel = (state) => {
+    const card = buildUserCard(state.info?.payload, state.page?.payload);
+    return card && state.patch ? Object.freeze({ ...card, ...state.patch }) : card;
+  };
+  const notifyUser = (notify, model) => {
+    if (!model) return;
+    try {
+      notify?.(model);
+    } catch (error) {
+      logError(error);
+    }
+  };
+
+  function startUserPreview(key, target, account, state, missing) {
+    const controller = new AbortController();
+    const consumers = new Set();
+    const remaining = new Set(missing);
+    const preview = { state, consumers, finish };
+    userPreviews.set(key, preview);
+
+    const saveBranch = (branch, result) => {
+      const readAt = now();
+      const repeated = state[branch]?.retryAt !== undefined;
+      state[branch] = {
+        ...result,
+        expires: readAt + ttlMs,
+        retryAt: result.retry ? readAt + (repeated ? RETRY_COOLDOWN_MS : 0) : undefined,
+      };
+      if (result.payload) state.card = userModel(state);
+      remember(key, state);
+    };
+    const timer = (clock?.setTimeout ?? setTimeout)(() => {
+      if (viewer() === account)
+        for (const branch of remaining) saveBranch(branch, TEMPORARY_USER_READ);
+      finish(viewer() === account ? state.card : null);
+    }, USER_DEADLINE_MS);
+
+    function finish(model) {
+      if (userPreviews.get(key) !== preview) return;
+      userPreviews.delete(key);
+      (clock?.clearTimeout ?? clearTimeout)(timer);
+      controller.abort();
+      for (const consumer of consumers) consumer.complete(model);
+    }
+
+    for (const branch of remaining) {
+      void Promise.resolve().then(async () => {
+        if (controller.signal.aborted) return;
+        const result = await readUserBranch(branch, target, account, controller.signal);
+        if (controller.signal.aborted) return;
+        if (viewer() !== account) return finish(null);
+        remaining.delete(branch);
+        saveBranch(branch, result);
+        if (result.payload)
+          for (const consumer of consumers) notifyUser(consumer.onUpdate, state.card);
+        if (!remaining.size) finish(state.card);
+      });
+    }
+    return preview;
+  }
+
+  const user = (uid, signal, onUpdate) => {
     const target = Number(uid);
-    if (!Number.isSafeInteger(target) || target <= 0)
+    if (!Number.isSafeInteger(target) || target <= 0 || signal?.aborted)
       return Promise.resolve(null);
     const account = viewer();
     const key = `${account}:user:${target}`;
-    const hit = cached(key);
-    if (hit !== undefined) return Promise.resolve(hit);
     let preview = userPreviews.get(key);
     if (!preview) {
-      preview = { card: null, patch: null, listeners: new Set() };
-      userPreviews.set(key, preview);
+      const state = cached(key) ?? { card: null };
+      const time = now();
+      if (state.patch && time - state.patchAt > ttlMs) {
+        state.patch = null;
+        state.card = userModel(state);
+      }
+      for (const branch of ["info", "page"]) {
+        if (state[branch]?.expires < time) {
+          delete state[branch];
+          state.card = userModel(state);
+        }
+      }
+      const missing = ["info", "page"].filter(branch => !state[branch] || state[branch].retryAt <= time);
+      if (!missing.length) return Promise.resolve(state.card);
+      preview = startUserPreview(key, target, account, state, missing);
     }
-    if (onUpdate) {
-      preview.listeners.add(onUpdate);
-      if (preview.card) onUpdate(preview.card);
-    }
-    return load(key, async () => {
-      let info;
-      let page;
-      let message;
-      const publish = () => {
-        if (viewer() !== account) return;
-        const card = buildUserCard(info, page);
-        if (!card) return;
-        preview.card = preview.patch ? Object.freeze({ ...card, ...preview.patch }) : card;
-        for (const notify of preview.listeners) notify(preview.card);
-      };
-      const readInfo = async () =>
-        (await nativeUserInfo?.read(target, account)) || readMaybe(`/api/user/info/${target}`, null);
-      await Promise.all([
-        readInfo().then(payload => {
-          if (Number(payload?.user?.uid) === target) {
-            info = payload;
-            publish();
-          } else message ||= payload?.data?.errorMessage;
-        }),
-        readMaybe(`/user/${target}`, LENTILLE_INIT).then(payload => {
-          if (Number(payload?.data?.user?.uid) === target) {
-            page = payload;
-            publish();
-          } else message = payload?.data?.errorMessage || message;
-        }),
-      ]);
-      if (!preview.card && typeof message === "string" && message) reasons.set(key, message);
-      else reasons.delete(key);
-      return preview.card;
-    }).finally(() => {
-      preview.listeners.delete(onUpdate);
-      if (!pending.has(key) && userPreviews.get(key) === preview) userPreviews.delete(key);
+    return new Promise(resolve => {
+      const { consumers, state } = preview;
+      const consumer = { onUpdate, complete };
+      function complete(model) {
+        signal?.removeEventListener("abort", cancel);
+        consumers.delete(consumer);
+        resolve(model);
+      }
+      function cancel() {
+        complete(null);
+        if (!consumers.size) preview.finish(null);
+      }
+      consumers.add(consumer);
+      signal?.addEventListener("abort", cancel, { once: true });
+      notifyUser(onUpdate, state.card);
     });
   };
 
@@ -282,24 +315,21 @@ export function createHoverCardSources(config) {
   const patchUser = (viewer, uid, patch) => {
     nativeUserInfo?.invalidate(uid, viewer);
     const key = `${viewer}:user:${uid}`;
-    const preview = userPreviews.get(key);
-    if (preview) {
-      preview.patch = { ...preview.patch, ...patch };
-      if (preview.card) preview.card = Object.freeze({ ...preview.card, ...patch });
-    }
-    const entry = cache.get(key);
-    if (!entry?.value) return preview?.card;
-    const value = Object.freeze({ ...entry.value, ...patch });
-    cache.set(key, { at: entry.at, value });
-    return value;
+    const state = userPreviews.get(key)?.state ?? cached(key);
+    if (!state) return null;
+    state.patch = { ...state.patch, ...patch };
+    state.patchAt = now();
+    if (state.card) state.card = Object.freeze({ ...state.card, ...patch });
+    return state.card;
   };
 
   return Object.freeze({
     problem,
     user,
-    tags,
     patchUser,
-    lastError: (key) => reasons.get(`${viewer()}:${key}`) || null,
-    getState: () => Object.freeze({ cached: cache.size, pending: pending.size }),
+    lastError: (key) => {
+      const state = cached(`${viewer()}:${key}`);
+      return state?.page?.reason || state?.info?.reason || null;
+    },
   });
 }

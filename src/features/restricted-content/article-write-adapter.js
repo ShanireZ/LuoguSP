@@ -8,6 +8,7 @@ export function createOfficialArticleWriteAdapter(config) {
     lid,
     csrf,
     onWrite,
+    getBaseUrl = () => origin,
   } = config || {};
   if (
     typeof realFetch !== "function" ||
@@ -40,7 +41,7 @@ export function createOfficialArticleWriteAdapter(config) {
     ).toUpperCase();
     let requestUrl = null;
     try {
-      requestUrl = new URLCtor(rawUrl, origin);
+      requestUrl = new URLCtor(rawUrl, getBaseUrl());
     } catch (error) {
       /* 無法解析的請求交給原 fetch */
     }
@@ -48,6 +49,7 @@ export function createOfficialArticleWriteAdapter(config) {
       method !== "POST" ||
       !requestUrl ||
       requestUrl.origin !== origin ||
+      requestUrl.username || requestUrl.password ||
       (!directPaths.has(requestUrl.pathname) &&
         !deletePath.test(requestUrl.pathname))
     )
@@ -57,14 +59,14 @@ export function createOfficialArticleWriteAdapter(config) {
       input instanceof RequestCtor ? input : requestUrl.href,
       init,
     );
-    const headers = new HeadersCtor(request.headers);
-    if (!headers.has("x-csrf-token")) headers.set("x-csrf-token", csrf);
-    const result = realFetch(
-      new RequestCtor(request, {
-        credentials: "same-origin",
-        headers,
-      }),
-    );
+    const protectedRequest = new RequestCtor(request, {
+      mode: "same-origin",
+      redirect: "error",
+      credentials: "same-origin",
+    });
+    if (!protectedRequest.headers.has("x-csrf-token"))
+      protectedRequest.headers.set("x-csrf-token", csrf);
+    const result = realFetch(protectedRequest);
     if (typeof onWrite !== "function" ||
       !/\/(?:vote|favor)$/.test(requestUrl.pathname)) return result;
     // 官方前端目前用 axios/XHR 寫入，這裡只是同一契約在 fetch 側的旁觀鏡像：

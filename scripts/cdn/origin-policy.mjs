@@ -6,6 +6,8 @@ function configuredOrigin(id, value) {
   const url = new URL(value);
   if (
     url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
     url.pathname !== "/" ||
     url.search ||
     url.hash

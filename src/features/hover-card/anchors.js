@@ -5,13 +5,7 @@
 //   而且**繞開了 rAF 節流那個坑** —— 隱藏標籤頁裡 rAF 不觸發，
 //   凡是靠 rAF 補種監聽的路徑都會假死（交接單裡記過兩次）。
 
-// ★★ pid 的字元集只有這一份。sources.js 曾經自己寫了一份**漏掉下劃線**的，
-//    於是 `AT_abc397_a` / `CF_...` 這類題在資料層被當成非法 pid 直接退出，
-//    卡片只剩一句「拿不到這條資料」—— 而介面本身是好的（實測 200、11541 B）。
-//    owner 2026-08-14 第五輪報的就是它。同一個判據不許有第二份。
-// ★ 定義在 `problem-color/identity.js`，這裡再匯出給卡片的資料層。
 import { anchorShowsPid, createProblemIdentityResolver, PID_PATTERN } from "../problem-color/identity.js";
-export { PID_PATTERN };
 
 const AVATAR_ORIGIN = "https://cdn.luogu.com.cn";
 const AVATAR_PATH = /^\/upload\/usericon\/(\d+)\.[A-Za-z0-9]+$/;

@@ -16,10 +16,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
+const origin = "https://stage.example";
+const digest = (value) => createHash("sha256").update(value).digest("hex");
 
 async function scratchDirectory(t) {
   const base = await realpath(tmpdir());
@@ -48,25 +50,49 @@ async function stageFixture(t) {
   const artifacts = path.join(releases, release);
   const channels = path.join(source, "channels");
   const scripts = path.join(repo, "scripts", "cdn");
-  await Promise.all([artifacts, channels, scripts].map((dir) =>
+  const config = path.join(repo, "config");
+  await Promise.all([artifacts, channels, scripts, config].map((dir) =>
     mkdir(dir, { recursive: true }),
   ));
   const file = `releases/${release}/pinned.js`;
   const body = "// Immutable staging fixture\n";
-  const digest = (value) => createHash("sha256").update(value).digest("hex");
-  const manifest = JSON.stringify({ files: {
-    [file]: { bytes: Buffer.byteLength(body), sha256: digest(body) },
-  } });
+  const manifest = {
+    schemaVersion: 3,
+    release,
+    origin,
+    files: {
+      [file]: { path: file, bytes: Buffer.byteLength(body), sha256: digest(body) },
+    },
+  };
+  async function pin(updatedManifest = manifest) {
+    const manifestBody = JSON.stringify(updatedManifest);
+    const manifestSha256 = digest(manifestBody);
+    const hashedName = `manifest.${manifestSha256.slice(0, 16)}.json`;
+    for (const name of await readdir(artifacts))
+      if (/^manifest\.[a-f0-9]{16}\.json$/.test(name))
+        await rm(path.join(artifacts, name));
+    await Promise.all([
+      writeFile(path.join(artifacts, "manifest.json"), manifestBody),
+      writeFile(path.join(artifacts, hashedName), manifestBody),
+      writeFile(path.join(channels, "canary.json"), JSON.stringify({
+        schemaVersion: 2,
+        channel: "canary",
+        release,
+        origin,
+        manifestPath: `releases/${release}/${hashedName}`,
+        manifestSha256,
+      })),
+    ]);
+  }
   await Promise.all([
-    ...["prepare.mjs", "release-integrity.mjs"].map((name) =>
+    ...(await readdir(path.join(root, "scripts", "cdn"))).map((name) =>
       copyFile(path.join(root, "scripts", "cdn", name), path.join(scripts, name)),
     ),
+    writeFile(path.join(config, "cdn.json"), JSON.stringify({ origins: { primary: origin } })),
     writeFile(path.join(source, file), body),
-    writeFile(path.join(artifacts, "manifest.json"), manifest),
-    writeFile(path.join(artifacts, `manifest.${digest(manifest).slice(0, 16)}.json`), manifest),
-    writeFile(path.join(channels, "canary.json"), JSON.stringify({ release })),
+    pin(),
   ]);
-  return { scratch, repo, source, file, body };
+  return { scratch, repo, source, file, body, artifacts, channels, manifest, pin };
 }
 
 async function refusesToStage({ repo, source, file, body }, output) {
@@ -108,6 +134,10 @@ test("CDN staging keeps only the current canary release", async (t) => {
   // Existing installs still pin older stable releases.
   assert.equal(stagedReleases.includes("2.13.10"), true);
   assert.equal(stagedReleases.includes(channel.release), true);
+  const stagedManifestBody = await readFile(path.join(output, channel.manifestPath));
+  assert.equal(digest(stagedManifestBody), channel.manifestSha256);
+  for (const [name, record] of Object.entries(JSON.parse(stagedManifestBody).files))
+    assert.equal(digest(await readFile(path.join(output, name))), record.sha256, name);
 });
 
 // Run destructive regression probes only against a disposable source tree.
@@ -162,4 +192,285 @@ test("CDN staging accepts the default and a separate scratch directory", async (
   const result = prepare(repo, output);
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   await assert.rejects(lstat(path.join(output, "stale")), { code: "ENOENT" });
+});
+
+for (const directory of ["release", "channel"]) {
+  test(`CDN staging rejects unlisted data in the ${directory} tree`, async (t) => {
+    const { repo, artifacts, channels, scratch } = await stageFixture(t);
+    const output = path.join(scratch, "cdn");
+    await mkdir(output);
+    await writeFile(path.join(output, "existing"), "stage must survive preflight failure");
+    await writeFile(path.join(directory === "release" ? artifacts : channels, "private.txt"), "synthetic private data");
+    const result = prepare(repo, output);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /unlisted/i);
+    assert.deepEqual(await readdir(output), ["existing"]);
+  });
+}
+
+for (const unsafe of ["../../secret.js", "nested\\file.js", "%2e%2e/secret.js", "nested/../secret.js", "file.js:stream", "file.js."]) {
+  test(`CDN staging rejects an escaping or aliased manifest path: ${unsafe}`, async (t) => {
+    const { repo, source, scratch, manifest, pin, file, body } = await stageFixture(t);
+    const unsafePath = `releases/${manifest.release}/${unsafe}`;
+    await pin({ ...manifest, files: {
+      ...manifest.files,
+      [unsafePath]: { path: unsafePath, bytes: Buffer.byteLength(body), sha256: digest(body) },
+    } });
+    // The escape resolves to an existing file in the old implementation.
+    await writeFile(path.join(source, "secret.js"), body);
+    const result = prepare(repo, path.join(scratch, "cdn"));
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /unsafe pinned path/i, result.stderr);
+    assert.equal(await readFile(path.join(source, file), "utf8"), body);
+  });
+}
+
+test("CDN staging rejects a junction at a pinned artifact's parent", async (t) => {
+  const { repo, scratch, artifacts, manifest, pin, body } = await stageFixture(t);
+  const outside = path.join(scratch, "outside");
+  await mkdir(outside);
+  await writeFile(path.join(outside, "linked.js"), body);
+  if (!await linkDirectory(t, outside, path.join(artifacts, "feature"))) return;
+  const file = `releases/${manifest.release}/feature/linked.js`;
+  await pin({ ...manifest, files: {
+    ...manifest.files,
+    [file]: { path: file, bytes: Buffer.byteLength(body), sha256: digest(body) },
+  } });
+  const result = prepare(repo, path.join(scratch, "cdn"));
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.match(result.stderr, /not a regular directory/i, result.stderr);
+});
+
+async function publishFixture(t, { committed = true } = {}) {
+  const fixture = await stageFixture(t);
+  const { repo, scratch } = fixture;
+  const deploy = path.join(repo, "deploy", "cloudflare");
+  const configPath = path.join(repo, "config", "cdn.json");
+  const wranglerPath = path.join(deploy, "wrangler.jsonc");
+  const recorder = path.join(scratch, "record.mjs");
+  const recording = path.join(scratch, "deploy-record.jsonl");
+  await mkdir(deploy, { recursive: true });
+  await mkdir(path.join(repo, "reports"));
+  await writeFile(configPath, JSON.stringify({
+    origins: { primary: origin },
+    projects: { cloudflare: "test-stage" },
+    cli: { wrangler: { minimum: "4.107.0" } },
+  }));
+  await writeFile(wranglerPath, JSON.stringify({
+    name: "test-stage",
+    routes: [{ pattern: new URL(origin).hostname, custom_domain: true }],
+    workers_dev: false,
+    preview_urls: false,
+    assets: { directory: "../../dist/cdn" },
+  }));
+  await writeFile(recorder, `
+    import cp from "node:child_process";
+    import { syncBuiltinESMExports } from "node:module";
+    import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+    const spawn = cp.spawnSync;
+    const record = (entry) => appendFileSync(${JSON.stringify(recording)}, JSON.stringify(entry) + "\\n");
+    globalThis.fetch = async (url, options) => {
+      record(["fetch", url.href, {
+        credentials: options.credentials,
+        redirect: options.redirect,
+        cache: options.cache,
+        timeout: options.signal instanceof AbortSignal,
+      }]);
+      const outcome = process.env.CDN_TEST_REMOTE || "unexpected";
+      if (outcome === "redirect") throw new TypeError("redirect blocked");
+      if (outcome === "unexpected") throw new Error("unexpected remote manifest preflight");
+      const status = outcome === "new" ? 404 : outcome === "unavailable" ? 503 : 200;
+      const body = outcome === "resume"
+        ? readFileSync(${JSON.stringify(path.join(fixture.artifacts, "manifest.json"))})
+        : "{}";
+      const response = new Response(body, { status });
+      Object.defineProperty(response, "url", { value: url.href });
+      return response;
+    };
+    cp.spawnSync = (executable, args, options) => {
+      if (executable === "git") return spawn(executable, args, options);
+      const command = executable === process.execPath
+        ? ["node", ...args]
+        : process.platform === "win32" ? args.slice(3) : [executable, ...args];
+      const [program, operation] = command;
+      record(command);
+      if (program === "node" && operation === "scripts/cdn/prepare.mjs")
+        return spawn(executable, args, options);
+      if (program === "wrangler" && operation === "--version" && process.env.CDN_TEST_TAMPER)
+        writeFileSync("dist/cdn/channels/canary.json", "{}");
+      // The fixture never runs a real provider command or remote verification.
+      return { status: 0, stdout: program === "wrangler" ? "4.107.0\\n" : "" };
+    };
+    syncBuiltinESMExports();
+  `);
+  function git(...args) {
+    const result = spawnSync("git", args, { cwd: repo, encoding: "utf8" });
+    assert.equal(result.status, 0, result.error?.message || result.stderr);
+  }
+  git("init", "--quiet");
+  if (committed) git("add", "cdn");
+  git("-c", "user.name=Test", "-c", "user.email=fixture@example.invalid",
+    "commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "Pinned release fixture");
+  fixture.publish = async (args, { tamper = false, remote = "" } = {}) => {
+    const result = spawnSync(
+      process.execPath, ["--import", pathToFileURL(recorder).href, "scripts/cdn/publish.mjs", ...args],
+      { cwd: repo, encoding: "utf8", env: {
+        ...process.env, CDN_TEST_TAMPER: tamper ? "1" : "", CDN_TEST_REMOTE: remote,
+      } },
+    );
+    assert.ifError(result.error);
+    const recorded = await readFile(recording, "utf8").catch((error) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    const commands = recorded.trim().split("\n").filter(Boolean).map(JSON.parse);
+    return { ...result, commands };
+  };
+  return { ...fixture, wranglerPath };
+}
+
+test("low-level publish validates an origin override before any build or provider command", async (t) => {
+  const { publish, manifest } = await publishFixture(t);
+  const result = await publish(["--version", manifest.release, "--origin", "https://wrong.example"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /origin override must match/);
+  assert.deepEqual(result.commands, []);
+});
+
+test("skip-build publish rejects a requested version that differs from the channel", async (t) => {
+  const { publish } = await publishFixture(t);
+  const result = await publish(["--version", "9.9.9", "--skip-build"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /channel release .* does not match requested release 9\.9\.9/i);
+  assert.deepEqual(result.commands, []);
+});
+
+for (const change of [
+  { manifestPath: "releases/1.2.3/manifest.json" },
+  { manifestSha256: "0".repeat(64) },
+  { origin: "https://wrong.example" },
+]) {
+  test(`low-level publish rejects channel ${Object.keys(change)[0]} drift before Wrangler`, async (t) => {
+    const { publish, manifest, channels } = await publishFixture(t);
+    const target = path.join(channels, "canary.json");
+    const channel = JSON.parse(await readFile(target, "utf8"));
+    await writeFile(target, JSON.stringify({ ...channel, ...change }));
+    const result = await publish(["--version", manifest.release, "--skip-build"]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /canary channel.*configured CDN origin/i);
+    assert.deepEqual(result.commands, []);
+  });
+}
+
+test("low-level publish rejects a locally rewritten committed version", async (t) => {
+  const { publish, manifest, pin, source, file } = await publishFixture(t);
+  const body = "// Rewritten material under the existing release ID\n";
+  await writeFile(path.join(source, file), body);
+  await pin({ ...manifest, files: {
+    [file]: { path: file, bytes: Buffer.byteLength(body), sha256: digest(body) },
+  } });
+  const result = await publish(["--version", manifest.release, "--skip-build"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /committed immutable CDN release/i);
+  assert.deepEqual(result.commands, []);
+});
+
+test("low-level publish checks that Wrangler targets the configured origin and staging root", async (t) => {
+  const { publish, manifest, wranglerPath } = await publishFixture(t);
+  const config = JSON.parse(await readFile(wranglerPath, "utf8"));
+  config.assets.directory = "../../cdn";
+  await writeFile(wranglerPath, JSON.stringify(config));
+  const result = await publish(["--version", manifest.release, "--skip-build"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Wrangler .*configured origin and staged CDN root/i);
+  assert.deepEqual(result.commands, []);
+});
+
+test("low-level publish rejects staged bytes changed during the CLI check", async (t) => {
+  const { publish, manifest } = await publishFixture(t);
+  const result = await publish(["--version", manifest.release, "--skip-build"], { tamper: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /staged CDN.*changed/i);
+  assert.deepEqual(result.commands.filter(([program]) => program === "wrangler"), [["wrangler", "--version"]]);
+});
+
+for (const [remote, failure] of [
+  ["new", null],
+  ["resume", null],
+  ["collision", /published immutable manifest differs/],
+  ["unavailable", /unexpected manifest status 503/],
+  ["redirect", /redirect blocked/],
+]) {
+  test(`low-level publish guards uncommitted releases against the configured origin: ${remote}`, async (t) => {
+    const { publish, manifest } = await publishFixture(t, { committed: false });
+    const result = await publish(["--version", manifest.release, "--skip-build"], { remote });
+    assert.deepEqual(result.commands.filter(([program]) => program === "fetch"), [
+      ["fetch", `${origin}/releases/${manifest.release}/manifest.json`, {
+        credentials: "omit", redirect: "error", cache: "no-store", timeout: true,
+      }],
+    ]);
+    if (failure) {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, failure);
+      assert.equal(result.commands.some(([program]) => program === "wrangler"), false);
+    } else {
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.commands.some(([program, action]) => program === "wrangler" && action === "deploy"), true);
+    }
+  });
+}
+
+test("a valid low-level publish passes its exact prepared release to the provider stub", async (t) => {
+  const { publish, manifest, repo } = await publishFixture(t);
+  const result = await publish(["--version", manifest.release, "--skip-build", "--origin", origin]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.commands.filter(([program]) => program === "wrangler"), [
+    ["wrangler", "--version"],
+    ["wrangler", "deploy", "--config", "deploy/cloudflare/wrangler.jsonc"],
+  ]);
+  const report = JSON.parse(await readFile(path.join(repo, "reports", "cdn-publish.json"), "utf8"));
+  assert.equal(report.release, manifest.release);
+  assert.equal(report.origin, origin);
+});
+
+async function stubBuildImports(repo) {
+  const buildStubs = {
+    "baseline-targets.mjs": "export const ESBUILD_BASELINE_TARGETS = [];",
+    "node_modules/esbuild/package.json": '{"exports":"./index.mjs"}',
+    "node_modules/esbuild/index.mjs": "export function build() { throw new Error('Build was reached'); }",
+    "scripts/renderer/build-lib.mjs": "export function buildMarkdownRenderer() { throw new Error('Build was reached'); }",
+    "src/rendering/renderer-dependencies.js": "export const MARKDOWN_RENDERER_API_VERSION = 1; export const rendererStackDependencies = {};",
+    "package.json": '{"type":"module"}',
+  };
+  for (const [name, stub] of Object.entries(buildStubs)) {
+    const target = path.join(repo, name);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, stub);
+  }
+}
+
+test("cdn:build --overwrite refuses to mutate an existing release directory", async (t) => {
+  const { repo, manifest, source, file, body } = await stageFixture(t);
+  await stubBuildImports(repo);
+  const result = spawnSync(process.execPath, [
+    "scripts/cdn/build.mjs", "--version", manifest.release, "--overwrite",
+  ], { cwd: repo, encoding: "utf8" });
+  assert.ifError(result.error);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /immutable/i);
+  assert.equal(await readFile(path.join(source, file), "utf8"), body);
+});
+
+test("cdn:build refuses to recreate a committed release missing from the working tree", async (t) => {
+  const { repo, manifest, artifacts, source } = await publishFixture(t);
+  await stubBuildImports(repo);
+  assert.equal(await realpath(artifacts), path.join(source, "releases", manifest.release));
+  await rm(artifacts, { recursive: true });
+  const result = spawnSync(process.execPath, [
+    "scripts/cdn/build.mjs", "--version", manifest.release,
+  ], { cwd: repo, encoding: "utf8" });
+  assert.ifError(result.error);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /immutable/i);
+  await assert.rejects(lstat(artifacts), { code: "ENOENT" });
 });

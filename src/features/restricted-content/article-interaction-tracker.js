@@ -14,7 +14,7 @@ const viewerUid = (viewer) =>
 // 觀察官方寫請求的真實回應，成功時同時更新記憶體快照與帳號隔離的持久記錄。
 // 匿名訪客只更新記憶體快照（供收藏計數 ±1 推導），不寫入磁碟。
 export function createArticleInteractionTracker(config) {
-  const { store, origin, lid, uid, onPersistFailure, onUnconfirmed } = config || {};
+  const { store, origin, lid, uid, onConfirmed, onUnconfirmed } = config || {};
   let current = { upvote: null, favorCount: null, voted: null, favored: null };
 
   const seed = (state) => {
@@ -35,18 +35,16 @@ export function createArticleInteractionTracker(config) {
     const write = { ...event, origin, lid, current };
     const confirmed = interpretArticleWrite(write);
     if (!confirmed) {
-      if (onUnconfirmed && articleWriteRequestUrl(write)) onUnconfirmed();
+      const request = articleWriteRequestUrl(write);
+      if (request) onUnconfirmed?.(request.pathname.endsWith("/vote") ? "vote" : "favor");
       return null;
     }
     const { kind, ...patch } = confirmed;
     current = { ...current, ...patch };
     // Keep the confirmed state in this session even if browser storage fails.
     const saved = store ? store.save({ uid, lid, ...patch }) : null;
-    if (!saved && typeof onPersistFailure === "function")
-      onPersistFailure({
-        lid,
-        reason: viewerUid({ uid }) === null ? "no-account" : "storage-unavailable",
-      });
+    const failure = saved ? null : uid ? "storage-unavailable" : "no-account";
+    onConfirmed?.({ kind, failure });
     return confirmed;
   };
 
@@ -68,7 +66,7 @@ export function prepareRestrictedArticleInteraction(config) {
     article,
     archivedAt,
     live,
-    onPersistFailure,
+    onConfirmed,
     onUnconfirmed,
   } = config || {};
   const uid = viewerUid(viewer);
@@ -83,7 +81,7 @@ export function prepareRestrictedArticleInteraction(config) {
     origin,
     lid,
     uid,
-    onPersistFailure,
+    onConfirmed,
     onUnconfirmed,
   });
   tracker.seed({

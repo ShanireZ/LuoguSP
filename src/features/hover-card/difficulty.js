@@ -17,5 +17,3 @@ export const difficultyName = (value) =>
 
 export const difficultyColor = (value) =>
   inRange(value) ? DIFFICULTY_COLORS[value] : DIFFICULTY_COLORS[0];
-
-export const DIFFICULTY_TIERS = TIERS;

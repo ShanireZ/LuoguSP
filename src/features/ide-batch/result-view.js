@@ -3,7 +3,7 @@
 // ★ 從 `feature.js` 搬出來，理由只有一個：那個檔案頂著 850 行的預算上限（搬之前 793）。
 //   搬的全是無閉包相依的東西 —— 不讀 IDE 的任何局部狀態、不碰選擇器表，
 //   所以行為逐位元組不變。
-import { makeCopyButton } from "../../browser/copy-button.js";
+import { makeCopyControls } from "../../browser/copy-button.js";
 
 export function normalizeIdeOut(s) {
   return String(s == null ? "" : s)
@@ -105,7 +105,7 @@ export function idePane(title, lines, badSet, emptyNote) {
   }
   const box = document.createElement("div");
   box.className = "code-container";
-  box.append(pre, makeCopyButton(pre));
+  box.append(pre, makeCopyControls(pre));
   const pane = document.createElement("div");
   pane.className = "luogusp-ide-pane";
   const h = document.createElement("h5");

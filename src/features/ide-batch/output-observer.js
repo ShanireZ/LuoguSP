@@ -7,6 +7,7 @@ export function observeIdeOutput({
   },
 }) {
   let baselinePill;
+  let expectedOutput;
   let cleared = false;
   let confirmed = false;
   let result;
@@ -44,12 +45,14 @@ export function observeIdeOutput({
     }
     const verdict = parts?.pill?.textContent.trim();
     if (!cleared || !verdict) return;
+    const output = parts.textarea?.value || "";
+    if (expectedOutput !== undefined && output !== expectedOutput) return;
     finish({
       kind: "result",
       verdict,
       pillStyle: parts.pill.getAttribute("style") || "",
       detail: parts.rr?.textContent.trim() || "",
-      output: parts.textarea?.value || "",
+      output,
     });
   };
   const observer = new MutationObserverImpl(check);
@@ -57,10 +60,11 @@ export function observeIdeOutput({
   else signal.addEventListener("abort", cancel, { once: true });
 
   return {
-    confirmSubmit() {
+    confirmSubmit(inlineOutput) {
       if (confirmed || result) return;
       if (!isCurrent() || !root.isConnected) return cancel();
       baselinePill = readParts()?.pill;
+      expectedOutput = inlineOutput?.replace(/\r\n?/g, "\n");
       cleared = !baselinePill;
       confirmed = true;
       observer.observe(root, {

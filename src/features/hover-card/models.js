@@ -1,13 +1,7 @@
 import { difficultyColor, difficultyName } from "./difficulty.js";
 
-// 把洛谷各介面的原始載荷翻譯成卡片視圖模型。純函式，不碰 DOM 不發請求。
-//
-// 資料來源與實證見 handoff/26-8-13.md。這裡只重複三條最容易被寫錯的：
-//   1. `problem.tags` 是**數字 id**，必須配 `/_lfe/tags` 字典；字典裡**沒有難度**
-//      （6 個 type 全是 Region/Algorithm/Origin/Time/SpecialProblem/Others）。
-//   2. 使用者的 `elo` 真資料在**頂層 `data.elo`**；`user.elo` / `user.eloValue` 恆為 null。
-//   3. `user.verified` **只在看自己時回傳**，且與頁面上的 ✅ 無關 ——
-//      ✅ 由 `ccfLevel > 0` 驅動，氣球由 `xcpcLevel > 0` 驅動（41 使用者雙向零反例）。
+// Project Luogu responses into preview fields. Problem tag IDs use `/_lfe/tags`,
+// and the certification icons use `ccfLevel` and `xcpcLevel`.
 
 const numberOrNull = (value) =>
   value === null || value === undefined || value === "" ||
@@ -162,56 +156,37 @@ export function pickPrizes(prizes) {
 }
 
 export function buildUserCard(info, page) {
-  // 主載荷=原生卡的 /api/user/info/{uid}；補載荷=/user/{uid}（可能 403，那就只是少幾行）。
-  const user = (info && info.user) || null;
-  const data = (page && page.data) || null;
-  const fallback = data && data.user;
-  const source = user || fallback;
-  const uid = numberOrNull(source && source.uid);
-  if (!source || uid === null) return null;
-  // ★ Elo：主介面的 `elo` / `eloValue` 是真值；`/user/{uid}` 裡那兩個欄位恆 null，
-  //   它的真值在頂層 `data.elo` 陣列裡。兩邊都試，先信主介面。
-  const eloList = data && Array.isArray(data.elo) ? data.elo : [];
-  const latestElo =
-    (source.elo && typeof source.elo === "object" ? source.elo : null) ||
-    eloList.find((entry) => entry && entry.latest === true) ||
-    eloList[eloList.length - 1] ||
-    null;
-  const gu = data && data.gu ? data.gu : null;
+  const data = page?.data;
+  const profile = data?.user;
+  const source = { ...profile, ...info?.user };
+  const uid = numberOrNull(source.uid);
+  if (uid === null) return null;
+  const eloList = Array.isArray(data?.elo) ? data.elo : [];
+  const latestElo = eloList.find((entry) => entry?.latest === true) ?? eloList.at(-1);
   return Object.freeze({
     kind: "user",
     uid,
     name: typeof source.name === "string" ? source.name : `用户 ${uid}`,
     color: typeof source.color === "string" ? source.color : null,
     avatar: typeof source.avatar === "string" ? source.avatar : null,
-    // 原生卡的頁頭背景圖。拿不到時洛谷自己會回落到一張固定圖（見 card-view）。
     background:
       typeof source.background === "string" && source.background
         ? source.background
         : null,
     slogan: typeof source.slogan === "string" ? source.slogan : "",
     badge: typeof source.badge === "string" && source.badge ? source.badge : null,
-    blogAddress:
-      typeof source.blogAddress === "string" && source.blogAddress
-        ? source.blogAddress
-        : null,
     isAdmin: source.isAdmin === true,
-    isBanned: source.isBanned === true,
     ccfLevel: numberOrNull(source.ccfLevel),
     xcpcLevel: numberOrNull(source.xcpcLevel),
-    // ★★ 「通過 / 提交」**只認 `/user/{uid}` 的口徑**：兩個介面同名欄位含義不同
-    //    （實測 697932：主介面 5441、頁面載荷 710，洛谷個人頁寫的是 710）。
-    //    拿不到補載荷就是 null，寧可不畫這一行也不換一個口徑。
-    passedCount: fallback ? numberOrNull(fallback.passedProblemCount) : null,
-    submittedCount: fallback ? numberOrNull(fallback.submittedProblemCount) : null,
-    ranking: numberOrNull(source.ranking),
+    // The profile's submission count is distinct from the native card API's count.
+    passedCount: numberOrNull(profile?.passedProblemCount),
+    submittedCount: numberOrNull(profile?.submittedProblemCount),
     followingCount: numberOrNull(source.followingCount),
     followerCount: numberOrNull(source.followerCount),
-    registerTime: numberOrNull(source.registerTime),
-    guRating: gu ? numberOrNull(gu.rating) : null,
-    eloRating: latestElo ? numberOrNull(latestElo.rating) : null,
-    eloTime: latestElo ? numberOrNull(latestElo.time) : null,
-    prizes: pickPrizes(data && data.prizes),
+    guRating: numberOrNull(data?.gu?.rating),
+    eloRating: numberOrNull(source.elo?.rating) ?? numberOrNull(info?.user?.eloValue) ??
+      numberOrNull(latestElo?.rating),
+    prizes: pickPrizes(data?.prizes),
     relation: relationOf(source.userRelationship),
     reverseRelation: relationOf(source.reverseUserRelationship),
   });

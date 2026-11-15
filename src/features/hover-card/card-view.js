@@ -60,14 +60,7 @@ const fmtDate = (seconds) =>
 // owner 拍板：小於 1000 全顯示，小於 1000000 用 k，否則用 m。
 const fmtCount = (value) => abbreviateCount(value);
 
-// 洛谷原生頁頭背景圖的備援。★ 抄自 UserFloatCard 元件原文：
-// `user.background || "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg"`。
-const DEFAULT_HEADER_BACKGROUND =
-  "https://cdn.luogu.com.cn/images/bg/fe/DSCF0530-shrink.jpg";
-
-// 原生統計塊：一個標籤一個數字，橫著鋪。原生四項是 關注 / 粉絲 / 排名 / 等級分，
-// 其中等級分**只在 eloValue 有值時才出現**（元件原文裡就是 `...e.eloValue?[…]:[]`）。
-// ★ 「排名」按 owner 2026-08-14 上一輪的明確要求移除，其餘照原生。
+// Each available statistic has a centered label and value.
 const statTile = (name, value) => {
   const tile = el("div", "luogusp-hc-stat");
   tile.appendChild(el("span", "luogusp-hc-stat-k", name));
@@ -254,6 +247,7 @@ export function updateProblemCard(card, content, fadeField) {
 export function updateUserCard(card, content, preserveActions, fadeField, pendingAction) {
   const active = card.contains(document.activeElement) ? document.activeElement : null;
   updateSections(card, content, (existing, section) => {
+    if (existing.classList.contains("luogusp-hc-userhead")) return true;
     if (!existing.classList.contains("luogusp-hc-userbody")) return false;
     updateSections(existing, section, (old, next) => {
       if (old.classList.contains("luogusp-hc-relation-status")) {
@@ -294,15 +288,11 @@ export function renderUserCard(card, options = {}) {
   const { origin = "", onFollow, onBlock, followBusy = false, viewerUid = null } = options;
   const box = document.createDocumentFragment();
 
-  // ---- 原生卡的頁頭：背景圖 + 壓在上面的頭像 ----
   const header = el("div", "luogusp-hc-userhead");
-  header.style.backgroundImage = `url("${(card.background || DEFAULT_HEADER_BACKGROUND).replace(/"/g, "%22")}")`;
-  if (card.avatar) {
-    const avatar = el("img", "luogusp-hc-avatar");
-    avatar.src = card.avatar;
-    avatar.alt = "";
-    avatar.loading = "lazy";
-    header.appendChild(avatar);
+  for (const name of ["cover", "avatar"]) {
+    const image = el("img", `luogusp-hc-${name}`);
+    image.alt = "";
+    header.appendChild(image);
   }
   box.appendChild(header);
 
@@ -375,8 +365,6 @@ export function renderUserCard(card, options = {}) {
     stats.appendChild(statTile("关注", fmtCount(card.followingCount)));
   if (card.followerCount !== null)
     stats.appendChild(statTile("粉丝", fmtCount(card.followerCount)));
-  // ★ 等級分：原生取 `user.eloValue`。注意「eloValue 恆為 null」那條舊結論
-  //   **只對 `/user/{uid}` 成立**；主介面 `/api/user/info/{uid}` 裡是真值，原生卡讀的就是它。
   if (card.eloRating !== null)
     stats.appendChild(statTile("等级分", String(card.eloRating)));
   // ★ owner 2026-08-14：咕值與「通過 / 提交」從下面的擴充行**挪進這一排**，依次尾隨。
@@ -545,10 +533,11 @@ export function finalizeCard(cardEl) {
 //   於是內容再長也只是卡片內部出捲軸，永遠不出界。
 export function placeCard(cardEl, rect, viewport, options = {}) {
   const gap = 4;
+  const x = viewport.x ?? 0;
+  const y = viewport.y ?? 0;
+  cardEl.style.maxWidth = `${Math.max(0, viewport.width - 24)}px`;
   const width = cardEl.offsetWidth || 320;
-  let left = rect.left;
-  if (left + width > viewport.width - gap) left = viewport.width - width - gap;
-  if (left < gap) left = gap;
+  const left = Math.max(x + gap, Math.min(rect.left, x + viewport.width - width - gap));
 
   // ★★★ 先把上一次釘的 max-height 摘掉再量。owner 2026-08-14 第七輪報
   //    「展開之後越界」「下面明明放不下卻還往下彈、右邊出捲軸」——根因就在這：
@@ -566,8 +555,8 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
     Number(options.assumeMinHeight) || 0,
   );
 
-  const below = viewport.height - rect.bottom - gap * 2;
-  const above = rect.top - gap * 2;
+  const below = y + viewport.height - rect.bottom - gap * 2;
+  const above = rect.top - y - gap * 2;
   // ★★ 上下分界線（owner 要的「分界比例」就是這三句，按優先級從上往下讀）：
   //   1. **下面放得下就放下面** —— 閱讀順序自然，也是原生的習慣；
   //   2. 下面放不下、**上面放得下就翻上去** —— 這一條是本輪補的。
@@ -584,10 +573,12 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
     typeof options.forceBelow === "boolean"
       ? options.forceBelow
       : fitsBelow || (!fitsAbove && below >= above);
-  const room = Math.max(120, Math.round(useBelow ? below : above));
+  const fullHeight = Math.max(0, Math.floor(viewport.height - gap * 2));
+  const room = Math.min(fullHeight, Math.max(120, Math.floor(useBelow ? below : above)));
   cardEl.style.maxHeight = `${room}px`;
   const height = Math.min(cardEl.offsetHeight || natural, room);
-  const top = useBelow ? rect.bottom + gap : Math.max(gap, rect.top - height - gap);
+  const anchoredTop = useBelow ? rect.bottom + gap : rect.top - height - gap;
+  const top = Math.max(y + gap, Math.min(anchoredTop, y + viewport.height - height - gap));
   cardEl.style.left = `${Math.round(left)}px`;
   cardEl.style.top = `${Math.round(top)}px`;
   return {

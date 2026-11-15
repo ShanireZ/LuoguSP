@@ -216,8 +216,9 @@ test("Problem Identity rejects page-controlled ids outside the pid charset", () 
   assert.equal(resolver.resolve(voidAnchor("P1000 某题")).pid, "P1000");
 });
 
-test("PID_PATTERN has exactly one definition, re-exported to the hover card", async () => {
-  const identity = await import("../src/features/problem-color/identity.js");
-  const anchors = await import("../src/features/hover-card/anchors.js");
-  assert.equal(anchors.PID_PATTERN, identity.PID_PATTERN);
+test("hover anchors use the shared PID_PATTERN definition", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../src/features/hover-card/anchors.js", import.meta.url), "utf8");
+  assert.match(source, /import\s*\{[^}]*\bPID_PATTERN\b[^}]*\}\s*from\s*"\.\.\/problem-color\/identity\.js"/);
+  assert.doesNotMatch(source, /\b(?:const|let|var)\s+PID_PATTERN\s*=/);
 });

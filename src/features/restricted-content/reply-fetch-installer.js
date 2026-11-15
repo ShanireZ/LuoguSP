@@ -26,6 +26,11 @@ export function createRestrictedReplyFetchInstaller(config) {
     dispose();
     const realFetch = host.fetch;
     const realXhr = host.XMLHttpRequest;
+    let active = true;
+    const getBaseUrl = () => host.document?.baseURI ?? origin;
+    const observeWrite = typeof onWrite === "function" ? (event) => {
+      if (active) onWrite(event);
+    } : null;
     const articleFetch = csrf
       ? createOfficialArticleWriteAdapter({
           fetch: (input, init) => realFetch.call(host, input, init),
@@ -35,7 +40,8 @@ export function createRestrictedReplyFetchInstaller(config) {
           Headers: HeadersCtor,
           lid,
           csrf,
-          onWrite,
+          onWrite: observeWrite,
+          getBaseUrl,
         }).fetch
       : (input, init) => realFetch.call(host, input, init);
     const adapter = createRestrictedReplyFetchAdapter({
@@ -45,6 +51,7 @@ export function createRestrictedReplyFetchInstaller(config) {
       URL: URLCtor,
       lid,
       replies,
+      getBaseUrl,
     });
     const interceptingFetch = adapter.fetch;
     const InterceptingXhr =
@@ -52,13 +59,16 @@ export function createRestrictedReplyFetchInstaller(config) {
         ? createRestrictedReplyXhrAdapter({
             XMLHttpRequest: realXhr,
             URL: URLCtor,
+            Event: host.Event,
+            ProgressEvent: host.ProgressEvent,
             origin,
             lid,
             replies,
-            onWrite,
+            onWrite: observeWrite,
+            isActive: () => active,
+            getBaseUrl,
           }).XMLHttpRequest
         : null;
-    let active = true;
     const wrapped = function (input, init) {
       return active
         ? interceptingFetch(input, init)

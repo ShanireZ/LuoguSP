@@ -44,9 +44,11 @@ export const RST_EXTRA_CSS =
   "#luogusp-rst-refresh-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}" +
   ".luogusp-rst-write-notice{margin:.75em 0;padding:.5em .75em;border-inline-start:3px solid currentColor;font-size:.875em;}";
 
-export function showRstArticleWriteNotice(kind, message) {
+export function setRstArticleWriteNotice(kind, message) {
   const id = `luogusp-rst-write-${kind}`;
-  if (document.getElementById(id)) return;
+  const existing = document.getElementById(id);
+  if (!message) return existing?.remove();
+  if (existing) return;
   const notice = document.createElement("p");
   notice.id = id;
   notice.className = "luogusp-rst-write-notice";

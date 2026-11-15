@@ -62,6 +62,5 @@ export function createRendererClient(options = {}) {
         origin: loaded.origin,
       });
     },
-    getState: () => loader.getState(),
   });
 }

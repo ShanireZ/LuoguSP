@@ -11,7 +11,12 @@ status: stable
 baseline.config.json owns runtime classification, feature policy, approved
 minimums, downstream browsers, fallbacks and tool snapshots. baseline-targets.mjs
 supplies explicit frozen targets to every esbuild browser build.
-This document changes none of those values.
+
+The Baseline guard resolves the moving policy query and a dated query for the
+last day of the snapshot's calendar quarter. Both must fit the approved
+minimums. The dated check uses the same locked browser data as the moving
+query. The approval date and 92-day freshness gate still control when a new
+snapshot is required.
 
 The runtime is browser-tool. New features are reviewed against Baseline Newly
 Available; reproducible output uses explicit targets rather than a moving

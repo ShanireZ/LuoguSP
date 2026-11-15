@@ -149,6 +149,11 @@ assert.ok(
     todayAt - approvedAt <= 92 * 24 * 60 * 60 * 1000,
   "Baseline 快照日期无效或已超过季度复核期",
 );
+const approvedDate = new Date(approvedAt);
+const nextQuarterMonth = (Math.floor(approvedDate.getUTCMonth() / 3) + 1) * 3;
+const quarterEnd = new Date(Date.UTC(approvedDate.getUTCFullYear(), nextQuarterMonth, 0))
+  .toISOString().slice(0, 10);
+assert.equal(policy.snapshot.reviewedThrough, quarterEnd, "Baseline 复核必须覆盖快照所在季度的末日");
 assert.deepEqual(ESBUILD_BASELINE_TARGETS, policy.buildTarget.targets);
 
 const browserslistPackage = require.resolve("browserslist/package.json");
@@ -185,15 +190,14 @@ const requiredPolicyBrowsers = [
   ...policy.requiredBrowsers,
   ...(policy.downstream.enabled ? policy.downstream.requiredBrowsers : []),
 ];
-assert.deepEqual(
-  targetErrors(
-    policy.policyQuery,
-    requiredPolicyBrowsers,
-    policy.approvedPolicyMinimums,
-  ),
-  [],
-  "Baseline Widely with downstream 查询发生未批准前移或缺失核心引擎",
-);
+assert.equal(policy.policyQuery, "baseline widely available with downstream");
+for (const query of [policy.policyQuery, `baseline widely available on ${quarterEnd} with downstream`]) {
+  assert.deepEqual(
+    targetErrors(query, requiredPolicyBrowsers, policy.approvedPolicyMinimums),
+    [],
+    `Baseline 查询 ${query} 发生未批准前移或缺失核心引擎`,
+  );
+}
 
 const targetBrowserNames = {
   chrome: "chrome",
@@ -251,5 +255,5 @@ for (const browser of ["firefox", "safari"]) {
 }
 
 console.log(
-  `Baseline 守卫通过：${buildConsumers.length} 个构建脚本统一使用 ${ESBUILD_BASELINE_TARGETS.join(", ")}`,
+  `Baseline 守卫通过：政策复核至 ${quarterEnd}；${buildConsumers.length} 个构建脚本统一使用 ${ESBUILD_BASELINE_TARGETS.join(", ")}`,
 );

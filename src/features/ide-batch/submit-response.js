@@ -22,8 +22,11 @@ export function readIdeSubmitResponse(xhr) {
         },
       };
     }
-    const execution = inline && data?.type === "execute" && typeof data.output === "string" && data.execute;
-    return { status, accepted: queued || Boolean(execution) };
+    if (inline && data?.type === "execute" && typeof data.output === "string" &&
+        data.execute && typeof data.execute === "object" && !Array.isArray(data.execute)) {
+      return { status, accepted: true, inlineOutput: data.output };
+    }
+    return { status, accepted: queued };
   } catch {
     return { status };
   }

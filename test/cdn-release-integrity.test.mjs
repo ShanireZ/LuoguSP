@@ -1,120 +1,90 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
-  collectReleaseIntegrityProblems,
-  releaseIntegrityError,
-} from "../scripts/cdn/release-integrity.mjs";
+import { mkdir, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+import { snapshotRelease } from "../scripts/cdn/release-integrity.mjs";
 
 const digest = (body) => createHash("sha256").update(body).digest("hex");
-const join = (...parts) => parts.join("/").replace(/\/releases\/\.\.\//, "/");
+const release = "1.0.0";
+const runtime = "runtime bytes\n";
+const runtimePath = `releases/${release}/compat/runtime.abc.js`;
 
-function createTree({ runtime = "runtime bytes\n" } = {}) {
-  const runtimeBody = Buffer.from(runtime);
-  const runtimePath = "releases/1.0.0/compat/runtime.abc.js";
+async function createTree(t) {
+  const base = await realpath(tmpdir());
+  const prefix = "luogusp-release-integrity-20261115-";
+  const root = await realpath(await mkdtemp(join(base, prefix)));
+  assert.equal(dirname(root), base);
+  assert.ok(basename(root).startsWith(prefix));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const releases = join(root, "releases");
+  const releaseDir = join(releases, release);
   const manifest = {
     schemaVersion: 3,
-    release: "1.0.0",
+    release,
     files: {
       [runtimePath]: {
         path: runtimePath,
-        bytes: Buffer.byteLength("runtime bytes\n"),
-        sha256: digest(Buffer.from("runtime bytes\n")),
+        bytes: Buffer.byteLength(runtime),
+        sha256: digest(runtime),
       },
     },
   };
-  const manifestBody = Buffer.from(JSON.stringify(manifest));
-  const hashedName = `manifest.${digest(manifestBody).slice(0, 16)}.json`;
-  const files = new Map([
-    ["cdn/releases/1.0.0/manifest.json", manifestBody],
-    [`cdn/releases/1.0.0/${hashedName}`, manifestBody],
-    [`cdn/${runtimePath}`, runtimeBody],
+  const body = JSON.stringify(manifest);
+  const hashedPath = join(releaseDir, `manifest.${digest(body).slice(0, 16)}.json`);
+  await mkdir(join(releaseDir, "compat"), { recursive: true });
+  await Promise.all([
+    writeFile(join(root, runtimePath), runtime),
+    writeFile(join(releaseDir, "manifest.json"), body),
+    writeFile(hashedPath, body),
   ]);
   return {
-    files,
-    hashedName,
-    options: {
-      releasesDir: "cdn/releases",
-      readdir: async (path) =>
-        path === "cdn/releases"
-          ? ["1.0.0"]
-          : ["manifest.json", hashedName, "compat"],
-      readFile: async (path) => {
-        const body = files.get(path);
-        if (!body) throw new Error(`ENOENT ${path}`);
-        return body;
-      },
-      digest,
-      join,
-    },
+    asset: join(root, runtimePath),
+    hashedPath,
+    verify: () => snapshotRelease(releases, release),
   };
 }
 
-test("release integrity accepts a tree whose bytes match every pinned hash", async () => {
-  const tree = createTree();
-  assert.deepEqual(await collectReleaseIntegrityProblems(tree.options), []);
+test("release integrity returns the verified release bytes", async (t) => {
+  const tree = await createTree(t);
+  const verified = await tree.verify();
+  assert.equal(verified.manifest.release, release);
+  assert.equal(verified.files.size, 3);
+  assert.equal(verified.files.get(runtimePath).toString(), runtime);
+  assert.equal(digest(verified.files.get(verified.path)), verified.sha256);
 });
 
-test("release integrity rejects a CRLF-expanded checkout and names the cause", async () => {
-  const tree = createTree({ runtime: "runtime bytes\r\n" });
-  const problems = await collectReleaseIntegrityProblems(tree.options);
-
-  assert.equal(problems.length, 1);
-  assert.equal(problems[0].path, "releases/1.0.0/compat/runtime.abc.js");
-  assert.match(problems[0].reason, /drifted from the manifest/);
-  assert.match(problems[0].hint, /CRLF-expanded/);
-  assert.match(
-    releaseIntegrityError(problems).message,
-    /Refusing to deploy: 1 CDN artifact/,
-  );
+test("release integrity rejects a CRLF-expanded checkout and names the cause", async (t) => {
+  const tree = await createTree(t);
+  await writeFile(tree.asset, runtime.replace("\n", "\r\n"));
+  await assert.rejects(tree.verify(), /runtime\.abc\.js: content drifted from the manifest.*CRLF-expanded/);
 });
 
-test("release integrity rejects silent content edits without blaming line endings", async () => {
-  const tree = createTree({ runtime: "tampered!!!!!\n" });
-  const problems = await collectReleaseIntegrityProblems(tree.options);
-
-  assert.equal(problems.length, 1);
-  assert.match(problems[0].reason, /drifted from the manifest/);
-  assert.equal(problems[0].hint, null);
-});
-
-test("release integrity rejects a missing pinned file", async () => {
-  const tree = createTree();
-  tree.files.delete("cdn/releases/1.0.0/compat/runtime.abc.js");
-  const problems = await collectReleaseIntegrityProblems(tree.options);
-
-  assert.deepEqual(
-    problems.map((problem) => problem.reason),
-    ["pinned file is missing"],
-  );
-});
-
-test("release integrity rejects a hashed manifest that no longer matches its filename", async () => {
-  const tree = createTree();
-  tree.files.set(
-    `cdn/releases/1.0.0/${tree.hashedName}`,
-    Buffer.from('{"schemaVersion":3,"release":"1.0.0","files":{}}'),
-  );
-  const problems = await collectReleaseIntegrityProblems(tree.options);
-
-  assert.deepEqual(
-    problems.map((problem) => problem.reason).sort(),
-    [
-      "content does not match the hash in its own filename",
-      "hashed manifest and manifest.json are not byte-identical",
-    ],
-  );
-});
-
-test("release integrity refuses an empty release tree", async () => {
-  const tree = createTree();
-  const problems = await collectReleaseIntegrityProblems({
-    ...tree.options,
-    readdir: async () => [],
+test("release integrity rejects silent content edits without blaming line endings", async (t) => {
+  const tree = await createTree(t);
+  await writeFile(tree.asset, runtime.toUpperCase());
+  await assert.rejects(tree.verify(), (error) => {
+    assert.match(error.message, /drifted from the manifest/);
+    assert.doesNotMatch(error.message, /CRLF-expanded/);
+    return true;
   });
+});
 
-  assert.deepEqual(
-    problems.map((problem) => problem.reason),
-    ["no release directories"],
-  );
+test("release integrity rejects a missing pinned file", async (t) => {
+  const tree = await createTree(t);
+  await rm(tree.asset);
+  await assert.rejects(tree.verify(), /pinned file or directory is missing/);
+});
+
+test("release integrity rejects copies of a manifest that differ", async (t) => {
+  const tree = await createTree(t);
+  await writeFile(tree.hashedPath, "{}");
+  await assert.rejects(tree.verify(), /manifest.json are not byte-identical/);
+});
+
+test("release integrity rejects an incorrect hash in the manifest filename", async (t) => {
+  const tree = await createTree(t);
+  await rename(tree.hashedPath, join(dirname(tree.hashedPath), "manifest.0000000000000000.json"));
+  await assert.rejects(tree.verify(), /does not match the hash in its own filename/);
 });

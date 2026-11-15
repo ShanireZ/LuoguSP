@@ -198,6 +198,34 @@ test("超过时间预算就放弃，不拖住受限页渲染", async () => {
   assert.equal(await pending, null);
 });
 
+test("a stopped live-count read aborts the active page and never dispatches further pages", async () => {
+  for (const stopWith of ["cutoff", "route", "elapsed"]) {
+    const route = new AbortController();
+    let now = 0;
+    const clock = { ...manualClock(), now: () => now };
+    const first = Promise.withResolvers();
+    const calls = [];
+    const pending = resolve((path, signal) => {
+      calls.push({ path, signal });
+      return first.promise;
+    }, { clock, deadlineMs: 50, category: 3, signal: route.signal });
+    assert.equal(calls.length, 1);
+    switch (stopWith) {
+      case "cutoff": clock.fireAll(); break;
+      case "route": route.abort(); break;
+      case "elapsed": now = 50; break;
+    }
+    if (stopWith !== "elapsed") assert.equal(await pending, null);
+    first.resolve(listPayload([row("other")], { count: 100 }));
+    assert.equal(await pending, null);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls.map(({ path, signal }) => [path, signal.aborted]), [
+      [`/user/${AUTHOR}/article?page=1&category=3`, true],
+    ]);
+    assert.equal(clock.pending(), 0);
+  }
+});
+
 test("作者 uid 或 lid 非法时一次请求都不发", async () => {
   for (const bad of [{ authorUid: 0 }, { authorUid: -1 }, { authorUid: "x" }, { authorUid: 1.5 }, { lid: "" }, { lid: "a/b" }, { lid: 12 }]) {
     const { fetchPage, calls } = stubFetch({ 1: listPayload([row(LID)]) });

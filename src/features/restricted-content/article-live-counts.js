@@ -26,6 +26,7 @@ const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_DEADLINE_MS = 2500;
 const FALLBACK_PER_PAGE = 10;
 const DEFAULT_CLOCK = Object.freeze({
+  now: () => performance.now(),
   setTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (id) => clearTimeout(id),
 });
@@ -79,31 +80,9 @@ export function pickLiveCounts(rows, lid) {
   });
 }
 
-function withDeadline(promise, ms, clock) {
-  const budget = Number(ms);
-  if (!Number.isFinite(budget) || budget <= 0) return promise;
-  return new Promise((resolve) => {
-    let settled = false;
-    // 超時後在途請求不再等待。它們數量有上限（maxPages），放著自然結束即可，
-    // 頁面級取消由外層 signal 負責。
-    const timer = clock.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      resolve(null);
-    }, budget);
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      clock.clearTimeout(timer);
-      resolve(value);
-    };
-    promise.then(finish, () => finish(null));
-  });
-}
-
 // 永不拋、永不拒絕：拿不到即時計數就回傳 null，呼叫方回落保存站快照。
 // 即時計數是增強項，任何失敗都不允許影響受限頁本身能不能繪製出來。
-export function resolveLiveArticleCounts(config) {
+export async function resolveLiveArticleCounts(config) {
   const {
     loadPage,
     authorUid,
@@ -116,7 +95,7 @@ export function resolveLiveArticleCounts(config) {
     //   `clock.setTimeout(...)` 以 `this === clock` 呼叫原生方法 —— 在**頁面 realm**
     //   （本模組隨受限內容按需塊經 blob: 動態 import 執行）裡就是
     //   `TypeError: Illegal invocation`。在使用者指令碼沙箱裡僥倖能過，一挪進按需塊就炸。
-    clock = DEFAULT_CLOCK,
+    clock: suppliedClock,
     signal,
     onTruncated,
   } = config || {};
@@ -128,7 +107,21 @@ export function resolveLiveArticleCounts(config) {
     typeof lid !== "string" ||
     !/^[A-Za-z0-9]+$/.test(lid)
   )
-    return Promise.resolve(null);
+    return null;
+  if (signal?.aborted) return null;
+
+  const clock = typeof suppliedClock?.setTimeout === "function" ? suppliedClock : DEFAULT_CLOCK;
+  const controller = new AbortController();
+  const scanSignal = controller.signal;
+  const stopScan = () => controller.abort();
+  const now = () => typeof clock.now === "function" ? clock.now() : DEFAULT_CLOCK.now();
+  const budget = Number(deadlineMs);
+  const limited = Number.isFinite(budget) && budget > 0;
+  const cutoff = limited ? now() + budget : Infinity;
+  const isStopped = () => {
+    if (now() >= cutoff) stopScan();
+    return scanSignal.aborted;
+  };
 
   const cat = Number(category);
   const filter =
@@ -139,16 +132,16 @@ export function resolveLiveArticleCounts(config) {
   let pagesLeft = Math.max(1, Number(maxPages) || 1);
 
   const readPage = async (page, query) => {
-    if (pagesLeft <= 0) return null;
+    if (isStopped() || pagesLeft <= 0) return null;
     pagesLeft -= 1;
     try {
       const payload = await loadPage(
         `/user/${uid}/article?page=${page}${query}`,
-        signal,
+        scanSignal,
         LENTILLE_INIT,
       );
       // 攔截頁是 HTTP 200 + text/html，`json()` 會拋 —— 這就是天然的守衛。
-      return parseArticleListPayload(payload);
+      return isStopped() ? null : parseArticleListPayload(payload);
     } catch (error) {
       return null;
     }
@@ -169,7 +162,7 @@ export function resolveLiveArticleCounts(config) {
         category: query ? cat : null,
       });
     const step = Math.max(1, Number(concurrency) || 1);
-    for (let start = 2; start <= limit; start += step) {
+    for (let start = 2; start <= limit && !isStopped(); start += step) {
       const batch = await Promise.all(
         Array.from(
           { length: Math.min(step, limit - start + 1) },
@@ -198,11 +191,20 @@ export function resolveLiveArticleCounts(config) {
     return filtered ?? (await attempt(""));
   };
 
-  return withDeadline(
-    scan().catch(() => null),
-    deadlineMs,
-    clock && typeof clock.setTimeout === "function"
-      ? clock
-      : DEFAULT_CLOCK,
-  );
+  let onStop;
+  const stopped = new Promise((resolve) => {
+    onStop = () => resolve(null);
+    scanSignal.addEventListener("abort", onStop, { once: true });
+  });
+  signal?.addEventListener("abort", stopScan, { once: true });
+  const timer = limited ? clock.setTimeout(stopScan, budget) : null;
+  try {
+    return await Promise.race([stopped, scan()]);
+  } catch {
+    return null;
+  } finally {
+    if (timer !== null) clock.clearTimeout(timer);
+    scanSignal.removeEventListener("abort", onStop);
+    signal?.removeEventListener("abort", stopScan);
+  }
 }

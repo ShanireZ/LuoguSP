@@ -150,13 +150,14 @@ test("保存后的刷新提示是页内居中对话框，不是原生 confirm", 
   );
   assert.match(source, /function askRefresh\(/);
   assert.match(source, /role="alertdialog"/);
-  // 重複使用同一個 id 才能吃到 .luogusp-panel 的 translate(-50%,-50%) 居中規則。
+  // 兩種對話框共用設定圖層的居中與內容捲動規則。
   assert.match(source, /overlay\.id = "luogusp-settings"[\s\S]*luogusp-confirm/);
   const style = readFileSync(
     new URL("../src/features/settings/style.js", import.meta.url),
     "utf8",
   );
-  assert.match(style, /luogusp-panel\{position:absolute;top:50%;left:50%;transform:translate\(-50%,-50%\)/);
+  assert.match(style, /#luogusp-settings\{[^}]*display:grid;[^}]*place-items:center;/);
+  assert.match(style, /#luogusp-settings \.luogusp-panel\{[^}]*max-height:100%;[^}]*overflow:auto;/);
   assert.match(style, /luogusp-confirm/);
 });
 

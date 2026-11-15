@@ -1,9 +1,10 @@
 export const SETTINGS_STYLE = `
-  #luogusp-settings{position:fixed;inset:0;z-index:100000;font-size:14px;color:#222;}
+  #luogusp-settings{position:fixed;inset:0;z-index:2147483000;display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);
+    place-items:center;box-sizing:border-box;padding:12px;font-size:14px;color:#222;}
   #luogusp-settings .luogusp-mask{position:absolute;inset:0;background:rgba(0,0,0,.35);}
-  #luogusp-settings .luogusp-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-    background:#fff;border-radius:8px;padding:24px 30px;min-width:300px;box-shadow:0 8px 30px rgba(0,0,0,.2);}
-  #luogusp-settings .luogusp-content{width:max-content;max-width:min(420px,calc(100vw - 88px));margin:0 auto;}
+  #luogusp-settings .luogusp-panel{position:relative;box-sizing:border-box;min-width:min(360px,100%);max-width:100%;max-height:100%;
+    overflow:auto;overscroll-behavior:contain;background:#fff;border-radius:8px;padding:24px clamp(12px,5vw,30px);box-shadow:0 8px 30px rgba(0,0,0,.2);}
+  #luogusp-settings .luogusp-content{width:max-content;max-width:min(420px,100%);margin:0 auto;overflow-wrap:anywhere;}
   #luogusp-settings h3{margin:0 0 12px;font-size:16px;}
   #luogusp-settings .luogusp-item{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;}
   #luogusp-settings .luogusp-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}

@@ -9,6 +9,7 @@ import {
   renderUserCard,
 } from "../src/features/hover-card/card-view.js";
 import { buildProblemCard, buildUserCard } from "../src/features/hover-card/models.js";
+import * as anchors from "../src/features/hover-card/anchors.js";
 
 // 卡片繪製。★ 這一組全是 owner 2026-08-14 逐條提的口徑，每條都配一句**反證**：
 // 只斷言「新的在」不夠，還要斷言「舊的不在」—— 否則退回舊寫法測試照綠。
@@ -250,25 +251,12 @@ test("长签名交给 CSS 截断，文本本身一个字不少", () => {
 });
 
 // ---- 使用者卡：原生骨架的復刻（owner 2026-08-14「復刻 + 擴充」）----
-// ★ 背景圖抄自 UserFloatCard 元件原文：`user.background || <那张固定图>`。
-test("页头有背景图，用户没设就用洛谷自己的兜底图", () => {
-  const mine = mount(() =>
-    renderUserCard(userCard({ background: "https://cdn.luogu.com.cn/upload/image_hosting/x.png" }), {
-      origin: "",
-    }),
-  );
-  const head = mine.querySelector(".luogusp-hc-userhead");
-  assert.ok(head, "页头必须存在 —— owner 报的「缺背景」就是它");
-  assert.match(head.style.backgroundImage, /image_hosting\/x\.png/);
-  const bare = mount(() => renderUserCard(userCard({}), { origin: "" }));
-  assert.match(
-    bare.querySelector(".luogusp-hc-userhead").style.backgroundImage,
-    /DSCF0530-shrink\.jpg/,
-    "兜底图要和洛谷用的是同一张",
-  );
-  // 頭像壓在頁頭裡（原生就是 user-header-top > img.avatar），不再是原來那種並排小圖。
-  assert.ok(
-    bare.querySelector(".luogusp-hc-userhead .luogusp-hc-avatar"),
+test("the preview header has image slots without embedding API URLs", () => {
+  const content = mount(() => renderUserCard(userCard({ background: "https://cdn.luogu.com.cn/upload/image_hosting/x.png" })));
+  const header = content.querySelector(".luogusp-hc-userhead");
+  assert.equal(header.style.backgroundImage, "");
+  assert.deepEqual([...header.querySelectorAll("img")].map(img => [img.className, img.getAttribute("src")]),
+    [["luogusp-hc-cover", null], ["luogusp-hc-avatar", null]],
     "头像必须在页头内，否则背景图会被它挤开",
   );
 });
@@ -768,6 +756,7 @@ test("行为门：悬停到内容落地，卡片不许换边", async () => {
       release = resolve;
     });
     const feature = createHoverCardFeature({
+      anchors,
       // 一律失敗 → 走「拿不到這條資料」那條繪製路徑，不必造任何載荷。
       fetchPage: async () => {
         await gate;

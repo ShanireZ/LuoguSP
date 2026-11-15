@@ -48,7 +48,8 @@ failures. A successful empty record list uses the normal cache lifetime.
 New or updated data fields can fade in over 125 ms. The initial preview and
 navigation controls appear immediately. Reduced motion stops the preview's
 loading indicator and skips the field fade. The main settings dialog uses
-a 160 ms opacity entrance only when reduced motion is off.
+a 160 ms opacity entrance only when reduced motion is off. Its content scrolls
+within the available viewport, and the dialog takes precedence over previews.
 A focused eligible link opens its preview with Alt+Down Arrow. Escape closes
 the preview and returns focus to the link when the preview holds focus. Tab at
 either end closes the preview and continues from the link's place in the page.
@@ -61,7 +62,12 @@ forum ID and a matching visible problem ID open the corresponding problem previe
 The original discussion link retains its destination. Native void problem anchors continue
 to use their visible problem ID. Standalone avatars use the current origin or
 Luogu's avatar CDN. User cards reuse observed same-origin user-info XHRs and
-display basic information before profile-only fields arrive. Follow and block
+display basic information before profile-only fields arrive. They retry transient
+profile failures on reopening, with bounded requests and per-account cache keys.
+The preview replaces the native user card after the optional feature has mounted.
+User previews load avatar and cover media from allowed HTTPS origins without
+credentials or a referrer, and use a local visual fallback if loading fails.
+Follow and block
 requests, pending state, and results use the initiating viewer and target
 account. A card from a previously observed viewer cannot start a new action.
 The relation write requires a same-origin JSON 200 response from its exact
@@ -72,10 +78,12 @@ Block confirmation focuses Cancel first. Cancelling restores the block button.
 While a focused relation action is pending, the card holds its focus. Success
 and failure restore the corresponding button if focus is still held there.
 An inline compile failure supplies the CE verdict and diagnostics directly from
-the matching same-origin submit response. For output-based verdicts, IDE batch
-runs observe native output mutations after acknowledgement, until the result,
-deadline or cancellation. Output already present at acknowledgement serves as
-the baseline. Luogu's panel does not expose its native run ID.
+the matching same-origin submit response. For inline execution, the observer
+starts when that exact response reaches XHR DONE, before native load handlers
+paint the verdict, and checks the displayed output against the response. Queued
+runs observe native output mutations after acknowledgement. Each observer waits
+until a result, deadline or cancellation. Luogu's panel does not expose its
+native run ID.
 If a submit may still produce a result after cancellation or timeout,
 LuoguSP requires a page reload before starting another batch in that document.
 An explicit server rejection releases that restriction.
@@ -116,7 +124,9 @@ update endpoints and pinned @require integrity. Source pushes are separate from
 CDN deployment and released-byte browser QA.
 Before replacing a staging directory, the CDN preparer resolves its existing
 parent and destination, including Windows junctions. It rejects paths that
-overlap the release source tree.
+overlap the release source tree. Staging accepts only the verified release and
+channel files. The low-level publisher checks the configured origin, candidate
+version and staged files before deploying. Published version paths are immutable.
 
 Generated publishing, origin and deployment receipts remain local and ignored.
 Only the de-identified browser-QA and quality summaries required by the current

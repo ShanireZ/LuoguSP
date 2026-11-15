@@ -14,7 +14,7 @@ import test from "node:test";
 const ROOT = resolve(import.meta.dirname, "..");
 const CHECKER = join(ROOT, "scripts/check-baseline.mjs");
 
-test("the approved Firefox minimum passes the actual complete Baseline guard", () => {
+test("the approved browser policy passes the current and quarter-end Baseline guard", () => {
   const result = spawnSync(process.execPath, [CHECKER], {
     cwd: ROOT,
     encoding: "utf8",
@@ -23,13 +23,17 @@ test("the approved Firefox minimum passes the actual complete Baseline guard", (
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Baseline 守卫通过/u);
+  const { snapshot } = JSON.parse(readFileSync(join(ROOT, "baseline.config.json"), "utf8"));
+  assert.ok(result.stdout.includes(snapshot.reviewedThrough));
 });
 
 for (const [browser, staleMinimum] of [
   ["firefox", "124"],
   ["chrome", "123"],
+  ["chrome", "124"],
   ["edge", "123"],
   ["firefox", "125"],
+  ["firefox", "126"],
   ["safari", "17.4"],
   ["ios_saf", "17.4"],
 ]) {

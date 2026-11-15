@@ -10,8 +10,10 @@ export const HIDDEN_INTRO_STYLE = `
   .luogusp-mdstyle .code-container:hover>.copy-button{opacity:1;}
   .luogusp-mdstyle .code-container:hover>.copy-button:hover{background-color:#ddd;}
   .luogusp-mdstyle .copy-button{position:absolute;top:.5em;right:.5em;padding:.6em;display:flex;align-items:center;justify-content:center;transition:opacity .2s ease-in-out,color .2s ease-in-out,background-color .2s ease-in-out;opacity:0;background-color:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
-  .luogusp-mdstyle .copy-button:focus{opacity:1;outline:1px solid #ddd;}
+  .luogusp-mdstyle .copy-button:focus-visible{opacity:1;outline:2px solid #1d5f91;outline-offset:-2px;transition:none;}
+  @media (prefers-reduced-motion:reduce){.luogusp-mdstyle .copy-button{transition:none;}}
   .luogusp-mdstyle .copy-button.copied{color:#52c41a;}
+  .luogusp-mdstyle .luogusp-copy-status{position:absolute;top:.45em;right:3em;pointer-events:none;font-size:12px;}
   .luogusp-mdstyle .copy-icon{width:1em;height:1em;}
   .luogusp-mdstyle .code-container>pre{background:#fafafa;color:#383a42;padding:1em;margin:0;overflow:auto;border-radius:.3em;}
   .luogusp-mdstyle .code-container>pre code{font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;line-height:1.5;tab-size:2;}

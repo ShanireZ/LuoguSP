@@ -7,8 +7,12 @@
 export const HOVER_CARD_STYLE = `
 .luogusp-hc{position:fixed;z-index:2147482000;width:320px;max-width:calc(100vw - 24px);background:#fff;color:#3f3f3f;border:1px solid #e6e6e6;border-radius:4px;box-shadow:0 4px 16px rgba(26,26,26,.14);font:13px/1.6 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;padding:12px 14px;box-sizing:border-box;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;}
 .luogusp-hc[hidden]{display:none;}
+body.luogusp-hc-owns-user-preview .dropdown:has(> .float-card){display:none !important;}
+body.luogusp-hc-owns-user-preview .float-card{display:none !important;}
 .luogusp-hc-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;}
 .luogusp-hc-userhead{position:relative;height:66px;margin:-12px -14px 0;border-radius:3px 3px 0 0;background:#dfe6ec 50% 50%/cover no-repeat;}
+.luogusp-hc-userhead img:not([src]){display:none;}
+.luogusp-hc-cover{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit;}
 .luogusp-hc-userhead .luogusp-hc-avatar{position:absolute;left:14px;bottom:-16px;width:52px;height:52px;}
 .luogusp-hc-userbody{padding-top:22px;}
 .luogusp-hc-avatar{width:36px;height:36px;border-radius:50%;flex:0 0 auto;background:#f0f0f0;border:1px solid #979797;box-sizing:border-box;}

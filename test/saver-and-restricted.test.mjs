@@ -608,6 +608,8 @@ test("official article writes preserve user intent and enforce same-origin auth"
   assert.equal(calls[0].url, "https://www.luogu.com.cn/article/abc/vote?vote=1");
   assert.equal(calls[0].method, "POST");
   assert.equal(calls[0].credentials, "same-origin");
+  assert.equal(calls[0].mode, "same-origin");
+  assert.equal(calls[0].redirect, "error");
   assert.equal(calls[0].headers.get("x-csrf-token"), "same-origin-token");
   assert.equal(await calls[0].text(), "{}");
 
@@ -618,12 +620,16 @@ test("official article writes preserve user intent and enforce same-origin auth"
       method: "POST",
       headers: { "content-type": "application/json" },
       body: requestBody,
+      redirect: "follow",
+      mode: "cors",
+      credentials: "include",
     },
   );
   await adapter.fetch(request);
   assert.equal(await calls[1].text(), requestBody);
   assert.equal(calls[1].headers.get("content-type"), "application/json");
   assert.equal(calls[1].headers.get("x-csrf-token"), "same-origin-token");
+  assert.deepEqual([calls[1].mode, calls[1].redirect, calls[1].credentials], ["same-origin", "error", "same-origin"]);
 });
 
 test("official article write adapter does not hijack unrelated or failed requests", async () => {
@@ -672,10 +678,12 @@ test("reply fetch adapter prefers a valid same-origin Luogu response", async () 
   const adapter = createRestrictedReplyFetchAdapter({
     fetch: async (input, init) => {
       nativeCalls.push({ input: String(input), method: init && init.method });
-      return new Response(
+      const response = new Response(
         JSON.stringify({ replySlice: [{ id: 9, content: "live" }] }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
+      Object.defineProperty(response, "url", { value: new URL(input, "https://www.luogu.com.cn").href });
+      return response;
     },
     origin: "https://www.luogu.com.cn",
     Response,
@@ -766,17 +774,30 @@ test("reply fetch adapter preserves caller cancellation", async () => {
   await assert.rejects(adapter.fetch("/article/abc/replies"), aborted);
 });
 
-function xhrHarness(response) {
+test("reply fetch adapter preserves a Request cancellation with a custom reason", async () => {
+  const origin = "https://www.luogu.com.cn";
+  const controller = new AbortController();
+  const request = new Request(`${origin}/article/abc/replies`, { signal: controller.signal });
+  const reason = new Error("Fixture request cancelled");
+  const adapter = createRestrictedReplyFetchAdapter({
+    fetch: async () => { throw new TypeError("Transport interrupted"); },
+    origin, Response, URL, lid: "abc", replies: [],
+  });
+  const pending = adapter.fetch(request);
+  controller.abort(reason);
+  await assert.rejects(pending, (error) => error === reason);
+});
+
+function xhrHarness(firstResponse) {
   const instances = [];
-  class FakeXhr {
+  let nextResponse = firstResponse;
+  class FakeXhr extends EventTarget {
+    #result = {};
+
     constructor() {
+      super();
       this.readyState = 0;
-      this.status = 0;
-      this.statusText = "";
-      this.responseText = "";
-      this.response = "";
       this.responseType = "";
-      this.responseURL = "";
       this.timeout = 0;
       this.withCredentials = false;
       this.upload = {};
@@ -786,34 +807,41 @@ function xhrHarness(response) {
     open(method, url) {
       this.method = method;
       this.url = url;
+      this.#result = {};
       this.readyState = 1;
+    }
+    get status() { return this.#result.status ?? 0; }
+    get statusText() { return this.#result.statusText ?? ""; }
+    get responseText() { return this.#result.responseText ?? ""; }
+    get response() { return this.#result.response ?? ""; }
+    get responseURL() {
+      return this.#result.responseURL ?? (this.status ? new URL(this.url, "https://www.luogu.com.cn").href : "");
     }
     setRequestHeader(name, value) {
       this.headers.push([name, value]);
     }
     getAllResponseHeaders() {
-      return response.headers || "content-type: application/json\r\n";
+      return `content-type: ${this.getResponseHeader("content-type")}\r\n`;
     }
     getResponseHeader(name) {
-      return /content-type/i.test(name) ? "application/json" : null;
+      return /content-type/i.test(name) ? this.#result.contentType ?? "application/json" : null;
     }
     send(body) {
       this.body = body;
-      Object.assign(this, response, { readyState: 4 });
-      queueMicrotask(() => this.onloadend?.({ type: "loadend" }));
-    }
-    abort() {
-      this.aborted = true;
-      queueMicrotask(() => this.onabort?.({ type: "abort" }));
-    }
-    addEventListener(type, listener) {
-      this[`on${type}`] = listener;
-    }
-    removeEventListener(type, listener) {
-      if (this[`on${type}`] === listener) this[`on${type}`] = null;
+      queueMicrotask(() => {
+        this.#result = nextResponse;
+        this.readyState = this.DONE;
+        this.dispatchEvent(new Event("readystatechange"));
+        this.dispatchEvent(new Event(this.#result.status ? "load" : "error"));
+        this.dispatchEvent(new Event("loadend"));
+      });
     }
   }
-  return { FakeXhr, instances };
+  for (const [name, value] of Object.entries({ UNSENT: 0, OPENED: 1, HEADERS_RECEIVED: 2, LOADING: 3, DONE: 4 })) {
+    Object.defineProperty(FakeXhr, name, { value });
+    Object.defineProperty(FakeXhr.prototype, name, { value });
+  }
+  return { FakeXhr, instances, setResponse: (response) => { nextResponse = response; } };
 }
 
 test("reply XHR adapter preserves valid live Luogu replies", async () => {
@@ -834,7 +862,7 @@ test("reply XHR adapter preserves valid live Luogu replies", async () => {
   const xhr = new AdaptedXhr();
   xhr.open("GET", "/article/abc/replies?sort=");
   const loaded = new Promise((resolve) => {
-    xhr.onloadend = resolve;
+    xhr.addEventListener("loadend", resolve, { once: true });
   });
   xhr.send();
   await loaded;
@@ -861,13 +889,41 @@ test("reply XHR adapter exposes Saver replies after a live request failure", asy
   xhr.responseType = "json";
   xhr.open("GET", "/article/abc/replies?sort=time-d&after=2");
   const loaded = new Promise((resolve) => {
-    xhr.onloadend = resolve;
+    xhr.addEventListener("loadend", resolve, { once: true });
   });
   xhr.send();
   await loaded;
   assert.equal(xhr.status, 200);
   assert.equal(xhr.getResponseHeader("x-luogusp-source"), "saver");
   assert.deepEqual(xhr.response.replySlice.map(({ id }) => id), [3, 1]);
+});
+
+test("both reply adapters reject a final same-origin URL with a different query", async () => {
+  const origin = "https://www.luogu.com.cn";
+  const path = "/article/abc/replies?after=1";
+  const finalUrl = `${origin}/article/abc/replies?after=2`;
+  const payload = { replySlice: [{ id: 99 }] };
+  const replies = [{ id: 1, time: 1 }, { id: 2, time: 2 }];
+  const fetchAdapter = createRestrictedReplyFetchAdapter({
+    fetch: async () => Object.defineProperty(Response.json(payload), "url", { value: finalUrl }),
+    origin, Response, URL, lid: "abc", replies,
+  });
+  const response = await fetchAdapter.fetch(path);
+  assert.equal(response.headers.get("x-luogusp-source"), "saver");
+  assert.deepEqual(await response.json(), { replySlice: [replies[1]] });
+
+  const { FakeXhr } = xhrHarness({ status: 200, responseURL: finalUrl, response: payload });
+  const { XMLHttpRequest: AdaptedXhr } = createRestrictedReplyXhrAdapter({
+    XMLHttpRequest: FakeXhr, origin, URL, lid: "abc", replies,
+  });
+  const xhr = new AdaptedXhr();
+  xhr.open("GET", path);
+  xhr.responseType = "json";
+  const done = new Promise((resolve) => xhr.addEventListener("loadend", resolve, { once: true }));
+  xhr.send();
+  await done;
+  assert.equal(xhr.getResponseHeader("x-luogusp-source"), "saver");
+  assert.deepEqual(xhr.response, { replySlice: [replies[1]] });
 });
 
 test("reply fetch installer replaces its own wrapper and restores safely", async () => {
@@ -938,41 +994,9 @@ test("reply XHR adapter exposes the readyState constants on instances too", () =
 //   responseText 恆是上一次的退回體 —— 第二次請求徹底啞掉。
 test("reply XHR adapter resets its fallback state when the instance is reused", async () => {
   const live = JSON.stringify({ replySlice: [{ id: 91, content: "live" }] });
-  let next = { status: 0, statusText: "", responseText: "", response: "" };
-  const instances = [];
-  class ReusableXhr {
-    constructor() {
-      this.readyState = 0;
-      this.status = 0;
-      this.statusText = "";
-      this.responseText = "";
-      this.response = "";
-      this.responseType = "";
-      this.responseURL = "";
-      instances.push(this);
-    }
-    open() {
-      this.readyState = 1;
-    }
-    send() {
-      Object.assign(this, next, { readyState: 4 });
-      queueMicrotask(() => this.onloadend?.({ type: "loadend" }));
-    }
-    abort() {}
-    setRequestHeader() {}
-    getAllResponseHeaders() {
-      return "content-type: application/json\r\n";
-    }
-    getResponseHeader() {
-      return null;
-    }
-    addEventListener(type, listener) {
-      this[`on${type}`] = listener;
-    }
-    removeEventListener() {}
-  }
+  const { FakeXhr, instances, setResponse } = xhrHarness({ status: 0 });
   const { XMLHttpRequest: AdaptedXhr } = createRestrictedReplyXhrAdapter({
-    XMLHttpRequest: ReusableXhr,
+    XMLHttpRequest: FakeXhr,
     URL,
     origin: "https://www.luogu.com.cn",
     lid: "abc",
@@ -982,7 +1006,7 @@ test("reply XHR adapter resets its fallback state when the instance is reused", 
   const xhr = new AdaptedXhr();
   const once = () =>
     new Promise((resolve) => {
-      xhr.onloadend = resolve;
+      xhr.addEventListener("loadend", resolve, { once: true });
     });
 
   // 第一趟：洛谷掛了 → 用保存站退回。
@@ -994,7 +1018,7 @@ test("reply XHR adapter resets its fallback state when the instance is reused", 
   assert.equal(xhr.getResponseHeader("x-luogusp-source"), "saver");
 
   // 第二趟重複使用同一個執行個體：洛谷這次好了，必須原樣透傳，不許還端著上一次的退回體。
-  next = { status: 200, statusText: "OK", responseText: live, response: live };
+  setResponse({ status: 200, statusText: "OK", responseText: live, response: live });
   done = once();
   xhr.open("GET", "/article/abc/replies?sort=time-d");
   xhr.send();

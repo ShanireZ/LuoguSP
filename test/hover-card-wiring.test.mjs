@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createHoverCardFeatures } from "../src/features/hover-card/lazy-feature.js";
+import { createHoverCardFeature } from "../src/features/hover-card/feature.js";
 import {
   readCsrfToken,
   readPageSubject,
@@ -499,19 +500,43 @@ test("滚动时指针若还在卡片里就不许关卡", () => {
   assert.match(handler, /intent\.dismiss\(\)/);
 });
 
-// ★★ owner 第五輪：文章廣場、討論區、提交記錄、題目頁出題人……原生個人卡到處和
-//    我們的卡一起彈。原生那張是 teleport 到 `#app` 的 `div.dropdown`，裡面裝
-//    `class="float-card"` 的卡體（`DropdownWrapper` 與 `UserFloatCard` 元件原文）。
-//    用 CSS 藏掉，不去掐事件 —— 掐事件會連帶影響那棵子樹上別人的 mouseover。
-test("用户卡开着时屏蔽原生个人卡，关掉就还回去", () => {
-  const shell = read("src/features/hover-card/lazy-feature.js");
-  assert.match(shell, /float-card/, "得按原生卡自己的类名认");
-  assert.match(shell, /suppressNativeCard/);
-  // 只有使用者卡這一類才屏蔽：題目卡開著不該動原生的個人卡。
-  const mountFor = shell.slice(shell.indexOf("const mountFor"), shell.indexOf("return Object.freeze"));
-  assert.match(mountFor, /kind === "user"/);
-  assert.match(mountFor, /suppressNativeCard\(true\)/);
-  assert.match(mountFor, /suppressNativeCard\(false\)/, "关掉开关必须把原生卡还回去");
+test("a displayed user preview releases native ownership when disabled or disposed", async () => {
+  const dom = new JSDOM('<a href="/user/123">User</a><div class="dropdown"><div class="float-card">Native</div></div>', { url: origin });
+  const { document, MouseEvent, KeyboardEvent } = dom.window;
+  const saved = { document: globalThis.document, window: globalThis.window, location: globalThis.location };
+  Object.assign(globalThis, { document, window: dom.window, location: dom.window.location });
+  const trigger = document.querySelector("a");
+  const native = document.querySelector(".float-card");
+  const nativeDisplay = () => dom.window.getComputedStyle(native).display;
+  document.elementFromPoint = () => trigger;
+  try {
+    const features = createHoverCardFeatures({ storage, loadBundle: async () => ({ createHoverCardFeature }),
+      fetchPage: async (path) => path === "/api/user/info/123"
+        ? { ok: true, json: async () => ({ user: { uid: 123, name: "Preview" } }) }
+        : { ok: false, status: 403, json: async () => ({}) },
+    });
+    const stopProblem = features.problem.mount();
+    const stopUser = features.user.mount();
+    assert.notEqual(nativeDisplay(), "none");
+    trigger.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await settle();
+    assert.equal(nativeDisplay(), "none");
+    stopUser();
+    assert.notEqual(nativeDisplay(), "none");
+    assert.ok(document.querySelector("#luogusp-hover-card[hidden]"));
+    const clearUser = features.user.mount();
+    trigger.focus();
+    trigger.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, altKey: true, key: "ArrowDown" }));
+    await settle();
+    assert.equal(nativeDisplay(), "none");
+    stopProblem();
+    clearUser();
+    assert.notEqual(nativeDisplay(), "none");
+    assert.equal(document.getElementById("luogusp-hover-card"), null);
+  } finally {
+    Object.assign(globalThis, saved);
+    dom.window.close();
+  }
 });
 
 // ★ 卡片永遠不許出視口：高度由 placeCard 釘 max-height，內容再長也只在卡內滾。

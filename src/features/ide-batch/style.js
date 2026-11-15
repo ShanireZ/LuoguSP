@@ -33,6 +33,7 @@ export const IDE_BATCH_STYLE = `
   .luogusp-ide-panel .copy-button{position:absolute;top:.3em;right:.3em;padding:.45em;display:flex;align-items:center;justify-content:center;transition:opacity .2s;opacity:0;background:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
   .luogusp-ide-panel .copy-button:focus-visible{opacity:1;transition:none;}
   .luogusp-ide-panel .copy-button.copied{color:#52c41a;}
+  .luogusp-ide-panel .luogusp-copy-status{position:absolute;top:.45em;right:3em;pointer-events:none;font-size:12px;}
   .luogusp-ide-panel .copy-icon{width:1em;height:1em;}
   @media (prefers-reduced-motion:reduce){
     .luogusp-ide-chev,.luogusp-ide-panel .copy-button{transition:none;}

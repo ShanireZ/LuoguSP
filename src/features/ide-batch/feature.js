@@ -156,15 +156,27 @@ export function createIdeBatchFeature({ storage, problemData }) {
           return rawSend.apply(this, arguments);
         }
         attempt.claimed = true;
+        const readResult = () => isIdeSubmitUrl(this.responseURL) ? readIdeSubmitResponse(this) : { status: 0 };
+        const confirmInlineOutput = () => {
+          if (this.readyState !== XMLHttpRequest.DONE) return;
+          this.removeEventListener("readystatechange", confirmInlineOutput);
+          if (!active || ideSubmitWaiter !== waiter) return;
+          const { inlineOutput } = readResult();
+          // At DONE the exact matched response is readable. Native handling can
+          // paint an inline verdict in its load handler, before our loadend.
+          if (inlineOutput !== undefined) waiter.confirmOutput(inlineOutput);
+        };
+        this.addEventListener("readystatechange", confirmInlineOutput);
         this.addEventListener(
           "loadend",
           () => {
-            const result = isIdeSubmitUrl(this.responseURL) ? readIdeSubmitResponse(this) : { status: 0 };
+            this.removeEventListener("readystatechange", confirmInlineOutput);
+            const result = readResult();
             if (result.rejected && pendingNativeAttempt === attempt)
               pendingNativeAttempt = null;
             if (!active || ideSubmitWaiter !== waiter) return;
             ideSubmitWaiter = null;
-            if (result.accepted && !result.outputResult) waiter.confirmOutput();
+            if (result.accepted && !result.outputResult) waiter.confirmOutput(result.inlineOutput);
             waiter.resolve(result);
           },
           { once: true },

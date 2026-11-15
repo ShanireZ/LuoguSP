@@ -19,7 +19,11 @@ establish the current account's privileges or personal state.
 - Saver comments are optional. Ignore unavailable comment data or an explicit
   mismatch with the article. Skip malformed rows and keep the first usable
   row for each reply ID. The archived reply count uses this filtered list;
-  the reply endpoint still prefers valid native Luogu responses.
+  the reply endpoint prefers successful `application/json` responses with a
+  reply slice from the exact requested same-origin URL, including its query.
+  Fetch and XMLHttpRequest use the archived slice when that check fails.
+  Caller cancellation remains a cancellation in both transports. Unrelated
+  XMLHttpRequest requests keep their native events and response handling.
 - Do not infer favored, voted, canReply or canEdit from public archive counts.
   Follow article-interaction-state.js and account isolation in
   article-interaction-store.js.
@@ -30,14 +34,21 @@ establish the current account's privileges or personal state.
   cache entries have independent confirmation times and expiry. Each count
   compares only its own confirmation time with the Saver snapshot. Existing
   records with one shared time keep that original time for both actions until
-  each action is confirmed again.
+  each action is confirmed again. The optional live-count scan aborts pending
+  article-list reads at its 2.5-second cutoff or on route disposal and stops
+  starting pages. If the scan expires, display the available saved values.
 - Votes, favorites and replies use Luogu same-origin write contracts.
-  Observe XMLHttpRequest and fetch without changing the native response.
+  The Fetch adapter enforces same-origin mode, same-origin credentials and
+  redirect rejection before adding the scaffold CSRF token to an eligible
+  write. Observe XMLHttpRequest writes through their native response.
   Save votes only when the final Luogu response confirms the requested vote
   and count. Save favorites only when the final response matches the same
-  write endpoint and its success format. Show a status message for an
-  unconfirmed 2xx response or a confirmed operation whose state could not be
-  saved. Never log live headers or cookies.
+  write endpoint and its success format. A transport rejection remains a
+  rejection. Each unconfirmed 2xx response has a warning for its action,
+  cleared when Luogu later confirms that action. A confirmed operation that
+  cannot be saved has a separate warning until a successful save for that
+  action. Confirmations use the rebuilt page's recognized account. Never log
+  live headers or cookies.
 - Saver workflow/comment-refresh requests update the archive. They do not
   interact as the current Luogu account. Follow task completion and freshness
   signals rather than treating acceptance as refreshed content.

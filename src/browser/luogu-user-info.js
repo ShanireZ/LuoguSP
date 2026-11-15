@@ -1,9 +1,9 @@
 const INFO_PATH = /^\/api\/user\/info\/(\d+)$/;
 const INFO_TTL_MS = 5 * 60_000;
 const USER_FIELDS = [
-  "uid", "name", "color", "avatar", "background", "slogan", "badge", "blogAddress",
-  "isAdmin", "isBanned", "ccfLevel", "xcpcLevel", "ranking", "followingCount",
-  "followerCount", "registerTime", "userRelationship", "reverseUserRelationship",
+  "uid", "name", "color", "avatar", "background", "slogan", "badge", "isAdmin",
+  "ccfLevel", "xcpcLevel", "followingCount", "followerCount", "eloValue",
+  "userRelationship", "reverseUserRelationship",
 ];
 
 export function createNativeUserInfo({ origin, viewer }) {
@@ -37,8 +37,9 @@ export function createNativeUserInfo({ origin, viewer }) {
             const result = xhr.responseType === "json" ? xhr.response : JSON.parse(xhr.responseText);
             const user = result?.user;
             if (Number(user?.uid) === uid) {
-              const fields = Object.fromEntries(USER_FIELDS.map(field => [field, user[field]]));
-              if (user.elo) fields.elo = { rating: user.elo.rating, time: user.elo.time };
+              const fields = Object.fromEntries(USER_FIELDS.filter(field => field in user)
+                .map(field => [field, user[field]]));
+              if (user.elo) fields.elo = { rating: user.elo.rating };
               payload = { user: fields };
             }
           }
@@ -56,20 +57,25 @@ export function createNativeUserInfo({ origin, viewer }) {
     };
   }
 
-  async function read(uid, account) {
+  async function read(uid, account, signal) {
+    if (signal?.aborted) return null;
     const key = `${account}:${uid}`;
     const request = pending.get(key);
     if (request) {
       // A stalled native lookup must not block the preview indefinitely.
       let timer;
+      let cancel;
       try {
         const payload = await Promise.race([request, new Promise(resolve => {
-          timer = setTimeout(() => resolve(null), 500);
+          cancel = () => resolve(null);
+          timer = setTimeout(cancel, 500);
+          signal?.addEventListener("abort", cancel, { once: true });
         })]);
-        if (payload && viewer() === account) return payload;
+        if (payload && !signal?.aborted && viewer() === account) return payload;
         return null;
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", cancel);
       }
     }
     const entry = cached.get(key);

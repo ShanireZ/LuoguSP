@@ -1,4 +1,4 @@
-import { makeCopyButton } from "../../browser/copy-button.js";
+import { makeCopyControls } from "../../browser/copy-button.js";
 import { createRendererClient } from "./renderer-client.js";
 
 function digIntroduction(object, wantedUid) {
@@ -32,7 +32,7 @@ export function createFallbackIntroController(options = {}) {
     fetchImpl = globalThis.fetch,
     diagnostics,
     rendererClient = createRendererClient(options.rendererConfig || {}),
-    makeCopyButtonImpl = makeCopyButton,
+    makeCopyButtonImpl = makeCopyControls,
   } = options;
   if (!document?.createElement || typeof fetchImpl !== "function")
     throw new TypeError("Fallback intro controller requires browser APIs");

@@ -340,12 +340,13 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
 test("the reply XHR adapter reports official writes without touching them", async () => {
   const observed = [];
   const sent = [];
-  class FakeXhr {
+  class FakeXhr extends EventTarget {
+    DONE = 4;
+    #body = "";
+
     constructor() {
+      super();
       this.readyState = 0;
-      this.status = 0;
-      this.responseText = "";
-      this.response = "";
       this.responseType = "";
       this.withCredentials = false;
       this.upload = {};
@@ -354,8 +355,11 @@ test("the reply XHR adapter reports official writes without touching them", asyn
     open(method, url) {
       this.method = method;
       this.url = url;
-      this.responseURL = new URL(url, ORIGIN).href;
     }
+    get status() { return this.readyState === this.DONE ? 200 : 0; }
+    get responseText() { return this.#body; }
+    get response() { return this.#body; }
+    get responseURL() { return new URL(this.url, ORIGIN).href; }
     setRequestHeader(name, value) {
       this.headers.push([name, value]);
     }
@@ -373,18 +377,12 @@ test("the reply XHR adapter reports official writes without touching them", asyn
         headers: this.headers,
         withCredentials: this.withCredentials,
       });
-      this.status = 200;
       this.readyState = 4;
-      this.responseText = JSON.stringify({ upvotes: 61, voted: 1 });
-      this.response = this.responseText;
-      queueMicrotask(() => this.onloadend?.({ type: "loadend" }));
-    }
-    abort() {}
-    addEventListener(type, listener) {
-      this[`on${type}`] = listener;
-    }
-    removeEventListener(type, listener) {
-      if (this[`on${type}`] === listener) this[`on${type}`] = null;
+      this.#body = JSON.stringify({ upvotes: 61, voted: 1 });
+      queueMicrotask(() => {
+        this.dispatchEvent(new Event("readystatechange"));
+        this.dispatchEvent(new Event("loadend"));
+      });
     }
   }
 
@@ -400,7 +398,7 @@ test("the reply XHR adapter reports official writes without touching them", asyn
   xhr.open("POST", `/article/${LID}/vote?vote=1`);
   xhr.setRequestHeader("X-CSRF-TOKEN", "same-origin-token");
   const done = new Promise((resolve) => {
-    xhr.onloadend = resolve;
+    xhr.addEventListener("loadend", resolve, { once: true });
   });
   xhr.send("{}");
   await done;
@@ -584,7 +582,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
     origin: ORIGIN,
     lid: LID,
     uid: null,
-    onPersistFailure: (detail) => reports.push(detail),
+    onConfirmed: (detail) => reports.push(detail),
   });
   anonymous.seed({ upvote: 60, favorCount: 4, voted: null, favored: null });
   anonymous.observeWrite({
@@ -594,7 +592,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
     status: 200,
     responseText: "{}",
   });
-  assert.deepEqual(reports, [{ lid: LID, reason: "no-account" }]);
+  assert.deepEqual(reports, [{ kind: "favor", failure: "no-account" }]);
 
   // An actual storage exception must propagate to the tracker.
   const blocked = createArticleInteractionTracker({
@@ -607,7 +605,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
     origin: ORIGIN,
     lid: LID,
     uid: 52918,
-    onPersistFailure: (detail) => reports.push(detail),
+    onConfirmed: (detail) => reports.push(detail),
   });
   blocked.seed({ upvote: 60, favorCount: 4, voted: null, favored: null });
   blocked.observeWrite({
@@ -617,7 +615,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
     status: 200,
     responseText: JSON.stringify({ upvotes: 61, voted: 1 }),
   });
-  assert.deepEqual(reports[1], { lid: LID, reason: "storage-unavailable" });
+  assert.deepEqual(reports[1], { kind: "vote", failure: "storage-unavailable" });
   assert.equal(blocked.snapshot().voted, 1);
 
   // 成功寫入磁碟時不得產生噪音。
@@ -626,7 +624,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
     origin: ORIGIN,
     lid: LID,
     uid: 52918,
-    onPersistFailure: (detail) => reports.push(detail),
+    onConfirmed: (detail) => reports.push(detail),
   });
   working.seed({ upvote: 60, favorCount: 4, voted: null, favored: null });
   working.observeWrite({
@@ -636,7 +634,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
     status: 200,
     responseText: "{}",
   });
-  assert.equal(reports.length, 2);
+  assert.deepEqual(reports[2], { kind: "favor", failure: null });
 });
 
 test("a vote does not extend the lifetime of a legacy favorite", () => {

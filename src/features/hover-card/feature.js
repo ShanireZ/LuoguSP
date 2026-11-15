@@ -1,9 +1,4 @@
 import {
-  readCsrfToken,
-  readViewerUid,
-  resolveHoverTarget,
-} from "./anchors.js";
-import {
   finalizeCard,
   placeCard,
   renderProblemCard,
@@ -15,25 +10,19 @@ import { createFollowAction } from "./follow-action.js";
 import { createHoverIntent, isPreviewShortcut } from "./hover-intent.js";
 import { createHoverCardSources } from "./sources.js";
 import { HOVER_CARD_STYLE } from "./style.js";
-
-// 題號 / 使用者名 / 頭像的懸停預覽卡。
-//
-// 頁面上滿地是裸題號和裸使用者名，現在只有顏色，看不出是什麼題、是誰。這個功能把
-// 題名、難度、通過率、標籤（預設摺疊）、我的狀態，以及使用者的通過數/排名/咕值/Elo/
-// 獲獎/關係 就地攤開，並帶一枚重複使用洛谷原生契約的關注按鈕。
-//
-// ★ 全部資料只走當前站同源（.com.cn）；一個位元組都不碰國際站。
-// ★ 靠事件委託，不靠 MutationObserver + rAF —— 隱藏標籤頁裡 rAF 不觸發。
+import { createUserMedia } from "./user-media.js";
 
 const STYLE_ID = "luogusp-hover-card-style";
 const CARD_ID = "luogusp-hover-card";
+const NATIVE_OWNERSHIP_CLASS = "luogusp-hc-owns-user-preview";
 
 export function createHoverCardFeature(config) {
-  // ★ 設定項的身分（id/key/label）在**薄殼**手裡，不在這裡 —— 這個塊只負責幹活。
-  //   `isEnabled(kind)` 是薄殼現問的：owner 把開關拆成了題目卡與使用者卡兩個，
-  //   改開關要**立刻生效**，不能靠重掛。
-  const { fetchPage, problemData, nativeUserInfo, isEnabled = () => true } = config || {};
+  const { fetchPage, problemData, nativeUserInfo, isEnabled = () => true, anchors } = config;
+  if (typeof fetchPage !== "function") throw new TypeError("Hover card requires a fetch adapter");
+  const { readCsrfToken, readViewerUid, resolveHoverTarget } = anchors;
   const currentViewer = () => problemData?.viewerUid() ?? readViewerUid(document, window) ?? 0;
+  const settings = () => document.getElementById("luogusp-settings");
+  let dismissUserPreview;
 
   const clock = {
     now: () => Date.now(),
@@ -41,7 +30,8 @@ export function createHoverCardFeature(config) {
     clearTimeout: (id) => clearTimeout(id),
   };
   const mount = (options = {}) => {
-    if (!document.body) return () => {};
+    const body = document.body;
+    if (!body) return () => {};
     if (!document.getElementById(STYLE_ID)) {
       const style = document.createElement("style");
       style.id = STYLE_ID;
@@ -55,7 +45,10 @@ export function createHoverCardFeature(config) {
     card.hidden = true;
     card.tabIndex = -1;
     card.setAttribute("role", "dialog");
-    document.body.appendChild(card);
+    body.appendChild(card);
+    const visualViewport = window.visualViewport;
+    const claimNativeUserPreview = (ownsPreview) =>
+      body.classList.toggle(NATIVE_OWNERSHIP_CLASS, ownsPreview);
     const allowMotion = window.matchMedia?.("(prefers-reduced-motion: no-preference)");
     const fadeLateField = (node) => node.animate?.(
       [{ opacity: 0.8 }, { opacity: 1 }],
@@ -63,7 +56,7 @@ export function createHoverCardFeature(config) {
     );
 
     const sources = createHoverCardSources({
-      fetchPage: (path, signal, init) => fetchPage(path, signal, init),
+      fetchPage,
       problemData,
       nativeUserInfo,
       viewer: currentViewer,
@@ -143,7 +136,12 @@ export function createHoverCardFeature(config) {
       const placement = placeCard(
         card,
         rectForPointer(anchor),
-        { width: window.innerWidth, height: window.innerHeight },
+        visualViewport ? {
+          x: visualViewport.offsetLeft,
+          y: visualViewport.offsetTop,
+          width: visualViewport.width,
+          height: visualViewport.height,
+        } : { width: window.innerWidth, height: window.innerHeight },
         {
           assumeMinHeight: loading ? LOADING_MIN_HEIGHT : 0,
           forceBelow: openSide,
@@ -156,7 +154,9 @@ export function createHoverCardFeature(config) {
     const draw = async (target) => {
       const viewer = currentViewer();
       const controller = openController;
-      const isCurrent = () => !controller?.signal.aborted && shown === target;
+      const { signal } = controller;
+      const isCurrent = () => !signal.aborted && shown === target && isEnabled(target.kind);
+      const showMedia = target.kind === "user" ? createUserMedia(fetchPage, signal) : null;
       const canAct = () => {
         if (!isCurrent()) return false;
         if (currentViewer() === viewer) return true;
@@ -202,13 +202,15 @@ export function createHoverCardFeature(config) {
             fadeField,
             pendingAction,
           );
+          showMedia(card.firstElementChild, model);
+          claimNativeUserPreview(true);
         }
         finalizeCard(card);
         position();
         card.scrollTop = scrollTop;
       };
       if (target.kind === "problem") {
-        const model = await sources.problem(target.pid, viewer, controller?.signal, {
+        const model = await sources.problem(target.pid, viewer, signal, {
           href: target.href, onUpdate: display,
         });
         if (model || displayed === undefined) display(model);
@@ -218,7 +220,7 @@ export function createHoverCardFeature(config) {
           relationNotice = notice;
           display(model ?? { ...displayed, ...patch }, busy);
         };
-        display(await sources.user(target.uid, display));
+        display(await sources.user(target.uid, signal, display));
       }
       if (!isCurrent()) return;
       loading = false;
@@ -231,7 +233,7 @@ export function createHoverCardFeature(config) {
         // 錨點可能在等待懸停的期間被頁面重用。
         const current = resolveHoverTarget(target.anchor);
         if (!target.anchor.isConnected || !current || current.key !== target.key ||
-            current.href !== target.href || !isEnabled(target.kind)) {
+            current.href !== target.href || !isEnabled(target.kind) || settings()) {
           intent.dismiss();
           return;
         }
@@ -256,6 +258,7 @@ export function createHoverCardFeature(config) {
         const anchor = shown?.anchor;
         openController?.abort();
         openController = null;
+        claimNativeUserPreview(false);
         shown = null;
         keyboardPreview = false;
         updateShownUser = null;
@@ -269,6 +272,7 @@ export function createHoverCardFeature(config) {
     });
 
     const targetAt = (node) => {
+      if (settings()) return null;
       const target = resolveHoverTarget(node);
       if (!target || !isEnabled(target.kind)) return null;
       const { anchor, href } = target;
@@ -328,7 +332,7 @@ export function createHoverCardFeature(config) {
       return !!under && card.contains(under);
     };
     const onScroll = (event) => {
-      if (event.target === card || pointerInsideCard()) return;
+      if (event.target === card || event.target?.isConnected === false || pointerInsideCard()) return;
       intent.dismiss();
     };
     const onKey = (event) => {
@@ -347,40 +351,57 @@ export function createHoverCardFeature(config) {
       if (event.relatedTarget && !card.contains(event.relatedTarget) && !pointerInsideCard())
         intent.dismiss();
     };
+    const onFocusIn = (event) => {
+      if (settings()?.contains(event.target)) intent.dismiss();
+    };
+    dismissUserPreview = () => {
+      if (shown?.kind === "user" || (!shown && candidate?.kind === "user")) intent.dismiss();
+    };
 
     // ★★ 塊是被使用者那一次懸停拉下來的，而那個事件早就派發完了 —— 委託監聽接不到。
     //    所以薄殼把「指針當時在哪」交過來，這裡自己解析一次並**立刻打開**。
     //    ★ 不用補發合成事件：跨 realm 造事件脆，而且合成事件仍要再等 300ms 停留，
     //      體感還是「第一次懸停不彈」。
-    if (options.replayFocus) enterWithKeyboard(options.replayFocus);
-    else if (options.replayAt && document.elementFromPoint) {
-      const { x, y } = options.replayAt;
-      const node = document.elementFromPoint(x, y);
-      const primed = targetAt(node);
-      if (primed) {
-        pointer = { x, y };
-        intent.open(primed);
-      }
-    }
-
     document.addEventListener("mouseover", onOver, true);
     document.addEventListener("mouseout", onOut, true);
     window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", position);
+    visualViewport?.addEventListener("resize", position);
+    visualViewport?.addEventListener("scroll", position);
     document.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocusIn);
     card.addEventListener("focusout", onFocusOut);
 
-    return () => {
+    const dispose = () => {
       intent.dismiss();
+      dismissUserPreview = null;
       document.removeEventListener("mouseover", onOver, true);
       document.removeEventListener("mouseout", onOut, true);
       window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", position);
+      visualViewport?.removeEventListener("resize", position);
+      visualViewport?.removeEventListener("scroll", position);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocusIn);
       restoreNativeTitles();
       card.remove();
     };
+    try {
+      if (options.replayFocus) enterWithKeyboard(options.replayFocus);
+      else if (options.replayAt && document.elementFromPoint) {
+        const { x, y } = options.replayAt;
+        const primed = targetAt(document.elementFromPoint(x, y));
+        if (primed) {
+          pointer = { x, y };
+          intent.open(primed);
+        }
+      }
+    } catch (error) {
+      dispose();
+      throw error;
+    }
+    return dispose;
   };
 
-  return Object.freeze({ mount });
+  return Object.freeze({ mount, dismissUserPreview: () => dismissUserPreview?.() });
 }

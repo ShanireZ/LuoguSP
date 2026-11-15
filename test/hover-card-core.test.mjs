@@ -341,13 +341,11 @@ test("用户卡视图模型", () => {
   const card = buildUserCard(userInfoPayload, userPagePayload);
   assert.equal(card.uid, 697932);
   assert.equal(card.passedCount, 612);
-  assert.equal(card.ranking, 560);
   assert.equal(card.guRating, 307);
   assert.equal(card.prizes.length, 1);
   assert.equal(card.relation, "unrelated");
   assert.equal(card.reverseRelation, "following", "reverse=1 就是「他关注了我」");
   assert.equal(card.background, "https://cdn.luogu.com.cn/upload/image_hosting/x.png");
-  assert.equal(card.blogAddress, "https://www.luogu.com.cn/blog/yangyafan/");
   assert.equal(buildUserCard(null, { data: { user: {} } }), null);
   assert.equal(buildUserCard(null, null), null);
 });
@@ -393,7 +391,6 @@ test("Elo：主接口读 user.elo，个人页载荷读顶层 data.elo", () => {
   assert.equal(buildUserCard(userInfoPayload, null).eloRating, 1478);
   const pageOnly = buildUserCard(null, userPagePayload);
   assert.equal(pageOnly.eloRating, 1478, "只有个人页载荷时从顶层 data.elo 取");
-  assert.equal(pageOnly.eloTime, 1770888600);
   const none = buildUserCard({ user: { uid: 1 } }, null);
   assert.equal(none.eloRating, null);
 });
@@ -672,6 +669,99 @@ test("缓存过期后重新取", async () => {
   clock.advance(5 * 60 * 1000 + 1);
   await sources.user(1);
   assert.equal(calls.length, before + 2);
+});
+
+const nextTurn = () => new Promise(resolve => setImmediate(resolve));
+const profileResponse = payload => ({ ok: true, json: async () => payload });
+
+test("user preview retries a failed branch on reopen, retains partial fields, and backs off on repeated failures", async () => {
+  const clock = manualClock();
+  const requests = [];
+  let available = false;
+  const sources = createHoverCardSources({ clock, fetchPage: async (path) => {
+    requests.push(path);
+    if (path === "/api/user/info/123") return profileResponse({ user: { uid: 123, name: "Target" } });
+    if (!available) return { ok: false, status: 503 };
+    return profileResponse({ data: { user: { uid: 123 }, gu: { rating: 980 } } });
+  } });
+  const basic = await sources.user(123);
+  assert.equal(basic.name, "Target");
+  assert.equal(basic.guRating, null);
+  assert.equal(await sources.user(123), basic);
+  available = true;
+  assert.equal(await sources.user(123), basic);
+  assert.equal(requests.length, 3);
+  clock.advance(2000);
+  const updates = [];
+  const full = await sources.user(123, undefined, model => updates.push(model));
+  assert.equal(full.name, "Target");
+  assert.equal(full.guRating, 980);
+  assert.deepEqual(updates, [basic, full]);
+  assert.deepEqual(requests.filter(path => path.includes("/api/")), ["/api/user/info/123"]);
+  assert.equal(await sources.user(123), full);
+  assert.equal(requests.length, 4);
+  assert.equal(clock.pending(), 0);
+});
+
+test("user preview shares in-flight reads, detaches a closed consumer, and settles staged data at its deadline", async () => {
+  const clock = manualClock();
+  const requests = [];
+  const lateProfile = Promise.withResolvers();
+  const sources = createHoverCardSources({ clock, fetchPage: (path, signal) => {
+    requests.push({ path, signal });
+    return path === "/user/123"
+      ? lateProfile.promise : profileResponse({ user: { uid: 123, name: "Target" } });
+  } });
+  const first = new AbortController();
+  const firstUpdates = [];
+  const secondUpdates = [];
+  const closed = sources.user(123, first.signal, value => firstUpdates.push(value));
+  const retained = sources.user(123, undefined, value => secondUpdates.push(value));
+  first.abort();
+  assert.equal(await closed, null);
+  await nextTurn();
+  assert.equal(requests.length, 2);
+  assert.equal(firstUpdates.length, 0);
+  assert.equal(secondUpdates.length, 1);
+  assert.equal(requests[0].signal.aborted, false);
+  clock.advance(3500);
+  assert.equal((await retained).name, "Target");
+  assert.equal(requests.every(({ signal }) => signal.aborted), true);
+  lateProfile.resolve(profileResponse({ data: { user: { uid: 123 }, gu: { rating: 980 } } }));
+  await nextTurn();
+  assert.equal(secondUpdates.length, 1);
+  assert.equal(clock.pending(), 0);
+  assert.equal((await sources.user(123)).guRating, 980);
+  assert.equal(requests.length, 3);
+});
+
+test("closing the last user preview aborts reads and an old viewer response cannot update a new viewer", async () => {
+  const clock = manualClock();
+  const reads = [];
+  let viewer = 42;
+  const sources = createHoverCardSources({ clock, viewer: () => viewer, fetchPage: (path, signal) => {
+    const request = Promise.withResolvers();
+    reads.push({ account: viewer, path, signal, ...request });
+    return request.promise;
+  } });
+  const controller = new AbortController();
+  const dismissed = sources.user(123, controller.signal, () => assert.fail("closed consumer updated"));
+  await nextTurn();
+  controller.abort();
+  assert.equal(await dismissed, null);
+  assert.ok(reads.every(({ signal }) => signal.aborted));
+  assert.equal(clock.pending(), 0);
+  const old = sources.user(123, undefined, () => assert.fail("old viewer updated"));
+  await nextTurn();
+  viewer = 43;
+  const current = sources.user(123);
+  await nextTurn();
+  assert.equal(reads.length, 6);
+  for (const read of reads) read.resolve(profileResponse(read.path.includes("/api/") ?
+    { user: { uid: 123, followerCount: read.account } } : { data: { user: { uid: 123 } } }));
+  assert.equal(await old, null);
+  assert.equal((await current).followerCount, 43);
+  assert.equal((await sources.user(123)).followerCount, 43);
 });
 
 // ---- 洛谷原生表現（全部實測取值）----
