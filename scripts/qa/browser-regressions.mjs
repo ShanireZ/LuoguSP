@@ -1285,7 +1285,10 @@ async function ideFixture(t, submitReply = (route, index) =>
   const { page, requests } = await fixture(t, {
     path: "/problem/P1000#ide",
     html: fixtureHtml(`
-      ${toolbar("代码", "<button>自测</button>")}<div contenteditable="true" class="cm-content">code</div>
+      ${toolbar("代码", `
+        <div class="lang-select combo-wrapper"><div class="text">C++</div></div>
+        <input id="ide-o2" type="checkbox"><label for="ide-o2">O2</label>
+        <button>自测</button>`)}<div contenteditable="true" class="cm-content">code</div>
       <div class="io-sample-block">输入 #1 <button>运行</button></div>
       <div class="io-sample-block">输入 #2 <button>运行</button></div>
       <div><div id="native-io" class="panel-layout" role="group" tabindex="-1" style="display:flex">
@@ -1294,15 +1297,25 @@ async function ideFixture(t, submitReply = (route, index) =>
       </div></div>
       <script>
         window.ideAcknowledged = 0;
-        document.querySelectorAll('.io-sample-block button').forEach(button => button.onclick = () => {
+        document.querySelectorAll('.io-sample-block button').forEach((button, index) => button.onclick = () => {
           document.querySelector('#output .actions span:not(.run-result)')?.remove();
           window.beforeSampleSubmit?.();
           const xhr = new XMLHttpRequest();
           xhr.open('POST', '/api/ide_submit');
           xhr.addEventListener('loadend', () => {
-            if (xhr.status === 200) window.ideAcknowledged++;
+            if (xhr.status === 200) {
+              window.ideAcknowledged++;
+              if (window.autoFinishSamples) setTimeout(() => window.finishSample('AC'), 0);
+            }
           }, { once: true });
-          xhr.send(document.querySelector('.cm-content').textContent);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          const body = {
+            lang: document.querySelector('.lang-select > .text').textContent === 'C++' ? 1 : 2,
+            code: document.querySelector('.cm-content').textContent,
+            input: ['first', 'second'][index],
+            o2: document.querySelector('#ide-o2')?.checked ? 'true' : '',
+          };
+          xhr.send(JSON.stringify(window.transformIdeSubmit?.(body, index) ?? body));
         });
         window.finishSample = (verdict = 'WA') => {
           document.querySelector('#output textarea').value = 'a\\nextra\\nb\\nc\\nd';
@@ -1313,7 +1326,7 @@ async function ideFixture(t, submitReply = (route, index) =>
     reply(route, url) {
       if (url.origin === origin && url.pathname === "/api/ide_submit" &&
           route.request().method() === "POST") {
-        submitted.push(route.request().postData());
+        submitted.push(route.request().postDataJSON());
         submit.resolve();
         return submitReply(route, submitted.length);
       }
@@ -1519,7 +1532,7 @@ test("IDE refuses to attribute abandoned AC, WA or CE results to a new batch", a
     for (const verdict of ["AC", "WA", "CE"]) window.finishSample(verdict);
   });
   await page.getByRole("button", { name: "上次运行结果未确认，请刷新页面后重试", exact: true }).waitFor();
-  assert.deepEqual(submitted, ["code"]);
+  assert.deepEqual(submitted, [{ lang: 1, code: "code", input: "first", o2: "" }]);
   assert.equal(await page.locator(".luogusp-ide-row").count(), 0);
   await page.reload();
   const newSubmit = page.waitForResponse((response) =>
@@ -1534,7 +1547,9 @@ test("IDE refuses to attribute abandoned AC, WA or CE results to a new batch", a
 
 test("IDE claims the native submission and ignores lookalike requests", async (t) => {
   const submission = responseGate(t);
-  const { page, firstSubmit } = await ideFixture(t, async (route) => {
+  const { page } = await ideFixture(t, async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.code !== "code" || body.input !== "first") return route.fulfill({ status: 429, json: {} });
     await submission.promise;
     return route.fulfill({ json: { status: 200, data: { rid: 42 } } });
   });
@@ -1549,12 +1564,24 @@ test("IDE claims the native submission and ignores lookalike requests", async (t
         xhr.open(method, url);
         xhr.send();
       }
+      for (const body of [
+        { code: "code", lang: 1, o2: "" },
+        { code: "other code", input: "first", lang: 1, o2: "" },
+      ]) {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/ide_submit");
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify(body));
+      }
     };
   });
   const lookalikes = page.waitForResponse((response) =>
     response.url().endsWith("/api/ide_submit-other") && response.status() === 418);
+  const nativeSubmit = page.waitForRequest((request) =>
+    request.url().endsWith("/api/ide_submit") && request.method() === "POST" &&
+    request.postDataJSON()?.input === "first" && request.postDataJSON().code === "code");
   await page.locator(".luogusp-ide-batch-btn").click();
-  await firstSubmit;
+  await nativeSubmit;
   await page.locator(".luogusp-ide-stop").click();
   await (await lookalikes).finished();
   submission.release();
@@ -1612,9 +1639,98 @@ for (const inputEvent of [true, false]) {
     const summary = await page.locator(".luogusp-ide-summary").textContent();
     assert.match(summary, /结果已过期/);
     assert.doesNotMatch(summary, /通过/);
-    assert.deepEqual(submitted, ["code"]);
+    assert.deepEqual(submitted, [{ lang: 1, code: "code", input: "first", o2: "" }]);
   });
 }
+
+for (const setting of ["compiler", "O2", "O2 without an event"]) {
+  test(`IDE batch stops when ${setting} changes during a pending sample`, async (t) => {
+    const firstResponse = responseGate(t);
+    const { page, submitted, firstSubmit } = await ideFixture(t, async (route, index) => {
+      if (index === 1) await firstResponse.promise;
+      return route.fulfill({ json: { status: 200, data: { rid: index } } });
+    });
+    const batch = page.locator(".luogusp-ide-batch-btn");
+    await batch.click();
+    await firstSubmit;
+    if (setting === "compiler")
+      await page.locator(".lang-select > .text").evaluate((element) => { element.textContent = "C++17"; });
+    else if (setting === "O2")
+      await page.locator("label[for=ide-o2]").click();
+    else
+      await page.locator("#ide-o2").evaluate((element) => { element.checked = true; });
+    await page.evaluate(() => { window.autoFinishSamples = true; });
+    firstResponse.release();
+    await page.waitForFunction(() => !document.querySelector(".luogusp-ide-batch-btn").disabled);
+    assert.deepEqual(submitted, [{ lang: 1, code: "code", input: "first", o2: "" }]);
+    assert.deepEqual(await page.locator(".luogusp-ide-pill").allTextContents(), ["AC", "未测"]);
+    const summary = page.locator(".luogusp-ide-summary");
+    assert.match(await summary.textContent(), /结果已过期/);
+    assert.doesNotMatch(await summary.textContent(), /通过/);
+
+    await batch.click();
+    await page.getByText("2/2 通过", { exact: true }).waitFor();
+    const newConfig = { lang: setting === "compiler" ? 2 : 1, code: "code", o2: setting === "compiler" ? "" : "true" };
+    assert.deepEqual(submitted.slice(1), [
+      { ...newConfig, input: "first" }, { ...newConfig, input: "second" },
+    ]);
+  });
+}
+
+test("IDE batch allows compilers without an O2 control", async (t) => {
+  const { page, submitted } = await ideFixture(t);
+  await page.evaluate(() => {
+    document.querySelector(".lang-select > .text").textContent = "Python";
+    document.querySelector("#ide-o2").remove();
+    document.querySelector("label[for=ide-o2]").remove();
+    window.autoFinishSamples = true;
+  });
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.getByText("2/2 通过", { exact: true }).waitFor();
+  assert.deepEqual(submitted, [
+    { lang: 2, code: "code", input: "first", o2: "" },
+    { lang: 2, code: "code", input: "second", o2: "" },
+  ]);
+});
+
+test("IDE batch accepts saved CRLF source when CodeMirror has normalized its line endings", async (t) => {
+  const { page, submitted } = await ideFixture(t);
+  const code = "first line\r\nsecond line\r\n";
+  await page.evaluate((savedCode) => {
+    const editor = document.querySelector(".cm-content");
+    editor.cmTile = { view: { state: { doc: savedCode.replaceAll("\r\n", "\n") } } };
+    window.transformIdeSubmit = (body) => ({ ...body, code: savedCode });
+    window.autoFinishSamples = true;
+  }, code);
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.getByText("2/2 通过", { exact: true }).waitFor();
+  assert.deepEqual(submitted, [
+    { lang: 1, code, input: "first", o2: "" },
+    { lang: 1, code, input: "second", o2: "" },
+  ]);
+});
+
+test("IDE batch rejects a compiler ID drift in the POST when the control remains unchanged", async (t) => {
+  const { page, submitted } = await ideFixture(t);
+  await page.clock.install();
+  await page.evaluate(() => {
+    window.autoFinishSamples = true;
+    window.transformIdeSubmit = (body, index) => index === 1 ? { ...body, lang: 2 } : body;
+  });
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.waitForFunction(() => window.ideAcknowledged === 2);
+  await page.clock.fastForward(10_001);
+  assert.deepEqual(submitted, [
+    { lang: 1, code: "code", input: "first", o2: "" },
+    { lang: 2, code: "code", input: "second", o2: "" },
+  ]);
+  await page.getByText("代码或编译设置已更改 · 结果已过期 · 1 UKE", { exact: true }).waitFor();
+  assert.deepEqual(await page.locator(".luogusp-ide-pill").allTextContents(), ["AC", "UKE"]);
+  assert.equal(await page.locator(".lang-select > .text").textContent(), "C++");
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.getByRole("button", { name: "上次运行结果未确认，请刷新页面后重试", exact: true }).waitFor();
+  assert.equal(submitted.length, 2);
+});
 
 test("bundled app still colors academic records and drops queued requests on navigation", async (t) => {
   const record = { id: 77, problem: { pid: "P1000", difficulty: 5 } };

@@ -62,9 +62,13 @@ as the baseline. Luogu's panel does not expose its native run ID.
 If a submit may still produce a result after cancellation or timeout,
 LuoguSP requires a page reload before starting another batch in that document.
 An explicit server rejection releases that restriction.
-Each batch captures the source at start. Edits stop later submissions and mark
-results from that batch stale. Leaving the IDE removes its batch controls and
-restores the native input layout.
+Each batch captures the source, compiler selection and O2 setting at start.
+Changes to any of them stop later submissions and mark the batch results stale.
+The submit observer matches the native POST body to the captured source, sample
+input and O2 setting. The submitted source and language ID stay the same across
+all samples, including when CodeMirror displays saved source with normalized line
+endings. Leaving the IDE removes its batch controls and restores the native input
+layout.
 The IDE test tabs switch with Left and Right Arrow, Home, and End. Sample
 buttons report their expanded state and toggle details with Enter or Space.
 The batch summary announces updates, and copy controls appear on keyboard focus.
@@ -93,6 +97,9 @@ version badges, manifest and generated reports. Its preflight rejects missing or
 stale README editions; rollback restores all four. Preserve match/grant/run-at metadata,
 update endpoints and pinned @require integrity. Source pushes are separate from
 CDN deployment and released-byte browser QA.
+Before replacing a staging directory, the CDN preparer resolves its existing
+parent and destination, including Windows junctions. It rejects paths that
+overlap the release source tree.
 
 Generated publishing, origin and deployment receipts remain local and ignored.
 Only the de-identified browser-QA and quality summaries required by the current

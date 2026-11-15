@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, resolve, sep } from "node:path";
+import {
+  cp, lstat, mkdir, readdir, readFile, realpath, rm, writeFile,
+} from "node:fs/promises";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   collectReleaseIntegrityProblems,
@@ -12,25 +14,36 @@ const argument = (name) => {
   const index = process.argv.indexOf(name);
   return index === -1 ? null : process.argv[index + 1];
 };
-const output = resolve(root, argument("--output") || "dist/cdn");
-const distRoot = resolve(root, "dist");
+const explicitOutput = argument("--output");
+const requestedOutput = resolve(root, explicitOutput || "dist/cdn");
 const sourceCdnRoot = resolve(root, "cdn");
-const explicitOutput = argument("--output") !== null;
-// ★★ 下面這一行緊接著就是 `rm(output, { recursive: true, force: true })`，
-//    而**源目錄也叫 `cdn`** —— 顯式 `--output` 此前唯一的判據是 `basename === "cdn"`，
-//    於是 `--output cdn` 會靜靜地把 `cdn/releases` 整個刪掉，也就是這個指令碼
-//    存在的全部理由（那批位元組被使用者已安裝指令碼的 `@require #sha256=` 釘死，
-//    刪了就再也拼不回來，git 之外沒有第二份）。測試用的是 tmpdir 下的 `cdn`，
-//    所以這裡擋住的只有「打到儲存庫源目錄上」這一類，不影響它。
-if (
-  output === root ||
-  output === distRoot ||
-  basename(output) !== "cdn" ||
-  output === sourceCdnRoot ||
-  output.startsWith(`${sourceCdnRoot}${sep}`) ||
-  (!explicitOutput && !output.startsWith(`${distRoot}${sep}`))
-)
+const refuseOutput = () => {
   throw new Error("Refusing to replace an unexpected deployment directory");
+};
+
+function contains(directory, candidate) {
+  // path.relative compares case-insensitively on Windows.
+  const suffix = relative(directory, candidate);
+  return !isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`);
+}
+
+const overlaps = (a, b) => contains(a, b) || contains(b, a);
+
+async function resolveWithMissingTail(path) {
+  try {
+    await lstat(path);
+  } catch (error) {
+    const parent = dirname(path);
+    if (error.code !== "ENOENT" || parent === path) throw error;
+    return resolve(await resolveWithMissingTail(parent), basename(path));
+  }
+  // An existing junction or symlink with an unresolved target is an error,
+  // not a missing path segment that can safely be appended.
+  return realpath(path);
+}
+
+if (basename(requestedOutput) !== "cdn" || overlaps(requestedOutput, sourceCdnRoot))
+  refuseOutput();
 
 // This directory is copied verbatim to the CDN, so the last chance to notice a
 // working tree that no longer matches the committed bytes is here — before the
@@ -50,6 +63,22 @@ console.log(
 const channel = JSON.parse(
   await readFile(resolve(root, "cdn/channels/canary.json"), "utf8"),
 );
+const [actualRoot, actualSource, actualParent] = await Promise.all([
+  realpath(root),
+  realpath(sourceCdnRoot),
+  resolveWithMissingTail(dirname(requestedOutput)),
+]);
+// Check both the directory entry to be removed and its destination if linked.
+// Use the resolved parent for the mutation so intermediate aliases are gone.
+const output = resolve(actualParent, basename(requestedOutput));
+const actualOutput = await resolveWithMissingTail(output);
+if ([output, actualOutput].some((candidate) =>
+  overlaps(candidate, resolve(actualRoot, "cdn")) ||
+  overlaps(candidate, actualSource) ||
+  (!explicitOutput && relative(resolve(actualRoot, "dist/cdn"), candidate) !== ""),
+))
+  refuseOutput();
+
 await rm(output, { recursive: true, force: true });
 await mkdir(resolve(output, "releases"), { recursive: true });
 const releases = await readdir(resolve(root, "cdn/releases"));

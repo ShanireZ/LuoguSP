@@ -29,6 +29,7 @@ previews or restricted-content features fail.
 | pnpm check | Worktree Baseline, reproducible output, quality and Node tests. |
 | pnpm qa:browser | Promoted release dependencies and browser fixture behavior. |
 | pnpm qa:browser:local | Offline Chrome/Edge/Chromium fixtures for worktree settings, hover cards, IDE samples, record modes and route cancellation. Set `LUOGUSP_QA_USERSCRIPT` to exercise a local candidate. |
+| [Staged stable release](#staged-stable-release) | Offline Chrome/Edge/Chromium fixture for the staged installer, both pinned startup scripts, the pinned profile renderer and its fallback behavior. |
 | Manual Luogu checks | Behavior under the observed browser, account and network. |
 | Custom-origin checks | Integrity and connectivity of the selected origin only. |
 
@@ -36,3 +37,21 @@ Workspace copy-consistency inputs are optional local tooling, separate from this
 public project contract. Report each evidence class, skips and unavailable
 observations separately. A local check does not prove real-user traffic,
 authenticated behavior or all-browser support.
+
+## Staged stable release
+
+Set `LUOGUSP_STAGED_INSTALLER` to the absolute path of the staged `.user.js`,
+`LUOGUSP_STAGED_CDN_ROOT` to the absolute path of the staged CDN deployment
+directory containing `releases/`, and `LUOGUSP_EXPECTED_VERSION` to the stable
+version being verified. Run the fixture from the repository root.
+
+```sh
+node --test scripts/qa/staged-release-regressions.mjs
+```
+
+The fixture runs the two `@require` files and the loader at document start in
+metadata order. It intercepts the runtime's renderer GET and exercises both the
+exact staged response and a response with a mismatched digest. The synthetic
+profile tests native click handling, author CSS, automatic image requests, math,
+and link behavior. Tampermonkey execution and CDN publication require separate
+verification.

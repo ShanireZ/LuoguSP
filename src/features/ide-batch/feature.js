@@ -6,6 +6,12 @@ import {
   normalizeIdeOut,
 } from "./result-view.js";
 import { createIdeBatchRunner } from "./runner.js";
+import {
+  createIdeSubmissionMatcher,
+  readIdeCompilerSettings,
+  sameIdeCompilerSettings,
+  watchIdeCompilerSettings,
+} from "./run-configuration.js";
 import { IDE_BATCH_STYLE } from "./style.js";
 import { observeIdeOutput } from "./output-observer.js";
 import { createIdeTabControls } from "./tab-controls.js";
@@ -102,9 +108,11 @@ export function createIdeBatchFeature({ storage, problemData }) {
     if (view && view.state && view.state.doc) return view.state.doc.toString();
     return content.textContent || "";
   }
+  const codeActions = () => ideToolbarByTitle("代码")?.querySelector(SELECTORS.ideToolbarActions);
 
   const IDE_SUBMIT_PATH = "/api/ide_submit";
   const IDE_RESULT_UNCONFIRMED = "上次运行结果未确认，请刷新页面后重试";
+  const IDE_CONFIGURATION_STALE = "代码或编译设置已更改 · 结果已过期";
   // The native run can outlive the userscript's route and its HTTP waiter.
   let pendingNativeAttempt = null;
   let ideSubmitWaiter = null;
@@ -160,10 +168,15 @@ export function createIdeBatchFeature({ storage, problemData }) {
         submitRequests.set(this, pendingNativeAttempt);
       return rawOpen.apply(this, arguments);
     };
-    const send = function () {
+    const send = function (body) {
       const attempt = active && submitRequests.get(this);
       const waiter = ideSubmitWaiter;
       if (attempt && waiter?.attempt === attempt && !attempt.claimed) {
+        const match = attempt.match(body);
+        if (match !== "matched") {
+          attempt.configurationMismatch ||= match === "configuration-mismatch";
+          return rawSend.apply(this, arguments);
+        }
         attempt.claimed = true;
         this.addEventListener(
           "loadend",
@@ -221,12 +234,12 @@ export function createIdeBatchFeature({ storage, problemData }) {
         : null,
     };
   }
-  async function runOneSample(runBtn, { runId, drive, isCurrent, wait, signal }) {
+  async function runOneSample(runBtn, match, { runId, drive, isCurrent, wait, signal }) {
     let output;
     let attempt;
     const uncertain = (note) => ({ verdict: "UKE", note, uncertain: true });
     const submit = (parts) => {
-      attempt = { claimed: false };
+      attempt = { match, claimed: false, configurationMismatch: false };
       const root = parts.panel.parentElement || parts.panel;
       output = observeIdeOutput({
         root, readParts: () => outputParts(root), signal, isCurrent,
@@ -259,8 +272,10 @@ export function createIdeBatchFeature({ storage, problemData }) {
       }
       if (submission?.rejected)
         return { verdict: "UKE", note: `提交失败 HTTP ${submission.status}` };
-      if (!submission?.accepted)
-        return uncertain("未能确认提交结果，请刷新页面后重试");
+      if (!submission?.accepted) return {
+        ...uncertain("未能确认提交结果，请刷新页面后重试"),
+        stale: !attempt.claimed && attempt.configurationMismatch,
+      };
       const { kind, ...result } = await output.wait();
       if (kind === "result" && isCurrent() && pendingNativeAttempt === attempt) {
         pendingNativeAttempt = null;
@@ -364,7 +379,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
       if (r.verdict === "AC") ac++;
       else counts[r.verdict] = (counts[r.verdict] || 0) + 1;
     });
-    let text = stale ? "代码已更改 · 结果已过期" : `${ac}/${rs.length} 通过`;
+    let text = stale ? IDE_CONFIGURATION_STALE : `${ac}/${rs.length} 通过`;
     for (const k in counts) text += ` · ${counts[k]} ${k}`;
     if (tested < rs.length) {
       text += " · 已停止";
@@ -382,8 +397,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
     if (!IDE_VIEW.summaryEl || !document.contains(IDE_VIEW.summaryEl)) return;
     if (active) {
       if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.disabled = true;
-      IDE_VIEW.summaryEl.textContent = "代码已更改 · 结果已过期，正在停止…";
-    } else IDE_VIEW.summaryEl.textContent += " · 代码已更改，结果已过期";
+      IDE_VIEW.summaryEl.textContent = `${IDE_CONFIGURATION_STALE}，正在停止…`;
+    } else IDE_VIEW.summaryEl.textContent += ` · ${IDE_CONFIGURATION_STALE}`;
   }
   function hookIdeStaleAndGuard(controls) {
     // CodeMirror emits input when the user edits its contenteditable.
@@ -614,6 +629,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
   }
 
   function unmountIdeTabs() {
+    stopWatchingCompiler?.();
+    stopWatchingCompiler = null;
     restoreIdeInput();
     IDE_VIEW.restoreInputAttributes?.();
     IDE_VIEW.restoreInputAttributes = null;
@@ -633,6 +650,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
   }
 
   let disabledSelfTest = null;
+  let stopWatchingCompiler = null;
   function restoreIdeRunControls() {
     if (IDE_VIEW.button) IDE_VIEW.button.disabled = false;
     if (disabledSelfTest) disabledSelfTest.disabled = false;
@@ -648,6 +666,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
       const pid = currentPid();
       const routeToken = `${location.pathname}${location.search}${location.hash}`;
       const source = readIdeCode();
+      const compilerSettings = readIdeCompilerSettings(codeActions());
       const samples = await getIdeSamples(signal);
       if (
         !pid ||
@@ -661,6 +680,9 @@ export function createIdeBatchFeature({ storage, problemData }) {
         return { kind: "hint", message: "本题无样例" };
       if (!source.trim())
         return { kind: "hint", message: "代码为空" };
+      if (!compilerSettings)
+        return { kind: "hint", message: "无法确认 IDE 编译设置" };
+      const configuration = Object.freeze({ source, ...compilerSettings });
       const runButtons = sampleRunButtons();
       if (!runButtons.length)
         return { kind: "hint", message: "找不到样例运行按钮" };
@@ -676,9 +698,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
         inputToolbar && inputToolbar.parentElement
           ? inputToolbar.parentElement.querySelector(SELECTORS.ideTextarea)
           : null;
-      const codeToolbar = ideToolbarByTitle("代码");
-      const actions =
-        codeToolbar && codeToolbar.querySelector(SELECTORS.ideToolbarActions);
+      const actions = codeActions();
       const selfTest = actions
         ? [...actions.querySelectorAll("button")].find(
             (button) => (button.textContent || "").trim() === "自测",
@@ -692,7 +712,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
         runId,
         pid,
         routeToken,
-        source,
+        configuration,
+        matchSubmission: createIdeSubmissionMatcher(configuration),
         samples,
         runButtons,
         count,
@@ -706,9 +727,15 @@ export function createIdeBatchFeature({ storage, problemData }) {
       currentPid() === context.pid &&
       `${location.pathname}${location.search}${location.hash}` ===
         context.routeToken,
-    sourceMatches: (context) => readIdeCode() === context.source,
+    configurationMatches: ({ configuration }) =>
+      readIdeCode() === configuration.source &&
+      sameIdeCompilerSettings(configuration, readIdeCompilerSettings(codeActions())),
     hint: (message) => ideHint.show(message),
     begin: (context) => {
+      stopWatchingCompiler?.();
+      stopWatchingCompiler = watchIdeCompilerSettings(
+        codeActions, context.configuration, ideBrowserDriver.controls.markStale,
+      );
       if (IDE_VIEW.button) IDE_VIEW.button.disabled = true;
       if (context.selfTest && !context.selfTest.disabled) {
         context.selfTest.disabled = true;
@@ -737,7 +764,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
     },
     runSample: async (context, index, task) => {
       try {
-        return await runOneSample(context.runButtons[index], task);
+        const match = (body) => context.matchSubmission(body, context.samples[index][0]);
+        return await runOneSample(context.runButtons[index], match, task);
       } catch (error) {
         cancelIdeSubmitWaiter(task.runId);
         if (pendingNativeAttempt)

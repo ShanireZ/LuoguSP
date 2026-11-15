@@ -87,8 +87,8 @@ export function createIdeBatchRunner(config) {
     }
     ideDriver.markStale?.(active);
   };
-  const sourceIsCurrent = (context) => {
-    if (ideDriver.sourceMatches?.(context) === false) markStale();
+  const configurationIsCurrent = (context) => {
+    if (ideDriver.configurationMatches?.(context) === false) markStale();
     return !stale;
   };
   const start = async () => {
@@ -125,7 +125,7 @@ export function createIdeBatchRunner(config) {
         if (
           state === "stopping" ||
           !isCurrent(taskRunId, context, controller.signal) ||
-          !sourceIsCurrent(context)
+          !configurationIsCurrent(context)
         )
           break;
         if (typeof ideDriver.setRunning === "function")
@@ -137,7 +137,7 @@ export function createIdeBatchRunner(config) {
             runId: taskRunId,
             signal: controller.signal,
             drive: (action) => isCurrent(taskRunId, context, controller.signal) &&
-              sourceIsCurrent(context) && drive(taskRunId, action),
+              configurationIsCurrent(context) && drive(taskRunId, action),
             isCurrent: () =>
               isCurrent(taskRunId, context, controller.signal),
             wait: (ms) => pause(ms, taskRunId),
@@ -150,8 +150,9 @@ export function createIdeBatchRunner(config) {
           if (sampleRunId === taskRunId) sampleRunId = null;
         }
         if (!isCurrent(taskRunId, context, controller.signal)) break;
-        sourceIsCurrent(context);
+        configurationIsCurrent(context);
         if (!result) break;
+        if (result.stale) markStale();
         results[index] = result;
         if (typeof ideDriver.applyResult === "function")
           ideDriver.applyResult(context, index, result);
