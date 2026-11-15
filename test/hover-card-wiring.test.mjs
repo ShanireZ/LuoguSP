@@ -39,7 +39,7 @@ test("站内题库导航、路由后缀及查询片段不得被当成题号", ()
   const invalidLinks = [
     "/problem/list", "/problem/list?tag=42", "/problem/new",
     "/problem/solution/P1000", "/problem/P1000/elsewhere", "/prefix/problem/P1000",
-    "/discuss?forum=P1000", "/search?q=/problem/P1000", "#/problem/P1000",
+    "/discuss/123?forum=P1000", "/search?q=/problem/P1000", "#/problem/P1000",
     "/user/123fake", "/user/123/elsewhere", "/prefix/user/123",
     "/search?q=/user/123", "#/user/123",
   ];

@@ -1031,6 +1031,83 @@ test("moving to the same PID in a contest follows the new anchor and URL", async
   assert.ok(requests.some(r => r.path === "/problem/P1000" && r.query.includes("contestId=100&lang=en")));
 });
 
+test("recent discussion problem links open the corresponding problem preview", async (t) => {
+  const { page, requests } = await fixture(t, {
+    html: fixtureHtml(`<section><h2>最近讨论</h2>
+      <a id="forum" href="/discuss?forum=P1000">P1000 题名…</a>
+      <a href="/discuss?forum=academics">学术版</a>
+      <a href="/discuss?forum=P1000">P2000 其他题目</a>
+      <a href="/discuss?sort=latest&amp;forum=P1000&amp;forum=P2000">P1000 重复参数</a>
+      <a href="/search?q=problem&amp;forum=P1000">P1000 其他页面</a>
+      <a href="https://example.invalid/discuss?forum=P1000" data-luogusp-pid="P1000">P1000 站外讨论</a>
+    </section>`, { recommendations: [{ ...problem, tags: [] }] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return route.fulfill({ json: { data: { problem: { ...problem, tags: [] } } } });
+      if (url.pathname === "/record/list") return route.fulfill({ json: { template: "record.list", user: viewer, data: { records: { result: [] } } } });
+    },
+  });
+  const forum = page.locator("#forum");
+  const preview = card(page);
+  const title = preview.getByText("P1000 Native preview", { exact: true });
+  await forum.hover();
+  await title.waitFor();
+  assert.equal(await preview.getByRole("link", { name: "跳转题目" }).getAttribute("href"), `${origin}/problem/P1000`);
+  assert.equal(await forum.getAttribute("href"), "/discuss?forum=P1000");
+  await page.keyboard.press("Escape");
+  await preview.waitFor({ state: "hidden" });
+  await forum.press("Alt+ArrowDown");
+  await title.waitFor();
+  await page.keyboard.press("Escape");
+  for (const link of await page.locator("main section a:not(#forum)").all()) {
+    await link.press("Alt+ArrowDown");
+    assert.equal(await preview.isVisible(), false, await link.getAttribute("href"));
+  }
+  assert.equal(requests.filter(r => r.path === "/discuss" || r.path === "/problem/P2000").length, 0);
+});
+
+const previewProblem = { ...problem, tags: [] };
+const previewRecord = { id: 77, problem: previewProblem };
+const previewRecordList = { records: { result: [previewRecord] } };
+const recordPreviewRow = '<div><a class="status" href="/record/77">Accepted</a></div>' +
+  '<div class="problem"><a id="preview-link" href="/problem/P1000"><strong>P1000</strong> 题名</a></div>';
+const previewLink = '<a id="preview-link" href="/problem/P1000">题名</a>';
+const problemPreviewPages = [
+  ["task plan", "/", "excited", {}, '<a id="preview-link" href="/problem/P1000">P1000 题名</a>'],
+  ["problem list", "/problem/list", "problem.list", { problems: { result: [previewProblem] } },
+    `<div class="pid" title="P1000">P1000</div>${previewLink}`],
+  ["recommendations", "/problem/P1001", "problem.show", { recommendations: [previewProblem] }, previewLink],
+  ["native void link", "/problem/P1001#ide", "problem.show", { recommendations: [previewProblem] },
+    '<a id="preview-link" data-v-bade3303 data-v-4842157a href="javascript:void 0">P1000 题名</a>'],
+  ["record list by user", "/record/list?user=42", "record.list", previewRecordList, recordPreviewRow],
+  ["record list by problem", "/record/list?pid=P1000", "record.list", previewRecordList, recordPreviewRow],
+  ["record detail", "/record/77", "record.show", { record: previewRecord },
+    '<div class="problem-row"><a id="preview-link" href="/problem/P1000"><strong>P1000</strong> 题名</a></div>'],
+  ["contest", "/contest/123", "contest.show", {},
+    '<a id="preview-link" href="/problem/P1000?contestId=123&amp;lang=en">题名</a>', "?contestId=123&lang=en"],
+  ["training", "/training/100", "training.show", { training: { problems: [previewProblem] } }, previewLink],
+  ["user practice", "/user/42/practice", "user.show", { submitted: [previewProblem] }, previewLink],
+];
+
+for (const learnMode of [false, true]) {
+  for (const [name, path, template, data, html, query = ""] of problemPreviewPages) {
+    test(`${name} problem link previews in ${learnMode ? "academic" : "normal"} mode`, async (t) => {
+      const { page } = await fixture(t, {
+        path, html: fixtureHtml(html, data, { template, user: { ...viewer, learnMode } }),
+        reply(route, url) {
+          if (url.pathname === "/problem/P1000") return route.fulfill({ json: { data: { problem: previewProblem } } });
+          if (url.pathname === "/record/list") return route.fulfill({ json: { template: "record.list", user: viewer, data: { records: { result: [] } } } });
+        },
+      });
+      const link = page.locator("#preview-link");
+      const child = link.locator("strong");
+      await (await child.count() ? child : link).hover();
+      const preview = card(page);
+      await preview.getByText("P1000 Native preview", { exact: true }).waitFor();
+      assert.equal(await preview.getByRole("link", { name: "跳转题目" }).getAttribute("href"), `${origin}/problem/P1000${query}`);
+    });
+  }
+}
+
 for (const input of ["pointer", "keyboard"]) {
   test(`hover destination trust rejects lookalikes via ${input}`, async (t) => {
     const offsite = "https://example.invalid";
@@ -1302,6 +1379,12 @@ async function ideFixture(t, submitReply = (route, index) =>
           window.beforeSampleSubmit?.();
           const xhr = new XMLHttpRequest();
           xhr.open('POST', '/api/ide_submit');
+          xhr.addEventListener('load', () => {
+            if (xhr.status !== 200) return;
+            const { status, data } = JSON.parse(xhr.responseText);
+            if (status !== 200 && data?.type === 'compile' && data.success === false)
+              Promise.resolve().then(() => window.finishSample('CE', data.desc));
+          }, { once: true });
           xhr.addEventListener('loadend', () => {
             if (xhr.status === 200) {
               window.ideAcknowledged++;
@@ -1317,8 +1400,8 @@ async function ideFixture(t, submitReply = (route, index) =>
           };
           xhr.send(JSON.stringify(window.transformIdeSubmit?.(body, index) ?? body));
         });
-        window.finishSample = (verdict = 'WA') => {
-          document.querySelector('#output textarea').value = 'a\\nextra\\nb\\nc\\nd';
+        window.finishSample = (verdict = 'WA', output = 'a\\nextra\\nb\\nc\\nd') => {
+          document.querySelector('#output textarea').value = output;
           document.querySelector('#output .actions span:not(.run-result)')?.remove();
           document.querySelector('#output .actions').insertAdjacentHTML('afterbegin', '<span>' + verdict + '</span>');
         };
@@ -1549,6 +1632,9 @@ test("IDE claims the native submission and ignores lookalike requests", async (t
   const submission = responseGate(t);
   const { page } = await ideFixture(t, async (route) => {
     const body = route.request().postDataJSON();
+    if (body.code === "other code") return route.fulfill({ json: {
+      status: 500, data: { type: "compile", success: false, desc: "Unrelated compiler failure" },
+    } });
     if (body.code !== "code" || body.input !== "first") return route.fulfill({ status: 429, json: {} });
     await submission.promise;
     return route.fulfill({ json: { status: 200, data: { rid: 42 } } });
@@ -1577,6 +1663,8 @@ test("IDE claims the native submission and ignores lookalike requests", async (t
   });
   const lookalikes = page.waitForResponse((response) =>
     response.url().endsWith("/api/ide_submit-other") && response.status() === 418);
+  const unrelatedCompile = page.waitForResponse((response) => response.url().endsWith("/api/ide_submit") &&
+    response.request().method() === "POST" && response.request().postDataJSON()?.code === "other code");
   const nativeSubmit = page.waitForRequest((request) =>
     request.url().endsWith("/api/ide_submit") && request.method() === "POST" &&
     request.postDataJSON()?.input === "first" && request.postDataJSON().code === "code");
@@ -1584,6 +1672,8 @@ test("IDE claims the native submission and ignores lookalike requests", async (t
   await nativeSubmit;
   await page.locator(".luogusp-ide-stop").click();
   await (await lookalikes).finished();
+  await (await unrelatedCompile).finished();
+  assert.equal(await page.getByText("运行中", { exact: true }).count(), 1);
   submission.release();
   await page.waitForFunction(() => window.ideAcknowledged === 1);
   await page.evaluate(() => window.finishSample("WA"));
@@ -1605,6 +1695,28 @@ test("IDE ignores an output mutation before the native submit acknowledgement", 
   assert.equal(await page.getByText("运行中", { exact: true }).count(), 1);
   await page.evaluate(() => window.finishSample("WA"));
   await page.getByText("0/2 通过 · 1 WA · 已停止", { exact: true }).waitFor();
+});
+
+test("IDE reports a fast inline compile failure and can test again", async (t) => {
+  const log = "main.cpp: error: expected ';' before '}'";
+  const { page, submitted } = await ideFixture(t, (route, index) => route.fulfill({ json:
+    index === 1 ? { status: 500, data: { type: "compile", success: false, desc: log } }
+      : { status: 200, data: { rid: index } },
+  }));
+  const batch = page.locator(".luogusp-ide-batch-btn");
+  await batch.click();
+  await page.locator("#output").getByText("CE", { exact: true }).waitFor({ state: "attached" });
+  await page.waitForFunction(() => !document.querySelector(".luogusp-ide-batch-btn").disabled,
+    null, { timeout: 7000 });
+  assert.equal(await page.locator(".luogusp-ide-summary").textContent(), "0/2 通过 · 2 CE");
+  const first = page.locator(".luogusp-ide-row").first();
+  assert.ok(await first.getByText(log, { exact: true }).isVisible());
+  assert.deepEqual(submitted.map(body => body.input), ["first"]);
+
+  await page.evaluate(() => { window.autoFinishSamples = true; });
+  await page.getByRole("button", { name: "重新测试", exact: true }).click();
+  await page.getByText("2/2 通过", { exact: true }).waitFor();
+  assert.deepEqual(submitted.map(body => body.input), ["first", "first", "second"]);
 });
 
 test("IDE identifies the inserted line, jumps to it and finishes only the current sample on stop", async (t) => {

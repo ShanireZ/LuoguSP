@@ -14,6 +14,7 @@ import {
 } from "./run-configuration.js";
 import { IDE_BATCH_STYLE } from "./style.js";
 import { observeIdeOutput } from "./output-observer.js";
+import { readIdeSubmitResponse } from "./submit-response.js";
 import { createIdeTabControls } from "./tab-controls.js";
 
 export function createIdeBatchFeature({ storage, problemData }) {
@@ -126,29 +127,6 @@ export function createIdeBatchFeature({ storage, problemData }) {
     }
   }
 
-  function readIdeSubmit(xhr) {
-    if (!isIdeSubmitUrl(xhr.responseURL)) return { status: 0 };
-    const { status } = xhr;
-    // These responses explicitly reject the submit. A timeout or server error
-    // can arrive after the server has already queued the run.
-    if ([400, 401, 403, 404, 405, 422, 429].includes(status))
-      return { status, rejected: true };
-    if (status < 200 || status >= 300) return { status };
-    try {
-      const payload = xhr.responseType === "json" ? xhr.response : JSON.parse(xhr.responseText);
-      const data = payload?.data;
-      const rid = data?.rid;
-      const queued = payload?.status === 200 &&
-        ((Number.isSafeInteger(rid) && rid > 0) || (typeof rid === "string" && /^[1-9]\d*$/.test(rid)));
-      const terminal = Number.isInteger(payload?.status) && payload.status !== 200 &&
-        ((data?.type === "compile" && data.success === false) ||
-          (data?.type === "execute" && typeof data.output === "string" && data.execute));
-      return { status, accepted: queued || Boolean(terminal) };
-    } catch {
-      return { status };
-    }
-  }
-
   function cancelIdeSubmitWaiter(runId) {
     if (!ideSubmitWaiter) return;
     if (runId != null && ideSubmitWaiter.runId !== runId) return;
@@ -181,12 +159,12 @@ export function createIdeBatchFeature({ storage, problemData }) {
         this.addEventListener(
           "loadend",
           () => {
-            const result = readIdeSubmit(this);
+            const result = isIdeSubmitUrl(this.responseURL) ? readIdeSubmitResponse(this) : { status: 0 };
             if (result.rejected && pendingNativeAttempt === attempt)
               pendingNativeAttempt = null;
             if (!active || ideSubmitWaiter !== waiter) return;
             ideSubmitWaiter = null;
-            if (result.accepted) waiter.confirmOutput();
+            if (result.accepted && !result.outputResult) waiter.confirmOutput();
             waiter.resolve(result);
           },
           { once: true },
@@ -276,7 +254,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
         ...uncertain("未能确认提交结果，请刷新页面后重试"),
         stale: !attempt.claimed && attempt.configurationMismatch,
       };
-      const { kind, ...result } = await output.wait();
+      const { kind, ...result } = submission.outputResult ?? await output.wait();
       if (kind === "result" && isCurrent() && pendingNativeAttempt === attempt) {
         pendingNativeAttempt = null;
         return result;
@@ -305,7 +283,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     p.detail.innerHTML = "";
     p.detail.classList.remove("luogusp-ide-log");
     if (r.verdict === "CE") {
-      // CE：不顯示三欄，直接展示從輸出框捕獲的編譯紀錄
+      // CE：不顯示三欄，直接展示原生編譯紀錄。
       p.meta.textContent = "";
       p.detail.classList.add("luogusp-ide-log");
       p.detail.appendChild(

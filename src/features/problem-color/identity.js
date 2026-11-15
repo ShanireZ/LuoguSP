@@ -16,6 +16,19 @@ export const PID_PATTERN = /^[A-Za-z0-9_]+$/;
 export const isScopedProblemUrl = (url) =>
   Boolean(url?.searchParams.get("contestId") || url?.searchParams.get("lang"));
 
+export function anchorShowsPid(anchor, pid) {
+  const first = anchor.firstElementChild;
+  if (
+    first &&
+    first.matches("span.pid") &&
+    (first.innerText || first.textContent || "").trim() === pid
+  )
+    return true;
+  const text = (anchor.innerText || anchor.textContent || "").trimStart();
+  if (!text.startsWith(pid)) return false;
+  return !/[A-Za-z0-9_]/.test(text.charAt(pid.length));
+}
+
 export function createProblemIdentityResolver(config) {
   const {
     getOrigin,
@@ -29,22 +42,6 @@ export function createProblemIdentityResolver(config) {
     if (typeof id !== "string" || !id || !PID_PATTERN.test(id)) return false;
     if (id.startsWith("AT_")) return true;
     return /[a-zA-Z]/.test(id) && /[0-9]/.test(id);
-  };
-  const anchorShowsPid = (anchor, pid) => {
-    const first = anchor.firstElementChild;
-    if (
-      first &&
-      first.matches("span.pid") &&
-      (first.innerText || first.textContent || "").trim() === pid
-    )
-      return true;
-    const text = (
-      anchor.innerText ||
-      anchor.textContent ||
-      ""
-    ).trimStart();
-    if (!text.startsWith(pid)) return false;
-    return !/[A-Za-z0-9_]/.test(text.charAt(pid.length));
   };
   const exactProblemUrl = (href, origin, pid) => {
     let url;

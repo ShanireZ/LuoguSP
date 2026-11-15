@@ -10,7 +10,7 @@
 //    卡片只剩一句「拿不到這條資料」—— 而介面本身是好的（實測 200、11541 B）。
 //    owner 2026-08-14 第五輪報的就是它。同一個判據不許有第二份。
 // ★ 定義在 `problem-color/identity.js`，這裡再匯出給卡片的資料層。
-import { createProblemIdentityResolver, PID_PATTERN } from "../problem-color/identity.js";
+import { anchorShowsPid, createProblemIdentityResolver, PID_PATTERN } from "../problem-color/identity.js";
 export { PID_PATTERN };
 
 const AVATAR_ORIGIN = "https://cdn.luogu.com.cn";
@@ -50,7 +50,7 @@ const SITE_CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
 //   於是題庫裡的題目反而不彈卡了（過度修復）。
 //
 // 所以這裡自己判，兩條硬要求：
-//   1. href 的 **path 必須恰好是 `/problem/{id}`**（允許尾斜槓與 query，
+//   1. 直接題目連結的 **path 必須恰好是 `/problem/{id}`**（允許尾斜槓與 query，
 //      所以 `/problem/list?tag=42` 因為 path 是 `/problem/list` 而被 id 形態擋下）；
 //   2. id 必須**同時含字母和數字** —— `list` / `solution` / `new` 天然出局。
 const looksLikePid = (id) =>
@@ -90,6 +90,14 @@ function linkTarget(anchor, origin) {
   if (!url || url.origin !== origin) return null;
   const uid = positiveUid(url.pathname.match(USER_PATH)?.[1]);
   if (uid) return userTarget(uid, anchor);
+  if (url.pathname === "/discuss" || url.pathname === "/discuss/") {
+    const forums = url.searchParams.getAll("forum");
+    const [pid] = forums;
+    // The homepage's discussion labels point to their problem forum.
+    return forums.length === 1 && looksLikePid(pid) && anchorShowsPid(anchor, pid)
+      ? problemTarget(pid, anchor, `${origin}/problem/${pid}`)
+      : null;
+  }
   const pid = url.pathname.match(PROBLEM_PATH)?.[1];
   return looksLikePid(pid) ? problemTarget(pid, anchor, url.href) : null;
 }
