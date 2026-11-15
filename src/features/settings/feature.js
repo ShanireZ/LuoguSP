@@ -35,7 +35,19 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     for (const close of [...openOverlays]) close();
   };
   function mountOverlay(overlay, trigger, initialFocus) {
+    const viewport = window.visualViewport;
+    const updateViewport = () => {
+      if (!viewport) return;
+      overlay.style.inset = `${viewport.offsetTop}px auto auto ${viewport.offsetLeft}px`;
+      overlay.style.width = `${viewport.width}px`;
+      overlay.style.height = `${viewport.height}px`;
+      const active = document.activeElement;
+      if (overlay.contains(active))
+        active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    };
     const close = (restoreFocus = true) => {
+      viewport?.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("scroll", updateViewport);
       overlay.remove();
       document.removeEventListener("keydown", onKey, true);
       openOverlays.delete(close);
@@ -57,6 +69,9 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
         }
       }
     }
+    updateViewport();
+    viewport?.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("scroll", updateViewport);
     document.body.appendChild(overlay);
     openOverlays.add(close);
     document.addEventListener("keydown", onKey, true);

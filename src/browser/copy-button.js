@@ -42,6 +42,8 @@ export function makeCopyControls(code) {
     event.stopPropagation();
     const current = ++request;
     clearTimeout(reset);
+    button.classList.remove("copied");
+    button.title = "复制代码";
     status.textContent = "";
     let copied = false;
     try {

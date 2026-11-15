@@ -1325,6 +1325,212 @@ test("settings fit small viewports and stay clickable above user previews", asyn
   assert.ok(await focused(entry));
 });
 
+test("settings and refresh confirmation follow mobile pinch zoom and viewport panning", async (t) => {
+  const { page } = await fixture(t, {
+    html: FIXTURE_HTML.replace("<head>", '<head><meta name="viewport" content="width=device-width, initial-scale=1">'),
+    viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true,
+  });
+  const session = await page.context().newCDPSession(page);
+  const entry = page.locator(".luogusp-setting-entry");
+  const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+  async function assertInViewport(locator) {
+    const state = await locator.evaluate(node => {
+      const rect = node.getBoundingClientRect();
+      const view = window.visualViewport;
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+        x: view.offsetLeft, y: view.offsetTop, width: view.width, height: view.height };
+    });
+    assert.ok(state.left >= state.x - 1 && state.right <= state.x + state.width + 1,
+      JSON.stringify(state));
+    assert.ok(state.top >= state.y - 1 && state.bottom <= state.y + state.height + 1,
+      JSON.stringify(state));
+  }
+  const settle = () => page.evaluate(() => new Promise(resolve =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await entry.press("Enter");
+  await session.send("Emulation.setPageScaleFactor", { pageScaleFactor: 2 });
+  await settle();
+  assert.equal(await page.evaluate(() => visualViewport.scale), 2);
+  await assertInViewport(modal);
+  assert.ok(await focused(modal.getByRole("checkbox").first()));
+  await page.evaluate(() => {
+    const target = document.createElement("span");
+    target.style.cssText = "position:fixed;left:300px;top:500px;width:1px;height:1px;";
+    document.body.append(target);
+    target.scrollIntoView({ block: "center", inline: "center" });
+    target.remove();
+  });
+  await settle();
+  const panned = await page.evaluate(() => [visualViewport.offsetLeft, visualViewport.offsetTop]);
+  assert.ok(panned.some(value => value > 10), JSON.stringify(panned));
+  await assertInViewport(modal);
+  await page.keyboard.press("Shift+Tab");
+  const close = modal.getByRole("button", { name: "关闭" });
+  assert.ok(await focused(close));
+  await settle();
+  await assertInViewport(close);
+  await page.keyboard.press("Tab");
+  const stepsToSave = await modal.getByRole("checkbox").count() + 2;
+  for (let index = 0; index < stepsToSave; index++) await page.keyboard.press("Tab");
+  const save = modal.getByRole("button", { name: "保存" });
+  assert.ok(await focused(save));
+  await settle();
+  await assertInViewport(save);
+  await save.press("Enter");
+  const confirm = page.getByRole("alertdialog");
+  await assertInViewport(confirm);
+  await session.send("Emulation.setPageScaleFactor", { pageScaleFactor: 3 });
+  await settle();
+  await assertInViewport(confirm);
+  await page.setViewportSize({ width: 640, height: 390 });
+  await settle();
+  await assertInViewport(confirm);
+  const later = confirm.getByRole("button", { name: "稍后" });
+  assert.ok(await focused(later));
+  await assertInViewport(later);
+  await later.press("Enter");
+  assert.ok(await focused(entry));
+});
+
+test("settings opened after zoom release viewport listeners on close, save and navigation", async (t) => {
+  const { page } = await fixture(t, {
+    html: FIXTURE_HTML.replace("<head>", '<head><meta name="viewport" content="width=device-width, initial-scale=1">'),
+    viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true,
+    initScript: `
+      const viewport = window.visualViewport;
+      const listeners = new Map([["resize", new Set()], ["scroll", new Set()]]);
+      const add = viewport.addEventListener.bind(viewport);
+      const remove = viewport.removeEventListener.bind(viewport);
+      viewport.addEventListener = (type, listener, options) => {
+        listeners.get(type)?.add(listener);
+        add(type, listener, options);
+      };
+      viewport.removeEventListener = (type, listener, options) => {
+        listeners.get(type)?.delete(listener);
+        remove(type, listener, options);
+      };
+      window.viewportListenerCounts = () => [...listeners.values()].map(set => set.size);
+    `,
+  });
+  const session = await page.context().newCDPSession(page);
+  await session.send("Emulation.setPageScaleFactor", { pageScaleFactor: 2 });
+  const counts = () => page.evaluate(() => viewportListenerCounts());
+  const baseline = await counts();
+  const entry = page.locator(".luogusp-setting-entry");
+  const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+  for (const action of ["close", "save", "navigate"]) {
+    await entry.press("Enter");
+    assert.deepEqual(await counts(), baseline.map(count => count + 1));
+    const fits = await modal.evaluate(node => {
+      const rect = node.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      return rect.left >= viewport.offsetLeft && rect.top >= viewport.offsetTop &&
+        rect.right <= viewport.offsetLeft + viewport.width + 1 &&
+        rect.bottom <= viewport.offsetTop + viewport.height + 1;
+    });
+    assert.ok(fits);
+    if (action === "navigate") {
+      await page.evaluate(() => history.pushState({}, "", "/?settings-closed=1"));
+      await modal.waitFor({ state: "detached" });
+      await entry.waitFor();
+    } else if (action === "save") {
+      await modal.getByRole("button", { name: "保存" }).press("Enter");
+      const confirm = page.getByRole("alertdialog");
+      assert.deepEqual(await counts(), baseline.map(count => count + 1));
+      await confirm.getByRole("button", { name: "稍后" }).press("Enter");
+      assert.ok(await focused(entry));
+    } else {
+      await page.keyboard.press("Escape");
+      assert.ok(await focused(entry));
+    }
+    assert.deepEqual(await counts(), baseline);
+  }
+});
+
+test("settings and refresh confirmation fit when VisualViewport is unavailable", async (t) => {
+  const { page } = await fixture(t, {
+    html: FIXTURE_HTML, viewport: { width: 320, height: 220 },
+    initScript: 'Object.defineProperty(window, "visualViewport", { value: undefined });',
+  });
+  const entry = page.locator(".luogusp-setting-entry");
+  await entry.press("Enter");
+  const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+  const box = await modal.boundingBox();
+  assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= 321 && box.y + box.height <= 221);
+  await modal.getByRole("button", { name: "保存" }).press("Enter");
+  const confirm = page.getByRole("alertdialog");
+  const later = confirm.getByRole("button", { name: "稍后" });
+  assert.ok(await focused(later));
+  const confirmBox = await confirm.boundingBox();
+  assert.ok(confirmBox.x >= 0 && confirmBox.y >= 0 &&
+    confirmBox.x + confirmBox.width <= 321 && confirmBox.y + confirmBox.height <= 221);
+  await later.press("Enter");
+  assert.ok(await focused(entry));
+});
+
+test("intro copy clears the previous success while another clipboard write is pending", async (t) => {
+  const { page } = await fixture(t, {
+    path: "/user/42", reducedMotion: "reduce",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction: "~~~cpp\nint main(){}\n~~~" } }),
+    initScript: `
+      window.clipboardWrites = [];
+      Object.defineProperty(navigator, "clipboard", { value: {
+        writeText: text => new Promise((resolve, reject) => clipboardWrites.push({ text, resolve, reject })),
+      } });
+    `,
+  });
+  const intro = page.locator(".luogusp-intro-card");
+  const button = intro.getByRole("button", { name: "复制代码" });
+  const status = intro.getByRole("status");
+  await button.waitFor();
+  await page.clock.install({ time: 0 });
+  await page.clock.pauseAt(1000);
+  await button.press("Enter");
+  await page.evaluate(() => clipboardWrites[0].resolve());
+  assert.equal(await status.textContent(), "已复制");
+  assert.ok(await button.evaluate(node => node.classList.contains("copied")));
+  await button.press("Enter");
+  assert.equal(await status.textContent(), "");
+  assert.equal(await button.getAttribute("title"), "复制代码");
+  assert.equal(await button.evaluate(node => node.classList.contains("copied")), false);
+  await page.clock.runFor(2000);
+  assert.equal(await button.getAttribute("title"), "复制代码");
+  assert.equal(await button.evaluate(node => node.classList.contains("copied")), false);
+  assert.ok(await focused(button));
+  await page.evaluate(() => clipboardWrites[1].reject(new Error("Fixture clipboard denied")));
+  assert.equal(await status.textContent(), "复制失败");
+  await button.press("Enter");
+  assert.equal(await button.getAttribute("title"), "复制代码");
+  assert.equal(await status.textContent(), "");
+  await page.evaluate(() => clipboardWrites[2].resolve());
+  assert.equal(await status.textContent(), "已复制");
+  assert.ok(await focused(button));
+  await page.clock.runFor(1800);
+  assert.equal(await status.textContent(), "");
+  assert.equal(await button.getAttribute("title"), "复制代码");
+  assert.equal(await button.evaluate(node => node.classList.contains("copied")), false);
+  await button.press("Enter");
+  await button.press("Enter");
+  await page.evaluate(() => clipboardWrites[3].resolve());
+  assert.equal(await status.textContent(), "");
+  assert.equal(await button.getAttribute("title"), "复制代码");
+  assert.equal(await button.evaluate(node => node.classList.contains("copied")), false);
+  await page.evaluate(() => clipboardWrites[4].reject(new Error("Current fixture write denied")));
+  assert.equal(await status.textContent(), "复制失败");
+  await button.press("Enter");
+  await button.press("Enter");
+  await page.evaluate(() => clipboardWrites[5].reject(new Error("Superseded fixture write denied")));
+  assert.equal(await status.textContent(), "");
+  assert.equal(await button.getAttribute("title"), "复制代码");
+  await page.evaluate(() => clipboardWrites[6].resolve());
+  assert.equal(await status.textContent(), "已复制");
+  assert.ok(await focused(button));
+  await page.clock.runFor(1800);
+  assert.equal(await button.getAttribute("title"), "复制代码");
+  assert.equal(await button.evaluate(node => node.classList.contains("copied")), false);
+});
+
 test("intro copy announces failed and successful fallback without losing focus or animating", async (t) => {
   const { page } = await fixture(t, {
     path: "/user/42", reducedMotion: "reduce",

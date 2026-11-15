@@ -50,6 +50,10 @@ navigation controls appear immediately. Reduced motion stops the preview's
 loading indicator and skips the field fade. The main settings dialog uses
 a 160 ms opacity entrance only when reduced motion is off. Its content scrolls
 within the available viewport, and the dialog takes precedence over previews.
+Both settings and refresh confirmation track the visual viewport's size and
+offset during zoom and pan. Resizing keeps the focused control visible through
+immediate scrolling. Closing either overlay removes its viewport listeners.
+Without VisualViewport, the existing fixed layout remains available.
 A focused eligible link opens its preview with Alt+Down Arrow. Escape closes
 the preview and returns focus to the link when the preview holds focus. Tab at
 either end closes the preview and continues from the link's place in the page.
@@ -111,6 +115,9 @@ resolved against the page base. Even same-origin URLs and Luogu's CDN can
 redirect, so the fallback makes no automatic image requests. Unsupported or
 credential-bearing sources are represented as alt text or an unavailable label.
 The fallback discards alternate sources such as `srcset`.
+Code-copy controls clear prior feedback as soon as another write begins.
+Only the latest write can set its outcome, which is announced without moving
+focus. Pending writes retain the normal button title and appearance.
 
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.
