@@ -12,7 +12,7 @@ const viewer = { uid: 42 };
 const problem = { pid: "P1000", name: "Native preview", difficulty: 2, totalAccepted: 120, tags: [1] };
 const fixtureHtml = (body, data = {}, context = {}) => FIXTURE_HTML
   .replace(/(<script id="lentille-context"[^>]*>).*?(<\/script>)/s,
-    (_, open, close) => open + JSON.stringify({ user: viewer, ...context, data }) + close)
+    (_, open, close) => open + JSON.stringify({ user: viewer, ...context, data }).replaceAll("<", "\\u003c") + close)
   .replace(/<main>[\s\S]*?<\/main>/, () => `<main>${body}</main>`);
 
 let browser;
@@ -32,7 +32,9 @@ before(async () => {
 });
 after(() => browser?.close());
 
-async function fixture(t, { html, path = "/", reply = () => {}, ...options }) {
+async function fixture(t, {
+  html, path = "/", reply = () => {}, waitForSettings = true, gm = false, ...options
+}) {
   const page = await browser.newPage(options);
   const errors = [];
   const requests = [];
@@ -48,15 +50,25 @@ async function fixture(t, { html, path = "/", reply = () => {}, ...options }) {
   await page.route("**/*", (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.origin !== origin) return route.abort();
-    requests.push({ path: url.pathname, query: url.search, type: request.resourceType() });
-    if (request.isNavigationRequest() && url.pathname === path.split(/[?#]/)[0])
+    requests.push({ origin: url.origin, path: url.pathname, query: url.search, type: request.resourceType() });
+    if (request.isNavigationRequest() && url.origin === origin && url.pathname === path.split(/[?#]/)[0])
       return route.fulfill({ contentType: "text/html; charset=utf-8", body: html });
     return reply(route, url) ?? route.abort();
   });
-  await page.addInitScript({ content: payload });
+  const gmShim = gm ? `
+    globalThis.GM_xmlhttpRequest = (request) => {
+      const controller = new AbortController();
+      fetch(request.url, { credentials: "omit", signal: controller.signal })
+        .then(async response => request.onload({
+          status: response.status, response: await response.arrayBuffer(), responseHeaders: ""
+        }))
+        .catch(error => request.onerror({ error: error.message }));
+      return { abort: () => controller.abort() };
+    };
+  ` : "";
+  await page.addInitScript({ content: gmShim + payload });
   await page.goto(origin + path);
-  await page.locator(".luogusp-setting-entry").waitFor();
+  if (waitForSettings) await page.locator(".luogusp-setting-entry").waitFor();
   return { page, requests };
 }
 
@@ -68,6 +80,113 @@ function responseGate(t) {
 
 const focused = (locator) => locator.evaluate(node => node === document.activeElement);
 const card = (page) => page.locator("#luogusp-hover-card");
+
+test("profile introduction renders math and removes author CSS before page insertion", async (t) => {
+  const introduction = [
+    "## Safe introduction",
+    '<style>html:has(meta[name=csrf-token][content=fixture-token]) body { background-image: url(/audit-style-probe); }</style>',
+    '<div style="position: fixed; inset: 0; z-index: 2147483647">Author content</div>',
+    '<a href="https://example.test/$literal$" title="$literal$">Safe link</a>',
+    "$x^2$",
+    "```cpp\nint main() {}\n```",
+  ].join("\n\n");
+  // This route also serves canary.5's pinned renderer when proving the old failure.
+  const manifest = JSON.parse(await readFile(new URL("../../cdn/releases/2.14.6/manifest.json", import.meta.url), "utf8"));
+  const oldRenderer = manifest.optionalBundles.markdownRenderer.path;
+  const oldRendererBytes = await readFile(new URL(`../../cdn/${oldRenderer}`, import.meta.url));
+  const { page, requests } = await fixture(t, {
+    gm: true, path: "/user/42",
+    html: fixtureHtml('<button id="native-control">Native control</button><div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }).replace("</head>", '<meta name="csrf-token" content="fixture-token"></head>'),
+    reply(route, url) {
+      if (url.origin === manifest.origin && url.pathname === "/" + oldRenderer)
+        return route.fulfill({
+          body: oldRendererBytes, contentType: "text/javascript",
+          headers: { "access-control-allow-origin": "*" },
+        });
+    },
+  });
+  await page.locator(".luogusp-intro-card h2").waitFor();
+  const hitNative = await page.locator("#native-control").evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === button;
+  });
+  assert.equal(hitNative, true);
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  assert.equal(await intro.locator("style, [style*='position']").count(), 0);
+  assert.equal(await intro.locator("a").getAttribute("href"), "https://example.test/$literal$");
+  assert.equal(await intro.locator("a").getAttribute("title"), "$literal$");
+  assert.equal(await intro.locator(".katex").count(), 1);
+  assert.ok(await intro.locator(".katex [style]").count());
+  assert.equal(await intro.locator("pre code.language-cpp").count(), 1);
+  assert.equal(requests.some((r) => r.path === "/audit-style-probe"), false);
+});
+
+test("the embedded renderer can safely render the lightweight fallback without GM", async (t) => {
+  const introduction = '<div style="position:fixed; inset:0">Text</div>\n\n## Safe fallback\n\n$x^2$';
+  const { page, requests } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  await intro.getByText("Safe fallback", { exact: true }).waitFor();
+  assert.equal(await intro.locator("style, [style*='position']").count(), 0);
+  assert.equal(await intro.locator(".katex").count(), 1);
+  assert.equal(requests.some((r) => r.path.includes("/render/markdown-renderer.")), false);
+});
+
+function restrictedFixture(t, type, id, data) {
+  const path = `/${type}/${id}`;
+  const saver = "https://api.luogu.me";
+  const assets = "https://fecdn.luogu.com.cn";
+  const headers = { "access-control-allow-origin": "*" };
+  const scaffold = `<meta name="csrf-token" content="fixture-token">
+    <script id="lentille-context" type="application/json">${JSON.stringify({ user: viewer })}</script>
+    <script src="${assets}/fixture.js"></script>`;
+  return fixture(t, {
+    path, waitForSettings: false,
+    html: `<!doctype html><meta charset="utf-8"><title>安全访问中心</title><pre id="url">${origin}${path}</pre>`,
+    reply(route, url) {
+      if (url.origin === saver && url.pathname === `/${type}/query/${id}`)
+        return route.fulfill({ headers, json: { code: 200, data } });
+      if (url.origin === saver && url.pathname === `/article/comments/${id}`)
+        return route.fulfill({ headers, json: { code: 200, data: { comments: [] } } });
+      if (url.origin === origin && url.pathname === "/ranking")
+        return route.fulfill({ body: scaffold, contentType: "text/html" });
+      if (url.origin === assets && url.pathname === "/fixture.js")
+        return route.fulfill({ body: "", contentType: "text/javascript" });
+    },
+  });
+}
+
+for (const [type, id, archive] of [
+  ["article", "123", { id: "654", title: "Wrong article", content: "Wrong ID" }],
+  ["paste", "abc", { id: "xyz", content: "Wrong ID" }],
+]) {
+  test(`restricted ${type} rejects a Saver response for a different ID`, async (t) => {
+    const { page, requests } = await restrictedFixture(t, type, id, archive);
+    await page.getByText("保存站返回的内容与请求目标不匹配。", { exact: false }).waitFor();
+    assert.equal(await page.locator("#lentille-context").count(), 0);
+    assert.equal(requests.some((r) => r.path === "/ranking" || r.path.startsWith("/workflow/")), false);
+  });
+}
+
+test("restricted article keeps public archive counts without trusting archive viewer state", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", {
+    id: "123", title: "Archived article", content: "Saved text", upvote: 10,
+    favorCount: 3, voted: 1, favored: true, canReply: true, canEdit: true,
+  });
+  const context = page.locator("#lentille-context");
+  await context.waitFor({ state: "attached" });
+  const { data } = JSON.parse(await context.textContent());
+  assert.equal(data.article.lid, "123");
+  assert.equal(data.article.content, "Saved text");
+  assert.equal(data.article.upvote, 10);
+  assert.equal(data.article.favorCount, 3);
+  assert.deepEqual([data.voted, data.favored, data.canReply, data.canEdit], [null, null, false, false]);
+  assert.deepEqual([data.article.voted, data.article.canReply, data.article.canEdit], [null, false, false]);
+});
 
 test("settings traps focus and Enter chooses the focused refresh action", async (t) => {
   const { page, requests } = await fixture(t, { html: FIXTURE_HTML });
@@ -252,13 +371,14 @@ test("user preview falls back to one GET when the native page has no lookup", as
   assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["fetch"]);
 });
 
-test("IDE identifies the inserted line, jumps to it and finishes only the current sample on stop", async (t) => {
+async function ideFixture(t) {
   const submit = Promise.withResolvers();
+  const submitted = [];
   const toolbar = (title, actions = "") => `<div class="ide-toolbar"><div class="title"><span class="text">${title}</span></div><div class="actions">${actions}</div></div>`;
   const { page, requests } = await fixture(t, {
     path: "/problem/P1000#ide",
     html: fixtureHtml(`
-      ${toolbar("代码", "<button>自测</button>")}<div class="cm-content">code</div>
+      ${toolbar("代码", "<button>自测</button>")}<div contenteditable="true" class="cm-content">code</div>
       <div class="io-sample-block">输入 #1 <button>运行</button></div>
       <div class="io-sample-block">输入 #2 <button>运行</button></div>
       <div><div class="panel-layout">
@@ -270,22 +390,28 @@ test("IDE identifies the inserted line, jumps to it and finishes only the curren
           document.querySelector('#output .actions span').remove();
           const xhr = new XMLHttpRequest();
           xhr.open('POST', '/api/ide_submit');
-          xhr.send();
+          xhr.send(document.querySelector('.cm-content').textContent);
         });
-        window.finishSample = () => {
+        window.finishSample = (verdict = 'WA') => {
           document.querySelector('#output textarea').value = 'a\\nextra\\nb\\nc\\nd';
-          document.querySelector('#output .actions').insertAdjacentHTML('afterbegin', '<span>WA</span>');
+          document.querySelector('#output .actions').insertAdjacentHTML('afterbegin', '<span>' + verdict + '</span>');
         };
       </script>`, { problem: { ...problem, samples: [["first", "a\nb\nc\nd"], ["second", "ok"]] } }),
     reply(route, url) {
       if (url.pathname === "/api/ide_submit") {
+        submitted.push(route.request().postData());
         submit.resolve();
         return route.fulfill({ json: {} });
       }
     },
   });
+  return { page, requests, submitted, firstSubmit: submit.promise };
+}
+
+test("IDE identifies the inserted line, jumps to it and finishes only the current sample on stop", async (t) => {
+  const { page, requests, firstSubmit } = await ideFixture(t);
   await page.locator(".luogusp-ide-batch-btn").click();
-  await submit.promise;
+  await firstSubmit;
   const stop = page.getByRole("button", { name: "停止", exact: true });
   await stop.click();
   await page.getByText("当前样例完成后停止…", { exact: true }).waitFor();
@@ -298,6 +424,23 @@ test("IDE identifies the inserted line, jumps to it and finishes only the curren
   assert.equal(requests.filter(r => r.path === "/api/ide_submit").length, 1);
   assert.ok(await page.getByText("未测", { exact: true }).isVisible());
 });
+
+for (const inputEvent of [true, false]) {
+  test(`IDE batch stops on source edits ${inputEvent ? "with" : "without"} an input event`, async (t) => {
+    const { page, submitted, firstSubmit } = await ideFixture(t);
+    await page.locator(".luogusp-ide-batch-btn").click();
+    await firstSubmit;
+    const editor = page.locator(".cm-content");
+    if (inputEvent) await editor.fill("edited code");
+    else await editor.evaluate((element) => { element.textContent = "edited code"; });
+    await page.evaluate(() => window.finishSample("AC"));
+    await page.getByText("未测", { exact: true }).waitFor();
+    const summary = await page.locator(".luogusp-ide-summary").textContent();
+    assert.match(summary, /结果已过期/);
+    assert.doesNotMatch(summary, /通过/);
+    assert.deepEqual(submitted, ["code"]);
+  });
+}
 
 test("bundled app still colors academic records and drops queued requests on navigation", async (t) => {
   const record = { id: 77, problem: { pid: "P1000", difficulty: 5 } };

@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
+import { MARKDOWN_RENDERER_API_VERSION } from "../../src/rendering/renderer-dependencies.js";
+import { buildMarkdownRenderer } from "../renderer/build-lib.mjs";
 
 const root = new URL("../../", import.meta.url);
 const buildOptions = {
@@ -21,24 +23,27 @@ export async function buildLocalUserscript(version = "0.0.0-canary.local") {
   const manifest = JSON.parse(await read(`cdn/releases/${stable}/manifest.json`));
   const { origin } = manifest;
   const assets = Object.create(null);
-  async function bundle(name, entry) {
-    const text = await compile(entry, "esm");
+  function embed(directory, name, text, apiVersion = 1) {
     const sha256 = createHash("sha256").update(text).digest("hex");
-    const path = `releases/${version}/feature/${name}.${sha256.slice(0, 16)}.js`;
+    const path = `releases/${version}/${directory}/${name}.${sha256.slice(0, 16)}.js`;
     assets[`${origin}/${path}`] = text;
-    return { path, sha256, apiVersion: 1 };
+    return { path, sha256, apiVersion };
   }
-  const [hover, restricted] = await Promise.all([
-    bundle("hover-card", "src/cdn/hover-card-bundle.js"),
-    bundle("restricted-content", "src/cdn/restricted-content-bundle.js"),
+  const [hoverSource, restrictedSource, rendererBytes] = await Promise.all([
+    compile("src/cdn/hover-card-bundle.js", "esm"),
+    compile("src/cdn/restricted-content-bundle.js", "esm"),
+    buildMarkdownRenderer(),
   ]);
+  const hover = embed("feature", "hover-card", hoverSource);
+  const restricted = embed("feature", "restricted-content", restrictedSource);
+  const renderer = embed("render", "markdown-renderer", rendererBytes.toString("utf8"), MARKDOWN_RENDERER_API_VERSION);
   const runtime = await compile("src/cdn/runtime-entry.js", "iife", {
     define: {
       __LUOGUSP_CDN_RELEASE__: JSON.stringify(version),
       __LUOGUSP_CDN_ORIGIN__: JSON.stringify(origin),
       __LUOGUSP_HOVER_CARD_BUNDLE__: JSON.stringify(hover),
       __LUOGUSP_RESTRICTED_CONTENT_BUNDLE__: JSON.stringify(restricted),
-      __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__: JSON.stringify(manifest.optionalBundles.markdownRenderer),
+      __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__: JSON.stringify(renderer),
     },
     plugins: [{
       name: "embed-qa-feature-bundles",
@@ -56,7 +61,7 @@ export async function buildLocalUserscript(version = "0.0.0-canary.local") {
                 ...transport,
                 fetchImpl(url, init) {
                   const contents = embedded[String(url)];
-                  return contents === undefined ? transport.fetchImpl(url, init) :
+                  return contents === undefined ? transport.fetchImpl.call(globalThis, url, init) :
                     Promise.resolve(new Response(contents, { headers: { "content-type": "text/javascript" } }));
                 },
               };

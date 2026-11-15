@@ -1,5 +1,21 @@
 import { renderMarkdownLite } from "./markdown-lite.js";
 
+const AUTHOR_MARKUP = {
+  ALLOWED_TAGS: [
+    "a", "abbr", "b", "blockquote", "br", "caption", "code", "dd", "del",
+    "details", "div", "dl", "dt", "em", "h1", "h2", "h3", "h4", "h5", "h6",
+    "hr", "i", "img", "input", "ins", "kbd", "li", "mark", "ol", "p", "pre",
+    "s", "samp", "small", "span", "strong", "sub", "summary", "sup", "table",
+    "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
+  ],
+  ALLOWED_ATTR: [
+    "align", "alt", "checked", "class", "colspan", "disabled", "href", "open",
+    "rowspan", "src", "start", "title", "type",
+  ],
+  ALLOW_ARIA_ATTR: false,
+  ALLOW_DATA_ATTR: false,
+};
+
 function escapeHtml(source) {
   return source.replace(
     /[&<>"]/g,
@@ -22,44 +38,76 @@ export function createMarkdownFullRenderer(dependencies) {
   const { marked, sanitizer, katex, document } = dependencies || {};
   validateDependencies({ marked, sanitizer, katex, document });
 
-  const sanitize = (html) => sanitizer.sanitize(html, { ADD_ATTR: ["target"] });
   const renderMath = (formula, displayMode) => {
     try {
-      return sanitize(
+      return sanitizer.sanitize(
         katex.renderToString(formula, {
           throwOnError: false,
           displayMode,
+          trust: false,
         }),
+        { FORBID_TAGS: ["style"] },
       );
     } catch (error) {
       return null;
     }
   };
-  const applyDisplayPolicies = (html) => {
+  const renderSafeHtml = (html, marker, math) => {
     const template = document.createElement("template");
     template.innerHTML = html;
+    // Put literal math delimiters back into attributes before checking URLs.
+    for (const node of template.content.querySelectorAll("*")) {
+      for (const attr of node.attributes) {
+        const literal = attr.value.replace(marker, (match, index) => math[index]?.raw ?? match);
+        if (literal !== attr.value) attr.value = literal;
+      }
+    }
+    template.innerHTML = sanitizer.sanitize(template.innerHTML, AUTHOR_MARKUP);
+    for (const node of template.content.querySelectorAll("[class]")) {
+      const language = node.matches("pre > code") &&
+        [...node.classList].find((name) => /^language-[\w+-]+$/.test(name));
+      if (language) node.className = language;
+      else node.removeAttribute("class");
+    }
+    for (const input of template.content.querySelectorAll("input")) {
+      if (input.type === "checkbox") input.disabled = true;
+      else input.remove();
+    }
     for (const link of template.content.querySelectorAll("a[href]")) {
       link.setAttribute("target", "_blank");
       link.setAttribute("rel", "noopener noreferrer");
     }
     for (const image of template.content.querySelectorAll("img"))
       image.style.maxWidth = "100%";
-    return template.innerHTML;
-  };
-  const renderLite = (source, warnings) => {
-    try {
-      return {
-        html: renderMarkdownLite(source, { katex }),
-        mode: "lite",
-        warnings,
-      };
-    } catch (error) {
-      return {
-        html: `<p>${escapeHtml(source)}</p>`,
-        mode: "lite",
-        warnings: [...warnings, "lite-render-failed"],
-      };
+
+    // KaTeX styles belong to generated formula fragments. Only text nodes
+    // can receive those fragments, after author markup has been sanitized.
+    const walker = document.createTreeWalker(template.content, 4); // SHOW_TEXT
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    for (const node of textNodes) {
+      const source = node.data;
+      const matches = [...source.matchAll(marker)];
+      if (!matches.length) continue;
+      const fragment = document.createDocumentFragment();
+      const literal = node.parentElement?.closest("pre, code, kbd, samp");
+      let offset = 0;
+      for (const [match, index] of matches) {
+        const start = source.indexOf(match, offset);
+        fragment.append(document.createTextNode(source.slice(offset, start)));
+        const formula = math[index];
+        const rendered = formula && !literal && renderMath(formula.text, formula.displayMode);
+        if (rendered) {
+          const element = document.createElement("template");
+          element.innerHTML = rendered;
+          fragment.append(element.content);
+        } else fragment.append(document.createTextNode(formula?.raw ?? match));
+        offset = start + match.length;
+      }
+      fragment.append(document.createTextNode(source.slice(offset)));
+      node.replaceWith(fragment);
     }
+    return template.innerHTML;
   };
 
   return Object.freeze({
@@ -68,34 +116,40 @@ export function createMarkdownFullRenderer(dependencies) {
       const math = [];
       let mathPrefix = "%%LGMATH";
       while (markdown.includes(mathPrefix)) mathPrefix += "X";
-      const hold = (html) => `${mathPrefix}${math.push(html) - 1}%%`;
+      const marker = new RegExp(`${mathPrefix}(\\d+)%%`, "g");
+      const hold = (raw, text, displayMode) =>
+        `${mathPrefix}${math.push({ raw, text, displayMode }) - 1}%%`;
 
       try {
         if (options.forceFullFailure === true)
           throw new Error("Full renderer failure was requested");
         const parsed = marked.parse(
           markdown
-            .replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
-              const html = renderMath(formula.trim(), true);
-              return html ? hold(html) : match;
-            })
-            .replace(/(?<!\\)\$([^\n$]+?)\$/g, (match, formula) => {
-              const html = renderMath(formula, false);
-              return html ? hold(html) : match;
-            }),
+            .replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => hold(match, formula.trim(), true))
+            .replace(/(?<!\\)\$([^\n$]+?)\$/g, (match, formula) => hold(match, formula, false)),
           { async: false, gfm: true, breaks: true },
         );
         if (typeof parsed !== "string")
           throw new TypeError("Marked returned a non-string result");
-        const html = applyDisplayPolicies(
-          sanitize(parsed).replace(
-            new RegExp(`${mathPrefix}(\\d+)%%`, "g"),
-            (_, index) => math[index],
-          ),
-        );
+        const html = renderSafeHtml(parsed, marker, math);
         return { html, mode: "full", warnings: [] };
       } catch (error) {
-        return renderLite(markdown, ["full-render-failed"]);
+        math.length = 0;
+        try {
+          const lite = renderMarkdownLite(markdown, {
+            katex: { renderToString(text, { displayMode }) {
+              const delimiter = displayMode ? "$$" : "$";
+              return hold(delimiter + text + delimiter, text, displayMode);
+            } },
+          });
+          return { html: renderSafeHtml(lite, marker, math), mode: "lite", warnings: ["full-render-failed"] };
+        } catch (error) {
+          return {
+            html: `<p>${escapeHtml(markdown)}</p>`,
+            mode: "lite",
+            warnings: ["full-render-failed", "lite-render-failed"],
+          };
+        }
       }
     },
   });

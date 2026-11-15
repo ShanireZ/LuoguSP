@@ -198,7 +198,7 @@ test("IDE Batch Runner never restores stale input after unmount", async () => {
   assert.equal(runner.getState().state, "idle");
 });
 
-test("IDE Batch Runner stops after current group and expands CE to remaining groups", async () => {
+test("IDE Batch Runner expands CE to remaining groups only while continuing", async () => {
   const current = deferred();
   const applied = [];
   let restored = 0;
@@ -222,9 +222,9 @@ test("IDE Batch Runner stops after current group and expands CE to remaining gro
   await flushMicrotasks();
   runner.stop();
   assert.equal(runner.getState().state, "stopping");
-  current.resolve({ verdict: "WA" });
+  current.resolve({ verdict: "CE", output: "compile log" });
   await run;
-  assert.deepEqual(applied, [[0, "WA"]]);
+  assert.deepEqual(applied, [[0, "CE"]]);
   assert.equal(restored, 1);
   assert.equal(finished[1], null);
 

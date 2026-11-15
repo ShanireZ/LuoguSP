@@ -14,9 +14,13 @@ establish the current account's privileges or personal state.
 
 - Article and paste queries use the configured Saver transport. Public counts can
   be archived snapshots rather than current values.
+- The archive ID and payload shape must match the requested article or paste
+  before the document is rebuilt.
 - Do not infer favored, voted, canReply or canEdit from public archive counts.
   Follow article-interaction-state.js and account isolation in
   article-interaction-store.js.
+- The rebuilt article disables the reply form because the scaffold carries
+  no current-account permission for that article.
 - Live public counts may update counters without changing personal state.
   Unknown and confirmed states remain distinguishable.
 - Votes, favorites and replies use Luogu same-origin write contracts.

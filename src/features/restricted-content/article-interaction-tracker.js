@@ -71,7 +71,6 @@ export function prepareRestrictedArticleInteraction(config) {
     lid,
     viewer,
     article,
-    archived,
     archivedAt,
     live,
     onPersistFailure,
@@ -79,8 +78,6 @@ export function prepareRestrictedArticleInteraction(config) {
   const uid = viewerUid(viewer);
   const interaction = completeRestrictedArticleInteraction({
     article,
-    archived,
-    viewer,
     archivedAt,
     live,
     confirmed: store ? store.read({ uid, lid }) : null,

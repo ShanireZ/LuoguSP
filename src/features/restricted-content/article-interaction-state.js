@@ -2,8 +2,7 @@
 //
 // 個人狀態（voted / favored）優先級（高→低）
 //   1. confirmed —— 洛谷官方寫介面確認過的狀態（本次工作階段或帳號隔離的持久記錄）；
-//   2. archived  —— 保存站存檔快照，實際上永遠不提供個人狀態；
-//   3. null      —— 未知。絕不用 false 偽造「沒收藏 / 沒點贊」。
+//   2. null      —— 未知。絕不用 false 偽造「沒收藏 / 沒點贊」。
 //
 // 公共計數（upvote / favorCount）優先級（高→低）
 //   1. live      —— 頁面載入時從洛谷作者專欄列表 API 現取的伺服器真值
@@ -14,12 +13,8 @@
 //
 // ★ live **只**參與公共計數。作者專欄列表不含 voted / favored，
 //   一個位元組的個人狀態都不許從那裡來 —— 否則又走回「用 false 偽造未收藏」的老路。
-function archivedBoolean(value) {
+function confirmedBoolean(value) {
   return typeof value === "boolean" ? value : null;
-}
-
-function archivedVote(value) {
-  return value === 1 || value === -1 ? value : null;
 }
 
 function confirmedVote(value) {
@@ -32,18 +27,13 @@ const numberOrNull = (value) =>
     : null;
 
 export function completeRestrictedArticleInteraction(config) {
-  const { article, archived, viewer, confirmed, archivedAt, live } =
+  const { article, confirmed, archivedAt, live } =
     config || {};
   if (!article || typeof article !== "object")
     throw new TypeError("Restricted article data is required");
-  const archive = archived && typeof archived === "object" ? archived : {};
   const record = confirmed && typeof confirmed === "object" ? confirmed : null;
-  const voted = record
-    ? (confirmedVote(record.voted) ?? archivedVote(archive.voted))
-    : archivedVote(archive.voted);
-  const favored = record
-    ? (archivedBoolean(record.favored) ?? archivedBoolean(archive.favored))
-    : archivedBoolean(archive.favored);
+  const voted = confirmedVote(record?.voted);
+  const favored = confirmedBoolean(record?.favored);
   const archiveTime = numberOrNull(archivedAt);
   const recordTime = record ? numberOrNull(record.at) : null;
   const countsWin =
@@ -70,7 +60,8 @@ export function completeRestrictedArticleInteraction(config) {
     live && live.solutionFor && typeof live.solutionFor === "object"
       ? live.solutionFor
       : null;
-  const canReply = Boolean(viewer) && archive.canReply !== false;
+  // The restricted route has no per-article permission response from Luogu.
+  const canReply = false;
   const canEdit = false;
   return Object.freeze({
     article: Object.freeze({

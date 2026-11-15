@@ -250,11 +250,14 @@ test("Saver transport distinguishes caller Abort from timeout", async () => {
 
 test("Saver protocol treats only business 404 as missing", () => {
   const protocol = createSaverProtocol();
-  const data = { id: "abc" };
-  assert.deepEqual(protocol.classifyLookup({ code: 200, data }), {
+  const data = { id: "abc", content: "Archived paste" };
+  assert.deepEqual(protocol.classifyLookup({ code: 200, data }, "paste", "abc"), {
     kind: "archived",
     data,
   });
+  assert.equal(protocol.classifyLookup({ code: 200, data }, "article", "abc").category, "invariant");
+  assert.equal(protocol.classifyLookup({ code: 200, data }, "paste", "xyz").category, "invariant");
+  assert.equal(protocol.classifyLookup({ code: 200, data: { id: "abc" } }, "paste", "abc").category, "invariant");
   assert.deepEqual(protocol.classifyLookup({ code: 404 }), {
     kind: "missing",
   });
@@ -352,7 +355,7 @@ test("Saver Workflow continues polling after transient network errors", async ()
         if (gets === 1) return { code: 404 };
         if (gets === 2)
           throw Object.assign(new Error("offline"), { kind: "transport" });
-        return { code: 200, data: { id: "abc" } };
+        return { code: 200, data: { id: "abc", title: "Archived article", content: "" } };
       },
       post: async () => ({ code: 202 }),
     },
@@ -370,7 +373,7 @@ test("Saver Workflow continues polling after transient network errors", async ()
   await clock.advance(1);
   assert.deepEqual(await result, {
     kind: "archived",
-    data: { id: "abc" },
+    data: { id: "abc", title: "Archived article", content: "" },
   });
   assert.equal(accepted, 1);
   assert.equal(gets, 3);
@@ -522,8 +525,7 @@ test("restricted page detection requires all three anchors and canonicalizes out
 test("restricted article interaction state keeps nested and outer fields aligned", () => {
   const known = completeRestrictedArticleInteraction({
     article: { lid: "abc", upvote: 5, favorCount: 4 },
-    archived: { favored: true, voted: 1, canReply: true },
-    viewer: { uid: 123 },
+    confirmed: { favored: true, voted: 1 },
   });
   assert.deepEqual(
     {
@@ -538,31 +540,21 @@ test("restricted article interaction state keeps nested and outer fields aligned
       canEdit: known.canEdit,
     },
     {
-      article: { voted: 1, canReply: true, canEdit: false },
+      article: { voted: 1, canReply: false, canEdit: false },
       favored: true,
       voted: 1,
-      canReply: true,
+      canReply: false,
       canEdit: false,
     },
   );
 
   const unknown = completeRestrictedArticleInteraction({
     article: { lid: "abc" },
-    archived: {},
-    viewer: { uid: 123 },
   });
   assert.equal(unknown.favored, null);
   assert.equal(unknown.voted, null);
   assert.equal(unknown.article.voted, null);
-  assert.equal(unknown.article.canReply, true);
-  assert.equal(
-    completeRestrictedArticleInteraction({
-      article: { lid: "abc" },
-      archived: { canReply: true },
-      viewer: null,
-    }).article.canReply,
-    false,
-  );
+  assert.equal(unknown.article.canReply, false);
 });
 
 test("official article writes preserve user intent and enforce same-origin auth", async () => {

@@ -325,14 +325,13 @@ export function createRestrictedContentFeature({
         viewer: shell.viewer,
         // 存檔快照的新鮮度：只有比已確認記錄更新，保存站計數才允許覆蓋。
         archivedAt: Date.parse(data.updatedAt || data.createdAt) || null,
-        archived: data,
         live,
         onPersistFailure: ({ lid, reason }) =>
           console.warn(
             `[LuoguSP] 文章 ${lid} 的收藏/点赞状态无法保存（${reason}），刷新后将无法撤回。`,
           ),
         article: {
-          lid: data.id,
+          lid: info.id,
           title: data.title || "",
           category: data.category != null ? data.category : 1,
           // 真實發表時間：保存站 publishTime → 作者專欄列表現掃 → 都沒有才退回入檔時間，
@@ -392,7 +391,7 @@ export function createRestrictedContentFeature({
     // 剪貼簿沒有作者專欄列表那條路，真值只可能來自保存站的 publishTime；
     // 沒有就退回入檔時間，並把文案改成「存檔時間」（見 rstMountPasteButtons）。
     const ctx = buildPasteShowContext({
-      id: data.id || info.id,
+      id: info.id,
       content: data.content,
       user: rstUserSummary(cnUser, data.author, data.authorId),
       time:

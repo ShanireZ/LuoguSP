@@ -44,7 +44,13 @@ contest and language. User cards reuse observed same-origin user-info XHRs
 and display basic information before profile-only fields arrive.
 IDE batch runs observe mutations in the native output panel from
 before the submit click until the result, deadline or cancellation.
+Each batch captures the source at start. Edits stop later submissions and mark
+results from that batch stale.
 Output highlighting aligns insertions and deletions within a bounded comparison.
+
+The profile introduction renderer sanitizes author markup before inserting
+KaTeX fragments into text nodes. Author CSS and page-scoped identifiers are
+discarded, while generated KaTeX styles are retained.
 
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.

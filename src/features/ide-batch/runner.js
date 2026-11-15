@@ -78,9 +78,18 @@ export function createIdeBatchRunner(config) {
     if (!sampleRunning) cancelDelay();
   };
   const markStale = () => {
-    if (stale || state !== "idle" || !results) return;
+    if (stale || state === "preparing" || !results) return;
     stale = true;
-    if (typeof ideDriver.markStale === "function") ideDriver.markStale();
+    const active = state === "running" || state === "stopping";
+    if (active) {
+      state = "stopping";
+      cancelDelay();
+    }
+    ideDriver.markStale?.(active);
+  };
+  const sourceIsCurrent = (context) => {
+    if (ideDriver.sourceMatches?.(context) === false) markStale();
+    return !stale;
   };
   const start = async () => {
     if (disposed || state !== "idle") return;
@@ -115,7 +124,8 @@ export function createIdeBatchRunner(config) {
       for (let index = 0; index < context.count; index++) {
         if (
           state === "stopping" ||
-          !isCurrent(taskRunId, context, controller.signal)
+          !isCurrent(taskRunId, context, controller.signal) ||
+          !sourceIsCurrent(context)
         )
           break;
         if (typeof ideDriver.setRunning === "function")
@@ -126,7 +136,8 @@ export function createIdeBatchRunner(config) {
           result = await ideDriver.runSample(context, index, {
             runId: taskRunId,
             signal: controller.signal,
-            drive: (action) => drive(taskRunId, action),
+            drive: (action) => isCurrent(taskRunId, context, controller.signal) &&
+              sourceIsCurrent(context) && drive(taskRunId, action),
             isCurrent: () =>
               isCurrent(taskRunId, context, controller.signal),
             wait: (ms) => pause(ms, taskRunId),
@@ -139,10 +150,13 @@ export function createIdeBatchRunner(config) {
           if (sampleRunId === taskRunId) sampleRunId = null;
         }
         if (!isCurrent(taskRunId, context, controller.signal)) break;
+        sourceIsCurrent(context);
+        if (!result) break;
         results[index] = result;
         if (typeof ideDriver.applyResult === "function")
           ideDriver.applyResult(context, index, result);
         if (result.verdict === "CE") {
+          if (state === "stopping") break;
           for (let rest = index + 1; rest < context.count; rest++) {
             results[rest] = {
               verdict: "CE",
@@ -185,7 +199,7 @@ export function createIdeBatchRunner(config) {
         driving = false;
         cancelDelay();
         if (context && context.kind === "ready" && ideDriver.finish)
-          ideDriver.finish(context, results);
+          ideDriver.finish(context, results, { stale });
       }
     }
   };

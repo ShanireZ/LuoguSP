@@ -185,19 +185,29 @@ export function createIdeBatchFeature({
         root, readParts: () => outputParts(root), previousPill: parts.pill, signal, isCurrent,
       });
       const submitP = waitIdeSubmit(10000, runId);
-      drive(() => runBtn.click());
+      if (!drive(() => {
+        runBtn.click();
+        return true;
+      })) {
+        cancelIdeSubmitWaiter(runId);
+        return null;
+      }
       return submitP;
     };
     const before = outputParts();
     if (!before) return { verdict: "UKE", note: "IDE 面板不存在" };
     try {
-      let status = await submit(before);
+      const first = submit(before);
+      if (!first) return null;
+      let status = await first;
       if (status === 429) {
         output.dispose();
         if (!(await wait(3000)) || !isCurrent()) return { verdict: "UKE", note: "页面已切换" };
         const parts = outputParts();
         if (!parts) return { verdict: "UKE", note: "IDE 面板不存在" };
-        status = await submit(parts);
+        const retry = submit(parts);
+        if (!retry) return null;
+        status = await retry;
       }
       if (status == null || status < 200 || status >= 300)
         return {
@@ -294,7 +304,7 @@ export function createIdeBatchFeature({
     );
   }
 
-  function finishIdeSummary(results) {
+  function finishIdeSummary(results, stale) {
     if (!IDE_VIEW.summaryEl || !results) return;
     const rs = results;
     const counts = {};
@@ -306,7 +316,7 @@ export function createIdeBatchFeature({
       if (r.verdict === "AC") ac++;
       else counts[r.verdict] = (counts[r.verdict] || 0) + 1;
     });
-    let text = `${ac}/${rs.length} 通过`;
+    let text = stale ? "代码已更改 · 结果已过期" : `${ac}/${rs.length} 通过`;
     for (const k in counts) text += ` · ${counts[k]} ${k}`;
     if (tested < rs.length) {
       text += " · 已停止";
@@ -325,18 +335,20 @@ export function createIdeBatchFeature({
         .forEach((r) => r.classList.remove("open"));
   }
 
-  function showIdeStale() {
-    if (IDE_VIEW.summaryEl && document.contains(IDE_VIEW.summaryEl))
-      IDE_VIEW.summaryEl.textContent += " · 结果可能已过期，建议重新测试";
+  function showIdeStale(active) {
+    if (!IDE_VIEW.summaryEl || !document.contains(IDE_VIEW.summaryEl)) return;
+    if (active) {
+      if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.disabled = true;
+      IDE_VIEW.summaryEl.textContent = "代码已更改 · 结果已过期，正在停止…";
+    } else IDE_VIEW.summaryEl.textContent += " · 代码已更改，结果已过期";
   }
   function hookIdeStaleAndGuard(controls) {
-    // 程式碼變更 → 過期標註（CM6 是 contenteditable，input/keydown 均會冒泡）
+    // CodeMirror emits input when the user edits its contenteditable.
     const stale = (e) => {
       if (e.target && e.target.closest && e.target.closest(SELECTORS.cmContent))
         controls.markStale();
     };
     document.addEventListener("input", stale, true);
-    document.addEventListener("keydown", stale, true);
     // 批測中攔掉使用者手點原生 執行/自測（處理程序化點擊帶 driving 標記放行）
     const guard = (e) => {
       if (!controls.isRunning() || controls.isDriving()) return;
@@ -354,7 +366,6 @@ export function createIdeBatchFeature({
     document.addEventListener("click", guard, true);
     return () => {
       document.removeEventListener("input", stale, true);
-      document.removeEventListener("keydown", stale, true);
       document.removeEventListener("click", guard, true);
     };
   }
@@ -546,6 +557,7 @@ export function createIdeBatchFeature({
       mountIdeTabs(ideBrowserDriver.controls);
       const pid = currentPid();
       const routeToken = `${location.pathname}${location.search}${location.hash}`;
+      const source = readIdeCode();
       const samples = await getIdeSamples(signal);
       if (
         !pid ||
@@ -557,7 +569,7 @@ export function createIdeBatchFeature({
         return { kind: "hint", message: "页面已切换" };
       if (!samples || !samples.length)
         return { kind: "hint", message: "本题无样例" };
-      if (!readIdeCode().trim())
+      if (!source.trim())
         return { kind: "hint", message: "代码为空" };
       const runButtons = sampleRunButtons();
       if (!runButtons.length)
@@ -587,6 +599,7 @@ export function createIdeBatchFeature({
         runId,
         pid,
         routeToken,
+        source,
         samples,
         runButtons,
         count,
@@ -601,6 +614,7 @@ export function createIdeBatchFeature({
       currentPid() === context.pid &&
       `${location.pathname}${location.search}${location.hash}` ===
         context.routeToken,
+    sourceMatches: (context) => readIdeCode() === context.source,
     hint: (message) => ideBatchHint(message),
     begin: (context) => {
       if (context.batchButton) context.batchButton.disabled = true;
@@ -642,11 +656,11 @@ export function createIdeBatchFeature({
         context.input.dispatchEvent(new Event("input", { bubbles: true }));
       }
     },
-    finish: (context, results) => {
+    finish: (context, results, { stale }) => {
       if (context.batchButton) context.batchButton.disabled = false;
       if (context.selfTest) context.selfTest.disabled = false;
       if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.style.display = "none";
-      finishIdeSummary(results);
+      finishIdeSummary(results, stale);
     },
     cancel: () => cancelIdeSubmitWaiter(),
     markStale: showIdeStale,

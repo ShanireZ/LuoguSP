@@ -92,7 +92,7 @@ export function createSaverWorkflow(config, policy) {
   const lookupRaw = async (type, id, signal) => {
     try {
       const payload = await transport.get(`/${type}/query/${id}`, { signal });
-      return protocol.classifyLookup(payload);
+      return protocol.classifyLookup(payload, type, id);
     } catch (error) {
       return unavailableFromError(error);
     }

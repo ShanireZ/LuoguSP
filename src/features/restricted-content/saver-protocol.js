@@ -15,9 +15,22 @@ export function createSaverProtocol() {
         : "";
     return `${fallback}${code}${message}`;
   };
-  const classifyLookup = (payload) => {
-    if (payload && payload.code === 200 && payload.data)
-      return { kind: "archived", data: payload.data };
+  const classifyLookup = (payload, type, id) => {
+    if (payload?.code === 200) {
+      const data = payload.data;
+      const matchesId = typeof id === "string" && (data?.id === id ||
+        (Number.isSafeInteger(data?.id) && String(data.id) === id));
+      const matchesType = type === "article" ? typeof data?.title === "string" :
+        type === "paste" && data?.title === undefined;
+      if (matchesId && matchesType && typeof data.content === "string")
+        return { kind: "archived", data };
+      return {
+        kind: "unavailable",
+        reason: "保存站返回的内容与请求目标不匹配。",
+        retryable: false,
+        category: "invariant",
+      };
+    }
     if (payload && payload.code === 404) return { kind: "missing" };
     return {
       kind: "unavailable",
