@@ -28,6 +28,7 @@ previews or restricted-content features fail.
 | pnpm baseline:check | Queries, approved minimums, frozen targets and consumers. |
 | pnpm check | Worktree Baseline, reproducible output, quality and Node tests. |
 | pnpm qa:browser | Promoted release dependencies and browser fixture behavior. |
+| pnpm qa:browser:local | Offline Chrome/Edge/Chromium fixtures for worktree settings, hover cards, IDE samples, record modes and route cancellation. Set `LUOGUSP_QA_USERSCRIPT` to exercise a local candidate. |
 | Manual Luogu checks | Behavior under the observed browser, account and network. |
 | Custom-origin checks | Integrity and connectivity of the selected origin only. |
 

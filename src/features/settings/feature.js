@@ -28,22 +28,50 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
   //   兩者**共用 `#luogusp-settings` 這個 id**（CSS 作用域全掛在它上面，見 style.js）。
   //   此前只有設定面板登記了關閉回呼，確認框沒有，於是（2026-08-15 jsdom 重現）：
   //   保存設定 → 確認框彈出 → 路由切換（page-lifecycle dispose 再 remount）
-  //   → 確認框連同它那個 document 級 keydown 監聽一起留在頁面上（Enter 直接
-  //   `location.reload()`），而且它頂著的 id 會把 `openSettings` 的防重入判據擋下 ——
+  //   → 確認框和按鍵監聽留在頁面上，它的 id 也會把 `openSettings` 的防重入判據擋下 ——
   //   齒輪從此點了沒反應。所以登記表是**一份**，兩種覆蓋層都進。
   const openOverlays = new Set();
   const closeAllOverlays = () => {
     for (const close of [...openOverlays]) close();
   };
-  function openSettings() {
+  function mountOverlay(overlay, trigger, initialFocus) {
+    const close = (restoreFocus = true) => {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey, true);
+      openOverlays.delete(close);
+      if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
+    };
+    function onKey(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      } else if (event.key === "Tab") {
+        const controls = [...overlay.querySelectorAll("button:not(:disabled), input:not(:disabled)")];
+        const active = document.activeElement;
+        const edge = event.shiftKey ? controls.at(-1) : controls[0];
+        const farEdge = event.shiftKey ? controls[0] : controls.at(-1);
+        if (!overlay.contains(active) || active === farEdge) {
+          event.preventDefault();
+          edge?.focus();
+        }
+      }
+    }
+    document.body.appendChild(overlay);
+    openOverlays.add(close);
+    document.addEventListener("keydown", onKey, true);
+    (overlay.querySelector(initialFocus) || overlay.querySelector("button"))?.focus();
+    return close;
+  }
+  function openSettings(trigger) {
     if (document.getElementById("luogusp-settings")) return; // 避免重複打開
     const overlay = document.createElement("div");
     overlay.id = "luogusp-settings";
     overlay.innerHTML = `
       <div class="luogusp-mask"></div>
-      <div class="luogusp-panel" role="dialog" aria-modal="true">
+      <div class="luogusp-panel" role="dialog" aria-modal="true" aria-labelledby="luogusp-settings-title">
         <div class="luogusp-content">
-          <h3>LuoguSP 功能设置</h3>
+          <h3 id="luogusp-settings-title">LuoguSP 功能设置</h3>
           <div class="luogusp-list">
             ${[...featureLabels]
               .map(
@@ -64,21 +92,8 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
           <p class="luogusp-hint">保存后需刷新页面生效。</p>
         </div>
       </div>`;
-    document.body.appendChild(overlay);
-
     const boxes = () => overlay.querySelectorAll('input[type="checkbox"]');
-    let closed = false;
-    function esc(e) {
-      if (e.key === "Escape") close();
-    }
-    const close = () => {
-      if (closed) return;
-      closed = true;
-      overlay.remove();
-      document.removeEventListener("keydown", esc);
-      openOverlays.delete(close);
-    };
-    openOverlays.add(close);
+    const close = mountOverlay(overlay, trigger, 'input[type="checkbox"]');
 
     overlay.addEventListener("click", (e) => {
       const t = e.target;
@@ -89,57 +104,40 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       if (act === "none") boxes().forEach((b) => (b.checked = false));
       if (act === "save") {
         boxes().forEach((b) => storage.set(b.dataset.key, b.checked));
-        close();
+        close(false);
         // owner 要求：提示要在螢幕正中。瀏覽器原生 confirm() 在 Chrome/Edge 一律貼
         // 視口頂部且樣式不可控，所以重複使用設定面板同一套遮罩 + 居中面板。
-        askRefresh();
+        askRefresh(trigger);
       }
     });
-    document.addEventListener("keydown", esc);
   }
 
   // 保存後的「是否立即刷新」確認框。與設定面板共用 #luogusp-settings 的樣式作用域，
   // 所以天然居中、天然跟隨同一套配色。
-  function askRefresh() {
+  function askRefresh(trigger) {
     const overlay = document.createElement("div");
     overlay.id = "luogusp-settings";
     overlay.innerHTML =
       '<div class="luogusp-mask"></div>' +
-      '<div class="luogusp-panel" role="alertdialog" aria-modal="true">' +
+      '<div class="luogusp-panel" role="alertdialog" aria-modal="true" aria-labelledby="luogusp-settings-title" aria-describedby="luogusp-settings-confirm">' +
       '<div class="luogusp-content">' +
-      '<h3>设置已保存</h3>' +
-      '<p class="luogusp-confirm">是否立即刷新页面生效？</p>' +
+      '<h3 id="luogusp-settings-title">设置已保存</h3>' +
+      '<p class="luogusp-confirm" id="luogusp-settings-confirm">是否立即刷新页面生效？</p>' +
       '<div class="luogusp-actions">' +
       '<button data-act="reload" class="luogusp-primary">立即刷新</button>' +
       '<button data-act="later">稍后</button>' +
       "</div></div></div>";
-    document.body.appendChild(overlay);
-    let done = false;
-    const finish = (reload) => {
-      if (done) return;
-      done = true;
-      overlay.remove();
-      document.removeEventListener("keydown", onKey);
-      openOverlays.delete(dismiss);
-      if (reload) location.reload();
-    };
-    // ★ 功能被卸載時只能是「收起」，絕不能替使用者按下「立即刷新」。
-    const dismiss = () => finish(false);
-    openOverlays.add(dismiss);
-    function onKey(event) {
-      if (event.key === "Escape") finish(false);
-      if (event.key === "Enter") finish(true);
-    }
+    const close = mountOverlay(overlay, trigger, '[data-act="later"]');
     overlay.addEventListener("click", (event) => {
       const target = event.target;
-      if (target.classList.contains("luogusp-mask")) return finish(false);
+      if (target.classList.contains("luogusp-mask")) return close();
       const act = target.getAttribute && target.getAttribute("data-act");
-      if (act === "reload") return finish(true);
-      if (act === "later") return finish(false);
+      if (act === "reload") {
+        close(false);
+        location.reload();
+      }
+      if (act === "later") close();
     });
-    document.addEventListener("keydown", onKey);
-    const primary = overlay.querySelector('[data-act="reload"]');
-    if (primary) primary.focus();
   }
 
   // 齒輪圖標（24×24 Material settings，fill=currentColor 跟隨導覽文字色）
@@ -223,6 +221,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     );
     link.classList.add("luogusp-setting-entry");
     link.setAttribute("role", "button");
+    link.tabIndex = 0;
     const textEl = navTextSpan(link);
     if (textEl) {
       if (navSel === "nav.lfe-body") {
@@ -245,7 +244,12 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     link.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      openSettings();
+      openSettings(link);
+    });
+    link.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      link.click();
     });
     unit.parentNode.insertBefore(clone, unit.nextSibling);
   }

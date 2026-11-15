@@ -29,6 +29,7 @@ export function createIdeBatchRunner(config) {
   let mountKey = null;
   let delay = null;
   let activeController = null;
+  let sampleRunId = null;
 
   const cancelDelay = () => {
     if (!delay) return;
@@ -70,7 +71,11 @@ export function createIdeBatchRunner(config) {
     if (typeof ideDriver.cancel === "function") ideDriver.cancel();
   };
   const stop = () => {
-    if (state === "preparing" || state === "running") state = "stopping";
+    if (state !== "preparing" && state !== "running") return;
+    state = "stopping";
+    const sampleRunning = sampleRunId === runId;
+    ideDriver.setStopping?.(sampleRunning);
+    if (!sampleRunning) cancelDelay();
   };
   const markStale = () => {
     if (stale || state !== "idle" || !results) return;
@@ -116,6 +121,7 @@ export function createIdeBatchRunner(config) {
         if (typeof ideDriver.setRunning === "function")
           ideDriver.setRunning(context, index);
         let result;
+        sampleRunId = taskRunId;
         try {
           result = await ideDriver.runSample(context, index, {
             runId: taskRunId,
@@ -129,6 +135,8 @@ export function createIdeBatchRunner(config) {
           if (controller.signal.aborted) break;
           logError(error);
           result = { verdict: "UKE", note: String(error) };
+        } finally {
+          if (sampleRunId === taskRunId) sampleRunId = null;
         }
         if (!isCurrent(taskRunId, context, controller.signal)) break;
         results[index] = result;

@@ -9,6 +9,9 @@
 const DEFAULT_OPEN_DELAY_MS = 300;
 const DEFAULT_CLOSE_GRACE_MS = 160;
 
+export const isPreviewShortcut = (event) =>
+  event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === "ArrowDown";
+
 export function createHoverIntent(config) {
   const {
     clock,

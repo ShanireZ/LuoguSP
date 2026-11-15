@@ -84,7 +84,7 @@ const linkButton = (text, href, extraClass) => {
 };
 
 export function renderProblemCard(card, options = {}) {
-  const { origin = "", tagsExpanded = false } = options;
+  const { origin = "", href, onResize, tagsExpanded = false } = options;
   const box = document.createDocumentFragment();
 
   const head = el("div", "luogusp-hc-head");
@@ -134,12 +134,15 @@ export function renderProblemCard(card, options = {}) {
     toggle.type = "button";
     const list = el("div", "luogusp-hc-taglist");
     list.hidden = !tagsExpanded;
+    toggle.setAttribute("aria-expanded", String(tagsExpanded));
     for (const name of card.tags) list.appendChild(el("span", "luogusp-hc-tag", name));
     toggle.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       list.hidden = !list.hidden;
       toggle.textContent = list.hidden ? "显示标签" : "隐藏标签";
+      toggle.setAttribute("aria-expanded", String(!list.hidden));
+      onResize?.();
     });
     tags.appendChild(toggle);
     tags.appendChild(list);
@@ -192,13 +195,68 @@ export function renderProblemCard(card, options = {}) {
 
   // ★ owner 2026-08-14 第四輪：這兩個改成和使用者卡一樣的按鈕，文案也改。
   const actions = el("div", "luogusp-hc-actions");
-  actions.appendChild(linkButton("跳转题目", `${origin}/problem/${card.pid}`));
+  actions.appendChild(linkButton("跳转题目", href || `${origin}/problem/${card.pid}`));
   if (mine.bestRecordId !== null)
     actions.appendChild(
       linkButton("最佳提交", `${origin}/record/${mine.bestRecordId}`, "is-ghost"),
     );
   box.appendChild(actions);
   return box;
+}
+
+const sectionKey = (section) => section.classList.contains("luogusp-hc-row")
+  ? section.firstElementChild.textContent : section.classList[0];
+
+function updateSections(card, content, reuse) {
+  const sections = [...content.children];
+  const keys = new Set(sections.map(sectionKey));
+  const previous = new Map([...card.children].map(node => [sectionKey(node), node]));
+  for (const [key, old] of previous) if (!keys.has(key)) old.remove();
+  let next = card.firstElementChild;
+  for (const section of sections) {
+    const existing = previous.get(sectionKey(section));
+    let node = section;
+    if (existing && (existing.isEqualNode(section) || reuse(existing, section))) node = existing;
+    else if (existing) {
+      existing.replaceWith(section);
+      if (next === existing) next = section;
+    }
+    if (node !== next) card.insertBefore(node, next);
+    next = node.nextElementSibling;
+  }
+}
+
+export function updateProblemCard(card, content) {
+  updateSections(card, content, (existing, section) => {
+    if (existing.classList.contains("luogusp-hc-actions")) {
+      // A late best-record link must not unset focus on the problem link.
+      const currentBest = existing.children[1];
+      const nextBest = section.children[1];
+      if (currentBest && nextBest) currentBest.href = nextBest.href;
+      else if (nextBest) existing.append(nextBest);
+      else if (currentBest) {
+        if (currentBest === document.activeElement) existing.firstElementChild.focus({ preventScroll: true });
+        currentBest.remove();
+      }
+      return true;
+    }
+    if (existing.classList.contains("luogusp-hc-tags")) {
+      existing.lastElementChild.replaceChildren(...section.lastElementChild.children);
+      return true;
+    }
+    return false;
+  });
+}
+
+export function updateUserCard(card, content, preserveActions) {
+  updateSections(card, content, (existing, section) => {
+    if (!existing.classList.contains("luogusp-hc-userbody")) return false;
+    updateSections(existing, section, (old, next) =>
+      (old.classList.contains("luogusp-hc-slogan") && old.firstElementChild.isEqualNode(next.firstElementChild)) ||
+      (preserveActions && old.classList.contains("luogusp-hc-actions")),
+    );
+    return true;
+  });
 }
 
 export function renderUserCard(card, options = {}) {
@@ -431,7 +489,7 @@ export function finalizeCard(cardEl) {
   const slogan = box && box.querySelector(".luogusp-hc-clamp");
   const expand = box && box.querySelector(".luogusp-hc-expand");
   if (!slogan || !expand) return;
-  expand.hidden = slogan.scrollHeight <= slogan.clientHeight + 1;
+  expand.hidden = !box.classList.contains("is-open") && slogan.scrollHeight <= slogan.clientHeight + 1;
 }
 
 // 卡片位置。

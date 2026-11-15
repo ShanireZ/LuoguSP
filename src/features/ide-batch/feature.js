@@ -1,7 +1,7 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { IDE_BATCH_LABEL, createBatchButtonHint } from "./batch-hint.js";
 import {
-  diffLineNumbers,
+  diffIdeLines,
   idePane,
   normalizeIdeOut,
 } from "./result-view.js";
@@ -263,19 +263,34 @@ export function createIdeBatchFeature({
       p.detail.appendChild(note);
       p.meta.textContent = "";
     }
-    const expLines = normalizeIdeOut(sample[1]).split("\n");
-    const actLines = normalizeIdeOut(r.output).split("\n");
-    const bad =
-      r.verdict === "AC" ? new Set() : diffLineNumbers(expLines, actLines);
+    const outputLines = (value) => {
+      const output = normalizeIdeOut(value);
+      return output ? output.split("\n") : [];
+    };
+    const expLines = outputLines(sample[1]);
+    const actLines = outputLines(r.output);
+    const diff = r.verdict === "AC" ? null : diffIdeLines(expLines, actLines);
+    const expectedPane = idePane("期望输出", expLines, diff?.expected, "（空）");
+    const actualPane = idePane("实际输出", actLines, diff?.actual, "（未产生输出）");
+    const expectedFirst = diff?.expected.values().next().value ?? Infinity;
+    const actualFirst = diff?.actual.values().next().value ?? Infinity;
+    const first = (actualFirst <= expectedFirst ? actualPane : expectedPane)
+      .querySelector(".luogusp-ide-diffline");
+    if (first) {
+      const jump = document.createElement("button");
+      jump.type = "button";
+      jump.className = "luogusp-ide-jump";
+      jump.textContent = "跳到第一处差异";
+      jump.addEventListener("click", () => {
+        first.focus({ preventScroll: true });
+        first.scrollIntoView({ block: "nearest", inline: "nearest" });
+      });
+      p.detail.append(jump);
+    }
     p.detail.append(
       idePane("输入", normalizeIdeOut(sample[0]).split("\n"), null, "（空）"),
-      idePane("期望输出", expLines, bad, "（空）"),
-      idePane(
-        "实际输出",
-        actLines,
-        bad,
-        r.verdict === "AC" ? "（空）" : "（未产生输出）",
-      ),
+      expectedPane,
+      actualPane,
     );
   }
 
@@ -590,7 +605,10 @@ export function createIdeBatchFeature({
     begin: (context) => {
       if (context.batchButton) context.batchButton.disabled = true;
       if (context.selfTest) context.selfTest.disabled = true;
-      if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.style.display = "";
+      if (IDE_VIEW.stopBtn) {
+        IDE_VIEW.stopBtn.style.display = "";
+        IDE_VIEW.stopBtn.disabled = false;
+      }
       switchIdeTab("samples");
       renderIdeRows(context.samples);
       if (IDE_VIEW.summaryEl) IDE_VIEW.summaryEl.textContent = "测试中…";
@@ -602,6 +620,11 @@ export function createIdeBatchFeature({
         parts.pill.textContent = "运行中";
       }
       expandIdeRow(index);
+    },
+    setStopping: (sampleRunning) => {
+      if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.disabled = true;
+      if (IDE_VIEW.summaryEl) IDE_VIEW.summaryEl.textContent = sampleRunning
+        ? "当前样例完成后停止…" : "正在停止…";
     },
     runSample: async (context, index, task) => {
       try {

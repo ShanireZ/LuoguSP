@@ -42,6 +42,7 @@ export function createHoverCardSources(config) {
   const {
     fetchPage,
     problemData,
+    nativeUserInfo,
     clock,
     ttlMs = DEFAULT_TTL_MS,
     maxEntries = DEFAULT_MAX_ENTRIES,
@@ -54,6 +55,8 @@ export function createHoverCardSources(config) {
 
   const cache = new Map();
   const pending = new Map();
+  const userPreviews = new Map();
+  const viewer = () => problemData?.viewerUid() ?? 0;
 
   const remember = (key, value) => {
     // 簡單 FIFO 上限：hover 卡是瀏覽態快取，不值得為它上 LRU。
@@ -119,8 +122,11 @@ export function createHoverCardSources(config) {
     if (existing) return Promise.resolve(pickLastAttempt(existing));
     const query = new URLSearchParams({ user: String(uid), pid });
     if (href) {
-      const contest = new URLSearchParams(href.split("?")[1]?.split("#")[0]).get("contestId");
-      if (contest) query.set("contestId", contest);
+      const params = new URLSearchParams(href.split("?")[1]?.split("#")[0]);
+      for (const field of ["contestId", "lang"]) {
+        const value = params.get(field);
+        if (value) query.set(field, value);
+      }
     }
     return load(`record:${query}`, async () => {
       const payload = await readJson(
@@ -154,7 +160,10 @@ export function createHoverCardSources(config) {
         : await load(`problem:${viewerUid || 0}:${pid}`, () =>
             readJson(`/problem/${encodeURIComponent(pid)}`, signal));
       if (detail?.data?.problem?.pid === pid && detail !== payload) {
-        payload = detail;
+        payload = { data: {
+          ...detail.data,
+          problem: { ...payload?.data.problem, ...detail.data.problem },
+        } };
         publish();
       }
     } catch (error) {
@@ -186,52 +195,84 @@ export function createHoverCardSources(config) {
   // `{status:403, data:{errorMessage:"该用户未通过实名认证"}}`），所以照樣解析，
   // 只是把「有沒有拿到 user」和「失敗原因」分開回傳。
   const readMaybe = async (path, init, signal) => {
-    const response = await fetchPage(path, signal, init);
-    if (!response) return null;
     try {
+      const response = await fetchPage(path, signal, init);
+      if (!response) return null;
       return await response.json();
-    } catch (error) {
+    } catch {
       return null;
     }
   };
 
-  const user = (uid) => {
+  const user = (uid, onUpdate) => {
     const target = Number(uid);
     if (!Number.isSafeInteger(target) || target <= 0)
       return Promise.resolve(null);
-    const key = `user:${target}`;
+    const account = viewer();
+    const key = `${account}:user:${target}`;
+    const hit = cached(key);
+    if (hit !== undefined) return Promise.resolve(hit);
+    let preview = userPreviews.get(key);
+    if (!preview) {
+      preview = { card: null, patch: null, listeners: new Set() };
+      userPreviews.set(key, preview);
+    }
+    if (onUpdate) {
+      preview.listeners.add(onUpdate);
+      if (preview.card) onUpdate(preview.card);
+    }
     return load(key, async () => {
-      const [info, page] = await Promise.all([
-        readMaybe(`/api/user/info/${target}`, null, undefined),
-        // ★ 補充載荷對未實名使用者回傳 403，**那不是缺陷是常態**：主介面照樣有資料，
-        //   這裡拿不到就只是少畫幾行（咕值 / 獲獎 / 通過·提交）。
-        readMaybe(`/user/${target}`, LENTILLE_INIT, undefined),
+      let info;
+      let page;
+      let message;
+      const publish = () => {
+        if (viewer() !== account) return;
+        const card = buildUserCard(info, page);
+        if (!card) return;
+        preview.card = preview.patch ? Object.freeze({ ...card, ...preview.patch }) : card;
+        for (const notify of preview.listeners) notify(preview.card);
+      };
+      const readInfo = async () =>
+        (await nativeUserInfo?.read(target, account)) || readMaybe(`/api/user/info/${target}`, null);
+      await Promise.all([
+        readInfo().then(payload => {
+          if (Number(payload?.user?.uid) === target) {
+            info = payload;
+            publish();
+          } else message ||= payload?.data?.errorMessage;
+        }),
+        readMaybe(`/user/${target}`, LENTILLE_INIT).then(payload => {
+          if (Number(payload?.data?.user?.uid) === target) {
+            page = payload;
+            publish();
+          } else message = payload?.data?.errorMessage || message;
+        }),
       ]);
-      const card = buildUserCard(info, page);
-      if (card) {
-        reasons.delete(key);
-        return card;
-      }
-      const message =
-        (info && info.data && info.data.errorMessage) ||
-        (page && page.data && page.data.errorMessage) ||
-        null;
-      if (typeof message === "string" && message) reasons.set(key, message);
+      if (!preview.card && typeof message === "string" && message) reasons.set(key, message);
       else reasons.delete(key);
-      return null;
+      return preview.card;
+    }).finally(() => {
+      preview.listeners.delete(onUpdate);
+      if (!pending.has(key) && userPreviews.get(key) === preview) userPreviews.delete(key);
     });
   };
 
   // 關注成功後卡片上的關係與粉絲數已經改了，快取裡那份必須跟著走，
   // 否則重新 hover 會把舊狀態擺回來 —— 看起來就像「關注沒生效」。
   const patchUser = (uid, patch) => {
-    const key = `user:${Number(uid)}`;
+    const account = viewer();
+    nativeUserInfo?.invalidate(uid, account);
+    const key = `${account}:user:${Number(uid)}`;
+    const preview = userPreviews.get(key);
+    if (preview?.card) {
+      preview.patch = { ...preview.patch, ...patch };
+      preview.card = Object.freeze({ ...preview.card, ...patch });
+    }
     const entry = cache.get(key);
-    if (!entry || !entry.value) return;
-    cache.set(key, {
-      at: entry.at,
-      value: Object.freeze({ ...entry.value, ...patch }),
-    });
+    if (!entry?.value) return preview?.card;
+    const value = Object.freeze({ ...entry.value, ...patch });
+    cache.set(key, { at: entry.at, value });
+    return value;
   };
 
   return Object.freeze({
@@ -239,7 +280,7 @@ export function createHoverCardSources(config) {
     user,
     tags,
     patchUser,
-    lastError: (key) => reasons.get(key) || null,
+    lastError: (key) => reasons.get(`${viewer()}:${key}`) || null,
     getState: () => Object.freeze({ cached: cache.size, pending: pending.size }),
   });
 }

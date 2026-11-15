@@ -54,6 +54,7 @@ export function createNativeDifficultySource({
   origin,
   now = () => Date.now(),
   onPage = () => {},
+  prepareOtherGet,
 }) {
   let initialPage;
   let initial = null;
@@ -95,12 +96,21 @@ export function createNativeDifficultySource({
     let active = true;
     const open = function (method, url) {
       requests.delete(this);
-      if (active && String(method).toUpperCase() === "GET" && pageUrl(url))
-        requests.set(this, { at: now(), order: ++requestOrder });
+      if (active && String(method).toUpperCase() === "GET") {
+        if (pageUrl(url)) requests.set(this, { at: now(), order: ++requestOrder });
+        else {
+          const track = prepareOtherGet?.(url);
+          if (track) requests.set(this, { track });
+        }
+      }
       return rawOpen.apply(this, arguments);
     };
     const send = function () {
       const request = active && requests.get(this);
+      if (request?.track) {
+        request.track(this);
+        return rawSend.apply(this, arguments);
+      }
       if (request) {
         const xhr = this;
         const clean = () => {

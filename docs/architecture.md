@@ -37,8 +37,14 @@ same-origin lookup scheduler and reuse fields from Lentille page responses.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. A problem card displays available
 fields first and fills in details and the viewer's latest record as they
-arrive. IDE batch runs observe mutations in the native output panel from
+arrive, retaining focused controls and scroll position. A focused eligible
+link opens its preview with Alt+Down Arrow. Escape closes the preview and
+returns focus to the link. Problem card navigation retains the source link's
+contest and language. User cards reuse observed same-origin user-info XHRs
+and display basic information before profile-only fields arrive.
+IDE batch runs observe mutations in the native output panel from
 before the submit click until the result, deadline or cancellation.
+Output highlighting aligns insertions and deletions within a bounded comparison.
 
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.

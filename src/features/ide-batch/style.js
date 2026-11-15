@@ -22,6 +22,8 @@ export const IDE_BATCH_STYLE = `
   .luogusp-ide-pane .code-container{margin:0;}
   .luogusp-ide-pane pre{margin:0;border:1px solid #e6e6e6;border-radius:4px;background:#fff;padding:6px 8px;font-size:12px;line-height:1.55;color:#333;overflow-x:auto;min-height:40px;font-family:"Fira Code","Fira Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;}
   .luogusp-ide-pane .luogusp-ide-diffline{background:#fcebeb;color:#a32d2d;display:block;margin:0 -8px;padding:0 8px;}
+  .luogusp-ide-pane .luogusp-ide-diffline:focus{outline:2px solid currentColor;outline-offset:-2px;}
+  .luogusp-ide-jump{grid-column:1/-1;justify-self:start;}
   .luogusp-ide-note{font-size:12px;color:#a32d2d;margin:0 0 8px;}
   .luogusp-ide-empty{color:#aaa;font-style:italic;}
   .luogusp-ide-panel .code-container:hover>.copy-button{opacity:1;}

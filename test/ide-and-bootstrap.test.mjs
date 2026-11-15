@@ -300,19 +300,20 @@ test("IDE Batch Runner remounts only when the document generation changes", () =
   assert.equal(unmounts, 2);
 });
 
-// ★ `diffLineNumbers` / `normalizeIdeOut` 是 2.14.1 減肥時從 feature.js 裡拎出來的。
-//   拎出來之前它內聯在 applyIdeResult 裡、沒有直接覆蓋，而它是「哪幾行標紅」的**唯一**判據。
-//   順手把它釘住 —— 減肥是零行為變化的重構，這幾條就是那個「零」的憑證。
-test("逐行差异：只标出真正不同的行，长度不齐也算差异", async () => {
-  const { diffLineNumbers, normalizeIdeOut } = await import(
+test("IDE diff aligns inserted and deleted lines and keeps separate highlights", async () => {
+  const { diffIdeLines, normalizeIdeOut } = await import(
     "../src/features/ide-batch/result-view.js"
   );
-  assert.deepEqual([...diffLineNumbers(["a", "b"], ["a", "b"])], []);
-  assert.deepEqual([...diffLineNumbers(["a", "b"], ["a", "c"])], [1]);
-  // 實際比期望短：缺的那幾行也要算差異。
-  assert.deepEqual([...diffLineNumbers(["a", "b", "c"], ["a"])], [1, 2]);
-  // 實際比期望長：多出來的同樣算。
-  assert.deepEqual([...diffLineNumbers(["a"], ["a", "b"])], [1]);
+  const check = (left, right, expected, actual) => {
+    assert.deepEqual(diffIdeLines(left, right), { expected: new Set(expected), actual: new Set(actual) });
+  };
+  check(["a", "b"], ["a", "b"], [], []);
+  check(["a", "b"], ["a", "c"], [1], [1]);
+  check(["a", "b", "c"], ["a", "c"], [1], []);
+  check(["a", "b", "c", "d"], ["a", "extra", "b", "c", "e"], [3], [1, 4]);
+  check([], ["a", ""], [], [0, 1]);
+  const long = Array.from({ length: 600 }, (_, i) => `line ${i}`);
+  check(long, ["extra", ...long.slice(0, -1), "changed"], [599], [0, 600]);
 
   // 歸一化：CRLF、行尾空白、末尾多餘空行都要抹平 —— 否則整屏標紅。
   assert.equal(normalizeIdeOut("a\r\nb\r\n"), "a\nb");

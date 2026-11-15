@@ -198,17 +198,3 @@ test("路由切换时刷新确认框跟着收走，齿轮不会变成哑巴", ()
     restore();
   }
 });
-
-// ★ 卸載只能是「收起」。替使用者按下「立即刷新」是我們無權做的事，
-// 而 jsdom 的 location.reload 不可重定義，只能盯住登記進去的那個回呼本身。
-test("卸载确认框走的是「不刷新」那一支", () => {
-  const source = readFileSync(
-    new URL("../src/features/settings/feature.js", import.meta.url),
-    "utf8",
-  );
-  assert.match(
-    source,
-    /const dismiss = \(\) => finish\(false\);\s+openOverlays\.add\(dismiss\);/,
-    "登记给卸载用的必须是 finish(false)",
-  );
-});

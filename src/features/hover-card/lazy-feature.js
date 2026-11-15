@@ -1,4 +1,5 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
+import { isPreviewShortcut } from "./hover-intent.js";
 
 // hover 卡的啟動側薄殼。與受限內容那次同一個形狀：**只有使用者真的把指針停在
 // 題號或使用者名上，才去拉那個塊**。絕大多數頁面瀏覽根本不會觸發。
@@ -77,6 +78,7 @@ export function createHoverCardFeatures(config) {
     loadBundle,
     fetchPage,
     problemData,
+    nativeUserInfo,
     logError = (error) => console.error("LuoguSP hover card bundle:", error),
   } = config || {};
 
@@ -106,6 +108,7 @@ export function createHoverCardFeatures(config) {
             storage,
             fetchPage,
             problemData,
+            nativeUserInfo,
             isEnabled: (kind) => active.has(kind),
           });
           return feature;
@@ -158,24 +161,18 @@ export function createHoverCardFeatures(config) {
     // 指針最後落在哪兒。★ 探針**一直掛到塊真正接管為止**，就是為了讓這個座標保持新鮮：
     //   塊在路上時使用者還在移動，補發要按最新位置來。
     let point = null;
-    const detach = () => document.removeEventListener("mouseover", probe, true);
-    function probe(event) {
-      const node = event.target;
-      if (!node || typeof node.closest !== "function") return;
-      const selector = candidateSelector();
-      if (!selector) return;
-      if (typeof event.clientX === "number")
-        point = { x: event.clientX, y: event.clientY };
-      // 指針**正壓在**候選上 → 一定要拉；否則看這一頁值不值得拉。
-      // ★ 後一條才是關鍵：它把「薄殼看不見某個元素」這一整類 bug 從根上去掉了 ——
-      //   塊由**頁面**決定加不載入，不再由「指針碰巧壓在什麼上」決定。
-      const onCandidate = !node.closest(CHROME_SELECTOR) && !!node.closest(selector);
-      if (!onCandidate && !pageWorthLoading(selector, Date.now())) return;
+    let keyboardAnchor = null;
+    const detach = () => {
+      document.removeEventListener("mouseover", probe, true);
+      document.removeEventListener("keydown", probeKeyboard);
+    };
+    function mountBundle() {
       ensureFeature().then((loaded) => {
         if (released || !loaded || innerDispose) return;
         try {
           // 把指針座標交給塊：那一次懸停的事件它接不到，只能靠座標自己補。
-          innerDispose = loaded.mount({ replayAt: point });
+          const replayFocus = keyboardAnchor && keyboardAnchor === document.activeElement ? keyboardAnchor : null;
+          innerDispose = loaded.mount(replayFocus ? { replayFocus } : { replayAt: point });
         } catch (error) {
           logError(error);
           return;
@@ -183,7 +180,28 @@ export function createHoverCardFeatures(config) {
         detach();
       });
     }
+    function probe(event) {
+      const node = event.target;
+      if (!node || typeof node.closest !== "function") return;
+      const selector = candidateSelector();
+      if (!selector) return;
+      if (typeof event.clientX === "number")
+        point = { x: event.clientX, y: event.clientY };
+      const onCandidate = !node.closest(CHROME_SELECTOR) && !!node.closest(selector);
+      if (onCandidate || pageWorthLoading(selector, Date.now())) mountBundle();
+    }
+    function probeKeyboard(event) {
+      if (event.key === "Escape") keyboardAnchor = null;
+      if (event.defaultPrevented || !isPreviewShortcut(event)) return;
+      const selector = candidateSelector();
+      const node = event.target;
+      if (!selector || !node.matches?.(selector) || node.closest(CHROME_SELECTOR)) return;
+      event.preventDefault();
+      keyboardAnchor = node;
+      mountBundle();
+    }
     document.addEventListener("mouseover", probe, true);
+    document.addEventListener("keydown", probeKeyboard);
     return () => {
       released = true;
       detach();

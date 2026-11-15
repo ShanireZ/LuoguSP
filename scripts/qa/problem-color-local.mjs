@@ -22,7 +22,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>LuoguSP di
 <script id="lentille-context" type="application/json">{"data":{"problem":{"pid":"P1001","difficulty":1},"recommendations":[{"pid":"P1421","difficulty":1},{"pid":"P1425","difficulty":2}]}}</script></head>
 <body><h1>LuoguSP 难度着色：工作树浏览器检查</h1><p>本地夹具使用现场核对的洛谷 DOM 与数据结构；不是线上发布验证。</p>
 <ol id="results"></ol><main id="stage"><a href="/problem/P1001">P1001</a><a href="/problem/P1421">P1421</a><a href="/problem/P1425">P1425</a></main><pre id="failure"></pre><script src="/scenario.js"></script></body></html>`;
-const server = createServer((req, res) => {
+export const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname === "/early.js") {
     res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });

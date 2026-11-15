@@ -21,6 +21,7 @@
     "quality:report": "node scripts/quality.mjs --fetch-requires --write-report",
     "qa:prepare": "node scripts/prepare-browser-qa.mjs",
     "qa:browser": "node scripts/qa/browser-qa.mjs",
+    "qa:browser:local": "node --test scripts/qa/browser-regressions.mjs",
     "qa:hidden-intro:stage": "node scripts/qa/stage-hidden-intro.mjs",
     "qa:hidden-intro:verify": "node scripts/cdn/verify-production.mjs --qa",
     "benchmark:origins": "node scripts/benchmark-origins.mjs --write-report",

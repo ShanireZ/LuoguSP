@@ -1,6 +1,7 @@
 import { createGetRequestScheduler } from "../core/get-request-scheduler.js";
 import { createNativeDifficultySource } from "../features/problem-color/native-difficulty-source.js";
 import { createProblemData, LENTILLE_INIT } from "../features/problem-color/problem-data.js";
+import { createNativeUserInfo } from "./luogu-user-info.js";
 
 export function createBrowserProblemResources() {
   if (typeof document === "undefined") return null;
@@ -13,11 +14,13 @@ export function createBrowserProblemResources() {
     fetch: (url, init) => fetch(url, { ...init, ...LENTILLE_INIT }),
     clock,
   });
+  const userInfo = createNativeUserInfo({ origin: location.origin, viewer: () => data.viewerUid() });
   const native = createNativeDifficultySource({
     document,
     XMLHttpRequest: globalThis.XMLHttpRequest,
     origin: location.origin,
     onPage: (page, url, at) => data.rememberPage(page, url, at),
+    prepareOtherGet: userInfo.prepare,
   });
   const data = createProblemData({
     origin: location.origin,
@@ -40,5 +43,5 @@ export function createBrowserProblemResources() {
       };
     },
   });
-  return Object.freeze({ data, native, observer });
+  return Object.freeze({ data, native, observer, userInfo });
 }

@@ -82,6 +82,7 @@ export function createLuoguSPApp(options = {}) {
   const hoverCardFeatures = createHoverCardFeatures({
     storage,
     problemData: problemResources?.data,
+    nativeUserInfo: problemResources?.userInfo,
     loadBundle: options.hoverCardLoadBundle,
     fetchPage: options.hoverCardFetchPage,
   });

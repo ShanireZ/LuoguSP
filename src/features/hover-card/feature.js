@@ -10,9 +10,11 @@ import {
   placeCard,
   renderProblemCard,
   renderUserCard,
+  updateProblemCard,
+  updateUserCard,
 } from "./card-view.js";
 import { createFollowAction } from "./follow-action.js";
-import { createHoverIntent } from "./hover-intent.js";
+import { createHoverIntent, isPreviewShortcut } from "./hover-intent.js";
 import { createHoverCardSources } from "./sources.js";
 import { HOVER_CARD_STYLE } from "./style.js";
 
@@ -32,7 +34,7 @@ export function createHoverCardFeature(config) {
   // ★ 設定項的身分（id/key/label）在**薄殼**手裡，不在這裡 —— 這個塊只負責幹活。
   //   `isEnabled(kind)` 是薄殼現問的：owner 把開關拆成了題目卡與使用者卡兩個，
   //   改開關要**立刻生效**，不能靠重掛。
-  const { fetchPage, problemData, isEnabled = () => true } = config || {};
+  const { fetchPage, problemData, nativeUserInfo, isEnabled = () => true } = config || {};
 
   const clock = {
     now: () => Date.now(),
@@ -59,12 +61,14 @@ export function createHoverCardFeature(config) {
     card.id = CARD_ID;
     card.className = "luogusp-hc";
     card.hidden = true;
-    card.setAttribute("role", "tooltip");
+    card.tabIndex = -1;
+    card.setAttribute("role", "dialog");
     document.body.appendChild(card);
 
     const sources = createHoverCardSources({
       fetchPage: (path, signal, init) => fetchPage(path, signal, init),
       problemData,
+      nativeUserInfo,
       clock,
       logError: (error) => console.error("LuoguSP hover card:", error),
     });
@@ -77,22 +81,24 @@ export function createHoverCardFeature(config) {
           body: payload.body,
           credentials: "same-origin",
         }),
-      onState: (uid, next) => {
-        sources.patchUser(uid, next);
-        // 狀態變了就地重畫，別等下一次 hover。
-        if (shown && shown.kind === "user" && shown.uid === uid) draw(shown.key);
+      onState: (uid, next, phase) => {
+        const updated = sources.patchUser(uid, next);
+        if (updated && shown?.kind === "user" && shown.uid === uid)
+          updateShownUser?.(updated, phase === "pending");
       },
       logError: (error) => console.error("LuoguSP hover follow:", error),
     });
 
     // 當前正在展示的目標（由 hover-intent 決定），以及它的錨點矩形。
     let shown = null;
+    let candidate = null;
     let openController;
-    const targets = new Map();
+    let keyboardPreview = false;
+    let updateShownUser;
     // ★ owner 要求屏蔽洛谷原生的題號懸停。原生那個就是 `.pid[title]` 上的 title 屬性
     //   （problem-color 的選擇器就叫這個名字）觸發的瀏覽器浮泡 —— 我們的卡片一接管，
     //   兩層提示就會打架。摘掉 title，並記下原值，dispose 時還回去。
-    const strippedTitles = new WeakMap();
+    const strippedTitles = new Map();
     const stripNativeTitle = (anchor) => {
       for (const node of [anchor, ...anchor.querySelectorAll?.("[title]") ?? []]) {
         if (!node || strippedTitles.has(node)) continue;
@@ -103,13 +109,9 @@ export function createHoverCardFeature(config) {
       }
     };
     const restoreNativeTitles = () => {
-      for (const target of targets.values()) {
-        const anchor = target.anchor;
-        for (const node of [anchor, ...(anchor.querySelectorAll?.("*") ?? [])]) {
-          const title = strippedTitles.get(node);
-          if (title !== undefined) node.setAttribute("title", title);
-        }
-      }
+      for (const [node, title] of strippedTitles)
+        if (!node.hasAttribute("title")) node.setAttribute("title", title);
+      strippedTitles.clear();
     };
 
     // 最近一次指針座標：跨行錨點要靠它挑出「指針所在的那一行」來定位，
@@ -152,62 +154,65 @@ export function createHoverCardFeature(config) {
       openSide = loading ? placement.below : null;
     };
 
-    const draw = async (key) => {
-      const target = targets.get(key);
-      if (!target) return;
+    const draw = async (target) => {
       const viewer = problemData?.viewerUid() ?? readViewerUid(document, window);
       const controller = openController;
-      const isCurrent = () => !controller?.signal.aborted && shown?.key === key;
+      const isCurrent = () => !controller?.signal.aborted && shown === target;
       let displayed;
-      const display = (model) => {
+      const display = (model, busy) => {
         if (!isCurrent() || displayed === model) return;
+        const previous = displayed;
         displayed = model;
         const tagsExpanded = !!card.querySelector(".luogusp-hc-taglist:not([hidden])");
-        card.textContent = "";
+        const scrollTop = card.scrollTop;
         if (!model) {
-          card.appendChild(
+          card.replaceChildren(
             Object.assign(document.createElement("div"), {
               className: "luogusp-hc-muted",
               textContent: sources.lastError(target.key) || "拿不到这条数据。",
             }),
           );
         } else if (model.kind === "problem") {
-          card.appendChild(
-            renderProblemCard(model, { origin: location.origin, onResize: position, tagsExpanded }),
-          );
+          updateProblemCard(card, renderProblemCard(model, {
+            origin: location.origin, href: target.href, onResize: position, tagsExpanded,
+          }));
         } else {
-          card.appendChild(
+          updateUserCard(card,
             renderUserCard(model, {
               origin: location.origin,
               viewerUid: viewer,
               onResize: position,
               onFollow: viewer ? (next) => follow.toggle(next) : null,
               onBlock: viewer ? (next) => follow.block(next) : null,
-              followBusy: follow.isBusy(model.uid),
+              followBusy: busy ?? follow.isBusy(model.uid),
             }),
+            busy === undefined && previous?.name === model.name &&
+              previous.relation === model.relation && previous.reverseRelation === model.reverseRelation &&
+              previous.followerCount === model.followerCount,
           );
         }
         finalizeCard(card);
         position();
+        card.scrollTop = scrollTop;
       };
       if (target.kind === "problem") {
-        const href = target.anchor.pathname?.replace(/\/$/, "") === `/problem/${target.pid}`
-          ? target.anchor.href : undefined;
-        const model = await sources.problem(target.pid, viewer, controller?.signal, { href, onUpdate: display });
+        const model = await sources.problem(target.pid, viewer, controller?.signal, {
+          href: target.href, onUpdate: display,
+        });
         if (model || displayed === undefined) display(model);
       } else {
-        display(await sources.user(target.uid));
+        updateShownUser = display;
+        display(await sources.user(target.uid, display));
       }
       if (!isCurrent()) return;
       loading = false;
-      position();
+      openSide = null;
     };
 
     const intent = createHoverIntent({
       clock,
-      onOpen: (key) => {
-        shown = targets.get(key) || null;
-        if (!shown) return;
+      onOpen: (target) => {
+        shown = target;
         openController = new AbortController();
         loading = true;
         openSide = null;
@@ -218,13 +223,16 @@ export function createHoverCardFeature(config) {
           }),
         );
         card.hidden = false;
+        card.setAttribute("aria-label", target.kind === "problem" ? "题目预览" : "用户预览");
         position();
-        draw(key);
+        draw(target);
       },
       onClose: () => {
         openController?.abort();
         openController = null;
         shown = null;
+        keyboardPreview = false;
+        updateShownUser = null;
         loading = false;
         openSide = null;
         card.hidden = true;
@@ -232,31 +240,55 @@ export function createHoverCardFeature(config) {
       },
     });
 
+    const targetAt = (node) => {
+      const target = resolveHoverTarget(node, identity, readPageSubject(location.pathname), location.pathname);
+      if (!target || !isEnabled(target.kind)) return null;
+      const { anchor } = target;
+      const href = target.kind === "problem" && anchor.origin === location.origin &&
+        anchor.pathname.replace(/\/$/, "") === `/problem/${target.pid}` ? anchor.href : undefined;
+      for (const existing of [shown, candidate])
+        if (existing?.anchor === anchor && existing.key === target.key && existing.href === href)
+          return existing;
+      if (target.kind === "problem") stripNativeTitle(anchor);
+      return { ...target, href };
+    };
+
+    const enterWithKeyboard = (node) => {
+      if (!node || card.contains(node)) return false;
+      const target = targetAt(node);
+      if (!target || target.anchor !== node) return false;
+      pointer = null;
+      intent.open(target);
+      keyboardPreview = true;
+      card.focus({ preventScroll: true });
+      return true;
+    };
+
     const onOver = (event) => {
       if (typeof event.clientX === "number")
         pointer = { x: event.clientX, y: event.clientY };
       // 指針落在卡片自己身上：維持當前卡，別關。
       if (card.contains(event.target)) {
-        if (shown) intent.enter(shown.key);
+        if (shown) intent.enter(shown);
         return;
       }
       // ★ 頁面主體每次 hover 現讀，不在 mount 時算一次：洛谷是 SPA，
       //   路由一換 pathname 就變了，快取下來會在下一頁拿舊主體做判斷。
-      const target = resolveHoverTarget(
-        event.target,
-        identity,
-        readPageSubject(location.pathname),
-        location.pathname,
-      );
-      if (!target || !isEnabled(target.kind)) return;
-      if (target.kind === "problem") stripNativeTitle(target.anchor);
-      targets.set(target.key, target);
-      intent.enter(target.key);
+      if (keyboardPreview && card.contains(document.activeElement)) return;
+      const target = targetAt(event.target);
+      if (!target) {
+        candidate = null;
+        intent.leave();
+        return;
+      }
+      candidate = target;
+      intent.enter(target);
     };
     const onOut = (event) => {
       const to = event.relatedTarget;
       // 移到卡片上不算離開，否則卡上的按鈕永遠點不到。
       if (to && (card === to || card.contains(to))) return;
+      if (keyboardPreview && card.contains(document.activeElement)) return;
       intent.leave();
     };
     // ★★ owner 2026-08-14 第四輪：滾輪捲動時，指針明明還在卡片裡，卡片卻消失了。
@@ -269,35 +301,37 @@ export function createHoverCardFeature(config) {
       const under = document.elementFromPoint(pointer.x, pointer.y);
       return !!under && card.contains(under);
     };
-    const onScroll = () => {
-      if (pointerInsideCard()) return;
+    const onScroll = (event) => {
+      if (event.target === card || pointerInsideCard()) return;
       intent.dismiss();
     };
     const onKey = (event) => {
-      if (event.key === "Escape") intent.dismiss();
+      if (event.defaultPrevented) return;
+      if (isPreviewShortcut(event) && enterWithKeyboard(event.target)) event.preventDefault();
+      if (event.key === "Escape") {
+        const anchor = shown?.anchor;
+        const restore = card.contains(document.activeElement);
+        intent.dismiss();
+        if (restore && anchor?.isConnected) anchor.focus({ preventScroll: true });
+      }
+    };
+    const onFocusOut = (event) => {
+      if (event.relatedTarget && !card.contains(event.relatedTarget) && !pointerInsideCard())
+        intent.dismiss();
     };
 
     // ★★ 塊是被使用者那一次懸停拉下來的，而那個事件早就派發完了 —— 委託監聽接不到。
     //    所以薄殼把「指針當時在哪」交過來，這裡自己解析一次並**立刻打開**。
     //    ★ 不用補發合成事件：跨 realm 造事件脆，而且合成事件仍要再等 300ms 停留，
     //      體感還是「第一次懸停不彈」。
-    if (options.replayAt && document.elementFromPoint) {
+    if (options.replayFocus) enterWithKeyboard(options.replayFocus);
+    else if (options.replayAt && document.elementFromPoint) {
       const { x, y } = options.replayAt;
       const node = document.elementFromPoint(x, y);
-      const primed =
-        node && typeof node.closest === "function"
-          ? resolveHoverTarget(
-              node,
-              identity,
-              readPageSubject(location.pathname),
-              location.pathname,
-            )
-          : null;
-      if (primed && isEnabled(primed.kind)) {
+      const primed = targetAt(node);
+      if (primed) {
         pointer = { x, y };
-        if (primed.kind === "problem") stripNativeTitle(primed.anchor);
-        targets.set(primed.key, primed);
-        intent.open(primed.key);
+        intent.open(primed);
       }
     }
 
@@ -306,6 +340,7 @@ export function createHoverCardFeature(config) {
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     document.addEventListener("keydown", onKey);
+    card.addEventListener("focusout", onFocusOut);
 
     return () => {
       intent.dismiss();
@@ -315,7 +350,6 @@ export function createHoverCardFeature(config) {
       window.removeEventListener("resize", onScroll);
       document.removeEventListener("keydown", onKey);
       restoreNativeTitles();
-      targets.clear();
       card.remove();
     };
   };
