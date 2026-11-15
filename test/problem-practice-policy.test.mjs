@@ -42,15 +42,3 @@ test("practice policy colors attempted problems but skips passed problems", () =
     true,
   );
 });
-
-test("record list and details own their difficulty colors", () => {
-  const dom = new JSDOM(`<!doctype html><body>
-    <a id="row" href="/problem/P1001">P1001 题目</a>
-  </body>`);
-  const anchor = dom.window.document.querySelector("#row");
-  assert.equal(isProblemAnchorColorable(anchor, "/record/list"), false);
-  assert.equal(isProblemAnchorColorable(anchor, "/record/list/"), false);
-  assert.equal(isProblemAnchorColorable(anchor, "/record/303491732"), false);
-  assert.equal(isProblemAnchorColorable(anchor, "/record/303491732/"), false);
-  assert.equal(isProblemAnchorColorable(anchor, "/record/303491732/other"), true);
-});

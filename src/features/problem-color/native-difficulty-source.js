@@ -1,9 +1,37 @@
 import { PID_PATTERN } from "./identity.js";
 import { DIFFICULTY_TIERS } from "../../core/luogu-difficulty.js";
-import { collectDifficultyBatches, readLentilleData } from "./lentille-harvest.js";
+import { asLentillePage, collectDifficultyBatches, readLentillePage } from "./lentille-harvest.js";
 
 export const validDifficulty = (value) =>
   Number.isInteger(value) && value >= 0 && value < DIFFICULTY_TIERS;
+
+const RECORD_PATH = /^\/record\/(list|\d+)\/?$/;
+export const recordRouteId = (pathname) => RECORD_PATH.exec(pathname)?.[1] ?? null;
+
+// Columba uses the difficulty on each record's own problem and its current
+// theme palette. Keep it scoped to that record page and query.
+function recordSnapshot(page, url) {
+  const routeId = url && recordRouteId(url.pathname);
+  if (!routeId) return null;
+  const isList = routeId === "list";
+  const template = isList ? "record.list" : "record.show";
+  const problems = new Map();
+  if (page?.academic && page.template === template) {
+    const { records, record } = page.data;
+    const items = isList ? records?.result : [record];
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        const id = String(item?.id);
+        if (!/^\d+$/.test(id) || (!isList && id !== routeId)) continue;
+        const problem = item?.problem;
+        if (typeof problem?.pid === "string" && PID_PATTERN.test(problem.pid) &&
+            validDifficulty(problem.difficulty))
+          problems.set(`${id}:${problem.pid}`, problem.difficulty);
+      }
+    }
+  }
+  return { path: url.pathname + url.search, problems };
+}
 
 // Only keep public pid/difficulty pairs, never the rest of a page response.
 function snapshot(data, at) {
@@ -25,24 +53,33 @@ export function createNativeDifficultySource({
   origin,
   now = () => Date.now(),
 }) {
-  let initialData;
+  let initialPage;
   let initial = null;
+  let initialRecord = null;
   let latest = null;
+  let latestRecord = null;
   let requestOrder = 0;
-  const supportedPath = /^\/(?:problem\/(?:list|[A-Za-z0-9_]+)|training\/\d+|user\/\d+\/practice|record\/list)\/?$/;
+  const supportedPath = /^\/(?:problem\/(?:list|[A-Za-z0-9_]+)|training\/\d+|user\/\d+\/practice)\/?$/;
   const pageUrl = (raw) => {
     try {
       const url = new URL(raw, origin);
-      return url.origin === origin && supportedPath.test(url.pathname) ? url : null;
+      return url.origin === origin &&
+        (supportedPath.test(url.pathname) || RECORD_PATH.test(url.pathname)) ? url : null;
     } catch { return null; }
   };
+  const initialUrl = pageUrl(document.URL);
   const harvest = () => {
-    const data = readLentilleData(document);
-    if (data !== initialData) {
-      initialData = data;
-      initial = data ? snapshot(data, now()) : null;
+    const page = readLentillePage(document);
+    if (page !== initialPage) {
+      initialPage = page;
+      initial = page ? snapshot(page.data, now()) : null;
+      initialRecord = recordSnapshot(page, initialUrl);
     }
     return [initial, latest].filter(Boolean);
+  };
+  const recordDifficulty = (path, id, pid) => {
+    const record = latestRecord?.path === path ? latestRecord : initialRecord;
+    return record?.path === path ? record.problems.get(`${id}:${pid}`) : undefined;
   };
   const subscribe = (accept) => {
     const proto = XMLHttpRequest?.prototype;
@@ -68,16 +105,26 @@ export function createNativeDifficultySource({
           pending.delete(clean);
         };
         const read = () => {
-          if (!active || xhr.status !== 200 || !pageUrl(xhr.responseURL)) return;
+          if (!active || xhr.status !== 200) return;
+          const url = pageUrl(xhr.responseURL);
+          if (!url) return;
           try {
             const payload = xhr.responseType === "json" ? xhr.response :
               (!xhr.responseType || xhr.responseType === "text") ? JSON.parse(xhr.responseText) : null;
-            if (!payload?.data || typeof payload.data !== "object") return;
-            const batch = snapshot(payload.data, request.at);
-            if (!batch.problems.length || (latest && request.order < latest.order)) return;
-            batch.order = request.order;
-            latest = batch;
-            accept();
+            const page = asLentillePage(payload);
+            if (!page) return;
+            const batch = snapshot(page.data, request.at);
+            const record = recordSnapshot(page, url);
+            let updated = false;
+            if (batch.problems.length && (!latest || request.order > latest.order)) {
+              latest = { ...batch, order: request.order };
+              updated = true;
+            }
+            if (record && (!latestRecord || request.order > latestRecord.order)) {
+              latestRecord = { ...record, order: request.order };
+              updated = true;
+            }
+            if (updated) accept();
           } catch { /* Unsupported/HTML/error responses leave the fallback intact. */ }
         };
         pending.add(clean);
@@ -95,5 +142,5 @@ export function createNativeDifficultySource({
       if (proto.send === send) proto.send = rawSend;
     };
   };
-  return Object.freeze({ harvest, subscribe });
+  return Object.freeze({ harvest, subscribe, recordDifficulty });
 }

@@ -87,13 +87,39 @@ async function run() {
   check(!stage.querySelectorAll(".l-card a")[1].dataset.luoguspPid, "passed problem colored");
   report("练习页只处理尝试过的题目");
 
-  for (const path of ["/record/list", "/record/303491732"]) {
-    history.pushState({}, "", path);
-    stage.innerHTML = '<a href="/problem/P9997"><strong style="color:rgb(19,194,194)">P9997</strong> 标题</a>';
-    await frame(); await pause(320);
-    check(!stage.querySelector("a").dataset.luoguspPid && queries.length === 0, "record link recolored or fetched");
+  const renderRecord = (data, nativeColor = "") => {
+    const { id, problem: { pid } } = data.record || data.records.result[0];
+    const rowClass = data.record ? "problem-row" : "problem";
+    const status = data.record ? "" : `<div><a class="status" href="/record/${id}">Accepted</a></div>`;
+    stage.innerHTML = `${status}<div class="${rowClass}"><a href="/problem/${pid}"><strong style="${nativeColor}">${pid}</strong> 标题</a></div>
+      <a id="unrelated" href="/problem/${pid}">${pid} 其他链接</a>`;
+  };
+  for (const [path, expected] of [
+    ["/record/list?user=116524", "rgb(42, 150, 151)"],
+    ["/record/307939068", "rgb(181, 181, 248)"],
+    ["/record/list?pid=P17832", "rgb(42, 150, 151)"],
+  ]) {
+    await nativeNavigate(path, renderRecord);
+    await frame();
+    const pid = stage.querySelector("strong");
+    check(getComputedStyle(pid).color === expected, `academic record color missing on ${path}`);
+    check(!pid.children.length && getComputedStyle(pid).fontWeight === "700", "native PID element changed");
+    check(!stage.querySelector("#unrelated").dataset.luoguspPid && queries.length === 0, "record fetched or colored other links");
   }
-  report("评测记录列表与详情页保留原生颜色，零查询");
+  const lastRecordPid = stage.querySelector("strong");
+  stage.querySelector("a.status").href = "/record/307939069";
+  await frame();
+  check(getComputedStyle(lastRecordPid).color === "rgb(167, 89, 242)", "reused row kept another record's color");
+  lastRecordPid.style.color = "var(--lfe-color--purple-3)";
+  await frame();
+  check(!lastRecordPid.parentElement.dataset.luoguspPid && lastRecordPid.style.color === "var(--lfe-color--purple-3)", "native toggle lost color");
+  await nativeNavigate("/record/list?pid=P17832&normal=1", (data) => renderRecord(data, "color:var(--lfe-color--cyan-3)"));
+  await frame();
+  const normalPid = stage.querySelector("strong");
+  normalPid.style.removeProperty("color");
+  await frame(); await pause(320);
+  check(!normalPid.style.color && !normalPid.parentElement.dataset.luoguspPid && queries.length === 0, "normal mode native hide overridden");
+  report("学术模式的三类评测记录使用原生数据与主题色，普通模式保留原生难度开关");
 
   history.pushState({}, "", "/");
   stage.innerHTML = `<a id="native" href="/problem/P9996"><span class="lcolor--pink-3">P9996</span> 标题</a>

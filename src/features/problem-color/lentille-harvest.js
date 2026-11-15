@@ -11,7 +11,17 @@ import { recordDifficultyForHarvest } from "./identity.js";
 
 const parsedContexts = new WeakMap();
 
-export function readLentilleData(doc = globalThis.document) {
+export function asLentillePage(payload) {
+  if (!payload?.data || typeof payload.data !== "object") return null;
+  const learnMode = payload.user?.learnMode;
+  return {
+    data: payload.data,
+    template: payload.template,
+    academic: learnMode === true || learnMode === 1,
+  };
+}
+
+export function readLentillePage(doc = globalThis.document) {
   const element =
     doc && typeof doc.getElementById === "function"
       ? doc.getElementById("lentille-context")
@@ -22,17 +32,19 @@ export function readLentilleData(doc = globalThis.document) {
   //   按元素快取也讓受限內容 document.write 出的新文件自然重新解析。
   const text = element.textContent || "null";
   const previous = parsedContexts.get(element);
-  if (previous?.text === text) return previous.data;
-  let data = null;
+  if (previous?.text === text) return previous.page;
+  let page = null;
   try {
-    const context = JSON.parse(text);
-    if (context && typeof context.data === "object" && context.data)
-      data = context.data;
+    page = asLentillePage(JSON.parse(text));
   } catch (error) {
     // 非 JSON 或被截斷的 payload 一律當作沒有批量資料。
   }
-  parsedContexts.set(element, { text, data });
-  return data;
+  parsedContexts.set(element, { text, page });
+  return page;
+}
+
+export function readLentilleData(doc) {
+  return readLentillePage(doc)?.data ?? null;
 }
 
 // 題目直接攤在 data 下的幾種鍵：
@@ -68,7 +80,7 @@ export function collectDifficultyBatches(data) {
 
   // 評測記錄列表：每條記錄把題目包在 problem 下。
   // 記錄裡的高檔難度值在新舊編號之間有歧義，映射為 null 後交給 Pipeline 查題目頁當前值。
-  // 列表頁本身不染色（洛谷已原生上色）；這批資料只留給離開該頁之後的題號。
+  // 這批資料只供通用題號上色。評測記錄上的題號另讀當頁資料，以符合洛谷原生顯示。
   const records = asList(data.records);
   if (records && records.length)
     batches.push({

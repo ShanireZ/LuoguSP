@@ -2,7 +2,7 @@ import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createGetRequestScheduler } from "../../core/get-request-scheduler.js";
 import { DIFFICULTY_COLORS, DIFFICULTY_COLOR_NAMES } from "../../core/luogu-difficulty.js";
 import { createProblemIdentityResolver } from "./identity.js";
-import { createNativeDifficultySource } from "./native-difficulty-source.js";
+import { createNativeDifficultySource, recordRouteId } from "./native-difficulty-source.js";
 import { createProblemPipeline } from "./pipeline.js";
 import { isProblemAnchorColorable } from "./practice-policy.js";
 
@@ -60,6 +60,13 @@ export function createProblemColorFeature({ storage }) {
       if (!shouldColorProblemAnchor(anchor)) return null;
       const identity = problemIdentity.resolve(anchor);
       if (!identity) return null;
+      const record = recordRouteId(location.pathname);
+      if (record) {
+        const difficulty = getRecordDifficulty(anchor, record, identity.pid);
+        if (difficulty === undefined || hasNativeColor(anchor, identity.pid)) return null;
+        const name = DIFFICULTY_COLOR_NAMES[difficulty];
+        return { ...identity, recordColor: `var(--lfe-color--${name}, ${diffColor(difficulty)})` };
+      }
       return hasNativeColor(anchor, identity.pid) ? null : identity;
     },
   });
@@ -122,6 +129,22 @@ export function createProblemColorFeature({ storage }) {
       origin: location.origin,
     });
 
+  function getRecordDifficulty(anchor, record, pid) {
+    const isList = record === "list";
+    if (!anchor.matches(isList ? ".problem > a" : ".problem-row > a")) return undefined;
+    const number = anchor.firstElementChild;
+    if (!number?.matches("strong") || number.textContent.trim() !== pid) return undefined;
+    // The status link immediately precedes the problem cell in RecordListBlock.
+    // Use its ID so two records of the same problem each get their own difficulty.
+    let id = record;
+    if (isList) {
+      const status = anchor.parentElement.previousElementSibling?.querySelector("a.status[href]");
+      if (status?.origin !== location.origin) return undefined;
+      id = recordRouteId(status.pathname);
+    }
+    return nativeDifficulty.recordDifficulty(location.pathname + location.search, id, pid);
+  }
+
   const problemPipeline =
     typeof document === "undefined"
       ? null
@@ -134,8 +157,8 @@ export function createProblemColorFeature({ storage }) {
     difficultySource: {
       text: (path, options) => limiter.text(path, options),
       // 練習頁只收“嘗試過的題目”；“已通過”已按難度分組，既不著色也不入快取。
-      // 評測記錄的題號由洛谷上色，practice-policy.js 會整頁跳過。
-      // 列表 payload 裡的難度仍收進快取，離開該頁後的題號不用逐題再請求。
+      // 評測記錄在學術模式補色時直接讀當頁資料，不使用通用題目快取。
+      // 列表裡可重用的難度仍收進快取，供其他頁面的題號使用。
       // 首屏 JSON + 洛谷自身導覽請求的回應，不額外請求頁面資料。
       harvest: () => nativeDifficulty.harvest(),
       subscribe: (accept) => nativeDifficulty.subscribe(accept),
@@ -212,6 +235,9 @@ export function createProblemColorFeature({ storage }) {
                 mutation.target.parentElement
                   .querySelectorAll(SELECTORS.standalonePid)
                   .forEach(addAnchor);
+              if (mutation.attributeName === "href" && mutation.target.matches("a.status") &&
+                  recordRouteId(location.pathname) === "list")
+                addDescendants(mutation.target.parentElement?.nextElementSibling);
             }
           }
           if (anchors.size) accept(anchors);
@@ -232,13 +258,15 @@ export function createProblemColorFeature({ storage }) {
       },
       isConnected: (anchor) => anchor.isConnected,
       clearColor: (anchor) => clearProblemColor(anchor),
-      applyColor: (a, pid, color) => {
+      applyColor: (a, pid, color, identity) => {
         // 虛擬列表可能在請求期間重複使用錨點；Problem Pipeline 已複核身分後才會到這裡。
         clearProblemColor(a);
         const span = a.children[0];
-        const pidElement = a.matches(SELECTORS.standalonePid) ? a :
-          span?.matches("span.pid") && (span.innerText || span.textContent || "").trim() === pid
-            ? span : null;
+        let pidElement = null;
+        if (identity.recordColor) pidElement = span;
+        else if (a.matches(SELECTORS.standalonePid)) pidElement = a;
+        else if (span?.matches("span.pid") && (span.innerText || span.textContent || "").trim() === pid)
+          pidElement = span;
         const node = pidElement || wrapPidText(a, pid);
         if (!node) return;
         node.style.color = color;

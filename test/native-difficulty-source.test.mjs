@@ -3,8 +3,14 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { createNativeDifficultySource } from "../src/features/problem-color/native-difficulty-source.js";
 
-function fixture() {
-  const dom = new JSDOM('<script id="lentille-context" type="application/json">{"data":{"problem":{"pid":"P1001","difficulty":1}}}</script>');
+function fixture({
+  path = "/problem/P1001",
+  page = { data: { problem: { pid: "P1001", difficulty: 1 } } },
+} = {}) {
+  const dom = new JSDOM(
+    `<script id="lentille-context" type="application/json">${JSON.stringify(page)}</script>`,
+    { url: `https://www.luogu.com.cn${path}` },
+  );
   class XHR extends EventTarget {
     open(method, url) { this.url = url; }
     send() {}
@@ -77,4 +83,44 @@ test("navigation collects detail/training/practice snapshots and rejects older r
   fx.stop();
   pending.reply({ data: { problem: { pid: "P1003", difficulty: 2 } } });
   assert.equal(fx.seen.length, 2);
+});
+
+test("record difficulty uses the visible page's native tiers only in academic mode", () => {
+  const userList = "/record/list?user=116524";
+  const problemList = "/record/list?pid=P17832";
+  const detail = "/record/307939068";
+  const user = { learnMode: true };
+  const record = { id: 307939068, problem: { pid: "P17832", difficulty: 8 } };
+  const list = {
+    template: "record.list", user,
+    data: { records: { result: [
+      record,
+      { id: 307939067, problem: { pid: "P17832", difficulty: 7 } },
+      { id: 307939066, problem: { pid: "P9999", difficulty: null } },
+    ] } },
+  };
+  const show = { template: "record.show", user, data: { record } };
+  const fx = fixture({ path: userList, page: list });
+  fx.source.harvest();
+
+  assert.equal(fx.source.recordDifficulty(userList, record.id, "P17832"), 8);
+  assert.equal(fx.source.recordDifficulty(userList, "307939067", "P17832"), 7);
+  assert.equal(fx.source.recordDifficulty(userList, "307939066", "P9999"), undefined);
+  assert.equal(fx.source.recordDifficulty(problemList, record.id, "P17832"), undefined);
+  assert.equal(fx.source.recordDifficulty(detail, record.id, "P17832"), undefined);
+  const older = fx.request(userList);
+  fx.request(detail).reply(show, { responseType: "json" });
+  assert.equal(fx.source.recordDifficulty(detail, record.id, "P17832"), 8);
+  older.reply(list);
+  assert.equal(fx.source.recordDifficulty(detail, record.id, "P17832"), 8);
+
+  fx.request(problemList).reply(list);
+  assert.equal(fx.source.recordDifficulty(problemList, record.id, "P17832"), 8);
+  fx.request(problemList).reply({ ...list, user: { learnMode: false } });
+  assert.equal(fx.source.recordDifficulty(problemList, record.id, "P17832"), undefined);
+  fx.request(userList).reply({ ...list, user: null });
+  assert.equal(fx.source.recordDifficulty(userList, record.id, "P17832"), undefined);
+  fx.request(detail).reply({ ...show, data: { record: { ...show.data.record, id: 123 } } });
+  assert.equal(fx.source.recordDifficulty(detail, record.id, "P17832"), undefined);
+  fx.stop();
 });

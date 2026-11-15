@@ -24,9 +24,9 @@ Keys, storage keys, defaults and cleanup are executable contracts in
 test/release-contract.test.mjs. Reproduce before changing them.
 
 Problem ID coloring keeps the page's existing font weight and yields to native
-colors. Luogu controls difficulty visibility on record lists and record details.
-On supported pages, the LuoguSP setting can fill in uncolored IDs in Academic
-Mode when Luogu still supplies a valid difficulty for the problem.
+colors. In Academic Mode, record lists and details use each visible record's
+own difficulty from the current Lentille page and Luogu's active theme colors.
+Other modes leave record coloring and its visibility controls to Luogu.
 
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.

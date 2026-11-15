@@ -186,9 +186,13 @@ export function createProblemPipeline(config) {
     const apply = (color) => {
       const previous = painted.get(anchor);
       if (documentAdapter.appliedPid?.(anchor) === taskIdentity.pid && previous?.color === color) return;
-      documentAdapter.applyColor(anchor, taskIdentity.pid, color);
+      documentAdapter.applyColor(anchor, taskIdentity.pid, color, taskIdentity);
       painted.set(anchor, { color });
     };
+    if (taskIdentity.recordColor) {
+      apply(taskIdentity.recordColor);
+      return;
+    }
     const known = knownColor(taskIdentity.pid);
     // No await/timer on the native path: MutationObserver callbacks finish before
     // the next paint, including newly inserted or recycled list rows.
