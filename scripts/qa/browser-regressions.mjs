@@ -1844,6 +1844,92 @@ test("IDE batch rejects a compiler ID drift in the POST when the control remains
   assert.equal(submitted.length, 2);
 });
 
+test("academic record colors follow late and recycled status links", async (t) => {
+  const records = [
+    { id: 77, problem: { pid: "P1000", difficulty: 5 } },
+    { id: 78, problem: { pid: "P1000", difficulty: 7 } },
+  ];
+  const { page, requests } = await fixture(t, {
+    path: "/record/list?user=42",
+    html: fixtureHtml(`<style>:root{--lfe-color--cyan-3:rgb(42,150,151);--lfe-color--purple-3:rgb(167,89,242)}</style>
+      <div id="status-cell"><span id="status-slot"></span></div>
+      <div class="problem"><a href="/problem/P1000"><strong>P1000</strong> Problem</a></div>`,
+    { records: { result: records } }, { user: { ...viewer, learnMode: true }, template: "record.list" }),
+  });
+  const pid = page.locator("main strong");
+  const state = () => pid.evaluate((node) => new Promise((resolve) => requestAnimationFrame(() => {
+    const style = getComputedStyle(node);
+    resolve({ color: style.color, inlineColor: node.style.color, fontWeight: style.fontWeight });
+  })));
+  // Wait past the initial fallback rescan so DOM changes alone must repaint.
+  await page.waitForTimeout(400);
+  assert.equal((await state()).inlineColor, "");
+  await page.locator("#status-slot").evaluate(node => {
+    node.innerHTML = '<a class="status" href="/record/77">Accepted</a>';
+  });
+  assert.equal((await state()).color, "rgb(42, 150, 151)", "a late status adds the record's color");
+  await page.locator("#status-slot a").evaluate(node => { node.href = "/record/78"; });
+  assert.equal((await state()).color, "rgb(167, 89, 242)", "same PID with another record ID repaints");
+  await page.locator("#status-slot").evaluate(node => {
+    node.innerHTML = '<a class="status" href="/record/77">Accepted</a>';
+  });
+  assert.equal((await state()).color, "rgb(42, 150, 151)", "replacing the status link restores the first color");
+  await page.locator("#status-cell").evaluate(node => {
+    node.outerHTML = '<div id="status-cell"><a class="status" href="/record/78">Accepted</a></div>';
+  });
+  assert.equal((await state()).color, "rgb(167, 89, 242)", "replacing the status cell repaints its neighbor");
+  await page.locator("#status-cell a").evaluate(node => { node.classList.remove("status"); });
+  assert.equal((await state()).inlineColor, "", "an anchor without status no longer supplies difficulty");
+  await page.locator("#status-cell a").evaluate(node => { node.classList.add("status"); });
+  assert.equal((await state()).color, "rgb(167, 89, 242)");
+  await page.locator("#status-cell").evaluate(node => node.remove());
+  const cleared = await state();
+  assert.equal(cleared.inlineColor, "", "removing the status cell removes its associated color");
+  assert.equal(cleared.fontWeight, "700");
+  assert.equal(requests.filter(request => request.path.startsWith("/problem/")).length, 0);
+});
+
+for (const httpStatus of [200, 403]) {
+  test(`reused problem links discard ordinary paint for a contest lookup returning ${httpStatus}`, async (t) => {
+    const scoped = responseGate(t);
+    const { page, requests } = await fixture(t, {
+      html: fixtureHtml(`<div id="problem-row"><span class="pid" title="P1000">P1000</span>
+        <a id="problem-link" href="/problem/P1000"><span class="pid">P1000</span> Problem</a></div>`,
+        { recommendations: [{ ...problem, difficulty: 4 }] }),
+      async reply(route, url) {
+        if (url.pathname === "/problem/P1000" && url.searchParams.get("contestId") === "123") {
+          await scoped.promise;
+          return route.fulfill({ status: httpStatus, json: { data: { problem: { ...problem, difficulty: 2 } } } });
+        }
+      },
+    });
+    const link = page.locator("#problem-link");
+    const colors = () => page.locator("#problem-row .pid").evaluateAll(nodes => nodes.map(node => node.style.color));
+    const waitForColor = (color) => page.waitForFunction(expected =>
+      [...document.querySelectorAll("#problem-row .pid")].every(node => node.style.color === expected), color);
+    const isScopedRequest = request => request.url().includes("/problem/P1000?contestId=123&lang=en&");
+    await waitForColor("rgb(82, 196, 26)");
+    const requested = page.waitForRequest(isScopedRequest);
+    const response = page.waitForResponse(result => isScopedRequest(result.request()));
+    await link.evaluate(node => { node.href = "/problem/P1000?contestId=123&lang=en"; });
+    await requested;
+    const whilePending = await colors();
+    scoped.release();
+    await (await response).finished();
+    assert.deepEqual(whilePending, ["", ""], "contest link must lose ordinary paint while the lookup is pending");
+    if (httpStatus === 200) {
+      await waitForColor("rgb(243, 156, 17)");
+    } else {
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+      assert.deepEqual(await colors(), ["", ""], "a denied lookup leaves the link uncolored");
+    }
+    await link.evaluate(node => { node.href = "/problem/P1000"; });
+    await waitForColor("rgb(82, 196, 26)");
+    assert.deepEqual(requests.filter(request => request.path === "/problem/P1000").map(request => request.query),
+      ["?contestId=123&lang=en&_contentOnly=1"]);
+  });
+}
+
 test("bundled app still colors academic records and drops queued requests on navigation", async (t) => {
   const record = { id: 77, problem: { pid: "P1000", difficulty: 5 } };
   const data = { records: { result: [record] } };

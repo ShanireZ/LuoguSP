@@ -45,10 +45,15 @@ export function createProblemColorFeature({
       if (!identity) return null;
       const record = recordRouteId(location.pathname);
       if (record) {
-        const difficulty = getRecordDifficulty(anchor, record, identity.pid);
+        const id = visibleRecordId(anchor, record, identity.pid);
+        if (!id) return null;
+        const difficulty = nativeDifficulty.recordDifficulty(location.pathname + location.search, id, identity.pid);
         if (difficulty === undefined || hasNativeColor(anchor, identity.pid)) return null;
         const name = DIFFICULTY_COLOR_NAMES[difficulty];
-        return { ...identity, recordColor: `var(--lfe-color--${name}, ${diffColor(difficulty)})` };
+        return {
+          ...identity, key: `record:${id}:${identity.key}`,
+          recordColor: `var(--lfe-color--${name}, ${diffColor(difficulty)})`,
+        };
       }
       if (hasNativeColor(anchor, identity.pid)) return null;
       if (identity.href && isScopedProblemUrl(new URL(identity.href)))
@@ -110,20 +115,16 @@ export function createProblemColorFeature({
 
   const nativeDifficulty = problemResources?.native;
 
-  function getRecordDifficulty(anchor, record, pid) {
+  function visibleRecordId(anchor, record, pid) {
     const isList = record === "list";
-    if (!anchor.matches(isList ? ".problem > a" : ".problem-row > a")) return undefined;
+    if (!anchor.matches(isList ? ".problem > a" : ".problem-row > a")) return null;
     const number = anchor.firstElementChild;
-    if (!number?.matches("strong") || number.textContent.trim() !== pid) return undefined;
+    if (!number?.matches("strong") || number.textContent.trim() !== pid) return null;
     // The status link immediately precedes the problem cell in RecordListBlock.
     // Use its ID so two records of the same problem each get their own difficulty.
-    let id = record;
-    if (isList) {
-      const status = anchor.parentElement.previousElementSibling?.querySelector("a.status[href]");
-      if (status?.origin !== location.origin) return undefined;
-      id = recordRouteId(status.pathname);
-    }
-    return nativeDifficulty.recordDifficulty(location.pathname + location.search, id, pid);
+    if (!isList) return record;
+    const status = anchor.parentElement.previousElementSibling?.querySelector("a.status[href]");
+    return status?.origin === location.origin ? recordRouteId(status.pathname) : null;
   }
 
   const problemPipeline =
@@ -202,6 +203,16 @@ export function createProblemColorFeature({
             const card = target.closest(".l-card");
             if (card) addDescendants(card);
           };
+          const recordList = recordRouteId(location.pathname) === "list";
+          const addRecordProblem = (cell) => {
+            if (!cell?.matches(".problem")) return;
+            for (const child of cell.children) if (child.matches("a")) addAnchor(child);
+          };
+          const reconsiderStatusCell = (target) => {
+            // A status link may be nested within the cell before the problem.
+            for (let cell = target; cell; cell = cell.parentElement)
+              addRecordProblem(cell.nextElementSibling);
+          };
           for (const mutation of mutations) {
             if (mutation.type === "childList") {
               for (const node of mutation.addedNodes) {
@@ -210,6 +221,13 @@ export function createProblemColorFeature({
               }
               addContainingAnchor(mutation.target);
               reconsiderPracticeCard(mutation.target);
+              if (recordList) {
+                reconsiderStatusCell(mutation.target);
+                // Inserting or removing a whole cell can change the status neighbor.
+                let next = mutation.nextSibling;
+                while (next && next.nodeType !== Node.ELEMENT_NODE) next = next.nextSibling;
+                addRecordProblem(next);
+              }
             } else if (mutation.type === "characterData") {
               const element = mutation.target.parentElement;
               reconsiderPracticeCard(element);
@@ -223,9 +241,9 @@ export function createProblemColorFeature({
                 mutation.target.parentElement
                   .querySelectorAll(SELECTORS.standalonePid)
                   .forEach(addAnchor);
-              if (mutation.attributeName === "href" && mutation.target.matches("a.status") &&
-                  recordRouteId(location.pathname) === "list")
-                addDescendants(mutation.target.parentElement?.nextElementSibling);
+              if (recordList && mutation.target.matches("a") &&
+                  (mutation.attributeName === "href" || mutation.attributeName === "class"))
+                reconsiderStatusCell(mutation.target.parentElement);
             }
           }
           if (anchors.size) accept(anchors);

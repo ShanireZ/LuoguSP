@@ -28,6 +28,10 @@ Problem ID coloring keeps the page's existing font weight and yields to native
 colors. In Academic Mode, record lists and details use each visible record's
 own difficulty from the current Lentille page and Luogu's active theme colors.
 Other modes leave record coloring and its visibility controls to Luogu.
+Record-list updates reconsider the neighboring problem cell when its status
+link appears, changes, or is removed. Owned colors track the link destination
+and the record ID where applicable. Reusing a link for a contest or language
+scope clears its previous paint before any lookup for the new destination.
 Lentille's problem recommendations supply their own difficulties. The coloring
 observer stays active across in-document navigation, while each route cancels
 its abandoned queued lookups. Returning to a visible tab rescans with locally

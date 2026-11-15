@@ -130,19 +130,20 @@ export function createProblemPipeline(config) {
     const taskRoute = routeToken();
     if (typeof documentAdapter.isConnected === "function" && !documentAdapter.isConnected(anchor)) return;
     const taskIdentity = identity.resolve(anchor);
-    const appliedPid =
-      typeof documentAdapter.appliedPid === "function"
-        ? documentAdapter.appliedPid(anchor)
-        : null;
-    if (!taskIdentity) {
-      documentAdapter.clearColor?.(anchor, appliedPid);
-      return;
+    // A recycled anchor can keep its PID while changing destination or scope.
+    // Clear the previous paint before any lookup for the new identity.
+    const previous = painted.get(anchor);
+    if (!taskIdentity || (previous && previous.key !== taskIdentity.key)) {
+      documentAdapter.clearColor?.(anchor, documentAdapter.appliedPid?.(anchor));
+      painted.delete(anchor);
     }
+    if (!taskIdentity) return;
     const apply = (color) => {
       const previous = painted.get(anchor);
-      if (documentAdapter.appliedPid?.(anchor) === taskIdentity.pid && previous?.color === color) return;
+      if (previous?.key === taskIdentity.key && previous.color === color &&
+          documentAdapter.appliedPid?.(anchor) === taskIdentity.pid) return;
       documentAdapter.applyColor(anchor, taskIdentity.pid, color, taskIdentity);
-      painted.set(anchor, { color });
+      painted.set(anchor, { key: taskIdentity.key, color });
     };
     if (taskIdentity.recordColor) {
       apply(taskIdentity.recordColor);
@@ -160,10 +161,6 @@ export function createProblemPipeline(config) {
       apply(colorForDifficulty(shared));
       return;
     }
-    // 洛谷記錄分頁會重複使用同一批錨點。先撤銷舊題號的樣式，避免新題查詢失敗時
-    // （例如題目已刪除而回傳 403）繼續顯示上一頁題目的難度色。
-    if (appliedPid && appliedPid !== taskIdentity.pid && typeof documentAdapter.clearColor === "function")
-      documentAdapter.clearColor(anchor, appliedPid);
     if (!requestsReady || !allowQueries) return;
     const routeQueries = coloringAnchors;
     if (routeQueries.get(anchor) === taskIdentity.key) return;
