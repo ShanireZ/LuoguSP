@@ -674,7 +674,10 @@ async function reorderedArticleWrites(t, responses) {
       if (url.origin !== origin || route.request().method() !== "POST") return;
       const slot = route.request().headers()["x-fixture-write"];
       if (!Object.hasOwn(responses, slot)) return;
-      const fulfill = () => route.fulfill({ json: responses[slot], headers: { "x-fixture-write": slot } });
+      const fulfill = () => {
+        const response = typeof responses[slot] === "function" ? responses[slot]() : { json: responses[slot] };
+        return route.fulfill({ ...response, headers: { "x-fixture-write": slot } });
+      };
       if (slot === "older") {
         received.resolve();
         return older.promise.then(fulfill);
@@ -706,6 +709,42 @@ async function reorderedArticleWrites(t, responses) {
     await page.waitForFunction(slot => observedArticleWrites.includes(slot), slot);
   };
   return { page, start, finish, received: received.promise, release: older.release };
+}
+
+for (const transport of ["fetch", "xhr"]) {
+  test(`restricted article ${transport} treats accepted favorites as pending until a completed acknowledgement`, async (t) => {
+    const { page, start, finish } = await reorderedArticleWrites(t, {
+      pending: () => ({ status: 202, body: "", contentType: "text/plain" }),
+      "pending-json": () => ({ status: 202, json: { _empty: true } }),
+      "pending-state": () => ({ status: 202, json: { favored: true, favorCount: 4 } }),
+      partial: () => ({ status: 206, body: "", contentType: "text/plain" }),
+      complete: () => ({ status: 204 }),
+      reset: () => ({ status: 205 }),
+      "empty-ok": () => ({ status: 200, body: "", contentType: "text/plain" }),
+      json: () => ({ status: 200, json: { favored: false, favorCount: 3 } }),
+      created: () => ({ status: 201, json: { favored: true, favorCount: 4 } }),
+    });
+    const initial = await readArticleInteraction(page);
+    const notice = page.locator("#luogusp-rst-write-favor-unconfirmed");
+    for (const slot of ["pending", "pending-json", "pending-state", "partial"]) {
+      await start(slot, transport, "/article/123/favor");
+      await finish(slot);
+      assert.deepEqual(await readArticleInteraction(page), initial);
+      assert.equal(await notice.count(), 1);
+    }
+    for (const [slot, remove, expected] of [
+      ["complete", false, true], ["reset", true, false], ["empty-ok", false, true],
+      ["json", true, false], ["created", false, true],
+    ]) {
+      await start(slot, transport, `/article/123/favor${remove ? "?remove=1" : ""}`);
+      await finish(slot);
+      const state = await readArticleInteraction(page);
+      assert.equal(state.favored, expected);
+      assert.equal(state.favorCount, expected ? 4 : 3);
+      assert.equal(state.voteAt, initial.voteAt);
+      assert.equal(await notice.count(), 0);
+    }
+  });
 }
 
 for (const [olderTransport, newerTransport] of [["fetch", "fetch"], ["xhr", "xhr"], ["fetch", "xhr"], ["xhr", "fetch"]]) {
@@ -2249,6 +2288,90 @@ for (const [updated, expanded, focusToggle] of [["long", true, true], ["long", f
     }
     await page.keyboard.press("Escape");
     assert.ok(await focused(trigger));
+  });
+}
+
+for (const [branch, fault] of [["info", "redirect"], ["profile", "redirect"], ["info", "wrong-url"], ["profile", "html"]]) {
+  test(`user preview rejects ${fault} ${branch} data and recovers on reopening`, async (t) => {
+    const redirect = responseGate(t);
+    const hits = [];
+    const badUser = { uid: 123, name: "Untrusted data", followerCount: 888 };
+    const badPayload = branch === "info" ? { user: badUser } : { data: { user: badUser, gu: { rating: 888 } } };
+    const external = createServer((req, res) => {
+      hits.push(req.method);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "x-lentille-request");
+      res.setHeader("Access-Control-Allow-Private-Network", "true");
+      res.setHeader("Content-Type", "application/json");
+      res.end(req.method === "OPTIONS" ? "" : JSON.stringify(badPayload));
+    });
+    const listening = once(external, "listening");
+    external.listen(0, "127.0.0.1");
+    await listening;
+    t.after(() => external.close());
+    const badPath = branch === "info" ? "/api/user/info/123" : "/user/123";
+    let attempts = 0;
+    const { page, requests } = await fixture(t, {
+      html: fixtureHtml('<a id="provenance-user" href="/user/123">User</a>'),
+      initScript: `
+        window.previewReads = [];
+        let previewAttempt = 0;
+        const rawFetch = window.fetch.bind(window);
+        window.fetch = async (input, init) => {
+          const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
+          if (path !== ${JSON.stringify(badPath)}) return rawFetch(input, init);
+          const attempt = ++previewAttempt;
+          const record = () => setTimeout(() => previewReads.push(path), 0);
+          try {
+            const response = await rawFetch(input, init);
+            if (${JSON.stringify(fault)} === "wrong-url" && attempt === 1)
+              Object.defineProperty(response, "url", { value: "https://outside.example/user/123" });
+            let consumed = false;
+            const json = response.json.bind(response);
+            response.json = (...args) => {
+              consumed = true;
+              return json(...args).finally(record);
+            };
+            setTimeout(() => { if (!consumed) record(); }, 0);
+            return response;
+          } catch (error) { record(); throw error; }
+        };
+      `,
+      reply(route, url) {
+        if (url.origin !== origin) return;
+        if (url.pathname === badPath && ++attempts === 1) return redirect.promise.then(() => {
+          if (fault === "redirect") return route.fulfill({ status: 302, headers: {
+            location: `http://127.0.0.1:${external.address().port}/untrusted-user`,
+          } });
+          return route.fulfill({ body: JSON.stringify(badPayload),
+            contentType: fault === "html" ? "text/html" : "application/json" });
+        });
+        if (url.pathname === "/api/user/info/123") return route.fulfill({ json: {
+          user: { uid: 123, name: "Trusted basic", followerCount: 7 },
+        } });
+        if (url.pathname === "/user/123") return route.fulfill({ json: { data: {
+          user: { uid: 123, name: "Trusted profile" }, gu: { rating: 42 },
+        } } });
+      },
+    });
+    await page.context().grantPermissions(["local-network-access"], { origin });
+    const trigger = page.locator("#provenance-user");
+    await trigger.press("Alt+ArrowDown");
+    const preview = card(page);
+    const initialName = branch === "info" ? "Trusted profile" : "Trusted basic";
+    await preview.getByRole("link", { name: initialName, exact: true }).waitFor();
+    redirect.release();
+    await page.waitForFunction(path => previewReads.includes(path), badPath);
+    assert.equal(await preview.locator(".luogusp-hc-name").textContent(), initialName);
+    assert.equal(await preview.getByText("888", { exact: true }).count(), 0);
+    assert.deepEqual(hits, []);
+    await page.keyboard.press("Escape");
+    await trigger.press("Alt+ArrowDown");
+    await preview.getByRole("link", { name: "Trusted basic", exact: true }).waitFor();
+    await preview.getByText("42", { exact: true }).waitFor();
+    assert.equal(await preview.getByText("888", { exact: true }).count(), 0);
+    assert.equal(requests.filter(request => request.path === badPath).length, 2);
+    assert.deepEqual(hits, []);
   });
 }
 

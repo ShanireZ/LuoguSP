@@ -19,6 +19,7 @@ const TEMPORARY_USER_READ = Object.freeze({ retry: true });
 export function createHoverCardSources(config) {
   const {
     fetchPage,
+    origin,
     problemData,
     nativeUserInfo,
     viewer = () => problemData?.viewerUid() ?? 0,
@@ -192,9 +193,17 @@ export function createHoverCardSources(config) {
       }
       if (signal.aborted || viewer() !== account) return TEMPORARY_USER_READ;
       const path = info ? `/api/user/info/${uid}` : `/user/${uid}`;
-      const response = await fetchPage(path, signal, info ? null : LENTILLE_INIT);
+      const expectedUrl = new URL(path, origin).href;
+      const response = await fetchPage(path, signal, {
+        ...(info ? {} : LENTILLE_INIT),
+        mode: "same-origin", credentials: "same-origin", redirect: "error",
+      });
       if (!response || response.status === 408 || response.status === 429 || response.status >= 500)
         return TEMPORARY_USER_READ;
+      if (response.redirected !== false || response.url !== expectedUrl ||
+        !/^application\/json(?:\s*;|$)/i.test(response.headers?.get("content-type")?.trim()))
+        return TEMPORARY_USER_READ;
+      if (response.ok !== false && response.status !== 200) return TEMPORARY_USER_READ;
       const payload = await Promise.resolve().then(() => response.json()).catch(() => null);
       if (response.ok === false) {
         const message = payload?.data?.errorMessage;

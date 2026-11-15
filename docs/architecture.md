@@ -68,6 +68,10 @@ to use their visible problem ID. Standalone avatars use the current origin or
 Luogu's avatar CDN. User cards reuse observed same-origin user-info XHRs and
 display basic information before profile-only fields arrive. They retry transient
 profile failures on reopening, with bounded requests and per-account cache keys.
+Direct user-info and profile reads enforce same-origin requests and reject
+redirects. Before decoding, each response must match its requested URL and JSON
+media type. Successful reads require HTTP 200. Invalid provenance retries on
+reopening while available fields from the other branch remain visible.
 Late signature updates retain the existing disclosure button and expansion
 state. The button reports its expanded state. When a shorter signature fits
 within two lines, the disclosure collapses and hides. Focus held on that button

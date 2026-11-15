@@ -57,6 +57,7 @@ export function createHoverCardFeature(config) {
 
     const sources = createHoverCardSources({
       fetchPage,
+      origin: location.origin,
       problemData,
       nativeUserInfo,
       viewer: currentViewer,

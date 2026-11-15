@@ -64,6 +64,10 @@ export function interpretArticleWrite(config = {}) {
     return { kind: "vote", voted: body.voted, upvote };
   }
 
+  // Accepted work has no completed favorite state, including a provisional JSON body.
+  if (config.status === 202) return null;
+  const emptyAcknowledgement = Object.keys(body).every((key) => key === "_empty");
+  if (emptyAcknowledgement && ![200, 204, 205].includes(config.status)) return null;
   const removals = request.searchParams.getAll("remove");
   if (removals.length && (removals.length !== 1 || removals[0] !== "1")) return null;
   const favored = removals.length === 0;

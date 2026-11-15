@@ -512,7 +512,9 @@ test("a displayed user preview releases native ownership when disabled or dispos
   try {
     const features = createHoverCardFeatures({ storage, loadBundle: async () => ({ createHoverCardFeature }),
       fetchPage: async (path) => path === "/api/user/info/123"
-        ? { ok: true, json: async () => ({ user: { uid: 123, name: "Preview" } }) }
+        ? { ok: true, status: 200, redirected: false, url: `${origin}${path}`,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ user: { uid: 123, name: "Preview" } }) }
         : { ok: false, status: 403, json: async () => ({}) },
     });
     const stopProblem = features.problem.mount();

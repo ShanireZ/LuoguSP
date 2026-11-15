@@ -568,17 +568,23 @@ test("relation writes keep pending state and settlement scoped to each viewer an
 });
 
 // ---- 資料源 ----
+const sourceOrigin = "https://www.luogu.com.cn";
 function sourceHarness(routes) {
   const calls = [];
   const clock = manualClock();
   const sources = createHoverCardSources({
     clock,
+    origin: sourceOrigin,
     fetchPage: (path, signal, init) => {
       calls.push({ path, header: init && init.headers && init.headers["x-lentille-request"] });
       const route = routes[path];
       if (route === undefined) return Promise.resolve({ ok: false });
       return Promise.resolve({
         ok: true,
+        status: 200,
+        redirected: false,
+        url: new URL(path, sourceOrigin).href,
+        headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(route),
         text: () => Promise.resolve(typeof route === "string" ? route : ""),
       });
@@ -672,17 +678,58 @@ test("缓存过期后重新取", async () => {
 });
 
 const nextTurn = () => new Promise(resolve => setImmediate(resolve));
-const profileResponse = payload => ({ ok: true, json: async () => payload });
+const profileResponse = (path, payload) => ({
+  ok: true, status: 200, redirected: false, url: new URL(path, sourceOrigin).href,
+  headers: new Headers({ "content-type": "application/json" }), json: async () => payload,
+});
+
+for (const [fault, metadata] of [
+  ["external URL", { url: "https://outside.example/user/123" }],
+  ["another endpoint", { url: `${sourceOrigin}/user/124` }],
+  ["redirected response", { redirected: true }],
+  ["HTML media", { headers: new Headers({ "content-type": "text/html" }) }],
+  ["missing URL", { url: undefined }],
+  ["partial response", { status: 206 }],
+]) {
+  test(`user reads reject ${fault} before decoding and retry the affected branch`, async () => {
+    for (const branch of ["info", "profile"]) {
+      const badPath = branch === "info" ? "/api/user/info/123" : "/user/123";
+      let attempts = 0;
+      let untrustedDecodes = 0;
+      const sources = createHoverCardSources({ origin: sourceOrigin, fetchPage: async (path, signal, init) => {
+        assert.equal(init.mode, "same-origin");
+        assert.equal(init.credentials, "same-origin");
+        assert.equal(init.redirect, "error");
+        assert.equal(init.headers?.["x-lentille-request"], path === "/user/123" ? "content-only" : undefined);
+        const response = profileResponse(path, path.includes("/api/")
+          ? { user: { uid: 123, name: "Trusted basic" } }
+          : { data: { user: { uid: 123, name: "Trusted profile" }, gu: { rating: 42 } } });
+        if (path !== badPath || ++attempts !== 1) return response;
+        return { ...response, ...metadata, json: async () => {
+          untrustedDecodes++;
+          throw new Error("Untrusted response was decoded");
+        } };
+      } });
+      const partial = await sources.user(123);
+      assert.equal(partial.name, branch === "info" ? "Trusted profile" : "Trusted basic");
+      const complete = await sources.user(123);
+      assert.equal(complete.name, "Trusted basic");
+      assert.equal(complete.guRating, 42);
+      assert.equal(attempts, 2);
+      assert.equal(untrustedDecodes, 0);
+    }
+  });
+}
 
 test("user preview retries a failed branch on reopen, retains partial fields, and backs off on repeated failures", async () => {
   const clock = manualClock();
   const requests = [];
   let available = false;
-  const sources = createHoverCardSources({ clock, fetchPage: async (path) => {
+  const sources = createHoverCardSources({ clock, origin: sourceOrigin, fetchPage: async (path) => {
     requests.push(path);
-    if (path === "/api/user/info/123") return profileResponse({ user: { uid: 123, name: "Target" } });
+    if (path === "/api/user/info/123") return profileResponse(path, { user: { uid: 123, name: "Target" } });
     if (!available) return { ok: false, status: 503 };
-    return profileResponse({ data: { user: { uid: 123 }, gu: { rating: 980 } } });
+    return profileResponse(path, { data: { user: { uid: 123 }, gu: { rating: 980 } } });
   } });
   const basic = await sources.user(123);
   assert.equal(basic.name, "Target");
@@ -707,10 +754,10 @@ test("user preview shares in-flight reads, detaches a closed consumer, and settl
   const clock = manualClock();
   const requests = [];
   const lateProfile = Promise.withResolvers();
-  const sources = createHoverCardSources({ clock, fetchPage: (path, signal) => {
+  const sources = createHoverCardSources({ clock, origin: sourceOrigin, fetchPage: (path, signal) => {
     requests.push({ path, signal });
     return path === "/user/123"
-      ? lateProfile.promise : profileResponse({ user: { uid: 123, name: "Target" } });
+      ? lateProfile.promise : profileResponse(path, { user: { uid: 123, name: "Target" } });
   } });
   const first = new AbortController();
   const firstUpdates = [];
@@ -727,7 +774,7 @@ test("user preview shares in-flight reads, detaches a closed consumer, and settl
   clock.advance(3500);
   assert.equal((await retained).name, "Target");
   assert.equal(requests.every(({ signal }) => signal.aborted), true);
-  lateProfile.resolve(profileResponse({ data: { user: { uid: 123 }, gu: { rating: 980 } } }));
+  lateProfile.resolve(profileResponse("/user/123", { data: { user: { uid: 123 }, gu: { rating: 980 } } }));
   await nextTurn();
   assert.equal(secondUpdates.length, 1);
   assert.equal(clock.pending(), 0);
@@ -739,7 +786,7 @@ test("closing the last user preview aborts reads and an old viewer response cann
   const clock = manualClock();
   const reads = [];
   let viewer = 42;
-  const sources = createHoverCardSources({ clock, viewer: () => viewer, fetchPage: (path, signal) => {
+  const sources = createHoverCardSources({ clock, origin: sourceOrigin, viewer: () => viewer, fetchPage: (path, signal) => {
     const request = Promise.withResolvers();
     reads.push({ account: viewer, path, signal, ...request });
     return request.promise;
@@ -757,7 +804,7 @@ test("closing the last user preview aborts reads and an old viewer response cann
   const current = sources.user(123);
   await nextTurn();
   assert.equal(reads.length, 6);
-  for (const read of reads) read.resolve(profileResponse(read.path.includes("/api/") ?
+  for (const read of reads) read.resolve(profileResponse(read.path, read.path.includes("/api/") ?
     { user: { uid: 123, followerCount: read.account } } : { data: { user: { uid: 123 } } }));
   assert.equal(await old, null);
   assert.equal((await current).followerCount, 43);
