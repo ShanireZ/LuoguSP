@@ -1,5 +1,5 @@
 import { completeRestrictedArticleInteraction } from "./article-interaction-state.js";
-import { interpretArticleWrite } from "./article-write-observer.js";
+import { articleWriteRequestUrl, interpretArticleWrite } from "./article-write-observer.js";
 
 const countOrNull = (value) =>
   value === null || value === undefined || value === "" ||
@@ -14,7 +14,7 @@ const viewerUid = (viewer) =>
 // 觀察官方寫請求的真實回應，成功時同時更新記憶體快照與帳號隔離的持久記錄。
 // 匿名訪客只更新記憶體快照（供收藏計數 ±1 推導），不寫入磁碟。
 export function createArticleInteractionTracker(config) {
-  const { store, origin, lid, uid, onPersistFailure } = config || {};
+  const { store, origin, lid, uid, onPersistFailure, onUnconfirmed } = config || {};
   let current = { upvote: null, favorCount: null, voted: null, favored: null };
 
   const seed = (state) => {
@@ -32,20 +32,15 @@ export function createArticleInteractionTracker(config) {
   };
 
   const observeWrite = (event) => {
-    const confirmed = interpretArticleWrite({
-      origin,
-      lid,
-      method: event && event.method,
-      url: event && event.url,
-      status: event && event.status,
-      responseText: event && event.responseText,
-      current,
-    });
-    if (!confirmed) return null;
+    const write = { ...event, origin, lid, current };
+    const confirmed = interpretArticleWrite(write);
+    if (!confirmed) {
+      if (onUnconfirmed && articleWriteRequestUrl(write)) onUnconfirmed();
+      return null;
+    }
     const { kind, ...patch } = confirmed;
     current = { ...current, ...patch };
-    // 官方已經確認了這次互動，但狀態無處可存 —— 刷新後必然撤不回。
-    // 靜默降級會把「持久化根本沒生效」偽裝成「功能沒做」，所以必須報出來。
+    // Keep the confirmed state in this session even if browser storage fails.
     const saved = store ? store.save({ uid, lid, ...patch }) : null;
     if (!saved && typeof onPersistFailure === "function")
       onPersistFailure({
@@ -74,6 +69,7 @@ export function prepareRestrictedArticleInteraction(config) {
     archivedAt,
     live,
     onPersistFailure,
+    onUnconfirmed,
   } = config || {};
   const uid = viewerUid(viewer);
   const interaction = completeRestrictedArticleInteraction({
@@ -88,6 +84,7 @@ export function prepareRestrictedArticleInteraction(config) {
     lid,
     uid,
     onPersistFailure,
+    onUnconfirmed,
   });
   tracker.seed({
     upvote: interaction.article.upvote,

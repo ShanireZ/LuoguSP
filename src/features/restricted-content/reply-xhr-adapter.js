@@ -66,27 +66,22 @@ export function createRestrictedReplyXhrAdapter(config) {
       const url = this.writeUrl;
       this.writeUrl = null;
       if (!url || typeof onWrite !== "function") return;
-      let responseText = "";
       try {
-        // responseType 為 json/blob 時讀 responseText 會拋 InvalidStateError。
-        const body =
-          this.native.responseType && this.native.responseType !== "text"
-            ? this.native.response
-            : this.native.responseText;
-        responseText =
-          typeof body === "string"
-            ? body
-            : body && typeof body === "object"
-              ? JSON.stringify(body)
-              : "";
-      } catch (error) {
-        /* 回應體不可讀時按空體處理，個人狀態仍可由請求意圖確認 */
-      }
-      try {
+        const { status, responseType, responseURL } = this.native;
+        const header = (name) => this.native.getResponseHeader?.(name);
+        let responseText;
+        if (!responseType || responseType === "text")
+          responseText = this.native.responseText;
+        else if (responseType === "json" && this.native.response !== null)
+          responseText = JSON.stringify(this.native.response);
+        else if (status === 204 || status === 205)
+          responseText = "";
         onWrite({
           method: "POST",
           url,
-          status: this.native.status,
+          status,
+          responseUrl: responseURL,
+          contentType: header("content-type"),
           responseText,
         });
       } catch (error) {
@@ -179,7 +174,7 @@ export function createRestrictedReplyXhrAdapter(config) {
         verb === "POST" &&
         requestUrl?.origin === origin &&
         writePaths.has(requestUrl.pathname)
-          ? String(rawUrl)
+          ? requestUrl.href
           : null;
       return this.native.open(method, rawUrl, ...rest);
     }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { after, before, test as nodeTest } from "node:test";
 import { chromium } from "playwright";
 import { buildLocalUserscript } from "./build-local-userscript.mjs";
@@ -187,7 +188,10 @@ function restrictedFixture(t, type, id, data, options = {}) {
   const saver = "https://api.luogu.me";
   const assets = "https://fecdn.luogu.com.cn";
   const headers = { "access-control-allow-origin": "*" };
-  const { nativeScript = "", ...pageOptions } = options;
+  const {
+    nativeScript = "", commentsPayload = { code: 200, data: { comments: [] } },
+    reply: customReply, ...pageOptions
+  } = options;
   const scaffold = `<meta name="csrf-token" content="fixture-token">
     <script id="lentille-context" type="application/json">${JSON.stringify({ user: viewer })}</script>
     <script src="${assets}/fixture.js"></script>`;
@@ -198,11 +202,12 @@ function restrictedFixture(t, type, id, data, options = {}) {
       if (url.origin === saver && url.pathname === `/${type}/query/${id}`)
         return route.fulfill({ headers, json: { code: 200, data } });
       if (url.origin === saver && url.pathname === `/article/comments/${id}`)
-        return route.fulfill({ headers, json: { code: 200, data: { comments: [] } } });
+        return route.fulfill({ headers, json: commentsPayload });
       if (url.origin === origin && ["/ranking", "/discuss"].includes(url.pathname))
         return route.fulfill({ body: scaffold, contentType: "text/html" });
       if (url.origin === assets && url.pathname === "/fixture.js")
         return route.fulfill({ body: nativeScript, contentType: "text/javascript" });
+      return customReply?.(route, url);
     },
   });
 }
@@ -243,6 +248,155 @@ const nativeArticle = `
   };
 `;
 
+const readArticleInteraction = (page) =>
+  page.evaluate(() => JSON.parse(localStorage.getItem("luogusp.article-interaction.v2") ?? "{}")["42:123"]);
+
+for (const transport of ["fetch", "xhr"]) {
+  test(`restricted article ${transport} persists only confirmed votes and favorites`, async (t) => {
+    // Playwright routes only the first request of a redirect chain.
+    const redirectTarget = createServer((req, res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "x-csrf-token");
+      res.setHeader("Access-Control-Allow-Private-Network", "true");
+      res.setHeader("Content-Type", "application/json");
+      res.end(req.method === "OPTIONS" ? "" : '{"_empty":true}');
+    });
+    const listening = once(redirectTarget, "listening");
+    redirectTarget.listen(0, "127.0.0.1");
+    await listening;
+    t.after(() => redirectTarget.close());
+    const { page } = await restrictedFixture(t, "article", "123", {
+      ...archiveArticle, favorCount: 3, upvote: 10,
+    }, {
+      nativeScript: nativeArticle,
+      reply(route, url) {
+        if (url.origin !== origin) return;
+        if (url.pathname === "/article/123/vote") {
+          const expectCancel = url.searchParams.get("vote") === "0";
+          return route.fulfill({
+            json: { upvotes: 10, voted: expectCancel || !url.search ? 0 : null },
+          });
+        }
+        if (url.pathname !== "/article/123/favor") return;
+        if (!url.search) {
+          return route.fulfill({
+            status: 302, headers: { location: `http://127.0.0.1:${redirectTarget.address().port}/fixture-redirect` },
+          });
+        }
+        if (route.request().headers()["x-fixture-response"] === "html")
+          return route.fulfill({ contentType: "text/html", body: "<html>Sign in</html>" });
+        if (route.request().headers()["x-fixture-response"] === "error")
+          return route.fulfill({ json: { success: false, data: {} } });
+        return route.fulfill({ status: 204 });
+      },
+    });
+    await page.context().grantPermissions(["local-network-access"], { origin });
+    await page.getByRole("button", { name: "Native action" }).waitFor();
+    const post = (path, responseKind) => page.evaluate(async ({ path, transport, responseKind }) => {
+      if (transport === "fetch") {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: responseKind ? { "x-fixture-response": responseKind } : {},
+        });
+        return { status: response.status, body: await response.text() };
+      }
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", path);
+        if (responseKind) xhr.setRequestHeader("x-fixture-response", responseKind);
+        xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText });
+        xhr.onerror = reject;
+        xhr.send();
+      });
+    }, { path, transport, responseKind });
+    const unconfirmed = page.getByRole("status").filter({ hasText: "无法确认点赞或收藏结果" });
+    const cases = [
+      ["/article/123/vote?vote=1", undefined, '{"upvotes":10,"voted":null}'],
+      ["/article/123/vote", undefined, '{"upvotes":10,"voted":0}'],
+      ["/article/123/favor", undefined, '{"_empty":true}'],
+      ["/article/123/favor?remove=1", "html", "<html>Sign in</html>"],
+      ["/article/123/favor?remove=1", "error", '{"success":false,"data":{}}'],
+    ];
+    for (const [path, responseKind, body] of cases) {
+      assert.deepEqual(await post(path, responseKind), { status: 200, body });
+      await unconfirmed.waitFor();
+      assert.equal(await readArticleInteraction(page), undefined);
+      await unconfirmed.evaluate((node) => node.remove());
+    }
+    assert.equal((await post("/article/123/vote?vote=0")).status, 200);
+    assert.equal((await post("/article/123/favor?remove=1")).status, 204);
+    await page.waitForFunction(() => {
+      const entry = JSON.parse(localStorage.getItem("luogusp.article-interaction.v2") ?? "{}")["42:123"];
+      return entry?.favored === false && entry.voted === 0;
+    });
+    const { at, ...state } = await readArticleInteraction(page);
+    assert.ok(Number.isFinite(at));
+    assert.deepEqual(state, { voted: 0, favored: false, upvote: 10, favorCount: 2 });
+    assert.equal(await unconfirmed.count(), 0);
+  });
+}
+
+test("restricted article fetch honors Request method, body and header overrides", async (t) => {
+  const wire = [];
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    reply(route, url) {
+      if (url.origin !== origin || url.pathname !== "/article/123/vote") return;
+      const request = route.request();
+      const headers = request.headers();
+      wire.push({
+        method: request.method(), body: request.postData(),
+        override: headers["x-fixture-init"], replaced: headers["x-fixture-request"],
+        csrf: headers["x-csrf-token"],
+      });
+      return route.fulfill({ json: { upvotes: 11, voted: 1 } });
+    },
+  });
+  await page.getByRole("button", { name: "Native action" }).waitFor();
+  const response = await page.evaluate(async () => {
+    const request = new Request("/article/123/vote?vote=1", { headers: { "x-fixture-request": "original" } });
+    const response = await fetch(request, {
+      method: "POST", headers: { "x-fixture-init": "override" }, body: "fixture body",
+    });
+    return response.json();
+  });
+  assert.deepEqual(response, { upvotes: 11, voted: 1 });
+  assert.deepEqual(wire, [{
+    method: "POST", body: "fixture body", override: "override", replaced: undefined, csrf: "fixture-token",
+  }]);
+  await page.waitForFunction(() => {
+    const entry = JSON.parse(localStorage.getItem("luogusp.article-interaction.v2") ?? "{}")["42:123"];
+    return entry?.voted === 1 && entry.upvote === 11;
+  });
+});
+
+test("restricted article warns when browser storage rejects a confirmed write", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    initScript: `
+      const setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === "luogusp.article-interaction.v2")
+          throw new DOMException("Fixture quota exceeded", "QuotaExceededError");
+        return setItem.call(this, key, value);
+      };
+    `,
+    reply(route, url) {
+      if (url.origin === origin && url.pathname === "/article/123/favor")
+        return route.fulfill({ json: { _empty: true } });
+    },
+  });
+  await page.getByRole("button", { name: "Native action" }).waitFor();
+  assert.deepEqual(await page.evaluate(async () => {
+    const response = await fetch("/article/123/favor", { method: "POST" });
+    return response.json();
+  }), { _empty: true });
+  await page.getByRole("status").filter({ hasText: "浏览器未能保存点赞或收藏状态" }).waitFor();
+  assert.equal(await readArticleInteraction(page), undefined);
+  await page.getByRole("button", { name: "Native action" }).click();
+  await page.getByRole("button", { name: "Clicked" }).waitFor();
+});
+
 test("restricted native article is clickable without the optional time row", async (t) => {
   const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
     nativeScript: nativeArticle,
@@ -253,6 +407,66 @@ test("restricted native article is clickable without the optional time row", asy
   await action.click();
   assert.equal(await page.getByRole("button", { name: "Clicked" }).count(), 1);
   assert.equal(await page.locator(".luogusp-rst-abtn").count(), 2);
+});
+
+test("restricted article opens with malformed Saver comments and keeps usable replies", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    commentsPayload: { code: 200, data: { comments: [
+      null,
+      [32, "Wrong row type"],
+      { id: true, content: "Boolean ID" },
+      { id: "1e1", content: "Exponential ID" },
+      { id: "9007199254740993", content: "Unsafe ID" },
+      { id: 33, lid: "654", content: "Different article" },
+      { id: 31, content: { toString: null } },
+      { id: "31", content: "Saved first", time: 100, author: { id: 78 } },
+      { id: "031", content: "Duplicate", time: 150 },
+      { id: 32, content: "Saved second", time: "200", author: { id: "79", name: "Archive author" } },
+      { id: 33, content: "Saved without metadata" },
+    ] } },
+    reply(route, url) {
+      if (url.origin === origin && url.pathname === "/article/123/replies")
+        return url.searchParams.has("native")
+          ? route.fulfill({ json: { replySlice: [{ id: 99, content: "Live reply" }] } })
+          : route.fulfill({ status: 403 });
+    },
+  });
+  await page.getByText("Saved text").waitFor();
+  const { article, canReply, canEdit } = JSON.parse(await page.locator("#lentille-context").textContent()).data;
+  assert.deepEqual([article.replyCount, canReply, canEdit], [3, false, false]);
+  const [fallback, next, official] = await page.evaluate(async () => {
+    const getReplies = async query => {
+      const response = await fetch(`/article/123/replies?${query}`);
+      return [response.headers.get("x-luogusp-source"), (await response.json()).replySlice];
+    };
+    return Promise.all([getReplies("sort=time-d"), getReplies("sort=time-d&after=32"), getReplies("native=1")]);
+  });
+  assert.equal(fallback[0], "saver");
+  assert.deepEqual(fallback[1].map(({ id, author, time, content }) => [id, author.uid, author.name, time, content]), [
+    [32, 79, "Archive author", 200, "Saved second"],
+    [31, 78, "用户 78", 100, "Saved first"],
+    [33, 0, "用户 ?", 0, "Saved without metadata"],
+  ]);
+  assert.deepEqual(next[1].map(({ id }) => id), [31, 33]);
+  assert.deepEqual(official, [null, [{ id: 99, content: "Live reply" }]]);
+});
+
+test("restricted article ignores Saver comments explicitly associated with a different article", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    commentsPayload: { code: 200, data: { articleId: "654", comments: [
+      { id: 31, content: "Another article's comment", time: 100, author: { id: 78 } },
+    ] } },
+    reply(route, url) {
+      if (url.origin === origin && url.pathname === "/article/123/replies")
+        return route.fulfill({ status: 403 });
+    },
+  });
+  await page.getByText("Saved text").waitFor();
+  assert.equal(JSON.parse(await page.locator("#lentille-context").textContent()).data.article.replyCount, 0);
+  const replies = await page.evaluate(async () => (await fetch("/article/123/replies")).json());
+  assert.deepEqual(replies, { replySlice: [] });
 });
 
 test("restricted native startup fails visibly when the native script mounts no content", async (t) => {

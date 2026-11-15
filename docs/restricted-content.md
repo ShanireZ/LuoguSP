@@ -16,6 +16,10 @@ establish the current account's privileges or personal state.
   be archived snapshots rather than current values.
 - The archive ID and payload shape must match the requested article or paste
   before the document is rebuilt.
+- Saver comments are optional. Ignore unavailable comment data or an explicit
+  mismatch with the article. Skip malformed rows and keep the first usable
+  row for each reply ID. The archived reply count uses this filtered list;
+  the reply endpoint still prefers valid native Luogu responses.
 - Do not infer favored, voted, canReply or canEdit from public archive counts.
   Follow article-interaction-state.js and account isolation in
   article-interaction-store.js.
@@ -24,8 +28,12 @@ establish the current account's privileges or personal state.
 - Live public counts may update counters without changing personal state.
   Unknown and confirmed states remain distinguishable.
 - Votes, favorites and replies use Luogu same-origin write contracts.
-  Observe XMLHttpRequest as well as supported fetch paths; never log live headers
-  or cookies.
+  Observe XMLHttpRequest and fetch without changing the native response.
+  Save votes only when the final Luogu response confirms the requested vote
+  and count. Save favorites only when the final response matches the same
+  write endpoint and its success format. Show a status message for an
+  unconfirmed 2xx response or a confirmed operation whose state could not be
+  saved. Never log live headers or cookies.
 - Saver workflow/comment-refresh requests update the archive. They do not
   interact as the current Luogu account. Follow task completion and freshness
   signals rather than treating acceptance as refreshed content.

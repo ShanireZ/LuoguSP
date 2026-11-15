@@ -1,83 +1,80 @@
-// 把一次「官方寫請求 + 伺服器回應」翻譯成已確認的互動狀態。
-// 契約取自官方 article.show 元件（columba chunk columba~0bd2df6a7ee2b996.js）：
-//   POST /article/{lid}/vote?vote=<-1|0|1> → 回應體 {upvotes, voted}，元件直接覆蓋計數與個人狀態；
-//   POST /article/{lid}/favor[?remove=1]   → 回應體不參與狀態，元件自行 favored=!favored、favorCount±1。
-// 因此點讚的計數是伺服器確認值，收藏的計數在回應體缺計數時按同一套 ±1 推導。
-// 非 2xx 一律回傳 null：寫失敗不得留下任何樂觀狀態（含持久化）。
-const VOTE_VALUES = new Set([-1, 0, 1]);
+// article.show submits vote=-1|0|1 and uses the server's {upvotes, voted}.
+// Favor sends no query for add or remove=1 for removal, and may return no body.
+const VOTE_VALUES = new Set(["-1", "0", "1"]);
+const FAVOR_FIELDS = new Set(["_empty", "favored", "favorCount", "favors"]);
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const isSuccessStatus = (status) => Number.isInteger(status) && status >= 200 && status < 300;
+const isResponseObject = (body) => isObject(body) &&
+  !["error", "errorMessage", "errors"].some((key) => Object.hasOwn(body, key)) &&
+  (!Object.hasOwn(body, "success") || body.success === true) &&
+  (!Object.hasOwn(body, "code") || isSuccessStatus(body.code)) &&
+  (!Object.hasOwn(body, "status") || isSuccessStatus(body.status));
 
-function parseBody(responseText) {
-  if (typeof responseText !== "string" || !responseText.trim()) return {};
+export function articleWriteRequestUrl({ origin, lid, method, url, status, URL: URLCtor = URL } = {}) {
+  if (typeof origin !== "string" || typeof lid !== "string" ||
+    String(method).toUpperCase() !== "POST" || !isSuccessStatus(status)) return null;
   try {
-    const parsed = JSON.parse(responseText);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed.data && typeof parsed.data === "object" ? parsed.data : parsed;
-  } catch (error) {
-    return {};
+    const request = new URLCtor(url, origin);
+    const { origin: requestOrigin, pathname } = request;
+    if (requestOrigin === origin &&
+      (pathname === `/article/${lid}/vote` || pathname === `/article/${lid}/favor`))
+      return request;
+  } catch {
+    // Invalid URL.
+  }
+  return null;
+}
+
+function responseMatches(request, { responseUrl, redirected, contentType, URL: URLCtor = URL }) {
+  if (redirected || typeof responseUrl !== "string" ||
+    /^(?:text\/html|application\/xhtml\+xml)(?:\s*;|\s*$)/i.test(contentType?.trim())) return false;
+  try {
+    const response = new URLCtor(responseUrl);
+    return response.origin === request.origin &&
+      response.pathname === request.pathname && response.search === request.search;
+  } catch {
+    return false;
   }
 }
 
-const firstNumber = (...values) => {
-  for (const value of values) {
-    const parsed = Number(value);
-    if (value !== null && value !== undefined && value !== "" &&
-      Number.isFinite(parsed))
-      return parsed;
-  }
-  return null;
-};
-
-export function interpretArticleWrite(config) {
-  const {
-    origin,
-    lid,
-    method,
-    url,
-    status,
-    responseText,
-    current,
-    URL: URLCtor = URL,
-  } = config || {};
-  if (typeof origin !== "string" || typeof lid !== "string") return null;
-  if (String(method || "").toUpperCase() !== "POST") return null;
-  if (!(Number(status) >= 200 && Number(status) < 300)) return null;
-  let requestUrl = null;
+function parseBody(text) {
+  if (text === "") return {};
+  if (typeof text !== "string") return null;
   try {
-    requestUrl = new URLCtor(String(url), origin);
-  } catch (error) {
+    const body = JSON.parse(text);
+    if (!isResponseObject(body)) return null;
+    if (!Object.hasOwn(body, "data")) return body;
+    return isResponseObject(body.data) ? body.data : null;
+  } catch {
     return null;
   }
-  if (requestUrl.origin !== origin) return null;
+}
 
-  const body = parseBody(responseText);
-  const known = current || {};
-  if (requestUrl.pathname === `/article/${lid}/vote`) {
-    const responded = Number(body.voted);
-    const requested = Number(requestUrl.searchParams.get("vote"));
-    const voted = VOTE_VALUES.has(responded)
-      ? responded
-      : VOTE_VALUES.has(requested)
-        ? requested
-        : null;
-    if (voted === null) return null;
-    const upvote = firstNumber(body.upvotes, body.upvote);
-    const result = { kind: "vote", voted };
-    if (upvote !== null) result.upvote = upvote;
-    return result;
+export function interpretArticleWrite(config = {}) {
+  const request = articleWriteRequestUrl(config);
+  if (!request || !responseMatches(request, config)) return null;
+  const body = parseBody(config.responseText);
+  if (!body) return null;
+
+  if (request.pathname.endsWith("/vote")) {
+    const votes = request.searchParams.getAll("vote");
+    const upvote = body.upvotes ?? body.upvote;
+    if (votes.length !== 1 || !VOTE_VALUES.has(votes[0]) ||
+      body.voted !== Number(votes[0]) || !Number.isSafeInteger(upvote)) return null;
+    return { kind: "vote", voted: body.voted, upvote };
   }
-  if (requestUrl.pathname === `/article/${lid}/favor`) {
-    const favored = requestUrl.searchParams.get("remove") !== "1";
-    const responded = firstNumber(body.favorCount, body.favors);
-    const base = firstNumber(known.favorCount);
-    const favorCount =
-      responded !== null
-        ? responded
-        : base === null
-          ? null
-          : Math.max(0, base + (favored ? 1 : -1));
-    const result = { kind: "favor", favored };
-    if (favorCount !== null) result.favorCount = favorCount;
-    return result;
-  }
-  return null;
+
+  const removals = request.searchParams.getAll("remove");
+  if (removals.length && (removals.length !== 1 || removals[0] !== "1")) return null;
+  const favored = removals.length === 0;
+  const count = body.favorCount ?? body.favors;
+  if (Object.keys(body).some((key) => !FAVOR_FIELDS.has(key)) ||
+    (Object.hasOwn(body, "_empty") && body._empty !== true) ||
+    (Object.hasOwn(body, "favored") && body.favored !== favored) ||
+    (["favorCount", "favors"].some((key) => Object.hasOwn(body, key)) &&
+      (!Number.isSafeInteger(count) || count < 0))) return null;
+  const base = config.current?.favorCount;
+  const change = config.current?.favored === favored ? 0 : favored ? 1 : -1;
+  const favorCount = count ?? (Number.isSafeInteger(base) ? Math.max(0, base + change) : null);
+  return favorCount === null ? { kind: "favor", favored } : { kind: "favor", favored, favorCount };
 }

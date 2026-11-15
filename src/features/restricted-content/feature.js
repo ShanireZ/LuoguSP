@@ -20,6 +20,7 @@ import {
   rstSafeCsrf,
   rstTrustedCdnUrl,
   rstUserSummary,
+  showRstArticleWriteNotice,
 } from "./presentation.js";
 import {
   buildColumbaDocument,
@@ -277,19 +278,10 @@ export function createRestrictedContentFeature({
     if (rstReplyTransportInstaller) rstReplyTransportInstaller.dispose();
   };
   function rstInstallArticleTransport(lid, comments, csrf, onWrite) {
-    const mapped = comments.map((c, i) => {
-      const a = c.author || {};
-      const sourceId = Number(c.id);
-      return {
-        id:
-          Number.isSafeInteger(sourceId) && sourceId > 0
-            ? sourceId
-            : i + 1,
-        author: rstUserSummary(null, a, a.id),
-        time: Number(c.time) || 0,
-        content: String(c.content || ""),
-      };
-    });
+    const mapped = comments.map((comment) => ({
+      ...comment,
+      author: rstUserSummary(null, comment.author, comment.author.id),
+    }));
     return rstReplyTransportInstaller
       ? rstReplyTransportInstaller.install(lid, mapped, csrf, onWrite)
       : () => {};
@@ -319,11 +311,11 @@ export function createRestrictedContentFeature({
     if (!scaffold)
       throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
     const shell = readColumbaShell(scaffold);
-    const comments =
-      commentsResult.kind === "available" &&
-      Array.isArray(commentsResult.data.comments)
-        ? commentsResult.data.comments
-        : [];
+    const comments = commentsResult.kind === "available" ? commentsResult.data.comments : [];
+    const showWriteNotice = (kind, message) => {
+      if (location.pathname === info.path)
+        showRstArticleWriteNotice(kind, message);
+    };
     const { interaction, tracker: interactionTracker } =
       prepareRestrictedArticleInteraction({
         store: rstInteractionStore,
@@ -333,10 +325,15 @@ export function createRestrictedContentFeature({
         // 存檔快照的新鮮度：只有比已確認記錄更新，保存站計數才允許覆蓋。
         archivedAt: Date.parse(data.updatedAt || data.createdAt) || null,
         live,
-        onPersistFailure: ({ lid, reason }) =>
-          console.warn(
-            `[LuoguSP] 文章 ${lid} 的收藏/点赞状态无法保存（${reason}），刷新后将无法撤回。`,
-          ),
+        onUnconfirmed: () => showWriteNotice(
+          "unconfirmed", "无法确认点赞或收藏结果，请刷新后查看。",
+        ),
+        onPersistFailure: ({ reason }) => showWriteNotice(
+          "unsaved",
+          reason === "no-account"
+            ? "洛谷已确认操作，但当前页面无法识别登录账号，刷新后可能无法恢复互动状态。"
+            : "洛谷已确认操作，但浏览器未能保存点赞或收藏状态。刷新后可能无法恢复。",
+        ),
         article: {
           lid: info.id,
           title: data.title || "",
@@ -697,7 +694,7 @@ export function createRestrictedContentFeature({
       rstRefreshText = "申请更新";
       document
         .querySelectorAll(
-          ".luogusp-rst-abtn,.luogusp-rst-pactions,.luogusp-rst-updtime",
+          ".luogusp-rst-abtn,.luogusp-rst-pactions,.luogusp-rst-updtime,.luogusp-rst-write-notice",
         )
         .forEach((node) => node.remove());
     },

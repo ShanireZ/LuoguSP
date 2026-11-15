@@ -39,7 +39,22 @@ export const RST_EXTRA_CSS =
   ".luogusp-rst-pactions{display:flex;align-items:center;flex:none;}" +
   ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
   ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}" +
-  ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}";
+  ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}" +
+  ".luogusp-rst-write-notice{margin:.75em 0;padding:.5em .75em;border-inline-start:3px solid currentColor;font-size:.875em;}";
+
+export function showRstArticleWriteNotice(kind, message) {
+  const id = `luogusp-rst-write-${kind}`;
+  if (document.getElementById(id)) return;
+  const notice = document.createElement("p");
+  notice.id = id;
+  notice.className = "luogusp-rst-write-notice";
+  notice.setAttribute("role", "status");
+  const article = document.querySelector(".article-content");
+  const actions = article?.querySelector(".actions");
+  if (actions) actions.after(notice);
+  else (article || document.body || document.documentElement).prepend(notice);
+  notice.textContent = message;
+}
 // 擴充按鈕圖標（FontAwesome Free 6.7.2 solid 原版 path：arrows-rotate / arrow-up-right-from-square）
 
 export const RST_BTN_ICONS = {

@@ -1,3 +1,57 @@
+const isRecord = (value) =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const matchesId = (value, id) =>
+  typeof id === "string" &&
+  (value === id || (Number.isSafeInteger(value) && String(value) === id));
+
+// Saver's comment envelope does not require an article ID. Check it only
+// if the source includes an explicit article reference.
+const matchesCommentArticle = (record, id) =>
+  (record.articleId == null || matchesId(record.articleId, id)) &&
+  (record.lid == null || matchesId(record.lid, id));
+
+const nonNegativeInteger = (value) => {
+  const number =
+    typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+};
+
+const textOrUndefined = (value) =>
+  typeof value === "string" ? value : undefined;
+
+function normalizeComments(comments, articleId) {
+  const replies = [];
+  const ids = new Set();
+  for (const row of comments) {
+    if (!isRecord(row) || !matchesCommentArticle(row, articleId) ||
+        typeof row.content !== "string") continue;
+    const id = nonNegativeInteger(row.id);
+    const time = nonNegativeInteger(row.time ?? 0);
+    // Native replies use seconds; reject times outside the JavaScript Date range.
+    if (!id || ids.has(id) || time === null || time > 8.64e12) continue;
+    const author = row.author ?? {};
+    if (!isRecord(author)) continue;
+    const uid = nonNegativeInteger(author.id ?? 0);
+    if (uid === null) continue;
+    ids.add(id);
+    replies.push({
+      id,
+      time,
+      content: row.content,
+      author: {
+        id: uid,
+        name: textOrUndefined(author.name),
+        badge: textOrUndefined(author.badge),
+        color: textOrUndefined(author.color),
+        ccfLevel: nonNegativeInteger(author.ccfLevel),
+        xcpcLevel: nonNegativeInteger(author.xcpcLevel),
+      },
+    });
+  }
+  return replies;
+}
+
 export function createSaverProtocol() {
   const isSuccess = (payload) =>
     !!(
@@ -18,11 +72,9 @@ export function createSaverProtocol() {
   const classifyLookup = (payload, type, id) => {
     if (payload?.code === 200) {
       const data = payload.data;
-      const matchesId = typeof id === "string" && (data?.id === id ||
-        (Number.isSafeInteger(data?.id) && String(data.id) === id));
       const matchesType = type === "article" ? typeof data?.title === "string" :
         type === "paste" && data?.title === undefined;
-      if (matchesId && matchesType && typeof data.content === "string")
+      if (matchesId(data?.id, id) && matchesType && typeof data.content === "string")
         return { kind: "archived", data };
       return {
         kind: "unavailable",
@@ -48,10 +100,23 @@ export function createSaverProtocol() {
           retryable: true,
           category: "business",
         };
+  const classifyComments = (payload, articleId) => {
+    if (!isSuccess(payload)) return classifyAction(payload, "评论存档读取失败");
+    const data = payload.data;
+    if (!isRecord(data) || !Array.isArray(data.comments) || !matchesCommentArticle(data, articleId))
+      return {
+        kind: "unavailable",
+        reason: "保存站返回的评论存档格式或目标无效。",
+        category: "invariant",
+        retryable: false,
+      };
+    return { kind: "available", data: { comments: normalizeComments(data.comments, articleId) } };
+  };
   return Object.freeze({
     isSuccess,
     failureMessage,
     classifyLookup,
     classifyAction,
+    classifyComments,
   });
 }

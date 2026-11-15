@@ -54,7 +54,7 @@ export function createArticleInteractionStore(config) {
     try {
       raw = storage.getItem(key);
     } catch (error) {
-      return new Map();
+      return null;
     }
     let parsed = null;
     try {
@@ -77,20 +77,22 @@ export function createArticleInteractionStore(config) {
       .slice(0, Math.max(1, maxEntries));
     try {
       storage.setItem(key, JSON.stringify(Object.fromEntries(kept)));
+      return true;
     } catch (error) {
-      /* 儲存不可用（隱私模式、配額）時靜默降級 */
+      return false;
     }
   };
 
   const read = ({ uid, lid } = {}) => {
     if (!usable || !validUid(uid) || !validLid(lid)) return null;
-    const record = load().get(entryKey(uid, lid));
+    const record = load()?.get(entryKey(uid, lid));
     return record ? Object.freeze({ ...record }) : null;
   };
 
   const save = ({ uid, lid, ...patch } = {}) => {
     if (!usable || !validUid(uid) || !validLid(lid)) return null;
     const entries = load();
+    if (!entries) return null;
     const entry = entryKey(uid, lid);
     const merged = {
       ...(entries.get(entry) || {
@@ -106,8 +108,7 @@ export function createArticleInteractionStore(config) {
     const record = normalizeRecord(merged);
     if (!record) return null;
     entries.set(entry, record);
-    persist(entries);
-    return Object.freeze({ ...record });
+    return persist(entries) ? Object.freeze({ ...record }) : null;
   };
 
   return Object.freeze({ read, save });

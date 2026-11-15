@@ -99,6 +99,7 @@ test("a confirmed favourite survives a component remount", () => {
   tracker.observeWrite({
     method: "POST",
     url: officialFavorUrl(null),
+    responseUrl: ORIGIN + officialFavorUrl(null),
     status: 200,
     responseText: "{}",
   });
@@ -131,12 +132,14 @@ test("a page refresh restores state so the next click cancels through Luogu", ()
   first.tracker.observeWrite({
     method: "POST",
     url: officialVoteUrl(null, 1),
+    responseUrl: ORIGIN + officialVoteUrl(null, 1),
     status: 200,
     responseText: JSON.stringify({ upvotes: 61, voted: 1 }),
   });
   first.tracker.observeWrite({
     method: "POST",
     url: officialFavorUrl(null),
+    responseUrl: ORIGIN + officialFavorUrl(null),
     status: 200,
     responseText: "{}",
   });
@@ -210,6 +213,7 @@ test("confirmed state never leaks across accounts or to anonymous visitors", () 
   tracker.observeWrite({
     method: "POST",
     url: officialFavorUrl(null),
+    responseUrl: ORIGIN + officialFavorUrl(null),
     status: 200,
     responseText: "{}",
   });
@@ -230,6 +234,7 @@ test("confirmed state never leaks across accounts or to anonymous visitors", () 
   anonymous.observeWrite({
     method: "POST",
     url: officialVoteUrl(null, 1),
+    responseUrl: ORIGIN + officialVoteUrl(null, 1),
     status: 200,
     responseText: JSON.stringify({ upvotes: 61, voted: 1 }),
   });
@@ -278,6 +283,7 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
       lid: LID,
       method: "POST",
       url: `/article/${LID}/vote?vote=0`,
+      responseUrl: ORIGIN + `/article/${LID}/vote?vote=0`,
       status: 200,
       responseText: JSON.stringify({ upvotes: 60, voted: 0 }),
       current,
@@ -290,6 +296,7 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
       lid: LID,
       method: "POST",
       url: `/article/${LID}/favor?remove=1`,
+      responseUrl: ORIGIN + `/article/${LID}/favor?remove=1`,
       status: 200,
       responseText: "",
       current,
@@ -303,6 +310,7 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
       lid: LID,
       method: "POST",
       url: `/article/${LID}/favor?remove=1`,
+      responseUrl: ORIGIN + `/article/${LID}/favor?remove=1`,
       status: 200,
       responseText: "",
       current: { upvote: 60, favorCount: 0, voted: 1, favored: true },
@@ -346,6 +354,7 @@ test("the reply XHR adapter reports official writes without touching them", asyn
     open(method, url) {
       this.method = method;
       this.url = url;
+      this.responseURL = new URL(url, ORIGIN).href;
     }
     setRequestHeader(name, value) {
       this.headers.push([name, value]);
@@ -405,21 +414,14 @@ test("the reply XHR adapter reports official writes without touching them", asyn
       withCredentials: false,
     },
   ]);
-  assert.equal(observed.length, 1);
-  assert.deepEqual(
-    {
-      method: observed[0].method,
-      url: observed[0].url,
-      status: observed[0].status,
-      responseText: observed[0].responseText,
-    },
-    {
-      method: "POST",
-      url: `/article/${LID}/vote?vote=1`,
-      status: 200,
-      responseText: JSON.stringify({ upvotes: 61, voted: 1 }),
-    },
-  );
+  assert.deepEqual(observed, [{
+    method: "POST",
+    url: `${ORIGIN}/article/${LID}/vote?vote=1`,
+    status: 200,
+    responseUrl: `${ORIGIN}/article/${LID}/vote?vote=1`,
+    contentType: "application/json",
+    responseText: JSON.stringify({ upvotes: 61, voted: 1 }),
+  }]);
   // 寫回應原樣交還官方元件。
   assert.equal(xhr.status, 200);
   assert.equal(xhr.responseText, JSON.stringify({ upvotes: 61, voted: 1 }));
@@ -478,6 +480,7 @@ test("the 不推荐 downvote confirms, persists and cancels like the upvote", ()
   tracker.observeWrite({
     method: "POST",
     url: officialVoteUrl(null, -1),
+    responseUrl: ORIGIN + officialVoteUrl(null, -1),
     status: 200,
     responseText: JSON.stringify({ upvotes: 18, voted: -1 }),
   });
@@ -511,6 +514,7 @@ test("the 不推荐 downvote confirms, persists and cancels like the upvote", ()
   tracker.observeWrite({
     method: "POST",
     url: officialVoteUrl(-1, -1),
+    responseUrl: ORIGIN + officialVoteUrl(-1, -1),
     status: 200,
     responseText: JSON.stringify({ upvotes: 19, voted: 0 }),
   });
@@ -528,6 +532,7 @@ test("a vote-only confirmation never fabricates a zero favourite count", () => {
   tracker.observeWrite({
     method: "POST",
     url: officialVoteUrl(null, 1),
+    responseUrl: ORIGIN + officialVoteUrl(null, 1),
     status: 200,
     responseText: JSON.stringify({ upvotes: 25, voted: 1 }),
   });
@@ -559,6 +564,7 @@ test("a vote-only confirmation never fabricates a zero favourite count", () => {
   favorOnly.tracker.observeWrite({
     method: "POST",
     url: officialFavorUrl(null),
+    responseUrl: ORIGIN + officialFavorUrl(null),
     status: 200,
     responseText: "{}",
   });
@@ -572,7 +578,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   const reports = [];
   const clock = fixedClock();
 
-  // 拿不到當前帳號：官方寫成功了，但狀態無處可存 —— 刷新後必然撤不回，必須報出來。
+  // A successful write without a recognized account cannot be saved locally.
   const anonymous = createArticleInteractionTracker({
     store: createArticleInteractionStore({ storage: memoryStorage(), now: clock.now }),
     origin: ORIGIN,
@@ -584,14 +590,20 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   anonymous.observeWrite({
     method: "POST",
     url: officialFavorUrl(null),
+    responseUrl: ORIGIN + officialFavorUrl(null),
     status: 200,
     responseText: "{}",
   });
   assert.deepEqual(reports, [{ lid: LID, reason: "no-account" }]);
 
-  // 儲存不可用（隱私模式、配額、被宿主環境擋住）同樣必須報出來。
+  // An actual storage exception must propagate to the tracker.
   const blocked = createArticleInteractionTracker({
-    store: createArticleInteractionStore({ storage: null }),
+    store: createArticleInteractionStore({
+      storage: {
+        getItem: () => null,
+        setItem() { throw new DOMException("Quota exceeded", "QuotaExceededError"); },
+      },
+    }),
     origin: ORIGIN,
     lid: LID,
     uid: 52918,
@@ -601,10 +613,12 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   blocked.observeWrite({
     method: "POST",
     url: officialVoteUrl(null, 1),
+    responseUrl: ORIGIN + officialVoteUrl(null, 1),
     status: 200,
     responseText: JSON.stringify({ upvotes: 61, voted: 1 }),
   });
   assert.deepEqual(reports[1], { lid: LID, reason: "storage-unavailable" });
+  assert.equal(blocked.snapshot().voted, 1);
 
   // 成功寫入磁碟時不得產生噪音。
   const working = createArticleInteractionTracker({
@@ -618,6 +632,7 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   working.observeWrite({
     method: "POST",
     url: officialFavorUrl(null),
+    responseUrl: ORIGIN + officialFavorUrl(null),
     status: 200,
     responseText: "{}",
   });

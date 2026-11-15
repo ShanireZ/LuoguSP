@@ -207,12 +207,7 @@ export function createSaverWorkflow(config, policy) {
         const payload = await transport.get(`/article/comments/${id}`, {
           signal,
         });
-        if (protocol.isSuccess(payload))
-          return { kind: "available", data: payload.data || {} };
-        return {
-          ...protocol.classifyAction(payload, "评论存档读取失败"),
-          kind: "unavailable",
-        };
+        return protocol.classifyComments(payload, id);
       } catch (error) {
         return unavailableFromError(error);
       }

@@ -53,10 +53,10 @@ export function createOfficialArticleWriteAdapter(config) {
     )
       return realFetch(input, init);
 
-    const request =
-      input instanceof RequestCtor
-        ? input
-        : new RequestCtor(requestUrl.href, init);
+    const request = new RequestCtor(
+      input instanceof RequestCtor ? input : requestUrl.href,
+      init,
+    );
     const headers = new HeadersCtor(request.headers);
     if (!headers.has("x-csrf-token")) headers.set("x-csrf-token", csrf);
     const result = realFetch(
@@ -65,25 +65,25 @@ export function createOfficialArticleWriteAdapter(config) {
         headers,
       }),
     );
-    if (typeof onWrite !== "function") return result;
+    if (typeof onWrite !== "function" ||
+      !/\/(?:vote|favor)$/.test(requestUrl.pathname)) return result;
     // 官方前端目前用 axios/XHR 寫入，這裡只是同一契約在 fetch 側的旁觀鏡像：
     // 讀取回應副本，絕不改動交還給呼叫方的原回應。
     return Promise.resolve(result).then((response) => {
       try {
         if (response && typeof response.clone === "function")
-          response
-            .clone()
-            .text()
-            .then(
-              (responseText) =>
-                onWrite({
-                  method: "POST",
-                  url: requestUrl.href,
-                  status: response.status,
-                  responseText,
-                }),
-              () => {},
-            );
+          response.clone().text()
+            .catch(() => undefined)
+            .then((responseText) => onWrite({
+              method: request.method,
+              url: request.url,
+              status: response.status,
+              responseUrl: response.url,
+              redirected: response.redirected,
+              contentType: response.headers.get("content-type"),
+              responseText,
+            }))
+            .catch(() => {});
       } catch (error) {
         /* 觀察失敗絕不影響官方寫入本身 */
       }
