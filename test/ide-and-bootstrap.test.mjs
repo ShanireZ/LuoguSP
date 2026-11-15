@@ -33,7 +33,7 @@ test("bootstrap is explicit and idempotent", () => {
   assert.deepEqual(calls, ["initialize", "start"]);
 });
 
-test("IDE output captures a replacement result before the submission response and detaches", async () => {
+test("IDE output takes its baseline at acknowledgement and ignores pre-acknowledgement results", async () => {
   const dom = new JSDOM('<main><span>旧结果</span><textarea></textarea></main>');
   const root = dom.window.document.querySelector("main");
   const clock = new FakeClock();
@@ -43,16 +43,21 @@ test("IDE output captures a replacement result before the submission response an
     textarea: root.querySelector("textarea"),
   });
   const output = observeIdeOutput({
-    root, readParts, previousPill: readParts().pill, signal: controller.signal,
+    root, readParts, signal: controller.signal,
     isCurrent: () => true, clock: clock.adapter(), MutationObserverImpl: dom.window.MutationObserver,
   });
   const resultPill = dom.window.document.createElement("span");
-  resultPill.textContent = "AC";
+  resultPill.textContent = "WA";
   readParts().pill.replaceWith(resultPill);
   readParts().textarea.value = "15";
   await flushMicrotasks();
+  output.confirmSubmit();
+  const newPill = dom.window.document.createElement("span");
+  newPill.textContent = "AC";
+  resultPill.replaceWith(newPill);
+  readParts().textarea.value = "27";
   assert.deepEqual(await output.wait(), {
-    kind: "result", verdict: "AC", pillStyle: "", detail: "", output: "15",
+    kind: "result", verdict: "AC", pillStyle: "", detail: "", output: "27",
   });
   assert.equal(clock.timers.size, 0);
 });
@@ -67,9 +72,10 @@ test("IDE output waits without polling and cancels its timeout on navigation", a
     root, readParts: () => { reads++; return { pill: null }; }, signal: controller.signal,
     isCurrent: () => true, clock: clock.adapter(), MutationObserverImpl: dom.window.MutationObserver,
   });
+  output.confirmSubmit();
   const result = output.wait();
   await clock.advance(15000);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
   controller.abort();
   assert.deepEqual(await result, { kind: "cancelled" });
   assert.equal(clock.timers.size, 0);

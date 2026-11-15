@@ -40,11 +40,11 @@ function stubFetch(pages, options = {}) {
     if (options.never) return new Promise(() => {});
     const page = Number((path.match(/page=(\d+)/) || [])[1]);
     const entry = pages[page];
-    if (entry === undefined) return Promise.resolve({ ok: false });
+    if (entry === undefined) return Promise.reject(new Error("HTTP 404"));
     if (entry === "waf")
       // 攔截頁是 HTTP 200 + text/html，`json()` 會拋。
-      return Promise.resolve({ ok: true, json: () => Promise.reject(new SyntaxError("Unexpected token <")) });
-    return Promise.resolve({ ok: true, json: () => Promise.resolve(entry) });
+      return Promise.reject(new SyntaxError("Unexpected token <"));
+    return Promise.resolve(entry);
   };
   return { fetchPage, calls };
 }
@@ -70,7 +70,7 @@ function manualClock() {
 
 const resolve = (fetchPage, extra = {}) =>
   resolveLiveArticleCounts({
-    fetchPage,
+    loadPage: fetchPage,
     authorUid: AUTHOR,
     lid: LID,
     clock: manualClock(),
@@ -187,7 +187,7 @@ test("超过时间预算就放弃，不拖住受限页渲染", async () => {
   const clock = manualClock();
   const { fetchPage } = stubFetch({}, { never: true });
   const pending = resolveLiveArticleCounts({
-    fetchPage,
+    loadPage: fetchPage,
     authorUid: AUTHOR,
     lid: LID,
     clock,
@@ -318,7 +318,7 @@ test("分类过滤扫不到时退回全量扫", async () => {
     const payload = filtered
       ? listPayload([row("别的文章")], { count: 1 })
       : listPayload([row(LID, { upvote: 24, favorCount: 22 })], { count: 1 });
-    return Promise.resolve({ ok: true, json: () => Promise.resolve(payload) });
+    return Promise.resolve(payload);
   };
   const hit = await resolve(fetchPage, { category: 3 });
   assert.equal(hit.upvote, 24);
@@ -349,7 +349,7 @@ test("剩余页按并发上限分批，不是一次性全撒出去", async () =>
     return new Promise((done) =>
       setTimeout(() => {
         inFlight.now -= 1;
-        done({ ok: true, json: () => Promise.resolve(pages[page]) });
+        done(pages[page]);
       }, 1),
     );
   };
@@ -394,10 +394,7 @@ test("分类回退不得让请求数翻倍：页数预算跨尝试共享", async
   const calls = [];
   const fetchPage = (path) => {
     calls.push(path);
-    return Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve(listPayload([row(`x${calls.length}`)], { perPage: 1, count: 500 })),
-    });
+    return Promise.resolve(listPayload([row(`x${calls.length}`)], { perPage: 1, count: 500 }));
   };
   const result = await resolve(fetchPage, { category: 3, maxPages: 4, concurrency: 2 });
   assert.equal(result, null);

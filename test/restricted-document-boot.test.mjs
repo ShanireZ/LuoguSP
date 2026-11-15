@@ -211,7 +211,7 @@ test("Restricted Document Boot prepares everything before a single lifecycle com
 
   fx.setPath("/article/next");
   fx.boot.onRoute();
-  assert.deepEqual(fx.calls[4], ["reload"]);
+  assert.deepEqual(fx.calls.slice(4), [["builderDispose"], ["reload"]]);
   dispose();
 });
 

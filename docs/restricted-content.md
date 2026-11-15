@@ -29,9 +29,17 @@ establish the current account's privileges or personal state.
 - Saver workflow/comment-refresh requests update the archive. They do not
   interact as the current Luogu account. Follow task completion and freshness
   signals rather than treating acceptance as refreshed content.
-- A newly accepted archive workflow checks for saved content after 3 seconds,
-  then backs off to 6- and 12-second intervals with the existing 45-second
-  cumulative wait budget.
+- A newly accepted archive workflow checks for saved content after 3 seconds
+  and then backs off to 6- and 12-second intervals. The 45-second deadline
+  starts at acceptance and includes time spent reading query responses.
+  The deadline and route disposal both cancel in-flight polling.
+- Each native scaffold, author, and article-list request has a 15-second
+  timeout through response body consumption. Leaving the route cancels pending
+  preparation. The scaffold can fall back from ranking to discussion.
+- The overlay clears when the native article or paste content mounts.
+  Time labels and action bars can appear later. If native startup has
+  not rendered content within 15 seconds after document replacement,
+  the page shows a failure message with a link to the original.
 - Keep archived paste fallback read-only; do not invent interaction controls.
 
 The examined protocol baseline includes the

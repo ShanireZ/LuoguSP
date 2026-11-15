@@ -155,6 +155,7 @@ export function createIdeBatchRunner(config) {
         results[index] = result;
         if (typeof ideDriver.applyResult === "function")
           ideDriver.applyResult(context, index, result);
+        if (result.uncertain) break;
         if (result.verdict === "CE") {
           if (state === "stopping") break;
           for (let rest = index + 1; rest < context.count; rest++) {

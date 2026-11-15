@@ -1,12 +1,14 @@
 export function observeIdeOutput({
-  root, readParts, previousPill, signal, isCurrent,
+  root, readParts, signal, isCurrent,
   MutationObserverImpl = globalThis.MutationObserver,
   clock = {
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
   },
 }) {
-  let cleared = !previousPill;
+  let baselinePill;
+  let cleared = false;
+  let confirmed = false;
   let result;
   let resolveResult;
   let timer = null;
@@ -29,10 +31,11 @@ export function observeIdeOutput({
   };
   const check = (mutations = []) => {
     if (!isCurrent() || !root.isConnected) return cancel();
+    if (!confirmed) return;
     const parts = readParts();
     const sawRemoval = !cleared && mutations.some((mutation) =>
       Array.from(mutation.removedNodes).some((node) =>
-        node === previousPill || node.contains(previousPill),
+        node === baselinePill || node.contains(baselinePill),
       ),
     );
     if (!cleared && (!parts?.pill || sawRemoval)) {
@@ -51,15 +54,20 @@ export function observeIdeOutput({
   };
   const observer = new MutationObserverImpl(check);
   if (signal.aborted) cancel();
-  else {
-    signal.addEventListener("abort", cancel, { once: true });
-    observer.observe(root, {
-      childList: true, subtree: true, characterData: true,
-      attributeFilter: ["class", "style"],
-    });
-  }
+  else signal.addEventListener("abort", cancel, { once: true });
 
   return {
+    confirmSubmit() {
+      if (confirmed || result) return;
+      if (!isCurrent() || !root.isConnected) return cancel();
+      baselinePill = readParts()?.pill;
+      cleared = !baselinePill;
+      confirmed = true;
+      observer.observe(root, {
+        childList: true, subtree: true, characterData: true,
+        attributeFilter: ["class", "style"],
+      });
+    },
     wait() {
       if (!result && timer === null) {
         check();

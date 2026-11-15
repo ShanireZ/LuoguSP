@@ -31,7 +31,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
   // ============================================================
   // IDE 模式一鍵測試所有範例
   // 洛谷新版題目頁（columba）IDE 模式（#ide）下，逐組驅動題面範例的原生「執行」，
-  // 結果從輸出面板 DOM 捕獲（結果經頁面常駐 WS 推送，網路層拿不到——勿改走攔截）。
+  // 洛谷以 rid 配對推送結果，輸出面板未公開這個識別碼。
+  // 同一份文件中，只在沒有未確認的執行時才啟動下一個範例。
   // 錨點與配色均來自 2026-07 洛谷 columba IDE 的真實頁面觀測。
   // ============================================================
   function ideToolbarByTitle(title, root = document) {
@@ -100,7 +101,44 @@ export function createIdeBatchFeature({ storage, problemData }) {
     return content.textContent || "";
   }
 
+  const IDE_SUBMIT_PATH = "/api/ide_submit";
+  const IDE_RESULT_UNCONFIRMED = "上次运行结果未确认，请刷新页面后重试";
+  // The native run can outlive the userscript's route and its HTTP waiter.
+  let pendingNativeAttempt = null;
   let ideSubmitWaiter = null;
+
+  function isIdeSubmitUrl(url) {
+    try {
+      const target = new URL(url, document.baseURI);
+      return target.origin === location.origin && target.pathname === IDE_SUBMIT_PATH;
+    } catch {
+      return false;
+    }
+  }
+
+  function readIdeSubmit(xhr) {
+    if (!isIdeSubmitUrl(xhr.responseURL)) return { status: 0 };
+    const { status } = xhr;
+    // These responses explicitly reject the submit. A timeout or server error
+    // can arrive after the server has already queued the run.
+    if ([400, 401, 403, 404, 405, 422, 429].includes(status))
+      return { status, rejected: true };
+    if (status < 200 || status >= 300) return { status };
+    try {
+      const payload = xhr.responseType === "json" ? xhr.response : JSON.parse(xhr.responseText);
+      const data = payload?.data;
+      const rid = data?.rid;
+      const queued = payload?.status === 200 &&
+        ((Number.isSafeInteger(rid) && rid > 0) || (typeof rid === "string" && /^[1-9]\d*$/.test(rid)));
+      const terminal = Number.isInteger(payload?.status) && payload.status !== 200 &&
+        ((data?.type === "compile" && data.success === false) ||
+          (data?.type === "execute" && typeof data.output === "string" && data.execute));
+      return { status, accepted: queued || Boolean(terminal) };
+    } catch {
+      return { status };
+    }
+  }
+
   function cancelIdeSubmitWaiter(runId) {
     if (!ideSubmitWaiter) return;
     if (runId != null && ideSubmitWaiter.runId !== runId) return;
@@ -114,25 +152,31 @@ export function createIdeBatchFeature({ storage, problemData }) {
     const submitRequests = new WeakMap();
     let active = true;
     const open = function (method, url) {
-      if (active)
-        submitRequests.set(
-          this,
-          typeof url === "string" && url.indexOf("/api/ide_submit") !== -1,
-        );
+      submitRequests.delete(this);
+      if (active && pendingNativeAttempt && String(method).toUpperCase() === "POST" &&
+          isIdeSubmitUrl(url))
+        submitRequests.set(this, pendingNativeAttempt);
       return rawOpen.apply(this, arguments);
     };
     const send = function () {
-      const waiter = active && submitRequests.get(this) && ideSubmitWaiter;
-      if (waiter)
+      const attempt = active && submitRequests.get(this);
+      const waiter = ideSubmitWaiter;
+      if (attempt && waiter?.attempt === attempt && !attempt.claimed) {
+        attempt.claimed = true;
         this.addEventListener(
           "loadend",
           () => {
+            const result = readIdeSubmit(this);
+            if (result.rejected && pendingNativeAttempt === attempt)
+              pendingNativeAttempt = null;
             if (!active || ideSubmitWaiter !== waiter) return;
             ideSubmitWaiter = null;
-            waiter.resolve(this.status);
+            if (result.accepted) waiter.confirmOutput();
+            waiter.resolve(result);
           },
           { once: true },
         );
+      }
       return rawSend.apply(this, arguments);
     };
     XMLHttpRequest.prototype.open = open;
@@ -146,7 +190,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
         XMLHttpRequest.prototype.send = rawSend;
     };
   }
-  function waitIdeSubmit(ms, runId) {
+  function waitIdeSubmit(ms, runId, attempt, confirmOutput) {
     cancelIdeSubmitWaiter();
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -158,7 +202,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
         clearTimeout(timer);
         resolve(status);
       };
-      ideSubmitWaiter = { runId, resolve: fn };
+      ideSubmitWaiter = { runId, resolve: fn, attempt, confirmOutput };
     });
   }
   function outputParts(root) {
@@ -177,13 +221,17 @@ export function createIdeBatchFeature({ storage, problemData }) {
   }
   async function runOneSample(runBtn, { runId, drive, isCurrent, wait, signal }) {
     let output;
+    let attempt;
+    const uncertain = (note) => ({ verdict: "UKE", note, uncertain: true });
     const submit = (parts) => {
+      attempt = { claimed: false };
       const root = parts.panel.parentElement || parts.panel;
       output = observeIdeOutput({
-        root, readParts: () => outputParts(root), previousPill: parts.pill, signal, isCurrent,
+        root, readParts: () => outputParts(root), signal, isCurrent,
       });
-      const submitP = waitIdeSubmit(10000, runId);
+      const submitP = waitIdeSubmit(10000, runId, attempt, output.confirmSubmit);
       if (!drive(() => {
+        pendingNativeAttempt = attempt;
         runBtn.click();
         return true;
       })) {
@@ -197,25 +245,26 @@ export function createIdeBatchFeature({ storage, problemData }) {
     try {
       const first = submit(before);
       if (!first) return null;
-      let status = await first;
-      if (status === 429) {
+      let submission = await first;
+      if (submission?.status === 429) {
         output.dispose();
         if (!(await wait(3000)) || !isCurrent()) return { verdict: "UKE", note: "页面已切换" };
         const parts = outputParts();
         if (!parts) return { verdict: "UKE", note: "IDE 面板不存在" };
         const retry = submit(parts);
         if (!retry) return null;
-        status = await retry;
+        submission = await retry;
       }
-      if (status == null || status < 200 || status >= 300)
-        return {
-          verdict: "UKE",
-          note: status == null ? "未观测到提交请求" : `提交失败 HTTP ${status}`,
-        };
+      if (submission?.rejected)
+        return { verdict: "UKE", note: `提交失败 HTTP ${submission.status}` };
+      if (!submission?.accepted)
+        return uncertain("未能确认提交结果，请刷新页面后重试");
       const { kind, ...result } = await output.wait();
-      if (kind === "result") return result;
-      if (kind === "uncleared") return { verdict: "UKE", note: "旧结果未清空，疑似运行未开始" };
-      return { verdict: "UKE", note: kind === "cancelled" ? "页面已切换" : "30s 未返回结果" };
+      if (kind === "result" && isCurrent() && pendingNativeAttempt === attempt) {
+        pendingNativeAttempt = null;
+        return result;
+      }
+      return uncertain(IDE_RESULT_UNCONFIRMED);
     } finally {
       output?.dispose();
     }
@@ -353,7 +402,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
         e.target &&
         e.target.closest &&
         e.target.closest(
-          `${SELECTORS.ideSampleBlock} a, ${SELECTORS.ideToolbar} a.run`,
+          `${SELECTORS.ideSampleBlock} :is(a, button), ${SELECTORS.ideToolbar} .run`,
         );
       if (t) {
         e.preventDefault();
@@ -594,6 +643,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
   const ideBrowserDriver = {
     mountKey: () => document.body,
     prepare: async ({ runId, signal }) => {
+      if (pendingNativeAttempt)
+        return { kind: "hint", message: IDE_RESULT_UNCONFIRMED };
       mountIdeTabs(ideBrowserDriver.controls);
       const pid = currentPid();
       const routeToken = `${location.pathname}${location.search}${location.hash}`;
@@ -634,6 +685,9 @@ export function createIdeBatchFeature({ storage, problemData }) {
             (button) => (button.textContent || "").trim() === "自测",
           )
         : null;
+      if (selfTest?.disabled ||
+          inputToolbar?.querySelector('.run-status, .run[disabled], .run[aria-disabled="true"]'))
+        return { kind: "hint", message: "洛谷 IDE 正在运行，请稍后重试" };
       return {
         kind: "ready",
         runId,
@@ -687,6 +741,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
         return await runOneSample(context.runButtons[index], task);
       } catch (error) {
         cancelIdeSubmitWaiter(task.runId);
+        if (pendingNativeAttempt)
+          return { verdict: "UKE", note: IDE_RESULT_UNCONFIRMED, uncertain: true };
         throw error;
       }
     },

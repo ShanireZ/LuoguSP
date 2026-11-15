@@ -40,15 +40,23 @@ details by viewer, contest and language. A problem card displays available
 fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. A focused eligible
 link opens its preview with Alt+Down Arrow. Escape closes the preview and
-returns focus to the link. Problem card navigation retains the source link's
-contest and language. User cards reuse observed same-origin user-info XHRs
-and display basic information before profile-only fields arrive.
-IDE batch runs observe mutations in the native output panel from
-before the submit click until the result, deadline or cancellation.
+returns focus to the link. Pointer and keyboard activation resolve links against
+the document base and verify the destination against the current origin and
+supported routes before loading the preview. Problem card navigation retains
+the source link's contest and language. Native void problem anchors continue
+to use their visible problem ID. Standalone avatars use the current origin or
+Luogu's avatar CDN. User cards reuse observed same-origin user-info XHRs and
+display basic information before profile-only fields arrive.
+IDE batch runs observe mutations in the native output panel after the
+matching same-origin submit is acknowledged, until the result, deadline
+or cancellation. An output already present at acknowledgement is treated
+as the baseline. Luogu's panel does not expose its native run ID.
+If a submit may still produce a result after cancellation or timeout,
+LuoguSP requires a page reload before starting another batch in that document.
+An explicit server rejection releases that restriction.
 Each batch captures the source at start. Edits stop later submissions and mark
 results from that batch stale. Leaving the IDE removes its batch controls and
-restores the native input layout. Each submit response belongs to the sample
-that dispatched it.
+restores the native input layout.
 Output highlighting aligns insertions and deletions within a bounded comparison.
 
 The profile introduction renderer sanitizes author markup before inserting

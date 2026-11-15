@@ -40,6 +40,8 @@ import { createSaverProtocol } from "./saver-protocol.js";
 import { createSaverTransport } from "./saver-transport.js";
 import { createSaverWorkflow } from "./saver-workflow.js";
 
+const NATIVE_TIMEOUT_MS = 15000;
+
 export function createRestrictedContentFeature({
   storage,
   restrictedLoadingGate,
@@ -71,6 +73,7 @@ export function createRestrictedContentFeature({
   // ============================================================
   const SAVER_API = "https://api.luogu.me";
   const saverClock = {
+    now: () => performance.now(),
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
   };
@@ -109,7 +112,7 @@ export function createRestrictedContentFeature({
   // 介面=/api/user/search?keyword={uid}（攔截頁源實測可用；舊 /user/{uid}?_contentOnly=1 已死，回傳 HTML），
   // 回傳 userSummary：{uid,name,avatar,slogan,badge,color,ccfLevel,xcpcLevel,…}。失敗退回存檔快照。
   const rstUserCache = new Map();
-  async function rstFetch(input, signal, init) {
+  async function rstFetch(input, signal, bodyType, init) {
     const controller = new AbortController();
     let timedOut = false;
     const cancel = () => controller.abort();
@@ -121,11 +124,15 @@ export function createRestrictedContentFeature({
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, 15000);
+    }, NATIVE_TIMEOUT_MS);
     try {
-      return await fetch(input, { ...(init || {}), signal: controller.signal });
+      const response = await fetch(input, { ...init, signal: controller.signal });
+      if (!response.ok) throw new Error(`洛谷 HTTP ${response.status}`);
+      const body = await response[bodyType]();
+      if (controller.signal.aborted) throw controller.signal.reason;
+      return body;
     } catch (error) {
-      if (error && error.name === "AbortError")
+      if (controller.signal.aborted || error?.name === "AbortError")
         throw Object.assign(
           new Error(timedOut ? "洛谷页面数据请求超时" : "受限文档准备已取消"),
           { kind: timedOut ? "timeout" : "cancelled" },
@@ -141,11 +148,11 @@ export function createRestrictedContentFeature({
     if (rstUserCache.has(uid)) return rstUserCache.get(uid);
     let user = null;
     try {
-      const res = await rstFetch(
+      const json = await rstFetch(
         `/api/user/search?keyword=${encodeURIComponent(uid)}`,
         signal,
+        "json",
       );
-      const json = await res.json();
       const list = (json && json.users) || [];
       user = list.find((u) => u && Number(u.uid) === Number(uid)) || null;
     } catch (e) {
@@ -181,6 +188,7 @@ export function createRestrictedContentFeature({
     rstBuildFailure(info, message);
   }
   function rstBuildFailure(info, reason) {
+    injectRstStyle();
     rstHideLoader();
     document.title =
       (info.type === "article" ? "文章" : "云剪贴板") + " - 洛谷";
@@ -201,8 +209,7 @@ export function createRestrictedContentFeature({
   async function rstHarvest(signal) {
     for (const src of ["/ranking", "/discuss"]) {
       try {
-        const res = await rstFetch(src, signal);
-        const html = await res.text();
+        const html = await rstFetch(src, signal, "text");
         if (html.includes("lentille-context")) return html;
       } catch (e) {
         if (e && e.kind === "cancelled") throw e;
@@ -295,7 +302,7 @@ export function createRestrictedContentFeature({
       rstCnUser(data.authorId, signal),
       saverWorkflow.loadComments(info.id, { signal }),
       resolveLiveArticleCounts({
-        fetchPage: rstFetch,
+        loadPage: (path, signal, init) => rstFetch(path, signal, "json", init),
         authorUid: data.authorId,
         lid: info.id,
         category: data.category,
@@ -410,15 +417,34 @@ export function createRestrictedContentFeature({
   // 官方前端可能連續多次重繪；同一影格只補種一次，並在補種期間暫停觀察，
   // 避免擴充節點自身觸發下一輪全頁掃描。
   const rstInjectionDisposers = new Set();
-  function rstObserveInjection(inject) {
+  function rstObserveInjection(info, inject) {
     const root = document.body || document.documentElement;
     const options = { childList: true, subtree: true };
+    const contentSelector =
+      info.type === "article" ? ".article-content" : ".paste-show-card";
     let frame = null;
     let observer = null;
+    const startupTimer = setTimeout(() => {
+      // A background tab may delay the animation frame that observes readiness.
+      if (revealContent()) return;
+      dispose();
+      rstDisposeReplyTransport();
+      rstBuildFailure(info, "洛谷原生页面启动超时。");
+    }, NATIVE_TIMEOUT_MS);
+    let ready = false;
+    const revealContent = () => {
+      if (!ready && document.querySelector(contentSelector)) {
+        ready = true;
+        clearTimeout(startupTimer);
+        rstHideLoader();
+      }
+      return ready;
+    };
     const run = () => {
       frame = null;
       if (observer) observer.disconnect();
       try {
+        revealContent();
         inject();
       } catch (e) {
         console.error("LuoguSP restricted inject:", e);
@@ -432,6 +458,7 @@ export function createRestrictedContentFeature({
     });
     observer.observe(root, options);
     const dispose = () => {
+      clearTimeout(startupTimer);
       if (observer) observer.disconnect();
       if (frame !== null) cancelAnimationFrame(frame);
       observer = null;
@@ -508,9 +535,8 @@ export function createRestrictedContentFeature({
       if (pickPublishTime(data, live) === null)
         relabelArchiveTime(updateBars, "创建时间");
       rstApplyRefreshBtns(); // Vue 重種出的「申請更新」按鈕要重新套用當前狀態
-      if (actionBars.length && updateBars.length) rstHideLoader();
     };
-    return rstObserveInjection(inject);
+    return rstObserveInjection(info, inject);
   }
   // 擴充按鈕（剪貼簿頁）：元資訊行（meta-row）右側兩枚實心藍鈕。
   // 該行是 flex space-between，作者和時間在 .meta-left，本容器落位最右。
@@ -563,9 +589,8 @@ export function createRestrictedContentFeature({
         if (label) relabelArchiveTime([timeRow], label);
       }
       rstApplyRefreshBtns(); // Vue 重種出的「申請更新」按鈕要重新套用當前狀態
-      rstHideLoader();
     };
-    return rstObserveInjection(inject);
+    return rstObserveInjection(info, inject);
   }
 
   // 申請更新（手動）：狀態機 idle=可點 / busy=更新中… / done=已申請。

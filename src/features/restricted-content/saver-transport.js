@@ -45,13 +45,15 @@ export function createSaverTransport(config) {
       try {
         payload = await response.json();
       } catch (error) {
+        if (controller.signal.aborted || error?.name === "AbortError") throw error;
         throw fail("malformed-response", "保存站响应不是有效 JSON");
       }
+      if (controller.signal.aborted) throw controller.signal.reason;
       if (!payload || typeof payload.code !== "number")
         throw fail("malformed-response", "保存站响应格式无效");
       return payload;
     } catch (error) {
-      if (error && error.name === "AbortError")
+      if (controller.signal.aborted || error?.name === "AbortError")
         throw timedOut
           ? fail("timeout", `保存站请求超时（${timeoutMs / 1000}s）`)
           : fail("cancelled", "保存站请求已取消");

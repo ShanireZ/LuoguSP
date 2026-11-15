@@ -126,12 +126,13 @@ export function createRestrictedDocumentBoot(config) {
     };
   };
   const onRoute = () => {
-    if (
-      rebuiltPath &&
-      pageAdapter.currentPath() !== rebuiltPath &&
-      pageAdapter.isRestrictedRoute(pageAdapter.currentPath())
-    )
-      pageAdapter.reload();
+    const path = pageAdapter.currentPath();
+    if (!rebuiltPath || path === rebuiltPath) return;
+    if (typeof documentBuilder.dispose === "function")
+      documentBuilder.dispose();
+    if (pageAdapter.isRestrictedRoute(path)) pageAdapter.reload();
+    else if (typeof pageAdapter.hideLoader === "function")
+      pageAdapter.hideLoader();
   };
   const dispose = () => {
     taskId++;

@@ -26,7 +26,7 @@ export function createSaverWorkflow(config, policy) {
 
   let disposed = false;
   const controllers = new Set();
-  const timers = new Map();
+  const now = typeof clock.now === "function" ? () => clock.now() : Date.now;
   const unavailableFromError = (error) => ({
     kind: "unavailable",
     reason: String((error && error.message) || error || "保存站暂时不可用"),
@@ -67,7 +67,7 @@ export function createSaverWorkflow(config, policy) {
       externalSignal.addEventListener("abort", abort, { once: true });
     controllers.add(controller);
     try {
-      return await task(controller.signal);
+      return await task(controller.signal, abort);
     } finally {
       controllers.delete(controller);
       if (externalSignal)
@@ -78,15 +78,12 @@ export function createSaverWorkflow(config, policy) {
     new Promise((resolve) => {
       if (signal.aborted) return resolve(false);
       const finish = (value) => {
-        if (!timers.has(timer)) return;
         clock.clearTimeout(timer);
-        timers.delete(timer);
         signal.removeEventListener("abort", cancel);
         resolve(value);
       };
       const cancel = () => finish(false);
       const timer = clock.setTimeout(() => finish(true), ms);
-      timers.set(timer, cancel);
       signal.addEventListener("abort", cancel, { once: true });
     });
   const lookupRaw = async (type, id, signal) => {
@@ -113,9 +110,66 @@ export function createSaverWorkflow(config, policy) {
       lookupRaw(type, id, signal),
     );
   };
+  const pollArchive = async (type, id, signal, abort, onAccepted) => {
+    const budgetMs = pollAttempts * pollIntervalMs;
+    const deadline = now() + budgetMs;
+    let timedOut = false;
+    const stopResult = () => ({
+      kind: "unavailable",
+      reason: timedOut
+        ? "保存站在限定时间内未能完成收录。"
+        : "保存工作流已取消",
+      retryable: true,
+      category: timedOut ? "timeout" : "cancelled",
+      stage: "poll",
+    });
+    const expire = () => {
+      if (signal.aborted) return;
+      timedOut = true;
+      abort();
+    };
+    const isStopped = () => {
+      if (now() >= deadline) expire();
+      return signal.aborted;
+    };
+    if (isStopped()) return stopResult();
+    let onAbort;
+    const stopped = new Promise((resolve) => {
+      onAbort = () => resolve(stopResult());
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    const timer = clock.setTimeout(expire, budgetMs);
+    const poll = async () => {
+      let interval = pollIntervalMs;
+      for (let attempt = 0; attempt < pollAttempts; attempt++) {
+        if (!(await pause(interval, signal)) || isStopped()) return stopResult();
+        interval = Math.min(interval * 2, pollIntervalMs * 4);
+        const result = await lookupRaw(type, id, signal);
+        if (isStopped()) return stopResult();
+        if (result.kind === "archived") return result;
+        if (result.kind === "missing") continue;
+        if (
+          result.kind === "unavailable" &&
+          result.retryable &&
+          (result.category === "transport" || result.category === "timeout")
+        )
+          continue;
+        return { ...result, stage: "poll" };
+      }
+      expire();
+      return stopResult();
+    };
+    try {
+      if (typeof onAccepted === "function") onAccepted();
+      return await Promise.race([stopped, poll()]);
+    } finally {
+      clock.clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+    }
+  };
   const ensureArchived = (type, id, options) => {
     if (!validateTarget(type, id)) return Promise.resolve(invalidTarget());
-    return withTask(options && options.signal, async (signal) => {
+    return withTask(options && options.signal, async (signal, abort) => {
       const initial = await lookupRaw(type, id, signal);
       if (initial.kind !== "missing")
         return initial.kind === "unavailable"
@@ -128,40 +182,7 @@ export function createSaverWorkflow(config, policy) {
         "保存站拒绝收录请求",
       );
       if (created.kind !== "accepted") return { ...created, stage: "create" };
-      if (options && typeof options.onAccepted === "function")
-        options.onAccepted();
-      let remainingWait = pollAttempts * pollIntervalMs;
-      let interval = pollIntervalMs;
-      for (let attempt = 0; attempt < pollAttempts && remainingWait > 0; attempt++) {
-        const delay = Math.min(interval, remainingWait);
-        if (!(await pause(delay, signal)))
-          return {
-            ...unavailableFromError({
-              kind: "cancelled",
-              message: "保存工作流已取消",
-            }),
-            stage: "poll",
-          };
-        remainingWait -= delay;
-        interval = Math.min(interval * 2, pollIntervalMs * 4);
-        const result = await lookupRaw(type, id, signal);
-        if (result.kind === "archived") return result;
-        if (result.kind === "missing") continue;
-        if (
-          result.kind === "unavailable" &&
-          result.retryable &&
-          (result.category === "transport" || result.category === "timeout")
-        )
-          continue;
-        return { ...result, stage: "poll" };
-      }
-      return {
-        kind: "unavailable",
-        reason: "保存站在限定时间内未能完成收录。",
-        retryable: true,
-        category: "timeout",
-        stage: "poll",
-      };
+      return pollArchive(type, id, signal, abort, options?.onAccepted);
     });
   };
   const requestRefresh = (type, id, options) => {
@@ -210,11 +231,6 @@ export function createSaverWorkflow(config, policy) {
     disposed = true;
     for (const controller of controllers) controller.abort();
     controllers.clear();
-    for (const [timer, cancel] of timers) {
-      clock.clearTimeout(timer);
-      cancel();
-    }
-    timers.clear();
   };
 
   return Object.freeze({

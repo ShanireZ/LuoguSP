@@ -9,12 +9,20 @@
 //    於是 `AT_abc397_a` / `CF_...` 這類題在資料層被當成非法 pid 直接退出，
 //    卡片只剩一句「拿不到這條資料」—— 而介面本身是好的（實測 200、11541 B）。
 //    owner 2026-08-14 第五輪報的就是它。同一個判據不許有第二份。
-// ★ 定義已下沉到 `problem-color/identity.js`（那邊同時進啟動包與本塊，而本檔案只在本塊裡），
-//   這裡只是**再匯出**，好讓既有引用方不必改路徑 —— 判據仍然只有一份。
-import { PID_PATTERN } from "../problem-color/identity.js";
+// ★ 定義在 `problem-color/identity.js`，這裡再匯出給卡片的資料層。
+import { createProblemIdentityResolver, PID_PATTERN } from "../problem-color/identity.js";
 export { PID_PATTERN };
-// 頭像 URL 形如 https://cdn.luogu.com.cn/upload/usericon/1313427.png
-const AVATAR_UID = /\/upload\/usericon\/(\d+)\./;
+
+const AVATAR_ORIGIN = "https://cdn.luogu.com.cn";
+const AVATAR_PATH = /^\/upload\/usericon\/(\d+)\.[A-Za-z0-9]+$/;
+const USER_PATH = /^\/user\/(\d+)(?:\/(?:practice|article))?\/?$/;
+const PROBLEM_PATH = /^\/problem\/([A-Za-z0-9_]+)\/?$/;
+const VOID_ANCHOR = "a[data-v-bade3303][data-v-4842157a]";
+const VOID_SCRIPT = /^javascript:\s*void(?:\s+0|\s*\(\s*0\s*\))\s*;?$/i;
+const voidIdentity = createProblemIdentityResolver({
+  getOrigin: () => globalThis.location?.origin,
+  voidAnchorSelector: VOID_ANCHOR,
+});
 
 // ★ 站台框架裡的錨點一律不出卡。owner 2026-08-14 報的三條誤彈裡有兩條落在這裡。
 //   下面每一段都是登入態真機 DOM 實測（/problem/P1001 與 /user/{uid}）：
@@ -35,9 +43,6 @@ const AVATAR_UID = /\/upload\/usericon\/(\d+)\./;
 // ★★ 反過來也別擴大：文章頁的 `header` 裡是**作者**的使用者名，那是要出卡的。
 const SITE_CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
 
-const inSiteChrome = (node) =>
-  !!(node && typeof node.closest === "function" && node.closest(SITE_CHROME_SELECTOR));
-
 // ★ pid 判據。canary.13 的教訓是**別用松正則**（`/problem/list` 與
 //   `/problem/list?tag=N` 都會被當成 pid=`list`，於是導覽按鈕和 TAG 膠囊到處彈卡）；
 //   canary.14 的教訓是**也別全交給 problem-color 的解析器** —— 它額外要求「錨點文字
@@ -51,13 +56,22 @@ const inSiteChrome = (node) =>
 const looksLikePid = (id) =>
   typeof id === "string" && /[A-Za-z]/.test(id) && /[0-9]/.test(id) && PID_PATTERN.test(id);
 
-const pidFromHref = (href) => {
-  if (typeof href !== "string" || !href) return null;
-  // 只看 path 段，query 與 hash 一律不參與。
-  const path = href.split(/[?#]/)[0];
-  const match = path.match(/\/problem\/([A-Za-z0-9_]+)\/?$/);
-  return match ? match[1] : null;
+const resolveUrl = (value, node) => {
+  if (!value || !value.trim()) return null;
+  try {
+    return new URL(value, node.ownerDocument.baseURI);
+  } catch {
+    return null;
+  }
 };
+
+const positiveUid = (value) => {
+  const uid = Number(value);
+  return Number.isSafeInteger(uid) && uid > 0 ? uid : null;
+};
+
+const userTarget = (uid, anchor) => Object.freeze({ kind: "user", key: `user:${uid}`, uid, anchor });
+const problemTarget = (pid, anchor, href) => Object.freeze({ kind: "problem", key: `problem:${pid}`, pid, anchor, href });
 
 // ★★★ owner 2026-08-14 第五輪：題庫裡懸停**題號**不該出卡，而且它「和難度著色衝突」。
 //    查清了，是同一個根因：題庫每行的題號是 `div.pid[title="P1000"]`（不是連結），
@@ -66,45 +80,25 @@ const pidFromHref = (href) => {
 //    我們為了滅掉瀏覽器原生浮泡會 `removeAttribute("title")` —— 一摘，著色當場失效。
 //    所以 `.pid[title]` **整個從錨點選擇器裡拿掉**：題號格不出卡、title 不被碰，
 //    同一行的**題名連結**照常出卡（那才是 canary.14 修過要保住的那條）。
-export function resolveProblemAnchor(node, identity) {
-  if (!node || typeof node.closest !== "function") return null;
-  const anchor = node.closest('a[href*="/problem/"], a[data-luogusp-pid]');
-  if (!anchor) return null;
-  const resolved =
-    identity && typeof identity.resolve === "function"
-      ? identity.resolve(anchor)
-      : null;
-  const pid =
-    (resolved && resolved.pid) ||
-    anchor.dataset?.luoguspPid ||
-    pidFromHref(anchor.getAttribute("href"));
-  if (!looksLikePid(pid)) return null;
-  return Object.freeze({ kind: "problem", key: `problem:${pid}`, pid, anchor });
+function linkTarget(anchor, origin) {
+  const href = anchor.getAttribute("href");
+  if (anchor.matches(VOID_ANCHOR) && (href === null || VOID_SCRIPT.test(href.trim()))) {
+    const pid = voidIdentity.resolve(anchor)?.pid;
+    return looksLikePid(pid) ? problemTarget(pid, anchor) : null;
+  }
+  const url = resolveUrl(href, anchor);
+  if (!url || url.origin !== origin) return null;
+  const uid = positiveUid(url.pathname.match(USER_PATH)?.[1]);
+  if (uid) return userTarget(uid, anchor);
+  const pid = url.pathname.match(PROBLEM_PATH)?.[1];
+  return looksLikePid(pid) ? problemTarget(pid, anchor, url.href) : null;
 }
 
-export function resolveUserAnchor(node) {
-  if (!node || typeof node.closest !== "function") return null;
-  // owner 要求：使用者名和頭像都出卡。頭像常常不在 <a> 裡（列表項自己處理點擊），
-  // 所以先看連結，再退回頭像 URL 裡的 uid。
-  const link = node.closest('a[href*="/user/"]');
-  const fromLink = link
-    ? (link.getAttribute("href") || "").match(/\/user\/(\d+)/)?.[1]
-    : null;
-  if (fromLink) {
-    const uid = Number(fromLink);
-    if (Number.isSafeInteger(uid) && uid > 0)
-      return Object.freeze({ kind: "user", key: `user:${uid}`, uid, anchor: link });
-  }
-  const image = node.closest("img") || (node.tagName === "IMG" ? node : null);
-  const src = image && (image.getAttribute("src") || "");
-  const fromAvatar = src && src.match(AVATAR_UID)?.[1];
-  if (fromAvatar) {
-    const uid = Number(fromAvatar);
-    if (Number.isSafeInteger(uid) && uid > 0)
-      return Object.freeze({ kind: "user", key: `user:${uid}`, uid, anchor: image });
-  }
-  return null;
-}
+const avatarUid = (image, origin) => {
+  const url = resolveUrl(image.currentSrc || image.getAttribute("src"), image);
+  if (!url || (url.origin !== origin && url.origin !== AVATAR_ORIGIN)) return null;
+  return positiveUid(url.pathname.match(AVATAR_PATH)?.[1]);
+};
 
 // 當前頁面「講的就是」誰 / 哪道題。★ owner 2026-08-14：個人頁上那個人自己的頭像、
 // 題目頁上指回本題的連結，都不該彈卡 —— 卡片是用來預覽**別處**的東西的，
@@ -139,17 +133,15 @@ export function readPageSubject(pathname) {
 //    （頭像 + 標題 + 作者），在那些地方按行備援會讓「懸停標題彈出作者卡」，
 //    那是誤彈 —— owner 這幾輪反覆在清的正是誤彈。要擴大範圍得先有各頁的證據。
 const CHAT_ROW_DEPTH = 4;
-const chatRowUid = (node, pathname) => {
-  if (pathname !== "/chat") return null;
+const chatRowTarget = (node, origin) => {
   let cursor = node;
   for (let step = 0; cursor && step < CHAT_ROW_DEPTH; step += 1) {
-    const avatars = cursor.querySelectorAll
-      ? cursor.querySelectorAll('img[src*="/upload/usericon/"]')
-      : [];
+    const avatars = cursor.querySelectorAll('img[src*="/upload/usericon/"]');
     if (avatars.length === 1) {
-      const uid = Number((avatars[0].getAttribute("src") || "").match(AVATAR_UID)?.[1]);
-      if (Number.isSafeInteger(uid) && uid > 0)
-        return Object.freeze({ kind: "user", key: `user:${uid}`, uid, anchor: cursor });
+      const image = avatars[0];
+      const uid = avatarUid(image, origin);
+      const anchor = image.closest("a[href]");
+      return uid && (!anchor || linkTarget(anchor, origin)?.uid === uid) ? userTarget(uid, cursor) : null;
     }
     if (avatars.length > 1) return null;
     cursor = cursor.parentElement;
@@ -157,15 +149,24 @@ const chatRowUid = (node, pathname) => {
   return null;
 };
 
-export function resolveHoverTarget(node, identity, subject, pathname) {
-  // 站台框架（頂欄 / 兩側抽屜）整塊不參與，連解析都不必做。
-  if (inSiteChrome(node)) return null;
-  // 使用者優先：討論區裡使用者名連結常常也落在含題號的行內，先判使用者不會誤判。
-  const target =
-    resolveUserAnchor(node) ||
-    resolveProblemAnchor(node, identity) ||
-    chatRowUid(node, pathname);
-  if (!target || !subject || subject.kind !== target.kind) return target;
+export function resolveHoverTarget(node) {
+  const page = node?.ownerDocument?.location;
+  if (!page || page.origin === "null" || typeof node.closest !== "function" || node.closest(SITE_CHROME_SELECTOR))
+    return null;
+  const { origin, pathname } = page;
+  // 連結內的圖片採用連結的目的地。
+  const anchor = node.closest(`a[href], ${VOID_ANCHOR}`);
+  const image = anchor ? null : node.closest("img");
+  let target = null;
+  if (anchor) target = linkTarget(anchor, origin);
+  else if (image) {
+    const uid = avatarUid(image, origin);
+    if (uid) target = userTarget(uid, image);
+  } else if (pathname === "/chat") target = chatRowTarget(node, origin);
+
+  if (!target) return null;
+  const subject = readPageSubject(pathname);
+  if (!subject || subject.kind !== target.kind) return target;
   if (target.kind === "user") return target.uid === subject.uid ? null : target;
   return target.pid === subject.pid ? null : target;
 }

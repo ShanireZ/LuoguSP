@@ -1,12 +1,11 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
+import { resolveHoverTarget } from "./anchors.js";
 import { isPreviewShortcut } from "./hover-intent.js";
 
 // hover 卡的啟動側薄殼。與受限內容那次同一個形狀：**只有使用者真的把指針停在
 // 題號或使用者名上，才去拉那個塊**。絕大多數頁面瀏覽根本不會觸發。
 //
 // ★ 設定項必須在不載入塊的前提下就能列出來，所以 id / key / label 由本殼持有。
-// ★ 這裡不做錨點解析（那是塊裡的事），只做一件最便宜的判斷：指針下面有沒有可能是
-//   題號或使用者連結。判斷錯了頂多多拉一次塊（一次，之後就常駐），判斷漏了才是缺陷。
 //
 // ★★★ owner 報過兩輪「第一次懸停不彈卡」。這一層有**兩個**獨立原因，都修了：
 //
@@ -16,21 +15,7 @@ import { isPreviewShortcut } from "./hover-intent.js";
 //     ★ 不再補發合成事件：跨 realm 造事件脆，而且合成事件還要再等 300ms 停留，
 //       體感仍然是「第一次懸停不彈」。
 //
-//  2. ★★★ **薄殼看不見的元素，塊永遠沒機會載入。** 私信頁的聯繫人行裡，使用者名是個
-//     **裸 span**（整行只有頭像帶 uid），壓根不匹配候選選擇器 —— 於是懸停名字毫無反應，
-//     非得先蹭一下頭像把塊拉下來，之後名字才開始工作。owner 報的就是這個。
-//     真機掃過 /chat · /record/list · /article · /discuss · /problem/list 五類頁面，
-//     **只有 /chat 是裸 span**，其餘的使用者名都在 `a[href*="/user/"]` 裡。
-//     但「按元素猜」這條路本身就會一直漏 —— 所以判據換成**按頁面**：
-//     這一頁只要有可預覽的東西，指針一動就把塊拉下來。
-
-// 候選錨點選擇器按**當前開著的類別**拼：只開了題目卡就別為使用者名去拉塊。
-const PROBLEM_CANDIDATES = 'a[href*="/problem/"]';
-const USER_CANDIDATES = 'a[href*="/user/"], img[src*="/upload/usericon/"]';
-// 站台框架（頂欄 + 左右抽屜）裡的錨點永遠不會出卡（判據在塊裡的 anchors.js），
-// 所以連塊都不必為它們拉下來。★ 這是**純省事**的收緊，不是判據：
-// 少拉一次塊頂多慢一點，多拉一次塊什麼也不會壞。
-const CHROME_SELECTOR = ".top-bar, .lside, .rside, .user-nav";
+//  2. 私信頁的聯繫人名稱可能是純 span。薄殼和卡片共用解析器，可從同列頭像取得 uid。
 
 // ★★★ 屏蔽洛谷原生的個人懸停卡。owner 2026-08-14 第五輪：文章廣場、討論區、
 //   提交記錄、題目頁出題人……到處都是原生卡和我們的卡一起彈。
@@ -126,29 +111,6 @@ export function createHoverCardFeatures(config) {
 
   // 當前開著的類別。塊通過 `isEnabled` 現問，所以在設定裡改開關**立刻生效**，不必重掛。
   const active = new Set();
-  // 這一頁上到底有沒有可預覽的東西（站台框架裡的不算 —— 每頁頂欄都有我自己的頭像，
-  // 拿它當依據就等於「所有頁面都載入」）。★ 只快取**肯定**的結論：SPA 的內容是後到的，
-  // 一開始沒有不代表以後沒有；掃一次要遍歷全頁，所以沒結論時按 500ms 限流。
-  let pageHasTargets = false;
-  let lastScanAt = 0;
-  const pageWorthLoading = (selector, now) => {
-    if (pageHasTargets) return true;
-    if (now - lastScanAt < 500) return false;
-    lastScanAt = now;
-    for (const node of document.querySelectorAll(selector))
-      if (!node.closest(CHROME_SELECTOR)) {
-        pageHasTargets = true;
-        return true;
-      }
-    return false;
-  };
-  const candidateSelector = () =>
-    [
-      active.has("problem") ? PROBLEM_CANDIDATES : null,
-      active.has("user") ? USER_CANDIDATES : null,
-    ]
-      .filter(Boolean)
-      .join(", ");
   // ★ 兩個開關共用**一次**掛載：各掛各的會得到兩張卡片元素、兩套委託監聽。
   //   所以做引用計數 —— 第一個打開時裝殼，最後一個關掉時才拆。
   let shellDispose = null;
@@ -181,21 +143,17 @@ export function createHoverCardFeatures(config) {
       });
     }
     function probe(event) {
-      const node = event.target;
-      if (!node || typeof node.closest !== "function") return;
-      const selector = candidateSelector();
-      if (!selector) return;
       if (typeof event.clientX === "number")
         point = { x: event.clientX, y: event.clientY };
-      const onCandidate = !node.closest(CHROME_SELECTOR) && !!node.closest(selector);
-      if (onCandidate || pageWorthLoading(selector, Date.now())) mountBundle();
+      const target = resolveHoverTarget(event.target);
+      if (target && active.has(target.kind)) mountBundle();
     }
     function probeKeyboard(event) {
       if (event.key === "Escape") keyboardAnchor = null;
       if (event.defaultPrevented || !isPreviewShortcut(event)) return;
-      const selector = candidateSelector();
       const node = event.target;
-      if (!selector || !node.matches?.(selector) || node.closest(CHROME_SELECTOR)) return;
+      const target = resolveHoverTarget(node);
+      if (!target || target.anchor !== node || !active.has(target.kind)) return;
       event.preventDefault();
       keyboardAnchor = node;
       mountBundle();

@@ -171,7 +171,7 @@ test("runtime dependencies migrate atomically to two first-party compatibility f
   );
 });
 
-test("restricted first paint stays covered until native page anchors are ready", () => {
+test("restricted document replacement carries its first-paint overlay", () => {
   assert.equal(
     (restrictedFeatureSource.match(/html: columbaHtml\(/g) || []).length,
     2,
@@ -186,14 +186,6 @@ test("restricted first paint stays covered until native page anchors are ready",
       "utf8",
     ),
     /\$\{bodySuffix \|\| ""\}<\/body><\/html>/,
-  );
-  assert.match(
-    restrictedFeatureSource,
-    /if \(actionBars\.length && updateBars\.length\) rstHideLoader\(\)/,
-  );
-  assert.match(
-    restrictedFeatureSource,
-    /const chrome = findPasteChrome\(document\);\s*if \(!chrome\) return;[\s\S]*rstHideLoader\(\);/,
   );
   assert.match(
     restrictedEarlyGateSource,

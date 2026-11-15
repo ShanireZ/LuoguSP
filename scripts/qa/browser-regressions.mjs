@@ -33,7 +33,8 @@ before(async () => {
 after(() => browser?.close());
 
 async function fixture(t, {
-  html, path = "/", reply = () => {}, waitForSettings = true, gm = false, ...options
+  html, path = "/", reply = () => {}, waitForSettings = true, gm = false,
+  initScript = "", useClock = false, ...options
 }) {
   const page = await browser.newPage(options);
   const errors = [];
@@ -66,7 +67,11 @@ async function fixture(t, {
       return { abort: () => controller.abort() };
     };
   ` : "";
-  await page.addInitScript({ content: gmShim + payload });
+  if (useClock) {
+    await page.clock.install({ time: 0 });
+    await page.clock.pauseAt(1000);
+  }
+  await page.addInitScript({ content: initScript + gmShim + payload });
   await page.goto(origin + path);
   if (waitForSettings) await page.locator(".luogusp-setting-entry").waitFor();
   return { page, requests };
@@ -125,26 +130,27 @@ test("the embedded renderer can safely render the lightweight fallback without G
   assert.equal(requests.some((r) => r.path.includes("/render/markdown-renderer.")), false);
 });
 
-function restrictedFixture(t, type, id, data) {
+function restrictedFixture(t, type, id, data, options = {}) {
   const path = `/${type}/${id}`;
   const saver = "https://api.luogu.me";
   const assets = "https://fecdn.luogu.com.cn";
   const headers = { "access-control-allow-origin": "*" };
+  const { nativeScript = "", ...pageOptions } = options;
   const scaffold = `<meta name="csrf-token" content="fixture-token">
     <script id="lentille-context" type="application/json">${JSON.stringify({ user: viewer })}</script>
     <script src="${assets}/fixture.js"></script>`;
   return fixture(t, {
-    path, waitForSettings: false,
+    path, waitForSettings: false, ...pageOptions,
     html: `<!doctype html><meta charset="utf-8"><title>安全访问中心</title><pre id="url">${origin}${path}</pre>`,
     reply(route, url) {
       if (url.origin === saver && url.pathname === `/${type}/query/${id}`)
         return route.fulfill({ headers, json: { code: 200, data } });
       if (url.origin === saver && url.pathname === `/article/comments/${id}`)
         return route.fulfill({ headers, json: { code: 200, data: { comments: [] } } });
-      if (url.origin === origin && url.pathname === "/ranking")
+      if (url.origin === origin && ["/ranking", "/discuss"].includes(url.pathname))
         return route.fulfill({ body: scaffold, contentType: "text/html" });
       if (url.origin === assets && url.pathname === "/fixture.js")
-        return route.fulfill({ body: "", contentType: "text/javascript" });
+        return route.fulfill({ body: nativeScript, contentType: "text/javascript" });
     },
   });
 }
@@ -175,6 +181,180 @@ test("restricted article keeps public archive counts without trusting archive vi
   assert.equal(data.article.favorCount, 3);
   assert.deepEqual([data.voted, data.favored, data.canReply, data.canEdit], [null, null, false, false]);
   assert.deepEqual([data.article.voted, data.article.canReply, data.article.canEdit], [null, false, false]);
+});
+
+const archiveArticle = { id: "123", title: "Archived article", content: "Saved text" };
+const nativeArticle = `
+  document.querySelector("#app").innerHTML = '<article class="article-content"><p>Saved text</p><div class="actions"><button type="button">Native action</button></div></article>';
+  document.querySelector(".article-content button").onclick = (event) => {
+    event.currentTarget.textContent = "Clicked";
+  };
+`;
+
+test("restricted native article is clickable without the optional time row", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+  });
+  const action = page.getByRole("button", { name: "Native action" });
+  await action.waitFor();
+  await page.locator("#luogusp-rst-loader").waitFor({ state: "detached", timeout: 1000 });
+  await action.click();
+  assert.equal(await page.getByRole("button", { name: "Clicked" }).count(), 1);
+  assert.equal(await page.locator(".luogusp-rst-abtn").count(), 2);
+});
+
+test("restricted native startup fails visibly when the native script mounts no content", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, { useClock: true });
+  await page.locator("#lentille-context").waitFor({ state: "attached" });
+  await page.clock.runFor(15000);
+  await page.getByText("洛谷原生页面启动超时。").waitFor({ timeout: 1000 });
+  assert.equal(await page.locator("#luogusp-rst-loader").count(), 0);
+  assert.equal(await page.locator(".luogusp-rst-original").getAttribute("href"), "https://www.luogu.com/article/123");
+});
+
+test("restricted paste can display native content before its metadata row arrives", async (t) => {
+  const { page } = await restrictedFixture(t, "paste", "abc", { id: "abc", content: "Saved paste" }, {
+    nativeScript: 'document.querySelector("#app").innerHTML = \'<article class="paste-show-card"><pre>Saved paste</pre></article>\';',
+  });
+  await page.getByText("Saved paste").waitFor();
+  await page.locator("#luogusp-rst-loader").waitFor({ state: "detached", timeout: 1000 });
+  await page.locator(".paste-show-card").evaluate((card) => {
+    card.insertAdjacentHTML("afterbegin", '<div class="meta-row"><div class="meta-left"><span>发布时间</span></div></div>');
+  });
+  await page.getByRole("button", { name: "申请更新" }).waitFor();
+});
+
+test("restricted native startup watchdog is cleared when the route changes", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, { useClock: true });
+  await page.locator("#lentille-context").waitFor({ state: "attached" });
+  await page.evaluate(() => history.pushState({}, "", "/"));
+  await page.clock.runFor(15000);
+  assert.equal(await page.locator("#luogusp-rst-loader, .luogusp-rst-plaincard").count(), 0);
+});
+
+const restrictedStreams = `
+  const restrictedFetch = globalThis.fetch;
+  globalThis.restrictedTrace = [];
+  const reportRestricted = (event, path) => {
+    restrictedTrace.push([event, path, Date.now()]);
+    window.dispatchEvent(new Event("restricted-activity"));
+  };
+  const restrictedStream = (signal, path, delay, body) => new Response(new ReadableStream({
+    start(stream) {
+      reportRestricted("headers", path);
+      const timer = setTimeout(() => {
+        stream.enqueue(new TextEncoder().encode(body));
+        stream.close();
+      }, delay);
+      signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reportRestricted("abort", path);
+        stream.error(new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    }
+  }));
+`;
+const waitForRestrictedHeaders = (page, path) => page.evaluate((path) => new Promise((resolve) => {
+  const check = () => {
+    if (!restrictedTrace.some(([event, at]) => event === "headers" && at === path)) return;
+    window.removeEventListener("restricted-activity", check);
+    resolve();
+  };
+  window.addEventListener("restricted-activity", check);
+  check();
+}), path);
+const stalledNative = restrictedStreams + `
+  globalThis.fetch = (input, init) => {
+    const path = new URL(input, location.origin).pathname;
+    if (path === "/ranking" || path === "/api/user/search")
+      return Promise.resolve(restrictedStream(init.signal, path, 60000, "{}"));
+    return restrictedFetch(input, init);
+  };
+`;
+
+test("restricted native scaffold and author deadlines include streamed response bodies", async (t) => {
+  const { page, requests } = await restrictedFixture(t, "article", "123", {
+    ...archiveArticle, authorId: 42,
+  }, { nativeScript: nativeArticle, useClock: true, initScript: stalledNative });
+  await page.clock.runFor(50);
+  await waitForRestrictedHeaders(page, "/ranking");
+  await waitForRestrictedHeaders(page, "/api/user/search");
+  await page.clock.runFor(15000);
+  await page.getByText("Saved text").waitFor({ timeout: 1000 });
+  const trace = await page.evaluate(() => restrictedTrace);
+  for (const path of ["/ranking", "/api/user/search"]) {
+    const [[, , start], [event, , end]] = trace.filter((entry) => entry[1] === path);
+    assert.deepEqual([event, end - start], ["abort", 15000]);
+  }
+  assert.equal(requests.filter((request) => request.path === "/discuss").length, 1);
+});
+
+test("restricted route change aborts native response bodies", async (t) => {
+  const { page, requests } = await restrictedFixture(t, "article", "123", {
+    ...archiveArticle, authorId: 42,
+  }, { useClock: true, initScript: stalledNative });
+  await page.clock.runFor(50);
+  await waitForRestrictedHeaders(page, "/ranking");
+  await waitForRestrictedHeaders(page, "/api/user/search");
+  await page.evaluate(() => history.pushState({}, "", "/"));
+  assert.deepEqual(await page.evaluate(() => restrictedTrace
+    .filter(([event]) => event === "abort").map(([, path]) => path).sort()), [
+    "/api/user/search", "/ranking",
+  ]);
+  await page.clock.runFor(15000);
+  assert.equal(await page.locator("#luogusp-rst-loader, .luogusp-rst-plaincard").count(), 0);
+  assert.equal(requests.some((request) => request.path === "/discuss"), false);
+});
+
+const stalledSaver = restrictedStreams + `
+  let restrictedQuery = 0;
+  globalThis.fetch = (input, init) => {
+    const url = new URL(input, location.origin);
+    if (url.origin !== "https://api.luogu.me") return restrictedFetch(input, init);
+    if (url.pathname.startsWith("/workflow/create/")) {
+      reportRestricted("accepted", url.pathname);
+      return Promise.resolve(Response.json({ code: 202 }));
+    }
+    const query = restrictedQuery++;
+    if (query === 0) return Promise.resolve(Response.json({ code: 404 }));
+    const delay = [14000, 8000, 14000][query - 1] ?? 14000;
+    return Promise.resolve(restrictedStream(init.signal, String(query), delay, '{"code":404}'));
+  };
+`;
+
+test("restricted Saver post-acceptance deadline aborts an in-flight query at 45 seconds", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    useClock: true, initScript: stalledSaver,
+  });
+  await page.clock.runFor(50);
+  const accepted = page.getByText("该内容尚未被保存站收录", { exact: false });
+  await accepted.waitFor();
+  await page.clock.runFor(45000);
+  await page.getByText("保存站在限定时间内未能完成收录。").waitFor({ timeout: 1000 });
+  const trace = await page.evaluate(() => restrictedTrace);
+  const start = trace[0][2];
+  assert.deepEqual(trace.map(([event, path, time]) => [event, path, time - start]), [
+    ["accepted", "/workflow/create/template/article-save-pipeline", 0],
+    ["headers", "1", 3000], ["headers", "2", 23000],
+    ["headers", "3", 43000], ["abort", "3", 45000],
+  ]);
+});
+
+test("restricted route change aborts the active Saver query without showing stale failure", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    useClock: true, initScript: stalledSaver,
+  });
+  await page.clock.runFor(50);
+  await page.getByText("该内容尚未被保存站收录", { exact: false }).waitFor();
+  await page.clock.runFor(3000);
+  await waitForRestrictedHeaders(page, "1");
+  await page.evaluate(() => history.pushState({}, "", "/"));
+  assert.deepEqual(await page.evaluate(() => restrictedTrace.slice(1).map(([event, path]) => [event, path])), [
+    ["headers", "1"], ["abort", "1"],
+  ]);
+  await page.clock.runFor(45000);
+  assert.equal(await page.locator("#luogusp-rst-loader, .luogusp-rst-plaincard").count(), 0);
+  assert.equal(await page.evaluate(() => restrictedTrace.length), 3);
 });
 
 test("settings traps focus and Enter chooses the focused refresh action", async (t) => {
@@ -294,6 +474,75 @@ test("moving to the same PID in a contest follows the new anchor and URL", async
   assert.ok(requests.some(r => r.path === "/problem/P1000" && r.query.includes("contestId=100&lang=en")));
 });
 
+for (const input of ["pointer", "keyboard"]) {
+  test(`hover destination trust rejects lookalikes via ${input}`, async (t) => {
+    const offsite = "https://example.invalid";
+    const offsiteUser = `<a href="${offsite}/user/123">External user</a>`;
+    const offsiteProblem = '<a href="//example.invalid/problem/P1000" data-luogusp-pid="P1000">External problem</a>';
+    const invalid = input === "pointer" ? [offsiteUser, offsiteProblem] : [offsiteProblem, offsiteUser];
+    invalid.push(
+      '<a href="/prefix/problem/P1000">Problem path suffix</a>',
+      '<a href="/user/123/elsewhere">User route suffix</a>',
+      '<a href="/search?q=/user/123">User in query</a>',
+      '<a href="#/problem/P1000">Problem in fragment</a>',
+      `<a href="${offsite}/user/123"><img src="${origin}/upload/usericon/123.png" alt="Avatar in external link"></a>`,
+    );
+    if (input === "pointer") {
+      invalid.push(`<img src="${offsite}/upload/usericon/123.png" alt="External avatar">`);
+    }
+    const { page, requests } = await fixture(t, {
+      html: fixtureHtml(
+        invalid.map(target => `<div class="invalid">${target}</div>`).join("") +
+        `<a id="user" href="${origin}/user/123">Local user</a>
+         <a id="problem" href="problem/P1000">Local problem</a>
+         <a id="void" data-v-bade3303 data-v-4842157a href="javascript:void 0">P1000 Native void link</a>`,
+        { recommendations: [problem] },
+      ),
+      reply(route, url) {
+        if (url.pathname === "/api/user/info/123") return route.fulfill({ json: {
+          user: { uid: 123, name: "Local user preview" },
+        } });
+        if (url.pathname === "/user/123") return route.fulfill({ status: 403, json: {} });
+        if (url.pathname === "/problem/P1000") return route.fulfill({ json: { user: viewer, data: { problem } } });
+        if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
+        if (url.pathname === "/record/list") return route.fulfill({ json: { template: "record.list", user: viewer, data: { records: { result: [] } } } });
+      },
+    });
+    const open = (trigger) => input === "pointer" ? trigger.hover() : trigger.press("Alt+ArrowDown");
+    const expectRejected = async (trigger) => {
+      await open(trigger);
+      await page.waitForTimeout(350);
+      const label = await trigger.getAttribute("href") ?? await trigger.getAttribute("src");
+      assert.deepEqual({
+        visible: await card(page).isVisible(),
+        requests: requests.filter(r => r.type === "fetch" || r.type === "xhr"),
+      }, { visible: false, requests: [] }, `Unexpected hover activity for ${label}`);
+    };
+    for (const trigger of await page.locator(".invalid > *").all()) await expectRejected(trigger);
+    await page.evaluate(href => document.head.append(Object.assign(document.createElement("base"), { href })), offsite + "/");
+    await expectRejected(page.locator("#problem"));
+    await page.locator("base").evaluate(el => el.remove());
+    await open(page.locator("#user"));
+    await card(page).getByText("Local user preview", { exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    const problemLink = page.locator("#problem");
+    if (input === "pointer") {
+      await problemLink.hover();
+      await problemLink.evaluate((anchor, href) => { anchor.href = href; }, offsite + "/problem/P1000");
+      await page.waitForTimeout(350);
+      assert.equal(await card(page).isVisible(), false);
+      assert.equal(requests.filter(r => r.path === "/problem/P1000").length, 0);
+      await page.mouse.move(700, 500);
+      await problemLink.evaluate(anchor => { anchor.href = "problem/P1000"; });
+    }
+    await open(problemLink);
+    await card(page).getByText("P1000 Native preview", { exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await open(page.locator("#void"));
+    await card(page).getByText("P1000 Native preview", { exact: true }).waitFor();
+  });
+}
+
 test("user preview joins a native XHR and shows basic fields ahead of the profile", async (t) => {
   const basic = responseGate(t);
   const profile = responseGate(t);
@@ -360,7 +609,8 @@ test("user preview falls back to one GET when the native page has no lookup", as
   assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["fetch"]);
 });
 
-async function ideFixture(t, submitReply = (route) => route.fulfill({ json: {} })) {
+async function ideFixture(t, submitReply = (route, index) =>
+  route.fulfill({ json: { status: 200, data: { rid: index } } })) {
   const submit = Promise.withResolvers();
   const submitted = [];
   const toolbar = (title, actions = "") => `<div class="ide-toolbar"><div class="title"><span class="text">${title}</span></div><div class="actions">${actions}</div></div>`;
@@ -375,34 +625,45 @@ async function ideFixture(t, submitReply = (route) => route.fulfill({ json: {} }
         <div id="output">${toolbar("输出", '<span>AC</span><span class="run-result"></span>')}<textarea class="ide-textarea"></textarea></div>
       </div></div>
       <script>
+        window.ideAcknowledged = 0;
         document.querySelectorAll('.io-sample-block button').forEach(button => button.onclick = () => {
-          document.querySelector('#output .actions span').remove();
+          document.querySelector('#output .actions span:not(.run-result)')?.remove();
+          window.beforeSampleSubmit?.();
           const xhr = new XMLHttpRequest();
           xhr.open('POST', '/api/ide_submit');
+          xhr.addEventListener('loadend', () => {
+            if (xhr.status === 200) window.ideAcknowledged++;
+          }, { once: true });
           xhr.send(document.querySelector('.cm-content').textContent);
         });
         window.finishSample = (verdict = 'WA') => {
           document.querySelector('#output textarea').value = 'a\\nextra\\nb\\nc\\nd';
+          document.querySelector('#output .actions span:not(.run-result)')?.remove();
           document.querySelector('#output .actions').insertAdjacentHTML('afterbegin', '<span>' + verdict + '</span>');
         };
       </script>`, { problem: { ...problem, samples: [["first", "a\nb\nc\nd"], ["second", "ok"]] } }),
     reply(route, url) {
-      if (url.pathname === "/api/ide_submit") {
+      if (url.origin === origin && url.pathname === "/api/ide_submit" &&
+          route.request().method() === "POST") {
         submitted.push(route.request().postData());
         submit.resolve();
         return submitReply(route, submitted.length);
       }
+      if (url.pathname.includes("/api/ide_submit"))
+        return route.fulfill({ status: 418, json: {}, headers: { "access-control-allow-origin": "*" } });
     },
   });
   return { page, requests, submitted, firstSubmit: submit.promise };
 }
 
-test("leaving IDE restores reused native panels and discards late submissions", async (t) => {
+test("leaving IDE restores native panels and waits for an outstanding submission to be rejected", async (t) => {
   const first = responseGate(t);
   const second = responseGate(t);
   const { page, firstSubmit } = await ideFixture(t, async (route, index) => {
     await (index === 1 ? first : second).promise;
-    return route.fulfill({ status: index === 1 ? 503 : 200, json: {} });
+    return route.fulfill(index === 1
+      ? { status: 429, json: {} }
+      : { json: { status: 200, data: { rid: index } } });
   });
   const nativeInput = page.locator(".panel-layout");
   const selfTest = page.getByRole("button", { name: "自测", exact: true });
@@ -427,20 +688,97 @@ test("leaving IDE restores reused native panels and discards late submissions", 
   assert.equal(await page.locator(".luogusp-ide-tabbar").count(), 1);
   assert.equal(await nativeInput.isVisible(), true);
 
-  const nextSubmit = page.waitForRequest((request) => request.url().endsWith("/api/ide_submit"));
-  await batch.click();
-  await nextSubmit;
-  await page.locator(".luogusp-ide-stop").click();
   const waitingOldResponse = page.waitForResponse((response) =>
-    response.url().endsWith("/api/ide_submit") && response.status() === 503);
+    response.url().endsWith("/api/ide_submit") && response.status() === 429);
   first.release();
   const oldResponse = await waitingOldResponse;
   await oldResponse.finished();
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  const nextSubmit = page.waitForRequest((request) => request.url().endsWith("/api/ide_submit"));
+  await batch.click();
+  await nextSubmit;
+  await page.locator(".luogusp-ide-stop").click();
   assert.equal(await page.getByText("运行中", { exact: true }).count(), 1);
-  await page.evaluate(() => window.finishSample("AC"));
   second.release();
-  await page.getByText("1/2 通过 · 已停止", { exact: true }).waitFor();
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
+  await page.evaluate(() => window.finishSample("WA"));
+  await page.getByText("0/2 通过 · 1 WA · 已停止", { exact: true }).waitFor();
+});
+
+test("IDE refuses to attribute abandoned AC, WA or CE results to a new batch", async (t) => {
+  const { page, submitted } = await ideFixture(t);
+  const batch = page.locator(".luogusp-ide-batch-btn");
+  const accepted = page.waitForResponse((response) =>
+    response.url().endsWith("/api/ide_submit") && response.ok());
+  await batch.click();
+  await (await accepted).finished();
+  await page.evaluate(() => history.pushState({}, "", "/problem/P1000"));
+  await batch.waitFor({ state: "detached" });
+  await page.evaluate(() => history.pushState({}, "", "/problem/P1000#ide"));
+  await batch.click();
+  await page.evaluate(() => {
+    for (const verdict of ["AC", "WA", "CE"]) window.finishSample(verdict);
+  });
+  await page.getByRole("button", { name: "上次运行结果未确认，请刷新页面后重试", exact: true }).waitFor();
+  assert.deepEqual(submitted, ["code"]);
+  assert.equal(await page.locator(".luogusp-ide-row").count(), 0);
+  await page.reload();
+  const newSubmit = page.waitForResponse((response) =>
+    response.url().endsWith("/api/ide_submit") && response.ok());
+  await batch.click();
+  await newSubmit;
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
+  await page.locator(".luogusp-ide-stop").click();
+  await page.evaluate(() => window.finishSample("WA"));
+  await page.getByText("0/2 通过 · 1 WA · 已停止", { exact: true }).waitFor();
+});
+
+test("IDE claims the native submission and ignores lookalike requests", async (t) => {
+  const submission = responseGate(t);
+  const { page, firstSubmit } = await ideFixture(t, async (route) => {
+    await submission.promise;
+    return route.fulfill({ json: { status: 200, data: { rid: 42 } } });
+  });
+  await page.evaluate(() => {
+    window.beforeSampleSubmit = () => {
+      for (const [method, url] of [
+        ["GET", "/api/ide_submit"],
+        ["POST", "/api/ide_submit-other"],
+        ["POST", "https://example.invalid/api/ide_submit"],
+      ]) {
+        const xhr = new XMLHttpRequest();
+        xhr.open(method, url);
+        xhr.send();
+      }
+    };
+  });
+  const lookalikes = page.waitForResponse((response) =>
+    response.url().endsWith("/api/ide_submit-other") && response.status() === 418);
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await firstSubmit;
+  await page.locator(".luogusp-ide-stop").click();
+  await (await lookalikes).finished();
+  submission.release();
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
+  await page.evaluate(() => window.finishSample("WA"));
+  await page.getByText("0/2 通过 · 1 WA · 已停止", { exact: true }).waitFor();
+});
+
+test("IDE ignores an output mutation before the native submit acknowledgement", async (t) => {
+  const submission = responseGate(t);
+  const { page, firstSubmit } = await ideFixture(t, async (route) => {
+    await submission.promise;
+    return route.fulfill({ json: { status: 200, data: { rid: 42 } } });
+  });
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await firstSubmit;
+  await page.locator(".luogusp-ide-stop").click();
+  await page.evaluate(() => window.finishSample("CE"));
+  submission.release();
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
+  assert.equal(await page.getByText("运行中", { exact: true }).count(), 1);
+  await page.evaluate(() => window.finishSample("WA"));
+  await page.getByText("0/2 通过 · 1 WA · 已停止", { exact: true }).waitFor();
 });
 
 test("IDE identifies the inserted line, jumps to it and finishes only the current sample on stop", async (t) => {
@@ -451,6 +789,7 @@ test("IDE identifies the inserted line, jumps to it and finishes only the curren
   await stop.click();
   await page.getByText("当前样例完成后停止…", { exact: true }).waitFor();
   assert.ok(await stop.isDisabled());
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
   await page.evaluate(() => window.finishSample());
   await page.getByText("已停止", { exact: false }).waitFor();
   assert.deepEqual(await page.locator(".luogusp-ide-diffline").allTextContents(), ["extra"]);
@@ -468,6 +807,7 @@ for (const inputEvent of [true, false]) {
     const editor = page.locator(".cm-content");
     if (inputEvent) await editor.fill("edited code");
     else await editor.evaluate((element) => { element.textContent = "edited code"; });
+    await page.waitForFunction(() => window.ideAcknowledged === 1);
     await page.evaluate(() => window.finishSample("AC"));
     await page.getByText("未测", { exact: true }).waitFor();
     const summary = await page.locator(".luogusp-ide-summary").textContent();

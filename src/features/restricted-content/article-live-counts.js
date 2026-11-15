@@ -105,7 +105,7 @@ function withDeadline(promise, ms, clock) {
 // 即時計數是增強項，任何失敗都不允許影響受限頁本身能不能繪製出來。
 export function resolveLiveArticleCounts(config) {
   const {
-    fetchPage,
+    loadPage,
     authorUid,
     lid,
     category,
@@ -122,7 +122,7 @@ export function resolveLiveArticleCounts(config) {
   } = config || {};
   const uid = Number(authorUid);
   if (
-    typeof fetchPage !== "function" ||
+    typeof loadPage !== "function" ||
     !Number.isSafeInteger(uid) ||
     uid <= 0 ||
     typeof lid !== "string" ||
@@ -142,14 +142,13 @@ export function resolveLiveArticleCounts(config) {
     if (pagesLeft <= 0) return null;
     pagesLeft -= 1;
     try {
-      const response = await fetchPage(
+      const payload = await loadPage(
         `/user/${uid}/article?page=${page}${query}`,
         signal,
         LENTILLE_INIT,
       );
       // 攔截頁是 HTTP 200 + text/html，`json()` 會拋 —— 這就是天然的守衛。
-      if (!response || response.ok === false) return null;
-      return parseArticleListPayload(await response.json());
+      return parseArticleListPayload(payload);
     } catch (error) {
       return null;
     }

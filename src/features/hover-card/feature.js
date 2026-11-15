@@ -1,7 +1,5 @@
-import { createProblemIdentityResolver } from "../problem-color/identity.js";
 import {
   readCsrfToken,
-  readPageSubject,
   readViewerUid,
   resolveHoverTarget,
 } from "./anchors.js";
@@ -41,13 +39,6 @@ export function createHoverCardFeature(config) {
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
   };
-  const identity = createProblemIdentityResolver({
-    getOrigin: () => location.origin,
-    voidAnchorSelector: "a[data-v-bade3303][data-v-4842157a]",
-    // ★ 不給 standalonePidSelector：`.pid[title]` 已經從錨點選擇器裡拿掉了
-    //   （題庫的題號格靠那個 title 著色，我們碰不得）。見 anchors.js 的說明。
-  });
-
   const mount = (options = {}) => {
     if (!document.body) return () => {};
     if (!document.getElementById(STYLE_ID)) {
@@ -212,6 +203,13 @@ export function createHoverCardFeature(config) {
     const intent = createHoverIntent({
       clock,
       onOpen: (target) => {
+        // 錨點可能在等待懸停的期間被頁面重用。
+        const current = resolveHoverTarget(target.anchor);
+        if (!target.anchor.isConnected || !current || current.key !== target.key ||
+            current.href !== target.href || !isEnabled(target.kind)) {
+          intent.dismiss();
+          return;
+        }
         shown = target;
         openController = new AbortController();
         loading = true;
@@ -241,16 +239,14 @@ export function createHoverCardFeature(config) {
     });
 
     const targetAt = (node) => {
-      const target = resolveHoverTarget(node, identity, readPageSubject(location.pathname), location.pathname);
+      const target = resolveHoverTarget(node);
       if (!target || !isEnabled(target.kind)) return null;
-      const { anchor } = target;
-      const href = target.kind === "problem" && anchor.origin === location.origin &&
-        anchor.pathname.replace(/\/$/, "") === `/problem/${target.pid}` ? anchor.href : undefined;
+      const { anchor, href } = target;
       for (const existing of [shown, candidate])
         if (existing?.anchor === anchor && existing.key === target.key && existing.href === href)
           return existing;
       if (target.kind === "problem") stripNativeTitle(anchor);
-      return { ...target, href };
+      return target;
     };
 
     const enterWithKeyboard = (node) => {

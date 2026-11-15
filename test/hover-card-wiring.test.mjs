@@ -10,8 +10,6 @@ import {
   readPageSubject,
   readViewerUid,
   resolveHoverTarget,
-  resolveProblemAnchor,
-  resolveUserAnchor,
 } from "../src/features/hover-card/anchors.js";
 import { placeCard } from "../src/features/hover-card/card-view.js";
 
@@ -21,199 +19,122 @@ const read = (relative) => readFileSync(resolve(root, relative), "utf8");
 // hover 卡是第三個按需塊（21517 B / gzip 8327 B）。啟動包裡只留一枚探針：
 // 指針第一次碰到題號或使用者連結才把塊拉下來，絕大多數頁面瀏覽根本不觸發。
 
-// ---- 錨點識別（最小 DOM 替身，只實作 closest / getAttribute / tagName）----
-function node({ tag = "A", href = null, src = null, parent = null, chrome = null, title = null, cls = null, children = [] } = {}) {
-  const self = {
-    tagName: tag,
-    getAttribute: (name) =>
-      name === "href" ? href : name === "src" ? src : name === "title" ? title : null,
-    parentElement: parent,
-    // 只實作測試用得到的那點查詢：按 usericon 找後代頭像。
-    querySelectorAll: (selector) =>
-      selector.includes("usericon")
-        ? children.filter((c) => (c.getAttribute("src") || "").includes("/upload/usericon/"))
-        : [],
-    // 站台框架標記：".top-bar" / ".lside" / ".rside" 之一，模擬真機上的祖先容器。
-    chrome,
-  };
-  self.closest = (selector) => {
-    let cursor = self;
-    while (cursor) {
-      const h = cursor.getAttribute("href");
-      const s = cursor.getAttribute("src");
-      if (cursor.chrome && selector.includes(cursor.chrome)) return cursor;
-      if (selector.includes('/problem/') && h && h.includes("/problem/")) return cursor;
-      if (selector.includes('/user/') && h && h.includes("/user/")) return cursor;
-      if (selector === "img" && cursor.tagName === "IMG") return cursor;
-      if (selector.includes("usericon") && s && s.includes("/upload/usericon/")) return cursor;
-      if (selector.includes(".pid[title]") && cursor.getAttribute("title")) return cursor;
-      cursor = cursor.parentElement;
-    }
-    return null;
-  };
-  self.dataset = {};
-  return self;
+const origin = "https://www.luogu.com.cn";
+const avatarOrigin = "https://cdn.luogu.com.cn";
+
+function hoverPage(html, path = "/") {
+  return new JSDOM(html, { url: origin + path }).window.document;
 }
 
-// problem-color 的解析器才是唯一權威（它檢核 pid 含字母+數字、路徑恰好是 /problem/{id}、
-// 錨點文字真的顯示該 pid）。這裡只認它的結果。
-const identityOf = (pid) => ({ resolve: () => (pid ? { pid } : null) });
-
-test("题号锚点解析出 pid", () => {
-  const hit = resolveProblemAnchor(node({ href: "/problem/P3372" }), identityOf("P3372"));
-  assert.equal(hit.kind, "problem");
-  assert.equal(hit.pid, "P3372");
-  assert.equal(hit.key, "problem:P3372");
-  assert.equal(resolveProblemAnchor(node({ href: "/user/1" }), identityOf("P3372")), null);
-  assert.equal(resolveProblemAnchor(null, identityOf("P3372")), null);
-});
-
-// ★ canary.14 過度修復：我把判據全交給 problem-color 的解析器，而它額外要求
-// 「錨點文字真的顯示該 pid」—— 那是為**著色**設計的。題庫列表裡題目連結的文字是**題名**，
-// 於是題庫裡的題目反而不彈卡了。href 的 path 恰好是 /problem/{pid} 就該彈。
-test("题库列表里按题名链接的行也要弹卡", () => {
-  const row = node({ href: "/problem/P3372" });
-  const hit = resolveProblemAnchor(row, identityOf(null));
-  assert.equal(hit && hit.pid, "P3372", "解析器认不出时应当退回 href 的 path");
-});
-
-// ★ canary.13 真機迴歸：題庫導覽（/problem/list）與 TAG 膠囊
-// （/problem/list?tag=N）都被松正則當成了 pid=`list`，於是到處彈卡。
-test("题库导航与 TAG 胶囊不得被当成题号", () => {
-  // path 恰好是 /problem/list（query 不參與），而 `list` 不含數字 → 出局。
-  for (const href of ["/problem/list", "/problem/list?tag=42", "/problem/new", "/problem/solution/P1000"])
-    assert.equal(resolveProblemAnchor(node({ href }), identityOf(null)), null, href);
-  // 解析器就算被餵了這些路徑段也要擋住。
-  for (const fake of ["list", "solution", "new"])
-    assert.equal(resolveProblemAnchor(node({ href: "/problem/list" }), identityOf(fake)), null, fake);
-  // 帶 query 的真題號仍然要認（比賽內跳轉會帶 contestId）。
-  const hit = resolveProblemAnchor(node({ href: "/problem/P1000?contestId=1" }), identityOf(null));
-  assert.equal(hit && hit.pid, "P1000");
-});
-
-test("用户名链接解析出 uid", () => {
-  const hit = resolveUserAnchor(node({ href: "/user/697932" }));
-  assert.equal(hit.uid, 697932);
-  assert.equal(hit.key, "user:697932");
-});
-
-// ★ owner 要求：使用者名和頭像都要出卡。頭像常常不在 <a> 裡（列表項自己處理點擊），
-// 所以要能從頭像 URL 裡的 uid 備援。
-test("头像也能出卡：从 usericon URL 取 uid", () => {
-  const avatar = node({
-    tag: "IMG",
-    src: "https://cdn.luogu.com.cn/upload/usericon/1313427.png",
+test("题名链接从实际 URL 取得 pid 并保留比赛与语言", () => {
+  const page = hoverPage('<a href="P3372?contestId=1&amp;lang=en">题目名称</a>', "/problem/list");
+  const anchor = page.querySelector("a");
+  assert.deepEqual(resolveHoverTarget(anchor), {
+    kind: "problem", key: "problem:P3372", pid: "P3372", anchor,
+    href: origin + "/problem/P3372?contestId=1&lang=en",
   });
-  const hit = resolveUserAnchor(avatar);
-  assert.equal(hit.kind, "user");
-  assert.equal(hit.uid, 1313427);
 });
 
-test("用户优先于题号，避免讨论区行内误判", () => {
-  const row = node({ href: "/problem/P1000" });
-  const name = node({ href: "/user/1", parent: row });
-  assert.equal(resolveHoverTarget(name, null).kind, "user");
+test("站内题库导航、路由后缀及查询片段不得被当成题号", () => {
+  const invalidLinks = [
+    "/problem/list", "/problem/list?tag=42", "/problem/new",
+    "/problem/solution/P1000", "/problem/P1000/elsewhere", "/prefix/problem/P1000",
+    "/discuss?forum=P1000", "/search?q=/problem/P1000", "#/problem/P1000",
+    "/user/123fake", "/user/123/elsewhere", "/prefix/user/123",
+    "/search?q=/user/123", "#/user/123",
+  ];
+  const page = hoverPage(invalidLinks.map(href => '<a data-luogusp-pid="P1000" href="' + href + '">P1000</a>').join(""));
+  for (const anchor of page.querySelectorAll("a"))
+    assert.equal(resolveHoverTarget(anchor), null, anchor.href);
 });
 
-// ★★ owner 2026-08-14 報的誤彈，三條裡有兩條落在站台框架上。真機 DOM 實測：
-//   頂欄 `div.top-bar` 裡同時裝著**左上角題號**（麵包屑）和**我自己的頭像**；
-//   「個人中心」選單在 `div.user-nav.rside`，它是 **.top-bar 的兄弟節點**，
-//   只排除 .top-bar 會整個漏掉 —— 這條是本輪最容易寫漏的。
+test("只识别使用者资料页及已知的资料页分页", () => {
+  const page = hoverPage('<a href="/user/697932">资料</a><a href="/user/697932/practice">练习</a><a href="/user/697932/article/">专栏</a>');
+  for (const anchor of page.querySelectorAll("a"))
+    assert.deepEqual(resolveHoverTarget(anchor), { kind: "user", key: "user:697932", uid: 697932, anchor });
+});
+
+test("原生空链接取可见题号，实际链接仍以 URL 为准", () => {
+  const page = hoverPage(
+    '<a id="native" data-v-bade3303 data-v-4842157a href="javascript:void 0">P2000 标题</a>' +
+    '<a id="unmarked" data-luogusp-pid="P2000" href="#">P2000 标题</a>' +
+    '<a id="offsite" data-v-bade3303 data-v-4842157a href="//example.invalid/problem/P2000">P2000 标题</a>' +
+    '<a id="linked" data-v-bade3303 data-v-4842157a href="/problem/P3000">P2000 标题</a>',
+  );
+  assert.equal(resolveHoverTarget(page.getElementById("native")).pid, "P2000");
+  assert.equal(resolveHoverTarget(page.getElementById("unmarked")), null);
+  assert.equal(resolveHoverTarget(page.getElementById("offsite")), null);
+  assert.equal(resolveHoverTarget(page.getElementById("linked")).pid, "P3000");
+});
+
+test("独立头像只从洛谷站内或头像 CDN 取 uid", () => {
+  const page = hoverPage(
+    '<img src="' + avatarOrigin + '/upload/usericon/123.png">' +
+    '<img src="/upload/usericon/456.png">' +
+    '<img src="https://example.invalid/upload/usericon/789.png">' +
+    '<img src="/search?q=/upload/usericon/789.png">' +
+    '<img src="/prefix/upload/usericon/789.png">',
+  );
+  const [cdn, sameOrigin, ...invalid] = page.querySelectorAll("img");
+  assert.equal(resolveHoverTarget(cdn).uid, 123);
+  assert.equal(resolveHoverTarget(sameOrigin).uid, 456);
+  for (const img of invalid) assert.equal(resolveHoverTarget(img), null, img.src);
+});
+
 test("站点框架里的锚点一律不出卡", () => {
-  // ★ `.user-nav` 是真機掃出來補上的：**首頁是舊版頁**，它的使用者選單是
-  //   `nav.user-nav`，根本不在 `.top-bar` 裡 —— 只按新版 DOM 寫判據會漏掉一整類頁面。
-  for (const chrome of [".top-bar", ".lside", ".rside", ".user-nav"]) {
-    const bar = node({ tag: "DIV", chrome });
-    const pid = node({ href: "/problem/P1001", parent: bar });
-    const me = node({ href: "/user/116524", parent: bar });
-    const avatar = node({
-      tag: "IMG",
-      src: "https://cdn.luogu.com.cn/upload/usericon/116524.png",
-      parent: bar,
-    });
-    for (const target of [pid, me, avatar])
-      assert.equal(resolveHoverTarget(target, null, null), null, chrome);
-  }
-  // 反過來：正文裡同樣的連結照常出卡，別把排除寫成全域。
-  assert.equal(resolveHoverTarget(node({ href: "/user/116524" }), null, null).kind, "user");
+  const page = hoverPage(["top-bar", "lside", "rside", "user-nav"].map(name =>
+    '<div class="' + name + '"><a href="/problem/P1001">P1001</a><a href="/user/116524">用户</a>' +
+    '<img src="' + avatarOrigin + '/upload/usericon/116524.png"></div>').join("") +
+    '<main><a href="/user/116524">用户</a></main>');
+  for (const target of page.querySelectorAll("div a, div img")) assert.equal(resolveHoverTarget(target), null);
+  assert.equal(resolveHoverTarget(page.querySelector("main a")).uid, 116524);
 });
 
-// ★ owner：頁面自己講的那個人 / 那道題不出卡（個人頁的大頭像、題目頁指回本題的連結），
-// 但「推薦題目」是別的 pid，必須照常出卡。
 test("页面主体自己不出卡，同页别的目标照出", () => {
-  const onUser = readPageSubject("/user/116524/practice");
-  assert.equal(resolveHoverTarget(node({ href: "/user/116524" }), null, onUser), null);
-  assert.equal(
-    resolveHoverTarget(
-      node({ tag: "IMG", src: "https://cdn.luogu.com.cn/upload/usericon/116524.png" }),
-      null,
-      onUser,
-    ),
-    null,
+  const profile = hoverPage(
+    '<img src="' + avatarOrigin + '/upload/usericon/116524.png">' +
+    '<a id="current" href="/user/116524">用户</a><a id="other" href="/user/123">其他用户</a>' +
+    '<a id="problem" href="/problem/P1000">题目</a>', "/user/116524/practice",
   );
-  assert.equal(resolveHoverTarget(node({ href: "/user/697932" }), null, onUser).uid, 697932);
-  // 主體是使用者時不該誤傷題號。
-  assert.equal(
-    resolveHoverTarget(node({ href: "/problem/P1001" }), null, onUser).pid,
-    "P1001",
-  );
+  assert.equal(resolveHoverTarget(profile.querySelector("img")), null);
+  assert.equal(resolveHoverTarget(profile.getElementById("current")), null);
+  assert.equal(resolveHoverTarget(profile.getElementById("other")).uid, 123);
+  assert.equal(resolveHoverTarget(profile.getElementById("problem")).pid, "P1000");
 
-  const onProblem = readPageSubject("/problem/P1001");
-  assert.equal(resolveHoverTarget(node({ href: "/problem/P1001" }), null, onProblem), null);
-  assert.equal(
-    resolveHoverTarget(node({ href: "/problem/P1002" }), null, onProblem).pid,
-    "P1002",
-    "推荐题目必须留着",
+  const problems = hoverPage(
+    '<a id="current" href="/problem/P1001">本题</a><a id="other" href="/problem/P1002">推荐题目</a>', "/problem/P1001",
   );
+  assert.equal(resolveHoverTarget(problems.getElementById("current")), null);
+  assert.equal(resolveHoverTarget(problems.getElementById("other")).pid, "P1002");
 });
 
 test("页面主体解析只认真正的 uid / pid", () => {
   assert.deepEqual(readPageSubject("/problem/P1001"), { kind: "problem", pid: "P1001" });
   assert.deepEqual(readPageSubject("/user/1313427"), { kind: "user", uid: 1313427 });
   assert.deepEqual(readPageSubject("/user/1313427/practice"), { kind: "user", uid: 1313427 });
-  // 這些路徑段不是 pid，沒有主體 —— 否則會把一整類頁面的卡全關掉。
   for (const path of [
-    "/problem/list",
-    "/problem/list?tag=42",
-    "/problem/solution/P1000",
-    "/problem/new",
-    "/user/setting",
-    "/user/notification",
-    "/",
-    "",
-    null,
-  ])
-    assert.equal(readPageSubject(path), null, String(path));
+    "/problem/list", "/problem/list?tag=42", "/problem/solution/P1000", "/problem/new",
+    "/user/setting", "/user/notification", "/", "", null,
+  ]) assert.equal(readPageSubject(path), null, String(path));
 });
 
-// ★★★ owner 2026-08-14 第五輪：題庫裡懸停題號不該出卡，而且它「和難度著色衝突」。
-//    同一個根因：題庫每行的題號是 `div.pid[title="P1000"]`，而 problem-color
-//    正是靠這個 title 認題；我們為了滅原生浮泡會把 title 摘掉，著色當場失效。
-//    所以 `.pid[title]` 整個從錨點判據裡拿掉。
-test("题号格 .pid[title] 不再出卡（题库的着色靠那个 title）", () => {
-  const cell = node({ tag: "DIV", title: "P1000", cls: "pid" });
-  assert.equal(resolveProblemAnchor(cell, identityOf("P1000")), null);
-  assert.equal(resolveHoverTarget(cell, identityOf("P1000"), null), null);
-  // 反證：同一行的**題名連結**必須照常出卡（canary.14 專門修過這條）。
-  assert.equal(
-    resolveHoverTarget(node({ href: "/problem/P1000" }), identityOf(null), null).pid,
-    "P1000",
-  );
+test("题号格 .pid[title] 保留原始 title，旁边题名连结仍出卡", () => {
+  const page = hoverPage('<div class="pid" title="P1000">P1000</div><a href="/problem/P1000">题目名称</a>');
+  const cell = page.querySelector(".pid");
+  assert.equal(resolveHoverTarget(cell), null);
+  assert.equal(cell.title, "P1000");
+  assert.equal(resolveHoverTarget(page.querySelector("a")).pid, "P1000");
 });
 
-// ★ owner：私信「最近聯繫」列表裡懸停使用者名沒反應。真機 DOM：整行只有頭像帶 uid，
-//   名字是個純 span。所以按行備援 —— 但**只在 /chat 上**，別的頁面同形狀會導致誤彈。
-test("私信页按行兜底取头像的 uid，且只在 /chat 生效", () => {
-  const avatar = node({
-    tag: "IMG",
-    src: "https://cdn.luogu.com.cn/upload/usericon/2020479.png",
-  });
-  const row = node({ tag: "DIV", children: [avatar] });
-  const name = node({ tag: "SPAN", parent: row });
-  assert.equal(resolveHoverTarget(name, null, null, "/chat").uid, 2020479);
-  // 反證：換個頁面就不許備援。
-  for (const path of ["/discuss", "/article/xxx", "/", undefined])
-    assert.equal(resolveHoverTarget(name, null, null, path), null, String(path));
+test("私信页按行用洛谷头像辨识没有链接的联络人名称", () => {
+  const row = '<div><span>用户名称</span><img src="' + avatarOrigin + '/upload/usericon/2020479.png"></div>';
+  const chat = hoverPage(row, "/chat");
+  const name = chat.querySelector("span");
+  assert.equal(resolveHoverTarget(name).uid, 2020479);
+  chat.querySelector("img").src = "https://example.invalid/upload/usericon/2020479.png";
+  assert.equal(resolveHoverTarget(name), null);
+  for (const path of ["/discuss", "/article/xxx", "/"])
+    assert.equal(resolveHoverTarget(hoverPage(row, path).querySelector("span")), null, path);
 });
 
 test("读不到登录态就当匿名", () => {
@@ -247,12 +168,9 @@ function shellHarness(options = {}) {
   const calls = { load: 0, mount: 0, dispose: 0 };
   const errors = [];
   const originalDocument = globalThis.document;
-  // ★ 薄殼現在**按頁面**決定加不載入，所以替身要能回答「這一頁上有什麼」。
-  //   `pageNodes` 裡每個元素都帶一個 `chrome` 標記（在不在站台框架裡）。
-  const pageNodes = options.pageNodes === undefined ? [candidate()] : options.pageNodes;
   globalThis.document = {
     body: {},
-    querySelectorAll: () => pageNodes,
+    getElementById: () => null,
     addEventListener: (type, fn) => listeners.set(type, fn),
     removeEventListener: (type) => listeners.delete(type),
   };
@@ -286,6 +204,13 @@ function shellHarness(options = {}) {
       const probe = listeners.get("mouseover");
       if (probe) probe({ target, ...point });
     },
+    fireShortcut: (target) => {
+      let prevented = false;
+      listeners.get("keydown")?.({
+        target, altKey: true, key: "ArrowDown", preventDefault: () => { prevented = true; },
+      });
+      return prevented;
+    },
     hasProbe: () => listeners.has("mouseover"),
     restore: () => {
       globalThis.document = originalDocument;
@@ -295,14 +220,7 @@ function shellHarness(options = {}) {
 
 const settle = () => new Promise((done) => setTimeout(done, 0));
 
-// 候選錨點替身：命中候選選擇器，但不在站台框架裡。
-const candidate = () => ({
-  closest: (selector) => (selector.includes("/problem/") ? {} : null),
-});
-// 頂欄裡的錨點替身：兩個選擇器都命中。
-const chromeCandidate = () => ({ closest: () => ({}) });
-// candidate() 的 closest 只對候選選擇器命中、對框架選擇器回傳 null，
-// 所以它同時充當「正文裡的候選元素」。
+const candidate = () => hoverPage('<a href="/problem/P1000">题目名称</a>').querySelector("a");
 
 test("描述符不加载块就能给设置页用", () => {
   const h = shellHarness();
@@ -318,15 +236,12 @@ test("描述符不加载块就能给设置页用", () => {
   }
 });
 
-// ★★★ owner 報了兩輪「懸停使用者名不彈，蹭一下頭像才彈」。根因不在解析層，在這裡：
-//    薄殼看不見的元素，塊**永遠沒機會載入**。私信頁的使用者名就是個裸 span。
-//    所以判據從「指針壓在候選上」改成「**這一頁有沒有可預覽的東西**」。
-test("指针压在裸元素上也照拉：只要这一页有可预览的东西", async () => {
+test("私信页直接悬停联络人名称可加载预览", async () => {
   const h = shellHarness();
   try {
-    h.feature.mount();
-    // 私信頁的使用者名替身：什麼選擇器都不匹配。
-    h.fire({ closest: () => null });
+    h.features.user.mount();
+    const chat = hoverPage('<div><span>联络人</span><img src="' + avatarOrigin + '/upload/usericon/123.png"></div>', "/chat");
+    h.fire(chat.querySelector("span"));
     await settle();
     assert.equal(h.calls.load, 1, "裸 span 也必须能把块拉下来");
     assert.equal(h.calls.mount, 1);
@@ -336,11 +251,13 @@ test("指针压在裸元素上也照拉：只要这一页有可预览的东西",
 });
 
 // 反過來：這一頁壓根沒有可預覽的東西，就一個位元組都不拉 —— 按需載入的意義還在。
-test("整页没有可预览的东西就不拉块", async () => {
-  const h = shellHarness({ pageNodes: [] });
+test("仅指向站外的目标不加载预览块也不拦快捷键", async () => {
+  const h = shellHarness();
   try {
     h.feature.mount();
-    h.fire({ closest: () => null });
+    const anchor = hoverPage('<a href="//example.invalid/problem/P1000">外部题目</a>').querySelector("a");
+    h.fire(anchor);
+    assert.equal(h.fireShortcut(anchor), false);
     await settle();
     assert.equal(h.calls.load, 0);
     assert.equal(h.calls.mount, 0);
@@ -353,10 +270,11 @@ test("整页没有可预览的东西就不拉块", async () => {
 // ★ 每頁頂欄都有我自己的頭像。拿它當依據就等於「所有頁面都載入」，
 //   所以整頁只有框架裡的候選時同樣不拉。
 test("整页只有站点框架里的候选也不拉块", async () => {
-  const h = shellHarness({ pageNodes: [chromeCandidate()] });
+  const h = shellHarness();
   try {
     h.feature.mount();
-    h.fire(chromeCandidate());
+    const page = hoverPage('<div class="top-bar"><a href="/problem/P1000">题目</a></div>');
+    h.fire(page.querySelector("a"));
     await settle();
     assert.equal(h.calls.load, 0);
   } finally {

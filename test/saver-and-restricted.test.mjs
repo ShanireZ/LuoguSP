@@ -41,7 +41,7 @@ import {
 import {
   createSaverWorkflow,
 } from "../src/features/restricted-content/saver-workflow.js";
-import { FakeClock, flushMicrotasks } from "./helpers.js";
+import { deferred, FakeClock, flushMicrotasks } from "./helpers.js";
 
 function columbaScaffoldFixture(overrides = {}) {
   const context = JSON.stringify({
@@ -379,7 +379,7 @@ test("Saver Workflow continues polling after transient network errors", async ()
   assert.equal(gets, 3);
 });
 
-test("Saver Workflow backs off to five follow-up queries within the existing wait budget", async () => {
+test("Saver Workflow backs off and starts no query at the deadline", async () => {
   const clock = new FakeClock();
   const queries = [];
   const workflow = createSaverWorkflow({
@@ -392,7 +392,7 @@ test("Saver Workflow backs off to five follow-up queries within the existing wai
   const result = workflow.ensureArchived("article", "abc");
   await flushMicrotasks();
   await clock.advance(45000);
-  assert.deepEqual(queries, [0, 3000, 9000, 21000, 33000, 45000]);
+  assert.deepEqual(queries, [0, 3000, 9000, 21000, 33000]);
   assert.equal((await result).category, "timeout");
   assert.equal(clock.timers.size, 0);
 });
@@ -430,10 +430,69 @@ test("Saver Workflow stops polling on explicit business error and cancels timers
   });
   const cancelled = pending.ensureArchived("paste", "abc");
   await flushMicrotasks();
-  assert.equal(clock.timers.size, 1);
+  assert.equal(clock.timers.size, 2);
   pending.dispose();
   assert.equal((await cancelled).category, "cancelled");
   assert.equal(clock.timers.size, 0);
+});
+
+test("Saver Workflow times out despite a late response from an aborted poll", async () => {
+  const clock = new FakeClock();
+  const response = deferred();
+  let gets = 0;
+  let querySignal;
+  const workflow = createSaverWorkflow({
+    transport: {
+      get: async (_path, { signal }) => {
+        if (++gets === 1) return { code: 404 };
+        querySignal = signal;
+        return response.promise;
+      },
+      post: async () => ({ code: 202 }),
+    },
+    clock: clock.adapter(),
+  });
+
+  const result = workflow.ensureArchived("paste", "abc");
+  await flushMicrotasks();
+  await clock.advance(44999);
+  assert.equal(querySignal.aborted, false);
+  await clock.advance(1);
+  assert.equal(querySignal.aborted, true);
+  assert.equal((await result).category, "timeout");
+  response.resolve({ code: 200, data: { id: "abc", content: "Late result" } });
+  await clock.advance(45000);
+  assert.equal(gets, 2);
+  assert.equal(clock.timers.size, 0);
+});
+
+test("Saver transport distinguishes stream timeout from route cancellation", async () => {
+  for (const category of ["timeout", "cancelled"]) {
+    const clock = new FakeClock();
+    const controller = new AbortController();
+    const bodyStarted = deferred();
+    const transport = createSaverTransport({
+      baseUrl: "https://api.luogu.me",
+      fetch: async (_url, { signal }) => ({
+        ok: true,
+        json() {
+          bodyStarted.resolve();
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          });
+        },
+      }),
+      clock: clock.adapter(),
+    });
+
+    const request = transport.get("/query", { signal: controller.signal });
+    const assertion = assert.rejects(request, { kind: category });
+    await bodyStarted.promise;
+    if (category === "timeout") await clock.advance(15000);
+    else controller.abort();
+    await assertion;
+    assert.equal(clock.timers.size, 0);
+  }
 });
 
 test("Saver Workflow manual refresh locks only on business success", async () => {
