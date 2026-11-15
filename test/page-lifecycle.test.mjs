@@ -187,6 +187,38 @@ test("Page Lifecycle coalesces routes and disposes each generation", () => {
   assert.equal(fx.lifecycle.getState().mountedCount, 1);
 });
 
+test("Page Lifecycle retains opted-in observers across routes and disposes them on document replacement", () => {
+  const fx = fixture();
+  const calls = [];
+  let enabled = true;
+  fx.lifecycle.register({
+    id: "observer",
+    keepMountedOnRoute: true,
+    enabled: () => enabled,
+    onRoute: ({ routeToken }) => calls.push(`route:${routeToken}`),
+    mount: () => {
+      calls.push("mount");
+      return () => calls.push("dispose");
+    },
+  });
+  fx.lifecycle.start();
+  fx.emitRoute("/two");
+  fx.flush();
+  fx.emitRoute("/two", { type: "pageshow", persisted: true });
+  fx.flush();
+  assert.deepEqual(calls, ["mount", "route:/two", "route:/two"]);
+
+  assert.equal(fx.lifecycle.replaceDocument(() => {}), true);
+  assert.equal(calls.at(-1), "dispose");
+  fx.ready();
+  assert.equal(calls.at(-1), "mount");
+  enabled = false;
+  fx.emitRoute("/three");
+  fx.flush();
+  assert.equal(calls.at(-1), "dispose");
+  assert.equal(fx.lifecycle.getState().mountedCount, 0);
+});
+
 test("Page Lifecycle ignores no-op history events for the current route", () => {
   const fx = fixture();
   let mounts = 0;

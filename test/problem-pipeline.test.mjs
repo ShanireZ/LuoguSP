@@ -143,6 +143,29 @@ test("disposing before the fallback delay cancels all pending queries", async ()
   assert.deepEqual(requests, []);
 });
 
+test("a visibility rescan repairs local colors without launching cache misses", async () => {
+  const clock = new FakeClock();
+  const cached = { pid: "P1", href: "/problem/P1" };
+  const anchors = [cached];
+  const problems = [{ pid: cached.pid, difficulty: 1 }];
+  const requests = [];
+  const fx = fixture({
+    anchors,
+    clock: clock.adapter(),
+    harvest: () => [{ source: problems, problems }],
+    text: async (path) => { requests.push(path); return ""; },
+  });
+  fx.pipeline.mount();
+  delete cached.appliedPid;
+  delete cached.color;
+  anchors.push({ pid: "P2", href: "/problem/P2" });
+  fx.pipeline.rescan({ allowQueries: false });
+  await flushMicrotasks();
+  assert.equal(cached.color, "color-1");
+  assert.deepEqual(requests, []);
+  fx.pipeline.dispose();
+});
+
 test("query and harvested caches expire after five minutes without renewing on reads", async () => {
   const clock = new FakeClock();
   const native = { pid: "P1", href: "/problem/P1" };

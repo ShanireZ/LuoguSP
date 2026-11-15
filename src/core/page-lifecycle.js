@@ -15,7 +15,7 @@ export function createPageLifecycle(config) {
     throw new TypeError("Page Lifecycle requires a document adapter");
 
   const features = new Map();
-  let disposers = [];
+  const disposers = new Map();
   let routeDispose = null;
   let scheduledDispose = null;
   let readyDispose = null;
@@ -35,12 +35,23 @@ export function createPageLifecycle(config) {
         !disposed && !replacing && generation === contextGeneration,
     });
   };
-  const disposeFeatures = () => {
-    const current = disposers;
-    disposers = [];
-    for (let index = current.length - 1; index >= 0; index--) {
+  const isEnabled = (feature) =>
+    typeof feature.enabled !== "function" || Boolean(feature.enabled(storage));
+  const keepOnRoute = (feature) => {
+    if (!feature.keepMountedOnRoute) return false;
+    try {
+      return isEnabled(feature);
+    } catch (error) {
+      logError(feature.id, error);
+      return false;
+    }
+  };
+  const disposeFeatures = (routeOnly = false) => {
+    const current = [...disposers].filter(([feature]) => !routeOnly || !keepOnRoute(feature));
+    for (const [feature] of current) disposers.delete(feature);
+    for (const [, dispose] of current.reverse()) {
       try {
-        current[index]();
+        dispose();
       } catch (error) {
         logError("dispose", error);
       }
@@ -50,15 +61,11 @@ export function createPageLifecycle(config) {
     if (!started || disposed || replacing) return;
     const mountContext = context();
     for (const feature of features.values()) {
-      let enabled = true;
+      if (disposers.has(feature)) continue;
       try {
-        enabled =
-          typeof feature.enabled === "function"
-            ? !!feature.enabled(storage)
-            : true;
-        if (!enabled) continue;
+        if (!isEnabled(feature)) continue;
         const dispose = feature.mount(mountContext);
-        if (typeof dispose === "function") disposers.push(dispose);
+        if (typeof dispose === "function") disposers.set(feature, dispose);
       } catch (error) {
         logError(feature.id, error);
       }
@@ -78,10 +85,10 @@ export function createPageLifecycle(config) {
       logError("documentReadyDispose", error);
     }
   };
-  const remount = () => {
+  const remount = (routeOnly = false) => {
     if (!started || disposed || replacing) return;
     cancelScheduled();
-    disposeFeatures();
+    disposeFeatures(routeOnly);
     generation++;
     scheduledDispose =
       documentAdapter.schedule(() => {
@@ -95,17 +102,16 @@ export function createPageLifecycle(config) {
       typeof routeAdapter.token === "function" ? routeAdapter.token() : "";
     const persistedPageRestore =
       event?.type === "pageshow" && event.persisted === true;
-    if (nextRouteToken === lastRouteToken) {
-      if (persistedPageRestore) remount();
-      return;
-    }
+    const routeChanged = nextRouteToken !== lastRouteToken;
+    if (!routeChanged && !persistedPageRestore) return;
     const routeContext = Object.freeze({
       generation,
       previousRouteToken: lastRouteToken,
       routeToken: nextRouteToken,
     });
     for (const feature of features.values()) {
-      if (typeof feature.onRoute !== "function") continue;
+      if (typeof feature.onRoute !== "function" ||
+          (!routeChanged && !feature.keepMountedOnRoute)) continue;
       try {
         feature.onRoute(routeContext);
       } catch (error) {
@@ -113,7 +119,7 @@ export function createPageLifecycle(config) {
       }
     }
     lastRouteToken = nextRouteToken;
-    remount();
+    remount(true);
   };
   const register = (feature) => {
     if (
@@ -197,7 +203,7 @@ export function createPageLifecycle(config) {
       disposed,
       replacing,
       featureCount: features.size,
-      mountedCount: disposers.length,
+      mountedCount: disposers.size,
     });
   const lifecycle = Object.freeze({
     register,

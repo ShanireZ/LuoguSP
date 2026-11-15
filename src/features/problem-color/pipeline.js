@@ -168,7 +168,7 @@ export function createProblemPipeline(config) {
     rememberColor(pid, color, startedAt);
     return knownColor(pid)?.color || null;
   };
-  const colorAnchor = async (anchor) => {
+  const colorAnchor = async (anchor, allowQueries) => {
     const controller = activeController;
     if (!controller) return;
     const taskGeneration = generation;
@@ -204,9 +204,10 @@ export function createProblemPipeline(config) {
     // （例如題目已刪除而回傳 403）繼續顯示上一頁題目的難度色。
     if (appliedPid && appliedPid !== taskIdentity.pid && typeof documentAdapter.clearColor === "function")
       documentAdapter.clearColor(anchor, appliedPid);
-    if (!requestsReady) return;
-    if (coloringAnchors.get(anchor) === taskIdentity.key) return;
-    coloringAnchors.set(anchor, taskIdentity.key);
+    if (!requestsReady || !allowQueries) return;
+    const routeQueries = coloringAnchors;
+    if (routeQueries.get(anchor) === taskIdentity.key) return;
+    routeQueries.set(anchor, taskIdentity.key);
     try {
       const color = await getColor(taskIdentity.pid, controller.signal);
       const currentIdentity = identity.resolve(anchor);
@@ -224,45 +225,55 @@ export function createProblemPipeline(config) {
       // A native response may have arrived while this query was in flight.
       apply(knownColor(taskIdentity.pid)?.color || color);
     } finally {
-      if (coloringAnchors.get(anchor) === taskIdentity.key)
-        coloringAnchors.delete(anchor);
+      if (routeQueries.get(anchor) === taskIdentity.key)
+        routeQueries.delete(anchor);
     }
   };
-  const acceptAnchors = (anchors) => {
+  const acceptAnchors = (anchors, { allowQueries = true } = {}) => {
     harvest();
-    for (const anchor of anchors || []) colorAnchor(anchor);
+    for (const anchor of anchors || []) colorAnchor(anchor, allowQueries);
   };
-  const scan = (root) => acceptAnchors(documentAdapter.anchors(root));
-  const dispose = () => {
-    if (!mounted) return;
-    mounted = false;
-    generation++;
-    if (activeController) activeController.abort();
+  const rescan = (options) => {
+    if (mounted) acceptAnchors(documentAdapter.anchors(documentAdapter.root), options);
+  };
+  const cancelRouteQueries = () => {
+    activeController?.abort();
     activeController = null;
-    if (stopObserving) stopObserving();
-    stopObserving = null;
-    if (stopSource) stopSource();
-    stopSource = null;
     if (requestTimer !== null) clock.clearTimeout(requestTimer);
     requestTimer = null;
     coloringAnchors = new WeakMap();
   };
-  const mount = () => {
-    if (mounted) return dispose;
-    mounted = true;
+  const onRoute = () => {
+    if (!mounted) return;
     generation++;
+    cancelRouteQueries();
     activeController = createAbortController();
     requestsReady = requestDelayMs === 0;
     if (!requestsReady) requestTimer = clock.setTimeout(() => {
       requestTimer = null;
       requestsReady = true;
-      scan(documentAdapter.root);
+      rescan();
     }, requestDelayMs);
-    stopSource = difficultySource.subscribe?.(() => scan(documentAdapter.root)) || null;
+    rescan();
+  };
+  const dispose = () => {
+    if (!mounted) return;
+    mounted = false;
+    generation++;
+    cancelRouteQueries();
+    if (stopObserving) stopObserving();
+    stopObserving = null;
+    if (stopSource) stopSource();
+    stopSource = null;
+  };
+  const mount = () => {
+    if (mounted) return dispose;
+    mounted = true;
+    stopSource = difficultySource.subscribe?.(rescan) || null;
     stopObserving = documentAdapter.observeAnchors(acceptAnchors) || null;
-    scan(documentAdapter.root);
+    onRoute();
     return dispose;
   };
 
-  return Object.freeze({ mount, dispose });
+  return Object.freeze({ mount, dispose, onRoute, rescan });
 }

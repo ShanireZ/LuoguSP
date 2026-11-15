@@ -6,6 +6,7 @@ export const validDifficulty = (value) =>
   Number.isInteger(value) && value >= 0 && value < DIFFICULTY_TIERS;
 
 const RECORD_PATH = /^\/record\/(list|\d+)\/?$/;
+const RECORD_PAGE_LIMIT = 8;
 export const recordRouteId = (pathname) => RECORD_PATH.exec(pathname)?.[1] ?? null;
 
 // Columba uses the difficulty on each record's own problem and its current
@@ -57,7 +58,7 @@ export function createNativeDifficultySource({
   let initial = null;
   let initialRecord = null;
   let latest = null;
-  let latestRecord = null;
+  const recordPages = new Map();
   let requestOrder = 0;
   const supportedPath = /^\/(?:problem\/(?:list|[A-Za-z0-9_]+)|training\/\d+|user\/\d+\/practice)\/?$/;
   const pageUrl = (raw) => {
@@ -78,7 +79,7 @@ export function createNativeDifficultySource({
     return [initial, latest].filter(Boolean);
   };
   const recordDifficulty = (path, id, pid) => {
-    const record = latestRecord?.path === path ? latestRecord : initialRecord;
+    const record = recordPages.get(path) || initialRecord;
     return record?.path === path ? record.problems.get(`${id}:${pid}`) : undefined;
   };
   const subscribe = (accept) => {
@@ -120,9 +121,15 @@ export function createNativeDifficultySource({
               latest = { ...batch, order: request.order };
               updated = true;
             }
-            if (record && (!latestRecord || request.order > latestRecord.order)) {
-              latestRecord = { ...record, order: request.order };
-              updated = true;
+            if (record) {
+              const previous = recordPages.get(record.path);
+              if (!previous || request.order > previous.order) {
+                recordPages.delete(record.path);
+                recordPages.set(record.path, { ...record, order: request.order });
+                if (recordPages.size > RECORD_PAGE_LIMIT)
+                  recordPages.delete(recordPages.keys().next().value);
+                updated = true;
+              }
             }
             if (updated) accept();
           } catch { /* Unsupported/HTML/error responses leave the fallback intact. */ }

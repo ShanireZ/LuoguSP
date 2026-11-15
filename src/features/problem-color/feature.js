@@ -276,15 +276,25 @@ export function createProblemColorFeature({ storage }) {
     },
   });
 
+  const refreshVisiblePage = () => {
+    if (!document.hidden) problemPipeline.rescan({ allowQueries: false });
+  };
   return defineConfigurableFeature({
     id: "problem-pipeline",
     key: "addProblemsColor",
     label: "题号显示难度颜色",
     storage,
+    keepMountedOnRoute: true,
+    onRoute: () => problemPipeline?.onRoute(),
     mount: (context) => {
-      if (!context.isCurrent()) return () => {};
+      if (!context.isCurrent() || !problemPipeline) return () => {};
       // Observe immediately; only the query fallback waits 300ms in the pipeline.
-      return problemPipeline ? problemPipeline.mount() : () => {};
+      const dispose = problemPipeline.mount();
+      document.addEventListener("visibilitychange", refreshVisiblePage);
+      return () => {
+        document.removeEventListener("visibilitychange", refreshVisiblePage);
+        dispose();
+      };
     },
   });
 }

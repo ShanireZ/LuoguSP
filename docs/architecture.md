@@ -27,6 +27,10 @@ Problem ID coloring keeps the page's existing font weight and yields to native
 colors. In Academic Mode, record lists and details use each visible record's
 own difficulty from the current Lentille page and Luogu's active theme colors.
 Other modes leave record coloring and its visibility controls to Luogu.
+Lentille's problem recommendations supply their own difficulties. The coloring
+observer stays active across in-document navigation, while each route cancels
+its abandoned queued lookups. Returning to a visible tab rescans with locally
+available difficulty data.
 
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.

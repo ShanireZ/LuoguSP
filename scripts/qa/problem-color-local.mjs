@@ -19,9 +19,9 @@ const early = await build({
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>LuoguSP difficulty browser check</title>
 <style>body{font:16px system-ui;margin:32px;color:#333}li{margin:8px}#stage{padding:24px;border:1px solid #ddd}.row{display:flex;gap:24px;margin:12px}.pid{color:#404040}a{color:#3498db}.lcolor--pink-3{color:#df4160}pre{white-space:pre-wrap}</style>
 <style>:root{--lfe-color--cyan-3:rgb(42, 150, 151);--lfe-color--purple-3:rgb(167, 89, 242);--lfe-color--lapis-4:rgb(181, 181, 248)}</style>
-<script id="lentille-context" type="application/json">{"data":{"problem":{"pid":"P1001","difficulty":1}}}</script></head>
+<script id="lentille-context" type="application/json">{"data":{"problem":{"pid":"P1001","difficulty":1},"recommendations":[{"pid":"P1421","difficulty":1},{"pid":"P1425","difficulty":2}]}}</script></head>
 <body><h1>LuoguSP 难度着色：工作树浏览器检查</h1><p>本地夹具使用现场核对的洛谷 DOM 与数据结构；不是线上发布验证。</p>
-<ol id="results"></ol><main id="stage"><a href="/problem/P1001">P1001</a></main><pre id="failure"></pre><script src="/scenario.js"></script></body></html>`;
+<ol id="results"></ol><main id="stage"><a href="/problem/P1001">P1001</a><a href="/problem/P1421">P1421</a><a href="/problem/P1425">P1425</a></main><pre id="failure"></pre><script src="/scenario.js"></script></body></html>`;
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname === "/early.js") {

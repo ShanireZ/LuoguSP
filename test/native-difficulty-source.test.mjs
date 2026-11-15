@@ -85,6 +85,22 @@ test("navigation collects detail/training/practice snapshots and rejects older r
   assert.equal(fx.seen.length, 2);
 });
 
+test("native navigation reuses problem recommendations with valid difficulty fields", () => {
+  const fx = fixture();
+  fx.request("/problem/P1001").reply({ data: {
+    recommendations: [
+      { pid: "P1421", difficulty: 1 },
+      { pid: "P1425", difficulty: 2 },
+      { pid: "P1000", difficulty: null },
+    ],
+  } });
+  assert.deepEqual(fx.seen[0].problems, [
+    { pid: "P1421", difficulty: 1 },
+    { pid: "P1425", difficulty: 2 },
+  ]);
+  fx.stop();
+});
+
 test("record difficulty uses the visible page's native tiers only in academic mode", () => {
   const userList = "/record/list?user=116524";
   const problemList = "/record/list?pid=P17832";
@@ -116,11 +132,31 @@ test("record difficulty uses the visible page's native tiers only in academic mo
 
   fx.request(problemList).reply(list);
   assert.equal(fx.source.recordDifficulty(problemList, record.id, "P17832"), 8);
+  assert.equal(fx.source.recordDifficulty(detail, record.id, "P17832"), 8);
   fx.request(problemList).reply({ ...list, user: { learnMode: false } });
   assert.equal(fx.source.recordDifficulty(problemList, record.id, "P17832"), undefined);
   fx.request(userList).reply({ ...list, user: null });
   assert.equal(fx.source.recordDifficulty(userList, record.id, "P17832"), undefined);
   fx.request(detail).reply({ ...show, data: { record: { ...show.data.record, id: 123 } } });
   assert.equal(fx.source.recordDifficulty(detail, record.id, "P17832"), undefined);
+  fx.stop();
+});
+
+test("record snapshots order responses per route and preserve other record pages", () => {
+  const userList = "/record/list?user=1";
+  const problemList = "/record/list?pid=P1001";
+  const page = (difficulty) => ({
+    template: "record.list", user: { learnMode: true },
+    data: { records: { result: [{ id: 1, problem: { pid: "P1001", difficulty } }] } },
+  });
+  const fx = fixture();
+  const first = fx.request(userList);
+  const superseded = fx.request(problemList);
+  fx.request(problemList).reply(page(7));
+  first.reply(page(5));
+  superseded.reply(page(6));
+
+  assert.equal(fx.source.recordDifficulty(userList, "1", "P1001"), 5);
+  assert.equal(fx.source.recordDifficulty(problemList, "1", "P1001"), 7);
   fx.stop();
 });

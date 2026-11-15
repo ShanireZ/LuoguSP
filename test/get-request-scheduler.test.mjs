@@ -126,6 +126,54 @@ test("GET scheduler lets one consumer abort without cancelling shared work", asy
   scheduler.dispose();
 });
 
+test("GET scheduler skips abandoned queued work and accepts new consumers for the same URL", async () => {
+  const clock = new FakeClock();
+  const starts = [];
+  const scheduler = createGetRequestScheduler({
+    fetch: async (url) => { starts.push(url); return textResponse(url); },
+    clock: clock.adapter(),
+  });
+  await scheduler.text("/previous");
+  const route = new AbortController();
+  const stale = scheduler.text("/stale", { signal: route.signal });
+  const shared = scheduler.text("/shared", { signal: route.signal });
+  const retained = scheduler.text("/shared");
+  const replaced = scheduler.text("/reopened", { signal: route.signal });
+  route.abort();
+  const currentRoute = scheduler.text("/reopened");
+  await Promise.all([stale, shared, replaced].map((job) => assert.rejects(job, { name: "AbortError" })));
+  await assert.rejects(scheduler.text("/aborted", { signal: route.signal }), { name: "AbortError" });
+  await clock.advance(1200);
+  assert.deepEqual(starts, ["/previous", "/shared", "/reopened"]);
+  assert.equal(await retained, "/shared");
+  assert.equal(await currentRoute, "/reopened");
+  scheduler.dispose();
+});
+
+test("GET scheduler drops a pending retry when its last consumer leaves", async () => {
+  const clock = new FakeClock();
+  const starts = [];
+  const scheduler = createGetRequestScheduler({
+    fetch: async (url) => {
+      starts.push({ url, at: clock.nowMs });
+      return url === "/old"
+        ? textResponse("busy", 503, { "retry-after": "2" })
+        : textResponse("ready");
+    },
+    clock: clock.adapter(),
+  });
+  const route = new AbortController();
+  const abandoned = scheduler.text("/old", { signal: route.signal });
+  await flushMicrotasks();
+  route.abort();
+  await assert.rejects(abandoned, { name: "AbortError" });
+  const current = scheduler.text("/new");
+  await clock.advance(2300);
+  assert.equal(await current, "ready");
+  assert.deepEqual(starts, [{ url: "/old", at: 0 }, { url: "/new", at: 2000 }]);
+  scheduler.dispose();
+});
+
 test("GET scheduler honors Retry-After and retries 503 only once", async () => {
   const clock = new FakeClock();
   let attempts = 0;

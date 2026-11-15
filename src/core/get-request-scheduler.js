@@ -27,7 +27,7 @@ export function createGetRequestScheduler(config) {
   let disposed = false;
 
   const abortError = () => {
-    const error = new Error("GET scheduler disposed");
+    const error = new Error("GET request cancelled");
     error.name = "AbortError";
     return error;
   };
@@ -81,14 +81,16 @@ export function createGetRequestScheduler(config) {
               (response.status === 429 || response.status === 503) &&
               job.retries < maxRetries
             ) {
-              job.retries++;
               const retryAfter =
                 response.headers &&
                 typeof response.headers.get === "function" &&
                 response.headers.get("retry-after");
               defer(retryAfterMs(retryAfter) || launchGap);
-              queue.unshift(job);
-              return;
+              if (job.consumers > 0) {
+                job.retries++;
+                queue.unshift(job);
+                return;
+              }
             }
             throw error;
           }
@@ -106,17 +108,30 @@ export function createGetRequestScheduler(config) {
       })();
     }
   };
-  const attachSignal = (promise, signal) => {
-    if (!signal) return promise;
-    if (signal.aborted) return Promise.reject(abortError());
+  const dropQueued = (job) => {
+    const index = queue.indexOf(job);
+    if (index === -1) return;
+    queue.splice(index, 1);
+    inflight.delete(job.url);
+    job.reject(abortError());
+    if (queue.length === 0 && wakeTimer !== null) {
+      clock.clearTimeout(wakeTimer);
+      wakeTimer = null;
+    }
+  };
+  const attachSignal = (job, signal) => {
+    job.consumers++;
+    if (!signal) return job.promise;
     return new Promise((resolve, reject) => {
       const onAbort = () => {
         cleanup();
+        job.consumers--;
+        if (job.consumers === 0) dropQueued(job);
         reject(abortError());
       };
       const cleanup = () => signal.removeEventListener("abort", onAbort);
       signal.addEventListener("abort", onAbort, { once: true });
-      promise.then(
+      job.promise.then(
         (value) => {
           cleanup();
           resolve(value);
@@ -129,18 +144,23 @@ export function createGetRequestScheduler(config) {
     });
   };
   const text = (url, options) => {
-    if (disposed) return Promise.reject(abortError());
-    let promise = inflight.get(url);
-    if (!promise) {
-      promise = new Promise((resolve, reject) => {
-        queue.push({ url, resolve, reject, retries: 0 });
-        drain();
+    const signal = options?.signal;
+    if (disposed || signal?.aborted) return Promise.reject(abortError());
+    let job = inflight.get(url);
+    if (!job) {
+      job = { url, retries: 0, consumers: 0 };
+      job.promise = new Promise((resolve, reject) => {
+        job.resolve = resolve;
+        job.reject = reject;
       }).finally(() => {
-        if (inflight.get(url) === promise) inflight.delete(url);
+        if (inflight.get(url) === job) inflight.delete(url);
       });
-      inflight.set(url, promise);
+      inflight.set(url, job);
+      queue.push(job);
     }
-    return attachSignal(promise, options && options.signal);
+    const result = attachSignal(job, signal);
+    drain();
+    return result;
   };
   const dispose = () => {
     if (disposed) return;

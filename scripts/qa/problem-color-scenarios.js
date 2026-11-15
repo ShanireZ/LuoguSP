@@ -12,17 +12,28 @@ const report = (message) => {
 };
 const rawFetch = window.fetch;
 const queries = [];
+let onQuery;
 window.fetch = (...args) => {
   queries.push({ url: String(args[0]), at: performance.now() });
+  onQuery?.();
   return rawFetch(...args);
 };
 const feature = createProblemColorFeature({ storage: { get: () => true } });
+let holdMountFrame = false;
+let deferredMount;
 const lifecycle = createPageLifecycle({
   logError: (scope, error) => { throw new Error(`${scope}: ${error.message}`, { cause: error }); },
   routeAdapter: createBrowserRouteAdapter({ history, eventTarget: window,
     token: () => location.pathname + location.search }),
   documentAdapter: {
-    schedule: (run) => { const id = requestAnimationFrame(run); return () => cancelAnimationFrame(id); },
+    schedule: (run) => {
+      if (holdMountFrame) {
+        deferredMount = run;
+        return () => { deferredMount = null; };
+      }
+      const id = requestAnimationFrame(run);
+      return () => cancelAnimationFrame(id);
+    },
     whenReady: (run) => run(),
   },
 });
@@ -32,14 +43,15 @@ lifecycle.register(feature);
 const row = (pid) => `<div class="row"><div class="pid" title="${pid}">${pid}</div><div class="title"><a href="/problem/${pid}">题目标题</a></div></div>`;
 const color = () => stage.querySelector(".pid")?.style.color;
 const coloredPid = 'a > [style*="color"]';
-const nativeNavigate = (url, render) => new Promise((resolve, reject) => {
+const nativeNavigate = (url, render, { routeFirst = false } = {}) => new Promise((resolve, reject) => {
+  if (routeFirst) history.pushState({}, "", url);
   const xhr = new XMLHttpRequest();
   xhr.open("GET", url);
   xhr.setRequestHeader("x-lentille-request", "content-only");
   xhr.onloadend = () => {
     try {
       const data = JSON.parse(xhr.responseText).data;
-      history.pushState({}, "", url);
+      if (!routeFirst) history.pushState({}, "", url);
       render(data);
       resolve();
     } catch (error) { reject(error); }
@@ -53,8 +65,10 @@ async function run() {
   const firstPid = stage.querySelector(coloredPid);
   check(firstPid?.style.color === "rgb(254, 76, 97)", "detail not colored synchronously");
   check(getComputedStyle(firstPid).fontWeight === "400", "inline problem ID gained font weight");
+  check(stage.querySelectorAll(coloredPid).length === 3 &&
+    stage.querySelector('[data-luogusp-pid="P1425"] span')?.style.color === "rgb(243, 156, 17)", "native recommendations not colored synchronously");
   check(queries.length === 0, "detail queried despite native data");
-  report("题目详情首屏同步着色，零额外查询");
+  report("题目详情与推荐题首屏同步着色，零额外查询");
 
   await nativeNavigate("/training/100", (data) => { stage.innerHTML = row(data.training.problems[0].pid); });
   await frame();
@@ -121,11 +135,28 @@ async function run() {
   check(!normalPid.style.color && !normalPid.parentElement.dataset.luoguspPid && queries.length === 0, "normal mode native hide overridden");
   report("学术模式的三类评测记录使用原生数据与主题色，普通模式保留原生难度开关");
 
+  // Reproduce a native response and DOM update while the next mount frame is
+  // pending, as when the user switches tabs during a route transition.
+  holdMountFrame = true;
+  await nativeNavigate("/record/list?pid=P17832&background=1", renderRecord, { routeFirst: true });
+  await frame();
+  const backgroundPid = stage.querySelector("strong");
+  check(getComputedStyle(backgroundPid).color === "rgb(42, 150, 151)", "record response missed while mount frame was pending");
+  backgroundPid.style.removeProperty("color");
+  document.dispatchEvent(new Event("visibilitychange"));
+  check(getComputedStyle(backgroundPid).color === "rgb(42, 150, 151)", "tab activation did not refresh record colors");
+  await nativeNavigate("/problem/list?page=4", (data) => { stage.innerHTML = row(data.problems.result[0].pid); }, { routeFirst: true });
+  await frame();
+  check(color() === "rgb(243, 156, 17)" && queries.length === 0, "problem list response missed while mount frame was pending");
+  holdMountFrame = false;
+  deferredMount?.();
+  report("切页期间继续接收原生数据，回到标签页时重新检查题号");
+
+  const mountedAt = performance.now();
   history.pushState({}, "", "/");
   stage.innerHTML = `<a id="native" href="/problem/P9996"><span class="lcolor--pink-3">P9996</span> 标题</a>
     <a id="uncolored" href="/problem/P9999"><span class="pid" style="font-weight: 550">P9999</span> 标题</a>`;
   await frame();
-  const mountedAt = performance.now();
   await pause(260);
   check(queries.length === 0, "fallback began before 300ms");
   await pause(120);
@@ -150,6 +181,17 @@ async function run() {
   await frame(); await frame();
   check(!stage.querySelector("[data-luogusp-pid]") && !homePid.style.color, "previous route's color survived on record details");
   report("动态原生颜色接管同一题号，切到记录详情清除 LuoguSP 颜色");
+
+  const started = new Promise((resolve) => { onQuery = resolve; });
+  history.pushState({}, "", "/?leave=1");
+  stage.innerHTML = ["P9811", "P9812", "P9813"].map((pid) => `<a href="/problem/${pid}">${pid}</a>`).join(" ");
+  await started;
+  onQuery = null;
+  history.pushState({}, "", "/record/303491732");
+  stage.replaceChildren();
+  await pause(650);
+  check(queries.length === 2 && queries[1].url.includes("P9811"), "queued queries escaped after leaving the route");
+  report("切离页面后，尚未送出的查询被取消");
 
   document.body.dataset.result = "passed";
 }

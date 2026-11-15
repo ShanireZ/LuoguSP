@@ -50,7 +50,8 @@ export function readLentilleData(doc) {
 // 題目直接攤在 data 下的幾種鍵：
 //   /user/{uid}/practice → submitted（裸陣列）；passed 已按難度分組展示，刻意忽略
 //   /problem/list        → problems（分頁容器 { perPage, count, result }）
-const DIRECT_PROBLEM_LISTS = ["submitted", "problems"];
+//   /problem/{pid}       → recommendations（裸陣列）
+const DIRECT_PROBLEM_LISTS = ["submitted", "problems", "recommendations"];
 
 // 裸陣列與分頁容器都收；其它形狀一律當作沒有批量資料。
 function asList(value) {
