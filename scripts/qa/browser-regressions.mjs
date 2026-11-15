@@ -709,6 +709,38 @@ test("restricted reply adapters accept only aligned JSON and preserve cancellati
   assert.deepEqual(cancellations, ["AbortError", [["abort", true, 0], ["loadend", true, 0]], 0]);
 });
 
+test("restricted comments revalidate a reply sent after an unsent XHR was aborted", async (t) => {
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    commentsPayload: { code: 200, data: { comments: [{ id: 31, content: "Saved reply", time: 100, author: { id: 78, name: "Fixture author" } }] } },
+    reply(route, url) {
+      if (url.origin !== origin || url.pathname !== "/article/123/replies") return;
+      if (url.search === "?sort=invalid")
+        return route.fulfill({ contentType: "text/html", body: '{"replySlice":[{"id":44}]}' });
+      return route.fulfill({ json: { replySlice: [{ id: 99 }] } });
+    },
+  });
+  await page.getByRole("button", { name: "Native action" }).waitFor();
+  const outcomes = await page.evaluate(async () => {
+    const xhr = new XMLHttpRequest();
+    const send = (sort) => new Promise((resolve, reject) => {
+      xhr.open("GET", `/article/123/replies?sort=${sort}`);
+      xhr.responseType = "json";
+      xhr.abort();
+      const stateAfterAbort = xhr.readyState;
+      xhr.onload = () => resolve({ stateAfterAbort, status: xhr.status,
+        source: xhr.getResponseHeader("x-luogusp-source"), ids: xhr.response.replySlice.map(reply => reply.id) });
+      xhr.onerror = reject;
+      xhr.send();
+    });
+    return [await send("invalid"), await send("valid")];
+  });
+  assert.deepEqual(outcomes, [
+    { stateAfterAbort: 1, status: 200, source: "saver", ids: [31] },
+    { stateAfterAbort: 1, status: 200, source: null, ids: [99] },
+  ]);
+});
+
 test("reconstructed article retains unrelated native XHR EventTarget behavior", async (t) => {
   const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
     nativeScript: nativeArticle,
@@ -2171,7 +2203,7 @@ for (const action of ["follow", "block confirmation"]) {
 }
 
 async function ideFixture(t, submitReply = (route, index) =>
-  route.fulfill({ json: { status: 200, data: { rid: index } } })) {
+  route.fulfill({ json: { status: 200, data: { rid: index } } }), { inlineAtDone = false } = {}) {
   const submit = Promise.withResolvers();
   const submitted = [];
   const toolbar = (title, actions = "") => `<div class="ide-toolbar"><div class="title"><span class="text">${title}</span></div><div class="actions">${actions}</div></div>`;
@@ -2195,14 +2227,18 @@ async function ideFixture(t, submitReply = (route, index) =>
           window.beforeSampleSubmit?.();
           const xhr = new XMLHttpRequest();
           xhr.open('POST', '/api/ide_submit');
-          xhr.addEventListener('load', () => {
+          const renderInline = () => {
             if (xhr.status !== 200) return;
             const { status, data } = JSON.parse(xhr.responseText);
             if (status !== 200 && data?.type === 'compile' && data.success === false)
-              Promise.resolve().then(() => window.finishSample('CE', data.desc));
+              window.finishSample('CE', data.desc);
             if (status !== 200 && data?.type === 'execute')
-              Promise.resolve().then(() => window.finishSample(data.output === ['a\\nb\\nc\\nd', 'ok'][index] ? 'AC' : 'WA', data.output));
-          }, { once: true });
+              window.finishSample(data.output === ['a\\nb\\nc\\nd', 'ok'][index] ? 'AC' : 'WA', data.output);
+          };
+          if (${inlineAtDone}) xhr.addEventListener('readystatechange', () => {
+            if (xhr.readyState === XMLHttpRequest.DONE) renderInline();
+          });
+          else xhr.addEventListener('load', () => Promise.resolve().then(renderInline), { once: true });
           xhr.addEventListener('loadend', () => {
             if (xhr.status === 200) {
               window.ideAcknowledged++;
@@ -2566,6 +2602,48 @@ test("IDE waits for the inline response output instead of taking an intervening 
   await page.locator(".luogusp-ide-batch-btn").click();
   await page.getByText("1/2 通过 · 1 WA", { exact: true }).waitFor();
   assert.deepEqual(await page.locator(".luogusp-ide-pill").allTextContents(), ["WA", "AC"]);
+});
+
+test("IDE recognizes inline execution rendered by an earlier XHR DONE listener", async (t) => {
+  const { page, submitted } = await ideFixture(t, (route, index) => route.fulfill({ json: {
+    status: 500, data: { type: "execute", output: index === 1 ? "wrong answer" : "ok", execute: {} },
+  } }), { inlineAtDone: true });
+  const batch = page.locator(".luogusp-ide-batch-btn");
+  await batch.click();
+  await page.waitForFunction(() => !document.querySelector(".luogusp-ide-batch-btn").disabled,
+    null, { timeout: 7000 });
+  assert.equal(await page.locator(".luogusp-ide-summary").textContent(), "1/2 通过 · 1 WA");
+  assert.deepEqual(await page.locator(".luogusp-ide-pill").allTextContents(), ["WA", "AC"]);
+  assert.deepEqual(submitted.map(body => body.input), ["first", "second"]);
+});
+
+test("IDE requires fresh native output matching the response when execution reaches XHR DONE", async (t) => {
+  const submission = responseGate(t);
+  const { page, firstSubmit, submitted } = await ideFixture(t, async (route) => {
+    await submission.promise;
+    return route.fulfill({ json: {
+      status: 500, data: { type: "execute", output: "wrong answer", execute: {} },
+    } });
+  }, { inlineAtDone: true });
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await firstSubmit;
+  await page.locator(".luogusp-ide-stop").click();
+  await page.evaluate(() => {
+    const render = window.finishSample;
+    render("AC", "wrong answer");
+    window.finishSample = (verdict, output) => {
+      window.renderMismatchedOutput = () => render("AC", "previous output");
+      window.renderConfirmedOutput = () => render(verdict, output);
+    };
+  });
+  submission.release();
+  await page.waitForFunction(() => window.ideAcknowledged === 1 && !!window.renderConfirmedOutput);
+  assert.equal(await page.getByText("运行中", { exact: true }).count(), 1);
+  await page.evaluate(() => window.renderMismatchedOutput());
+  assert.equal(await page.getByText("运行中", { exact: true }).count(), 1);
+  await page.evaluate(() => window.renderConfirmedOutput());
+  await page.getByText("0/2 通过 · 1 WA · 已停止", { exact: true }).waitFor();
+  assert.deepEqual(submitted.map(body => body.input), ["first"]);
 });
 
 test("IDE identifies the inserted line, jumps to it and finishes only the current sample on stop", async (t) => {

@@ -150,11 +150,16 @@ export function createRestrictedReplyXhrAdapter(config) {
     }
 
     abort() {
-      if (this.#request) {
-        this.#request.aborting = true;
-        this.#request.fallback = null;
+      const request = this.#request;
+      if (request) {
+        request.aborting = true;
+        request.fallback = null;
       }
-      return super.abort();
+      const result = super.abort();
+      // Aborting an unsent XHR leaves it OPENED. A later send still needs validation.
+      if (request && this.#request === request && this.readyState === this.OPENED)
+        request.aborting = false;
+      return result;
     }
 
     get status() {

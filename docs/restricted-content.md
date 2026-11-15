@@ -24,6 +24,8 @@ establish the current account's privileges or personal state.
   Fetch and XMLHttpRequest use the archived slice when that check fails.
   Caller cancellation remains a cancellation in both transports. Unrelated
   XMLHttpRequest requests keep their native events and response handling.
+  An XHR that remains OPENED after aborting before send still validates the
+  response to any later send.
 - Do not infer favored, voted, canReply or canEdit from public archive counts.
   Follow article-interaction-state.js and account isolation in
   article-interaction-store.js.

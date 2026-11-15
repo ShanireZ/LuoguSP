@@ -10,6 +10,7 @@ import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 import { prepareCdn } from "./prepare-lib.mjs";
 import { RELEASE_VERSION, readRegularFile } from "./release-integrity.mjs";
 
+const MAX_CONCURRENT_MANIFEST_CHECKS = 4;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const { values } = parseArgs({
   args: process.argv.slice(process.argv[2] === "--" ? 3 : 2),
@@ -79,6 +80,17 @@ const capture = (command, args) => {
   return output;
 };
 
+async function matchesManifestBody(response, expected) {
+  if (!response.body) return false;
+  let offset = 0;
+  for await (const chunk of response.body) {
+    const end = offset + chunk.byteLength;
+    if (!expected.subarray(offset, end).equals(chunk)) return false;
+    offset = end;
+  }
+  return offset === expected.length;
+}
+
 async function requireUnusedOrIdenticalVersion(release, { files }) {
   const name = `releases/${release}/manifest.json`;
   const url = new URL(`/${name}`, origin);
@@ -100,7 +112,7 @@ async function requireUnusedOrIdenticalVersion(release, { files }) {
       await response.body?.cancel();
       throw new Error(`unexpected manifest status ${response.status}`);
     }
-    if (!files.get(name).equals(Buffer.from(await response.arrayBuffer())))
+    if (!(await matchesManifestBody(response, files.get(name))))
       throw new Error("published immutable manifest differs from the prepared manifest");
   } catch (error) {
     throw new Error(`Refusing deployment of CDN release ${release}: ${error.message}`, { cause: error });
@@ -118,9 +130,13 @@ const prepared = await prepareCdn({
   origin,
   version,
   async checkReleases(snapshots, staged) {
-    const committed = assertCommittedReleases(root, snapshots);
-    for (const [release, snapshot] of staged)
-      if (!committed.has(release)) await requireUnusedOrIdenticalVersion(release, snapshot);
+    assertCommittedReleases(root, snapshots);
+    const releases = [...staged];
+    for (let start = 0; start < releases.length; start += MAX_CONCURRENT_MANIFEST_CHECKS) {
+      const batch = releases.slice(start, start + MAX_CONCURRENT_MANIFEST_CHECKS);
+      await Promise.all(batch.map(([release, snapshot]) =>
+        requireUnusedOrIdenticalVersion(release, snapshot)));
+    }
   },
 });
 await mkdir(npmCache, { recursive: true });

@@ -14,7 +14,7 @@ import {
 } from "./run-configuration.js";
 import { IDE_BATCH_STYLE } from "./style.js";
 import { observeIdeOutput } from "./output-observer.js";
-import { readIdeSubmitResponse } from "./submit-response.js";
+import { installIdeSubmitObserver } from "./submit-observer.js";
 import { createIdeTabControls } from "./tab-controls.js";
 
 export function createIdeBatchFeature({ storage, problemData }) {
@@ -111,21 +111,11 @@ export function createIdeBatchFeature({ storage, problemData }) {
   }
   const codeActions = () => ideToolbarByTitle("代码")?.querySelector(SELECTORS.ideToolbarActions);
 
-  const IDE_SUBMIT_PATH = "/api/ide_submit";
   const IDE_RESULT_UNCONFIRMED = "上次运行结果未确认，请刷新页面后重试";
   const IDE_CONFIGURATION_STALE = "代码或编译设置已更改 · 结果已过期";
   // The native run can outlive the userscript's route and its HTTP waiter.
   let pendingNativeAttempt = null;
   let ideSubmitWaiter = null;
-
-  function isIdeSubmitUrl(url) {
-    try {
-      const target = new URL(url, document.baseURI);
-      return target.origin === location.origin && target.pathname === IDE_SUBMIT_PATH;
-    } catch {
-      return false;
-    }
-  }
 
   function cancelIdeSubmitWaiter(runId) {
     if (!ideSubmitWaiter) return;
@@ -134,66 +124,13 @@ export function createIdeBatchFeature({ storage, problemData }) {
     ideSubmitWaiter = null;
     waiter.resolve(null);
   }
-  function installIdeSubmitObserver() {
-    const rawOpen = XMLHttpRequest.prototype.open;
-    const rawSend = XMLHttpRequest.prototype.send;
-    const submitRequests = new WeakMap();
-    let active = true;
-    const open = function (method, url) {
-      submitRequests.delete(this);
-      if (active && pendingNativeAttempt && String(method).toUpperCase() === "POST" &&
-          isIdeSubmitUrl(url))
-        submitRequests.set(this, pendingNativeAttempt);
-      return rawOpen.apply(this, arguments);
-    };
-    const send = function (body) {
-      const attempt = active && submitRequests.get(this);
-      const waiter = ideSubmitWaiter;
-      if (attempt && waiter?.attempt === attempt && !attempt.claimed) {
-        const match = attempt.match(body);
-        if (match !== "matched") {
-          attempt.configurationMismatch ||= match === "configuration-mismatch";
-          return rawSend.apply(this, arguments);
-        }
-        attempt.claimed = true;
-        const readResult = () => isIdeSubmitUrl(this.responseURL) ? readIdeSubmitResponse(this) : { status: 0 };
-        const confirmInlineOutput = () => {
-          if (this.readyState !== XMLHttpRequest.DONE) return;
-          this.removeEventListener("readystatechange", confirmInlineOutput);
-          if (!active || ideSubmitWaiter !== waiter) return;
-          const { inlineOutput } = readResult();
-          // At DONE the exact matched response is readable. Native handling can
-          // paint an inline verdict in its load handler, before our loadend.
-          if (inlineOutput !== undefined) waiter.confirmOutput(inlineOutput);
-        };
-        this.addEventListener("readystatechange", confirmInlineOutput);
-        this.addEventListener(
-          "loadend",
-          () => {
-            this.removeEventListener("readystatechange", confirmInlineOutput);
-            const result = readResult();
-            if (result.rejected && pendingNativeAttempt === attempt)
-              pendingNativeAttempt = null;
-            if (!active || ideSubmitWaiter !== waiter) return;
-            ideSubmitWaiter = null;
-            if (result.accepted && !result.outputResult) waiter.confirmOutput(result.inlineOutput);
-            waiter.resolve(result);
-          },
-          { once: true },
-        );
-      }
-      return rawSend.apply(this, arguments);
-    };
-    XMLHttpRequest.prototype.open = open;
-    XMLHttpRequest.prototype.send = send;
-    return () => {
-      active = false;
-      cancelIdeSubmitWaiter();
-      if (XMLHttpRequest.prototype.open === open)
-        XMLHttpRequest.prototype.open = rawOpen;
-      if (XMLHttpRequest.prototype.send === send)
-        XMLHttpRequest.prototype.send = rawSend;
-    };
+  function finishIdeSubmit(waiter, result, observing) {
+    if (result.rejected && pendingNativeAttempt === waiter.attempt)
+      pendingNativeAttempt = null;
+    if (!observing || ideSubmitWaiter !== waiter) return;
+    ideSubmitWaiter = null;
+    if (result.accepted && !result.outputResult) waiter.confirmOutput(result.inlineOutput);
+    waiter.resolve(result);
   }
   function waitIdeSubmit(ms, runId, attempt, confirmOutput) {
     cancelIdeSubmitWaiter();
@@ -783,7 +720,10 @@ export function createIdeBatchFeature({ storage, problemData }) {
     markStale: showIdeStale,
     mount: (controls) => {
       ideBrowserDriver.controls = controls;
-      const unpatchSubmit = installIdeSubmitObserver();
+      const unpatchSubmit = installIdeSubmitObserver({
+        currentWaiter: () => ideSubmitWaiter?.attempt === pendingNativeAttempt ? ideSubmitWaiter : null,
+        finish: finishIdeSubmit,
+      });
       const unhook = hookIdeStaleAndGuard(controls);
       let frame = null;
       const tick = () => {
@@ -809,6 +749,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
       ensureIdeBatchUI(controls);
       return () => {
         observer.disconnect();
+        cancelIdeSubmitWaiter();
         unpatchSubmit();
         unhook();
         if (frame !== null) cancelAnimationFrame(frame);

@@ -78,10 +78,11 @@ Block confirmation focuses Cancel first. Cancelling restores the block button.
 While a focused relation action is pending, the card holds its focus. Success
 and failure restore the corresponding button if focus is still held there.
 An inline compile failure supplies the CE verdict and diagnostics directly from
-the matching same-origin submit response. For inline execution, the observer
-starts when that exact response reaches XHR DONE, before native load handlers
-paint the verdict, and checks the displayed output against the response. Queued
-runs observe native output mutations after acknowledgement. Each observer waits
+the matching same-origin submit response. For inline execution, the submit
+observer registers at XHR open and arms only after checking the POST body. At
+DONE it reads the response before the native handlers registered after open
+can paint the verdict, and checks the displayed output against the response.
+Queued runs observe native output mutations after acknowledgement. Each observer waits
 until a result, deadline or cancellation. Luogu's panel does not expose its
 native run ID.
 If a submit may still produce a result after cancellation or timeout,
@@ -126,7 +127,10 @@ Before replacing a staging directory, the CDN preparer resolves its existing
 parent and destination, including Windows junctions. It rejects paths that
 overlap the release source tree. Staging accepts only the verified release and
 channel files. The low-level publisher checks the configured origin, candidate
-version and staged files before deploying. Published version paths are immutable.
+version and staged files before deploying. It checks the remote manifest of
+every staged release, including committed ones, before invoking Wrangler. It
+accepts HTTP 404 for an unused manifest URL or an exact byte match for HTTP 200.
+Published version paths are immutable.
 
 Generated publishing, origin and deployment receipts remain local and ignored.
 Only the de-identified browser-QA and quality summaries required by the current
