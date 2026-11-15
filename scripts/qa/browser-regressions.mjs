@@ -1332,7 +1332,7 @@ test("user preview joins a native XHR and shows basic fields ahead of the profil
         user: { uid: 123, name: "Native user", elo: { rating: 1800 }, color: "Blue", userRelationship: 0, followerCount: 2 },
       } }));
       if (url.pathname === "/api/user/updateRelationShip" && route.request().method() === "POST")
-        return route.fulfill({ json: {} });
+        return route.fulfill({ json: { _empty: true } });
       if (url.pathname === "/user/123") {
         supplement.resolve();
         return profile.promise.then(() => route.fulfill({ json: { data: {
@@ -1390,7 +1390,9 @@ test("user preview falls back to one GET when the native page has no lookup", as
   assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["fetch"]);
 });
 
-async function userRelationFixture(t, firstWrite) {
+async function userRelationFixture(t, {
+  firstWrite, replyWrite, countFor = (account) => account === viewer.uid ? 5 : 77,
+} = {}) {
   let account = viewer.uid;
   const submitted = [];
   const { page } = await fixture(t, {
@@ -1405,8 +1407,11 @@ async function userRelationFixture(t, firstWrite) {
         if (args[0] !== "/api/user/updateRelationShip") return response;
         window.relationRequests++;
         return response.then(reply => {
-          setTimeout(() => window.relationReplies++, 0);
+          const finalPath = reply.headers.get("x-fixture-final-path");
+          if (finalPath) Object.defineProperty(reply, "url", { value: new URL(finalPath, location.origin).href });
           return reply;
+        }).finally(() => {
+          setTimeout(() => window.relationReplies++, 0);
         });
       };
     }`,
@@ -1417,7 +1422,7 @@ async function userRelationFixture(t, firstWrite) {
       }
       if (url.pathname === "/api/user/info/123") return route.fulfill({ json: {
         user: { uid: 123, name: "Target user", userRelationship: 0,
-          followerCount: account === viewer.uid ? 5 : 77 },
+          followerCount: countFor(account) },
       } });
       if (url.pathname === "/user/123") return route.fulfill({ json: {
         data: { user: { uid: 123, name: "Target user" }, gu: { rating: 42 } },
@@ -1425,7 +1430,7 @@ async function userRelationFixture(t, firstWrite) {
       if (url.pathname === "/api/user/updateRelationShip" && route.request().method() === "POST") {
         submitted.push({ viewer: account, ...route.request().postDataJSON() });
         if (submitted.length === 1) await firstWrite?.promise;
-        return route.fulfill({ json: { _empty: true } });
+        return replyWrite?.(route) ?? route.fulfill({ json: { _empty: true } });
       }
       return route.abort();
     },
@@ -1445,9 +1450,86 @@ async function userRelationFixture(t, firstWrite) {
   return { page, preview, open, switchViewer, submitted };
 }
 
+for (const [action, initial, optimistic, relationship] of [
+  ["follow", "关注", "已关注", 1],
+  ["block", "屏蔽", "取消屏蔽", 2],
+]) {
+  for (const kind of ["HTML", "business error", "redirect", "wrong final URL"]) {
+    test(`user preview rolls back ${action} after ${kind}`, async (t) => {
+      const pending = responseGate(t);
+      let redirectHits = 0;
+      let redirectUrl;
+      if (kind === "redirect") {
+        const server = createServer((req, res) => {
+          redirectHits++;
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Headers", "content-type, x-csrf-token, x-requested-with");
+          res.setHeader("Access-Control-Allow-Private-Network", "true");
+          res.setHeader("Content-Type", "application/json");
+          res.end('{"_empty":true}');
+        });
+        const listening = once(server, "listening");
+        server.listen(0, "127.0.0.1");
+        await listening;
+        redirectUrl = `http://127.0.0.1:${server.address().port}/fixture-redirect`;
+        t.after(() => server.close());
+      }
+      const responses = {
+        HTML: { contentType: "text/html", body: "<html>Sign in</html>" },
+        "business error": { json: { _empty: true, status: 403, errorMessage: "Request denied" } },
+        redirect: { status: 302, headers: { location: redirectUrl } },
+        "wrong final URL": { json: { _empty: true }, headers: { "x-fixture-final-path": "/api/user/updateRelationShip?unexpected=1" } },
+      };
+      const { page, preview, open, submitted } = await userRelationFixture(t, {
+        firstWrite: pending, replyWrite: (route) => route.fulfill(responses[kind]),
+      });
+      if (redirectUrl) await page.context().grantPermissions(["local-network-access"], { origin });
+      await open();
+      await preview.getByRole("button", { name: initial, exact: true }).click();
+      if (action === "block") await preview.getByRole("button", { name: "确定", exact: true }).click();
+      assert.ok(await preview.getByRole("button", { name: optimistic, exact: true }).isDisabled());
+      pending.release();
+      await page.waitForFunction((labels) => window.relationReplies === 1 &&
+        [...document.querySelectorAll("#luogusp-hover-card button")]
+          .some(button => labels.includes(button.textContent) && !button.disabled), [initial, optimistic]);
+      assert.equal(await preview.getByRole("button", { name: initial, exact: true }).count(), 1);
+      assert.ok(await preview.getByText("5", { exact: true }).isVisible());
+      const notice = preview.getByRole("status").filter({ hasText: `${initial}未获确认` });
+      assert.ok(await notice.isVisible());
+      assert.deepEqual(submitted, [{ viewer: viewer.uid, uid: 123, relationship }]);
+      assert.equal(redirectHits, 0);
+
+      await page.keyboard.press("Escape");
+      await open();
+      assert.ok(await preview.getByRole("button", { name: initial, exact: true }).isEnabled());
+      assert.ok(await preview.getByText("5", { exact: true }).isVisible());
+    });
+  }
+}
+
+test("user preview keeps an unknown follower count through confirmed follow and unfollow", async (t) => {
+  const { page, preview, open, submitted } = await userRelationFixture(t, { countFor: () => undefined });
+  const followers = preview.getByText("粉丝", { exact: true });
+  await open();
+  assert.equal(await followers.count(), 0);
+  const follow = preview.getByRole("button", { name: "关注", exact: true });
+  const following = preview.getByRole("button", { name: "已关注", exact: true });
+  await follow.click();
+  await following.waitFor();
+  assert.equal(await followers.count(), 0);
+  await following.click();
+  await follow.waitFor();
+  assert.equal(await followers.count(), 0);
+  await page.keyboard.press("Escape");
+  await open();
+  assert.equal(await followers.count(), 0);
+  assert.ok(await follow.isEnabled());
+  assert.deepEqual(submitted.map(write => write.relationship), [1, 0]);
+});
+
 test("user preview keeps another viewer's follow state and count through an outstanding write", async (t) => {
   const firstWrite = responseGate(t);
-  const { page, preview, open, switchViewer, submitted } = await userRelationFixture(t, firstWrite);
+  const { page, preview, open, switchViewer, submitted } = await userRelationFixture(t, { firstWrite });
   const follow = preview.getByRole("button", { name: "关注", exact: true });
   const following = preview.getByRole("button", { name: "已关注", exact: true });
   await open();
@@ -1470,8 +1552,11 @@ test("user preview keeps another viewer's follow state and count through an outs
   assert.ok(await preview.getByText("77", { exact: true }).isVisible());
   await preview.getByRole("button", { name: "屏蔽", exact: true }).click();
   await preview.getByRole("button", { name: "确定", exact: true }).click();
-  await page.waitForFunction(() => window.relationReplies === 2);
-  assert.ok(await preview.getByRole("button", { name: "取消屏蔽", exact: true }).isEnabled());
+  const unblock = preview.getByRole("button", { name: "取消屏蔽", exact: true });
+  await unblock.click();
+  await preview.getByRole("button", { name: "确定", exact: true }).click();
+  await follow.and(preview.locator("button:enabled")).waitFor();
+  assert.ok(await preview.getByText("77", { exact: true }).isVisible());
   await page.keyboard.press("Escape");
   await switchViewer(viewer.uid);
   await open();
@@ -1480,7 +1565,32 @@ test("user preview keeps another viewer's follow state and count through an outs
   assert.deepEqual(submitted, [
     { viewer: viewer.uid, uid: 123, relationship: 1 },
     { viewer: 43, uid: 123, relationship: 2 },
+    { viewer: 43, uid: 123, relationship: 0 },
   ]);
+});
+
+test("a late failed follow restores its initiating viewer without showing a notice to another viewer", async (t) => {
+  const pending = responseGate(t);
+  const { page, preview, open, switchViewer } = await userRelationFixture(t, {
+    firstWrite: pending,
+    replyWrite: route => route.fulfill({ contentType: "text/html", body: "<html>Sign in</html>" }),
+  });
+  const follow = preview.getByRole("button", { name: "关注", exact: true });
+  await open();
+  await Promise.all([page.waitForRequest("**/api/user/updateRelationShip"), follow.click()]);
+  await page.keyboard.press("Escape");
+  await switchViewer(43);
+  await open();
+  pending.release();
+  await page.waitForFunction(() => window.relationReplies === 1);
+  assert.ok(await follow.isEnabled());
+  assert.ok(await preview.getByText("77", { exact: true }).isVisible());
+  assert.equal(await preview.getByText("关注未获确认", { exact: false }).count(), 0);
+  await page.keyboard.press("Escape");
+  await switchViewer(viewer.uid);
+  await open();
+  assert.ok(await follow.isEnabled());
+  assert.ok(await preview.getByText("5", { exact: true }).isVisible());
 });
 
 for (const action of ["follow", "block confirmation"]) {

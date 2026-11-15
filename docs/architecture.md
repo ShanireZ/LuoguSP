@@ -61,6 +61,10 @@ Luogu's avatar CDN. User cards reuse observed same-origin user-info XHRs and
 display basic information before profile-only fields arrive. Follow and block
 requests, pending state, and results use the initiating viewer and target
 account. A card from a previously observed viewer cannot start a new action.
+The relation write requires a same-origin JSON 200 response from its exact
+endpoint with Luogu's `_empty: true` acknowledgement. An unconfirmed write
+restores the card state and reports the failure in that preview. Follower
+counts stay hidden until available and change optimistically only when known.
 An inline compile failure supplies the CE verdict and diagnostics directly from
 the matching same-origin submit response. For output-based verdicts, IDE batch
 runs observe native output mutations after acknowledgement, until the result,

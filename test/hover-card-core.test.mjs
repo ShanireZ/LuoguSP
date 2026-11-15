@@ -476,9 +476,17 @@ test("粉丝数不会被减成负数", () => {
 
 // ★★ 回應體是 {"_empty":true}，不回傳狀態 —— 與 article.favor 同款。
 // 所以必須樂觀更新 + 失敗回復，否則介面會留一個伺服器並不認的「已關注」。
+const relationOrigin = "https://www.luogu.com.cn";
+const confirmedRelation = () => ({
+  ok: true, status: 200, redirected: false, url: `${relationOrigin}/api/user/updateRelationShip`,
+  headers: new Headers({ "content-type": "application/json" }),
+  json: async () => ({ _empty: true }),
+});
+
 test("写失败必须回滚，不留假的已关注", async () => {
   const states = [];
   const action = createFollowAction({
+    origin: relationOrigin,
     csrfToken: "tok",
     request: async () => ({ ok: false, status: 403 }),
     onState: (viewer, uid, next, phase) => states.push(`${phase}:${next.relation}:${next.followerCount}`),
@@ -491,8 +499,9 @@ test("写失败必须回滚，不留假的已关注", async () => {
 test("写成功保留乐观状态", async () => {
   const states = [];
   const action = createFollowAction({
+    origin: relationOrigin,
     csrfToken: () => "tok",
-    request: async () => ({ ok: true, status: 200 }),
+    request: async () => confirmedRelation(),
     onState: (viewer, uid, next, phase) => states.push(`${phase}:${next.relation}`),
   });
   const result = await action.toggle(42, { uid: 1, relation: "unrelated", followerCount: 0 });
@@ -505,11 +514,12 @@ test("同一用户的写请求串行化", async () => {
   let calls = 0;
   let release = null;
   const action = createFollowAction({
+    origin: relationOrigin,
     csrfToken: "tok",
     request: () =>
       new Promise((done) => {
         calls += 1;
-        release = () => done({ ok: true, status: 200 });
+        release = () => done(confirmedRelation());
       }),
   });
   const state = { uid: 1, relation: "unrelated", followerCount: 0 };
@@ -526,6 +536,7 @@ test("relation writes keep pending state and settlement scoped to each viewer an
   const writes = [];
   const states = [];
   const action = createFollowAction({
+    origin: relationOrigin,
     csrfToken: "tok",
     request: (payload) => {
       const write = Promise.withResolvers();
@@ -549,11 +560,11 @@ test("relation writes keep pending state and settlement scoped to each viewer an
   assert.equal(action.isBusy(42, 124), true);
   assert.deepEqual(states.at(-1), { viewer: 42, uid: 123,
     patch: { relation: "unrelated", followerCount: 5 }, phase: "failed" });
-  writes[1].resolve({ ok: true });
+  writes[1].resolve(confirmedRelation());
   assert.deepEqual(await second, { relation: "blacklisted" });
   assert.deepEqual(states.at(-1), { viewer: 43, uid: 123,
     patch: { relation: "blacklisted" }, phase: "confirmed" });
-  writes[2].resolve({ ok: true });
+  writes[2].resolve(confirmedRelation());
   await otherTarget;
   assert.equal(action.isBusy(43, 123), false);
   assert.equal(action.isBusy(42, 124), false);

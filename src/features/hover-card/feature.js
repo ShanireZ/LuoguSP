@@ -71,6 +71,7 @@ export function createHoverCardFeature(config) {
       logError: (error) => console.error("LuoguSP hover card:", error),
     });
     const follow = createFollowAction({
+      origin: location.origin,
       csrfToken: () => readCsrfToken(document),
       request: (payload) =>
         fetchPage(payload.url, undefined, {
@@ -78,12 +79,13 @@ export function createHoverCardFeature(config) {
           headers: payload.headers,
           body: payload.body,
           credentials: "same-origin",
+          mode: "same-origin",
+          redirect: "error",
         }),
-      onState: (viewer, uid, patch, phase) => {
+      onState: (viewer, uid, patch, phase, notice) => {
         const updated = sources.patchUser(viewer, uid, patch);
-        updateShownUser?.(viewer, uid, updated, patch, phase === "pending");
+        updateShownUser?.(viewer, uid, updated, patch, phase === "pending", notice);
       },
-      logError: (error) => console.error("LuoguSP hover follow:", error),
     });
 
     // 當前正在展示的目標（由 hover-intent 決定），以及它的錨點矩形。
@@ -162,6 +164,7 @@ export function createHoverCardFeature(config) {
         return false;
       };
       let displayed;
+      let relationNotice;
       const display = (model, busy) => {
         if (!isCurrent() || displayed === model) return;
         if (target.kind === "user" && currentViewer() !== viewer) return;
@@ -190,6 +193,7 @@ export function createHoverCardFeature(config) {
               onFollow: viewer ? (next) => canAct() && follow.toggle(viewer, next) : null,
               onBlock: viewer ? (next) => canAct() && follow.block(viewer, next) : null,
               followBusy: busy ?? follow.isBusy(viewer, model.uid),
+              relationNotice,
             }),
             busy === undefined && previous?.name === model.name &&
               previous.relation === model.relation && previous.reverseRelation === model.reverseRelation &&
@@ -207,9 +211,10 @@ export function createHoverCardFeature(config) {
         });
         if (model || displayed === undefined) display(model);
       } else {
-        updateShownUser = (account, uid, model, patch, busy) => {
-          if (account === viewer && uid === target.uid && (model || displayed))
-            display(model ?? { ...displayed, ...patch }, busy);
+        updateShownUser = (account, uid, model, patch, busy, notice) => {
+          if (account !== viewer || uid !== target.uid || !(model || displayed)) return;
+          relationNotice = notice;
+          display(model ?? { ...displayed, ...patch }, busy);
         };
         display(await sources.user(target.uid, display));
       }

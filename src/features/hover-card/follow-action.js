@@ -64,27 +64,31 @@ export function planFollowToggle(state) {
   const relation = state && state.relation;
   if (relation !== "following" && relation !== "unrelated") return null;
   const follow = relation === "unrelated";
-  const before = Number.isFinite(Number(state.followerCount))
-    ? Number(state.followerCount)
-    : null;
-  const after =
-    before === null ? null : Math.max(0, before + (follow ? 1 : -1));
+  const before = state.followerCount;
+  const knownCount = Number.isFinite(before);
   return Object.freeze({
     follow,
     optimistic: Object.freeze({
       relation: follow ? "following" : "unrelated",
-      followerCount: after,
+      ...(knownCount ? { followerCount: Math.max(0, before + (follow ? 1 : -1)) } : {}),
     }),
-    rollback: Object.freeze({ relation, followerCount: before }),
+    rollback: Object.freeze({ relation, ...(knownCount ? { followerCount: before } : {}) }),
   });
+}
+
+async function confirmedRelationResponse(response, expectedUrl) {
+  if (response?.ok !== true || response.status !== 200 || response.redirected !== false || response.url !== expectedUrl ||
+      !/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type")?.trim())) return false;
+  const data = await response.json();
+  return data?._empty === true && Object.keys(data).length === 1 && Object.hasOwn(data, "_empty");
 }
 
 export function createFollowAction(config) {
   const {
+    origin,
     request,
     csrfToken,
     onState,
-    logError = () => {},
   } = config || {};
 
   // 同一帳號對同一個使用者的寫入不可競速。
@@ -104,24 +108,21 @@ export function createFollowAction(config) {
     // 拿不到 CSRF 就別發 —— 發出去只會被洛谷拒絕，還白改一次介面。
     if (!payload) return null;
     inFlight.add(key);
+    let confirmed = false;
     try {
       if (typeof onState === "function") onState(viewer, uid, plan.optimistic, "pending");
-      const response = await request(payload);
-      if (!response || response.ok === false)
-        throw new Error(
-          `${label}请求失败：HTTP ${response ? response.status : "无响应"}`,
-        );
-      if (typeof onState === "function")
-        onState(viewer, uid, plan.optimistic, "confirmed");
-      return plan.optimistic;
-    } catch (error) {
-      logError(error);
-      // ★ 回復。回應體不帶狀態，伺服器沒確認就必須退回原樣，不能留一個假的「已關注」。
-      if (typeof onState === "function") onState(viewer, uid, plan.rollback, "failed");
-      return null;
+      const expectedUrl = new URL(payload.url, origin).href;
+      confirmed = await confirmedRelationResponse(await request(payload), expectedUrl);
+    } catch {
+      // Redirects, network failures and malformed JSON all leave the write unconfirmed.
     } finally {
       inFlight.delete(key);
     }
+    if (typeof onState === "function") {
+      if (confirmed) onState(viewer, uid, plan.optimistic, "confirmed");
+      else onState(viewer, uid, plan.rollback, "failed", `${label}未获确认，已恢复原状态。`);
+    }
+    return confirmed ? plan.optimistic : null;
   };
 
   const toggle = async (viewer, state) => {
@@ -132,7 +133,7 @@ export function createFollowAction(config) {
       state,
       plan,
       plan.follow ? RELATIONSHIP_FOLLOWING : RELATIONSHIP_UNRELATED,
-      "关注",
+      plan.follow ? "关注" : "取消关注",
     );
   };
 

@@ -254,9 +254,14 @@ export function updateProblemCard(card, content, fadeField) {
 export function updateUserCard(card, content, preserveActions, fadeField) {
   updateSections(card, content, (existing, section) => {
     if (!existing.classList.contains("luogusp-hc-userbody")) return false;
-    updateSections(existing, section, (old, next) =>
-      (old.classList.contains("luogusp-hc-slogan") && old.firstElementChild.isEqualNode(next.firstElementChild)) ||
-      (preserveActions && old.classList.contains("luogusp-hc-actions")),
+    updateSections(existing, section, (old, next) => {
+      if (old.classList.contains("luogusp-hc-relation-status")) {
+        old.textContent = next.textContent;
+        return true;
+      }
+      return (old.classList.contains("luogusp-hc-slogan") && old.firstElementChild.isEqualNode(next.firstElementChild)) ||
+        (preserveActions && old.classList.contains("luogusp-hc-actions"));
+    },
       fadeField && ((node, previous) => {
         if (node.classList.contains("luogusp-hc-stats")) {
           const tiles = new Map(Array.from(previous?.children ?? [], (tile) =>
@@ -465,6 +470,11 @@ export function renderUserCard(card, options = {}) {
       actions.appendChild(block);
     }
     body.appendChild(actions);
+    if (onFollow || onBlock) {
+      const status = el("div", "luogusp-hc-relation-status", options.relationNotice);
+      status.setAttribute("role", "status");
+      body.appendChild(status);
+    }
   }
 
   // ---- 到這裡為止是「復刻」，下面是我們的擴充 ----

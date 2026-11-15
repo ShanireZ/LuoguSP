@@ -53,6 +53,7 @@ export const HOVER_CARD_STYLE = `
 .luogusp-hc-btn[disabled]{opacity:.55;cursor:default;}
 .luogusp-hc-confirm{flex-wrap:wrap;}
 .luogusp-hc-confirm-text{flex:1 1 100%;color:#e74c3c;font-size:12px;line-height:1.6;word-break:break-all;}
+.luogusp-hc-relation-status:not(:empty){margin-top:4px;color:#a42626;font-size:12px;}
 .luogusp-hc-link{color:#3498db;text-decoration:none;font-size:12px;}
 .luogusp-hc-ok{color:#52c41a;}
 .luogusp-hc-warn{color:#f39c11;}
