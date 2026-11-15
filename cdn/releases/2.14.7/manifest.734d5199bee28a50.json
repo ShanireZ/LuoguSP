@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 3,
+  "release": "2.14.7",
+  "loaderApiVersion": 1,
+  "generatedAt": "2026-11-15T07:00:03.553Z",
+  "origin": "https://luogusp.round1.cc",
+  "compat": {
+    "earlyGate": {
+      "path": "releases/2.14.7/compat/early-gate.79cb17962baeabfe.js",
+      "bytes": 3294,
+      "sha256": "79cb17962baeabfedee181d820c2a98bf4abb42220a3b76558006d95598d1b9f",
+      "sri": "sha256-ecsXliuuq/7e4YHYIMKpi/SrtCIgo7dlWABtlVmNG58="
+    },
+    "runtime": {
+      "path": "releases/2.14.7/compat/runtime.48c631bb0a1191f1.js",
+      "bytes": 106730,
+      "sha256": "48c631bb0a1191f17370068118409be760eeb0324e34adbebe236a09e9766734",
+      "sri": "sha256-SMYxuwoRkfFzcAaBGECb52DusDJONK2+viNqCel2ZzQ="
+    }
+  },
+  "optionalBundles": {
+    "markdownRenderer": {
+      "apiVersion": 1,
+      "path": "releases/2.14.7/render/markdown-renderer.a1b52cd6e61b4a60.js",
+      "bytes": 418907,
+      "gzipBytes": 129556,
+      "sha256": "a1b52cd6e61b4a60fc93755a69394abb07deb1447743200821b050f0ef49319a",
+      "sri": "sha256-obUs1uYbSmD8k3VaaTlKuwfesUR3QyAIIbBQ8O9JMZo=",
+      "dependencies": {
+        "katex": "0.18.2",
+        "marked": "18.0.7",
+        "dompurify": "3.4.17",
+        "highlight.js": "11.11.1"
+      }
+    },
+    "restrictedContent": {
+      "apiVersion": 1,
+      "path": "releases/2.14.7/feature/restricted-content.794d0385a135079d.js",
+      "bytes": 49059,
+      "gzipBytes": 18098,
+      "sha256": "794d0385a135079d4733069ee8059553a25c9650375e692982d6b99e95a48d6e",
+      "sri": "sha256-eU0DhaE1B51HMwae6AWVU6JcllA3Xmkpgta5npWkjW4="
+    },
+    "hoverCard": {
+      "apiVersion": 1,
+      "path": "releases/2.14.7/feature/hover-card.44b305f703bed55e.js",
+      "bytes": 37918,
+      "gzipBytes": 14382,
+      "sha256": "44b305f703bed55ecaf6aac4e2a639b84f17f4b09201e34f8376627283aaf58e",
+      "sri": "sha256-RLMF9wO+1V7K9qrE4qY5uE8X9LCSAeNPg3ZicoOq9Y4="
+    }
+  },
+  "esm": {
+    "enabled": false,
+    "status": "canary",
+    "entries": {
+      "canary-loader": "releases/2.14.7/esm/canary-loader-BTLX3PLI.js",
+      "early-gate-api": "releases/2.14.7/esm/early-gate-api-HVHEURCS.js",
+      "app-core": "releases/2.14.7/esm/app-core-C4FMFT4A.js",
+      "settings": "releases/2.14.7/esm/settings-YV5FEWYQ.js",
+      "problem-color": "releases/2.14.7/esm/problem-color-5PFN3Z37.js",
+      "hidden-intro": "releases/2.14.7/esm/hidden-intro-CT7LWQUU.js",
+      "ide-batch": "releases/2.14.7/esm/ide-batch-C5JXRJJ7.js",
+      "restricted-content": "releases/2.14.7/esm/restricted-content-NLJNVADN.js"
+    }
+  },
+  "files": {
+    "releases/2.14.7/compat/early-gate.79cb17962baeabfe.js": {
+      "path": "releases/2.14.7/compat/early-gate.79cb17962baeabfe.js",
+      "bytes": 3294,
+      "sha256": "79cb17962baeabfedee181d820c2a98bf4abb42220a3b76558006d95598d1b9f",
+      "sri": "sha256-ecsXliuuq/7e4YHYIMKpi/SrtCIgo7dlWABtlVmNG58="
+    },
+    "releases/2.14.7/compat/runtime.48c631bb0a1191f1.js": {
+      "path": "releases/2.14.7/compat/runtime.48c631bb0a1191f1.js",
+      "bytes": 106730,
+      "sha256": "48c631bb0a1191f17370068118409be760eeb0324e34adbebe236a09e9766734",
+      "sri": "sha256-SMYxuwoRkfFzcAaBGECb52DusDJONK2+viNqCel2ZzQ="
+    },
+    "releases/2.14.7/render/markdown-renderer.a1b52cd6e61b4a60.js": {
+      "path": "releases/2.14.7/render/markdown-renderer.a1b52cd6e61b4a60.js",
+      "bytes": 418907,
+      "sha256": "a1b52cd6e61b4a60fc93755a69394abb07deb1447743200821b050f0ef49319a",
+      "sri": "sha256-obUs1uYbSmD8k3VaaTlKuwfesUR3QyAIIbBQ8O9JMZo="
+    },
+    "releases/2.14.7/feature/restricted-content.794d0385a135079d.js": {
+      "path": "releases/2.14.7/feature/restricted-content.794d0385a135079d.js",
+      "bytes": 49059,
+      "sha256": "794d0385a135079d4733069ee8059553a25c9650375e692982d6b99e95a48d6e",
+      "sri": "sha256-eU0DhaE1B51HMwae6AWVU6JcllA3Xmkpgta5npWkjW4="
+    },
+    "releases/2.14.7/feature/hover-card.44b305f703bed55e.js": {
+      "path": "releases/2.14.7/feature/hover-card.44b305f703bed55e.js",
+      "bytes": 37918,
+      "sha256": "44b305f703bed55ecaf6aac4e2a639b84f17f4b09201e34f8376627283aaf58e",
+      "sri": "sha256-RLMF9wO+1V7K9qrE4qY5uE8X9LCSAeNPg3ZicoOq9Y4="
+    },
+    "releases/2.14.7/esm/canary-loader-BTLX3PLI.js": {
+      "path": "releases/2.14.7/esm/canary-loader-BTLX3PLI.js",
+      "bytes": 173,
+      "sha256": "b9279332f7a9ae376535bc4a2170496a787ff3e8a9e77171681a614cf7ec43ed",
+      "sri": "sha256-uSeTMveprjdlNbxKIXBJanh/8+ip53FxaBphTPfsQ+0="
+    },
+    "releases/2.14.7/esm/early-gate-api-HVHEURCS.js": {
+      "path": "releases/2.14.7/esm/early-gate-api-HVHEURCS.js",
+      "bytes": 2515,
+      "sha256": "90bb2c56a7262f35f05b3f3886ef071462d4b83e431fb7f7b94ba907ed900080",
+      "sri": "sha256-kLssVqcmLzXwWz84hu8HFGLUuD5DH7f3uUupB+2QAIA="
+    },
+    "releases/2.14.7/esm/app-core-C4FMFT4A.js": {
+      "path": "releases/2.14.7/esm/app-core-C4FMFT4A.js",
+      "bytes": 3795,
+      "sha256": "935215c4ece10e630b5158f933709d79779540850c3cefca2d52acab81265c84",
+      "sri": "sha256-k1IVxOzhDmMLUVj5M3CdeXeVQIUMPO/KLVKsq4EmXIQ="
+    },
+    "releases/2.14.7/esm/settings-YV5FEWYQ.js": {
+      "path": "releases/2.14.7/esm/settings-YV5FEWYQ.js",
+      "bytes": 8083,
+      "sha256": "c7a23c2e55cb8770a8593b465726dde8ab0fd58bb86fc9d4540d4120fe7d7ac1",
+      "sri": "sha256-x6I8LlXLh3CoWTtGVybd6KsP1Yu4b8nUVA1BIP59esE="
+    },
+    "releases/2.14.7/esm/problem-color-5PFN3Z37.js": {
+      "path": "releases/2.14.7/esm/problem-color-5PFN3Z37.js",
+      "bytes": 22967,
+      "sha256": "be261473210826ed5efcc9f395e885a59a9d3cc9f9d9d2876a11c4b531b6a0c9",
+      "sri": "sha256-viYUcyEIJu1e/MnzleiFpZqdPMn52dKHahHEtTG2oMk="
+    },
+    "releases/2.14.7/esm/hidden-intro-CT7LWQUU.js": {
+      "path": "releases/2.14.7/esm/hidden-intro-CT7LWQUU.js",
+      "bytes": 23091,
+      "sha256": "b57d5f25ab45d4ff76557ac1b839132c44fe33e3790b643e1bc1b4de41fcefe3",
+      "sri": "sha256-tX1fJatF1P92VXrBuDkTLET+M+N5C2Q+G8G03kH87+M="
+    },
+    "releases/2.14.7/esm/chunks/chunk-WFSUDTKV.js": {
+      "path": "releases/2.14.7/esm/chunks/chunk-WFSUDTKV.js",
+      "bytes": 3920,
+      "sha256": "1fc8be58f33138442d809731eec3ba4d5b1412fba8f8735fed950a8092519e95",
+      "sri": "sha256-H8i+WPMxOEQtgJcx7sO6TVsUEvuo+HNf7ZUKgJJRnpU="
+    },
+    "releases/2.14.7/esm/ide-batch-C5JXRJJ7.js": {
+      "path": "releases/2.14.7/esm/ide-batch-C5JXRJJ7.js",
+      "bytes": 28042,
+      "sha256": "f7327962bd4ce2432423514bb7b630e58ef16fa5ba3bdf2494a5f0c87eb187e6",
+      "sri": "sha256-9zJ5Yr1M4kMkI1FLt7Yw5Y7xb6W6O98klKXwyH6xh+Y="
+    },
+    "releases/2.14.7/esm/chunks/chunk-PQ6PWWZS.js": {
+      "path": "releases/2.14.7/esm/chunks/chunk-PQ6PWWZS.js",
+      "bytes": 1314,
+      "sha256": "a835101b9e53a9c352f720fffa3ea341a15d8ec5028b758e9469b1b576f403d1",
+      "sri": "sha256-qDUQG55TqcNS9yD/+j6jQaFdjsUCi3WOlGmxtXb0A9E="
+    },
+    "releases/2.14.7/esm/restricted-content-NLJNVADN.js": {
+      "path": "releases/2.14.7/esm/restricted-content-NLJNVADN.js",
+      "bytes": 47986,
+      "sha256": "e545378fc0a91f8cfe84705f7db6a33963b19e46a9d71e7c0020e3be807d0131",
+      "sri": "sha256-5UU3j8CpH4z+hHBffbajOWOxnkap1x58ACDjvoB9ATE="
+    },
+    "releases/2.14.7/esm/chunks/chunk-TEKDR3PM.js": {
+      "path": "releases/2.14.7/esm/chunks/chunk-TEKDR3PM.js",
+      "bytes": 796,
+      "sha256": "7fd59442cdffe4ebfb9aee3f07ad9ebbcf97208b0d2a089c9aa9d3ff3b88d41f",
+      "sri": "sha256-f9WUQs3/5Ov7mu4/B62eu8+XIIsNKgicmqnT/zuI1B8="
+    },
+    "releases/2.14.7/esm/chunks/chunk-UVQVFSRF.js": {
+      "path": "releases/2.14.7/esm/chunks/chunk-UVQVFSRF.js",
+      "bytes": 402,
+      "sha256": "996f8b0eeb87c77a5dcfa70c52f43c66f1b3d944ed3187eea6b5fe54b0012405",
+      "sri": "sha256-mW+LDuuHx3pdz6cMUvQ8ZvGz2UTtMYfuprX+VLABJAU="
+    }
+  }
+}
