@@ -13,8 +13,6 @@ import { createRestrictedUrlPolicy } from "./url-policy.js";
 // ★ `mount` 必須**同步**回傳 disposer（page-lifecycle 的契約），所以這裡同步探測、
 //   非同步載入，並用一個已釋放標記保證「殼先被 dispose、塊後到達」時不會再掛上去。
 
-const RESTRICTED_ROUTE = /^\/(article|paste)\/[A-Za-z0-9]+\/?$/;
-
 export function createRestrictedContentFeature(config) {
   const {
     storage,
@@ -130,6 +128,3 @@ export function createRestrictedContentFeature(config) {
     },
   });
 }
-
-export const isRestrictedCandidateRoute = (path) =>
-  RESTRICTED_ROUTE.test(String(path || ""));

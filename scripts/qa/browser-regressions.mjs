@@ -90,21 +90,10 @@ test("profile introduction renders math and removes author CSS before page inser
     "$x^2$",
     "```cpp\nint main() {}\n```",
   ].join("\n\n");
-  // This route also serves canary.5's pinned renderer when proving the old failure.
-  const manifest = JSON.parse(await readFile(new URL("../../cdn/releases/2.14.6/manifest.json", import.meta.url), "utf8"));
-  const oldRenderer = manifest.optionalBundles.markdownRenderer.path;
-  const oldRendererBytes = await readFile(new URL(`../../cdn/${oldRenderer}`, import.meta.url));
   const { page, requests } = await fixture(t, {
     gm: true, path: "/user/42",
     html: fixtureHtml('<button id="native-control">Native control</button><div class="sidebar-container"><div class="main"></div></div>',
       { user: { ...viewer, introduction } }).replace("</head>", '<meta name="csrf-token" content="fixture-token"></head>'),
-    reply(route, url) {
-      if (url.origin === manifest.origin && url.pathname === "/" + oldRenderer)
-        return route.fulfill({
-          body: oldRendererBytes, contentType: "text/javascript",
-          headers: { "access-control-allow-origin": "*" },
-        });
-    },
   });
   await page.locator(".luogusp-intro-card h2").waitFor();
   const hitNative = await page.locator("#native-control").evaluate((button) => {

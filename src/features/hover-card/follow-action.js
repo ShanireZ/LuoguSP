@@ -9,8 +9,7 @@
 //   → 200 {"_empty":true}
 //
 // ★★ 回應體**不回傳新狀態**（就是個 `{"_empty":true}`）。這與 `article.favor` 完全同款：
-//    用戶端自己 toggle 並 `followerCount ± 1`。所以必須**樂觀更新 + 失敗回復** ——
-//    這正是 canary.7 在收藏計數上踩過的那個坑，別再踩第二遍。
+//    用戶端先套用關係與粉絲數，請求失敗時復原。
 
 export const FOLLOW_ENDPOINT = "/api/user/updateRelationShip";
 // ★★ 枚舉來自 `GET /_lfe/config` 的 `UserRelationship`（2026-08-14 實測）：
@@ -40,16 +39,6 @@ export function buildRelationRequest(config) {
       "x-requested-with": "XMLHttpRequest",
     }),
     body: JSON.stringify({ uid: target, relationship }),
-  });
-}
-
-export function buildFollowRequest(config) {
-  const { uid, follow, csrfToken } = config || {};
-  if (typeof follow !== "boolean") return null;
-  return buildRelationRequest({
-    uid,
-    relationship: follow ? RELATIONSHIP_FOLLOWING : RELATIONSHIP_UNRELATED,
-    csrfToken,
   });
 }
 

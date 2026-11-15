@@ -66,7 +66,6 @@ export const STATUS_UNACCEPTED_COLOR = "#e74c3c";
 
 // ★★ `Number(null) === 0` 且 `Number.isFinite(0)` 為真 —— 只判 isFinite 會把
 // 「沒有狀態」當成 0，進而繪製成 Unaccepted，也就是**在不知情的情況下斷言使用者沒通過**。
-// 這個陷阱本輪已經咬過兩次（canary.7 的計數、這裡的狀態），必須顯式排除空值。
 const finiteOrNull = (value) =>
   value === null || value === undefined || value === "" || !Number.isFinite(Number(value))
     ? null

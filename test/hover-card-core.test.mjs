@@ -12,7 +12,7 @@ import {
   relationOf,
 } from "../src/features/hover-card/models.js";
 import {
-  buildFollowRequest,
+  buildRelationRequest,
   createFollowAction,
   planFollowToggle,
 } from "../src/features/hover-card/follow-action.js";
@@ -445,19 +445,19 @@ test("关系枚举：0/1/2 之外一律未知", () => {
 
 // ---- 關注寫入 ----
 test("关注请求形状严格贴合实测契约", () => {
-  const request = buildFollowRequest({ uid: 116524, follow: true, csrfToken: "tok" });
+  const request = buildRelationRequest({ uid: 116524, relationship: 1, csrfToken: "tok" });
   assert.equal(request.url, "/api/user/updateRelationShip");
   assert.equal(request.method, "POST");
   assert.equal(request.headers["x-csrf-token"], "tok");
   assert.equal(request.headers["x-requested-with"], "XMLHttpRequest");
   assert.deepEqual(JSON.parse(request.body), { uid: 116524, relationship: 1 });
   assert.deepEqual(
-    JSON.parse(buildFollowRequest({ uid: 1, follow: false, csrfToken: "t" }).body),
+    JSON.parse(buildRelationRequest({ uid: 1, relationship: 0, csrfToken: "t" }).body),
     { uid: 1, relationship: 0 },
   );
   // 拿不到 CSRF 就不許發：發出去只會被拒，還白改一次介面。
-  assert.equal(buildFollowRequest({ uid: 1, follow: true, csrfToken: "" }), null);
-  assert.equal(buildFollowRequest({ uid: 0, follow: true, csrfToken: "t" }), null);
+  assert.equal(buildRelationRequest({ uid: 1, relationship: 1, csrfToken: "" }), null);
+  assert.equal(buildRelationRequest({ uid: 0, relationship: 1, csrfToken: "t" }), null);
 });
 
 test("未知关系不允许操作", () => {

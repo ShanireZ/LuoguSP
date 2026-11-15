@@ -56,7 +56,6 @@ export function createRestrictedReplyXhrAdapter(config) {
       this.writeUrl = null;
       this.fallback = null;
       this.completed = false;
-      this.aborted = false;
       for (const type of EVENT_TYPES) {
         this[`on${type}`] = null;
         this.native[`on${type}`] = (event) => this.handleNative(type, event);
@@ -169,7 +168,6 @@ export function createRestrictedReplyXhrAdapter(config) {
       //   但我們換掉的是**全域** XMLHttpRequest，頁面上任何別的程式碼都可能重複使用。
       this.completed = false;
       this.fallback = null;
-      this.aborted = false;
       const verb = String(method).toUpperCase();
       this.targetUrl =
         verb === "GET" &&
@@ -191,7 +189,6 @@ export function createRestrictedReplyXhrAdapter(config) {
     }
 
     abort() {
-      this.aborted = true;
       return this.native.abort();
     }
 
