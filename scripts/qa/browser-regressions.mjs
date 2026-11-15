@@ -35,19 +35,24 @@ after(() => browser?.close());
 
 async function fixture(t, {
   html, path = "/", reply = () => {}, waitForSettings = true, gm = false,
-  initScript = "", useClock = false, ...options
+  initScript = "", useClock = false, expectedConsoleError, ...options
 }) {
   const page = await browser.newPage(options);
   const errors = [];
+  let expectedErrors = 0;
   const requests = [];
   t.after(async () => {
     await page.close();
     assert.deepEqual(errors, []);
+    assert.equal(expectedErrors, expectedConsoleError ? 1 : 0);
   });
   page.setDefaultTimeout(5000);
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
-    if (message.type() === "error" && message.text().startsWith("LuoguSP")) errors.push(message.text());
+    const value = message.text();
+    if (message.type() !== "error" || !value.startsWith("LuoguSP")) return;
+    if (expectedConsoleError?.test(value)) expectedErrors++;
+    else errors.push(value);
   });
   await page.route("**/*", (route) => {
     const request = route.request();
@@ -314,6 +319,61 @@ const nativeArticle = `
     event.currentTarget.textContent = "Clicked";
   };
 `;
+const nativePaste = `document.querySelector("#app").innerHTML = '<article class="paste-show-card"><pre>Saved paste</pre></article>';`;
+
+const rankingScaffold = `<meta name="csrf-token" content="ranking-token">
+  <script id="lentille-context" type="application/json">{"user":{"uid":99}}</script>
+  <script id="luogu-theme" type="application/json">{"dark":false}</script>
+  <script src="https://fecdn.luogu.com.cn/ranking-fixture.js"></script>`;
+const brokenRankingScaffolds = {
+  context: rankingScaffold.replace('{"user":{"uid":99}}', "{"),
+  theme: rankingScaffold.replace('{"dark":false}', "{"),
+  resources: rankingScaffold.replace("https://fecdn.luogu.com.cn", "https://example.invalid"),
+};
+const scaffoldAttempts = (requests) => requests.filter(({ origin: site, path }) =>
+  site === origin && ["/ranking", "/discuss"].includes(path)).map(({ path }) => path);
+
+for (const [type, id, archive, nativeScript, title, problems] of [
+  ["article", "123", archiveArticle, nativeArticle, "Saved text", ["context", "theme"]],
+  ["paste", "abc", { id: "abc", content: "Saved paste" }, nativePaste, "Saved paste", ["context", "resources"]],
+]) {
+  for (const problem of problems) {
+    test(`restricted ${type} uses discussion after invalid ranking ${problem}`, async (t) => {
+      const { page, requests } = await restrictedFixture(t, type, id, archive, {
+        nativeScript,
+        reply(route, url) {
+          if (url.origin === origin && url.pathname === "/ranking")
+            return route.fulfill({ body: brokenRankingScaffolds[problem], contentType: "text/html" });
+        },
+      });
+      const outcome = page.getByText(title, { exact: true }).or(page.getByRole("heading", { name: "未能获取内容" }));
+      await outcome.waitFor();
+      assert.deepEqual(scaffoldAttempts(requests), ["/ranking", "/discuss"]);
+      assert.equal(await outcome.textContent(), title);
+      const context = JSON.parse(await page.locator("#lentille-context").textContent());
+      assert.equal(context.template, `${type}.show`);
+      assert.equal(context.user.uid, viewer.uid);
+      assert.equal(await page.locator('meta[name="csrf-token"]').getAttribute("content"), "fixture-token");
+      assert.equal(requests.some(({ path }) => path === "/ranking-fixture.js"), false);
+      await page.locator("#luogusp-rst-loader").waitFor({ state: "detached" });
+    });
+  }
+}
+
+test("restricted article shows the preparation failure when both scaffolds are invalid", async (t) => {
+  const { page, requests } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    expectedConsoleError: /^LuoguSP restricted boot: Error: 洛谷主题数据解析失败（结构可能已改版）。/,
+    reply(route, url) {
+      if (url.origin === origin && ["/ranking", "/discuss"].includes(url.pathname))
+        return route.fulfill({ body: brokenRankingScaffolds.theme, contentType: "text/html" });
+    },
+  });
+  await page.getByText("洛谷主题数据解析失败（结构可能已改版）。", { exact: true }).waitFor();
+  assert.deepEqual(scaffoldAttempts(requests), ["/ranking", "/discuss"]);
+  assert.equal(await page.locator("#luogusp-rst-loader, #lentille-context").count(), 0);
+  assert.equal(await page.locator(".luogusp-rst-original").getAttribute("href"), "https://www.luogu.com/article/123");
+  assert.equal(requests.some(({ path }) => path === "/ranking-fixture.js"), false);
+});
 
 const readArticleInteraction = (page) =>
   page.evaluate(() => JSON.parse(localStorage.getItem("luogusp.article-interaction.v2") ?? "{}")["42:123"]);
@@ -519,7 +579,7 @@ test("restricted article warns when browser storage rejects a confirmed write", 
 });
 
 test("restricted native article is clickable without the optional time row", async (t) => {
-  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+  const { page, requests } = await restrictedFixture(t, "article", "123", archiveArticle, {
     nativeScript: nativeArticle,
   });
   const action = page.getByRole("button", { name: "Native action" });
@@ -528,6 +588,7 @@ test("restricted native article is clickable without the optional time row", asy
   await action.click();
   assert.equal(await page.getByRole("button", { name: "Clicked" }).count(), 1);
   assert.equal(await page.locator(".luogusp-rst-abtn").count(), 2);
+  assert.deepEqual(scaffoldAttempts(requests), ["/ranking"]);
 });
 
 test("restricted archive actions work by keyboard with focus and status, and the viewport permits zoom", async (t) => {
@@ -707,7 +768,7 @@ test("restricted native startup fails visibly when the native script mounts no c
 
 test("restricted paste can display native content before its metadata row arrives", async (t) => {
   const { page } = await restrictedFixture(t, "paste", "abc", { id: "abc", content: "Saved paste" }, {
-    nativeScript: 'document.querySelector("#app").innerHTML = \'<article class="paste-show-card"><pre>Saved paste</pre></article>\';',
+    nativeScript: nativePaste,
   });
   await page.getByText("Saved paste").waitFor();
   await page.locator("#luogusp-rst-loader").waitFor({ state: "detached", timeout: 1000 });
@@ -797,6 +858,33 @@ test("restricted route change aborts native response bodies", async (t) => {
   await page.clock.runFor(15000);
   assert.equal(await page.locator("#luogusp-rst-loader, .luogusp-rst-plaincard").count(), 0);
   assert.equal(requests.some((request) => request.path === "/discuss"), false);
+});
+
+test("restricted route change aborts the discussion scaffold fallback", async (t) => {
+  const { page, requests } = await restrictedFixture(t, "paste", "abc", { id: "abc", content: "Saved paste" }, {
+    useClock: true,
+    initScript: restrictedStreams + `
+      globalThis.fetch = (input, init) => {
+        const url = new URL(input, location.origin);
+        if (url.origin === location.origin && url.pathname === "/discuss")
+          return Promise.resolve(restrictedStream(init.signal, url.pathname, 60000, "{}"));
+        return restrictedFetch(input, init);
+      };
+    `,
+    reply(route, url) {
+      if (url.origin === origin && url.pathname === "/ranking")
+        return route.fulfill({ body: brokenRankingScaffolds.context, contentType: "text/html" });
+    },
+  });
+  await page.clock.runFor(50);
+  await waitForRestrictedHeaders(page, "/discuss");
+  assert.deepEqual(scaffoldAttempts(requests), ["/ranking"]);
+  await page.evaluate(() => history.pushState({}, "", "/"));
+  assert.deepEqual(await page.evaluate(() => restrictedTrace.map(([event, path]) => [event, path])), [
+    ["headers", "/discuss"], ["abort", "/discuss"],
+  ]);
+  await page.clock.runFor(15000);
+  assert.equal(await page.locator("#luogusp-rst-loader, .luogusp-rst-plaincard, #lentille-context").count(), 0);
 });
 
 const stalledSaver = restrictedStreams + `

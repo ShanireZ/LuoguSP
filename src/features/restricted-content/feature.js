@@ -206,19 +206,20 @@ export function createRestrictedContentFeature({
     document.querySelector(".luogusp-rst-original").href = info.origUrl;
   }
 
-  // 殼骨架收割：/ranking、/discuss 任一帶 lentille-context 即用。
+  // 依序驗證 /ranking、/discuss 的完整骨架，採用第一份可用的結果。
   // 2026-09 剪貼簿已遷 paste.show，舊 lfe 源 /image、/theme/list 分別是 401 和 404。
-  async function rstHarvest(signal) {
+  async function rstLoadColumbaShell(signal) {
+    let invalidShell;
     for (const src of ["/ranking", "/discuss"]) {
       try {
         const html = await rstFetch(src, signal, "text");
-        if (html.includes("lentille-context")) return html;
-      } catch (e) {
-        if (e && e.kind === "cancelled") throw e;
-        /* 換下一個源 */
+        if (html.includes("lentille-context")) return readColumbaShell(html);
+      } catch (error) {
+        if (error?.kind === "cancelled") throw error;
+        if (error?.kind === "dom-drift") invalidShell ??= error;
       }
     }
-    return null;
+    throw invalidShell ?? rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
   }
   function readColumbaShell(scaffold) {
     const parsed = parseColumbaScaffold(scaffold);
@@ -290,8 +291,8 @@ export function createRestrictedContentFeature({
 
   // 文章頁：合成 lentille-context（template article.show）+ 官方 columba 前端
   async function rstBootArticle(info, data, signal) {
-    const [scaffold, cnUser, commentsResult, live] = await Promise.all([
-      rstHarvest(signal),
+    const [shell, cnUser, commentsResult, live] = await Promise.all([
+      rstLoadColumbaShell(signal),
       rstCnUser(data.authorId, signal),
       saverWorkflow.loadComments(info.id, { signal }),
       resolveLiveArticleCounts({
@@ -309,9 +310,6 @@ export function createRestrictedContentFeature({
           ),
       }),
     ]);
-    if (!scaffold)
-      throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
-    const shell = readColumbaShell(scaffold);
     const comments = commentsResult.kind === "available" ? commentsResult.data.comments : [];
     const showWriteNotice = (kind, message) => {
       if (location.pathname === info.path)
@@ -386,13 +384,10 @@ export function createRestrictedContentFeature({
 
   // 剪貼簿頁：合成 lentille-context（template paste.show）+ 官方 columba 前端。
   async function rstBootPaste(info, data, signal) {
-    const [scaffold, cnUser] = await Promise.all([
-      rstHarvest(signal),
+    const [shell, cnUser] = await Promise.all([
+      rstLoadColumbaShell(signal),
       rstCnUser(data.authorId, signal),
     ]);
-    if (!scaffold)
-      throw rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
-    const shell = readColumbaShell(scaffold);
     // 剪貼簿沒有作者專欄列表那條路，真值只可能來自保存站的 publishTime；
     // 沒有就退回入檔時間，並把文案改成「存檔時間」（見 rstMountPasteButtons）。
     const ctx = buildPasteShowContext({
