@@ -60,6 +60,10 @@ const restrictedFeatureSource = fs.readFileSync(
   path.join(root, "src/features/restricted-content/feature.js"),
   "utf8",
 );
+const restrictedScaffoldSource = fs.readFileSync(
+  path.join(root, "src/features/restricted-content/columba-scaffold.js"),
+  "utf8",
+);
 const restrictedEarlyGateSource = fs.readFileSync(
   path.join(root, "src/bootstrap/restricted-early-gate.js"),
   "utf8",
@@ -178,13 +182,7 @@ test("restricted document replacement carries its first-paint overlay", () => {
   );
   assert.match(restrictedFeatureSource, /bodySuffix: RST_LOADER_HTML/);
   assert.match(
-    fs.readFileSync(
-      path.join(
-        root,
-        "src/features/restricted-content/columba-scaffold.js",
-      ),
-      "utf8",
-    ),
+    restrictedScaffoldSource,
     /\$\{bodySuffix \|\| ""\}<\/body><\/html>/,
   );
   assert.match(
@@ -197,15 +195,17 @@ test("restricted document replacement carries its first-paint overlay", () => {
   );
 });
 
-test("restricted article document keeps its JSON serializer dependency explicit", () => {
+test("restricted document keeps context and scaffold JSON serialization explicit", () => {
   assert.match(
     restrictedFeatureSource,
     /import \{\s*createRestrictedDocumentCommitter,\s*serializeJsonForScript,\s*\} from "\.\/document-committer\.js";/,
   );
-  assert.equal(
-    (restrictedFeatureSource.match(/serializeJsonForScript\(/g) || []).length,
-    2,
+  assert.match(restrictedFeatureSource, /contextJson: serializeJsonForScript\(ctx\)/);
+  assert.match(
+    restrictedScaffoldSource,
+    /import \{ serializeJsonForScript \} from "\.\/document-committer\.js";/,
   );
+  assert.match(restrictedScaffoldSource, /themeJson: themeNode \? serializeJsonForScript\(theme\)/);
 });
 
 test("Phase 7 removes temporary compatibility facades and keeps one document committer", () => {

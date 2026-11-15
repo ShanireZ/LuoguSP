@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildColumbaDocument,
-  columbaScaffoldProblem,
   parseColumbaScaffold,
 } from "../src/features/restricted-content/columba-scaffold.js";
 import {
@@ -43,76 +42,45 @@ import {
 } from "../src/features/restricted-content/saver-workflow.js";
 import { deferred, FakeClock, flushMicrotasks } from "./helpers.js";
 
-function columbaScaffoldFixture(overrides = {}) {
+function columbaScaffoldFixture() {
   const context = JSON.stringify({
     instance: "main",
-    template: "ranking",
+    template: "rank.gu",
+    status: 200,
     data: {},
     user: { uid: 7 },
   });
   return [
-    '<meta name="csrf-token" content="token:abc=">',
+    '<!doctype html><html><head><meta name="csrf-token" content="token:abc=">',
     '<link rel="stylesheet" href="https://fecdn.luogu.com.cn/columba/loader.css">',
     `<script id="lentille-context" type="application/json">${context}</script>`,
     `<script id="luogu-theme" type="application/json">{"dark":false}</script>`,
     "<script>window.__feInitLocalTime = 1; window.__feConfigVersion = 'abc';</script>",
     '<script src="https://fecdn.luogu.com.cn/columba/loader.js" charset="utf-8" defer></script>',
-    overrides.extra || "",
+    '</head><body><div id="app"></div></body></html>',
   ].join("");
 }
 
-const trusted = (url) => {
-  try {
-    return new URL(url).origin === "https://fecdn.luogu.com.cn";
-  } catch (error) {
-    return false;
-  }
-};
-const safeCsrf = (value) =>
-  typeof value === "string" && !/["'<>\s]/.test(value);
-
 test("Columba scaffold parser reads the shell paste.show and article.show share", () => {
-  const parsed = parseColumbaScaffold(columbaScaffoldFixture());
-  assert.equal(columbaScaffoldProblem(parsed, {
-    isTrustedUrl: trusted,
-    isSafeCsrf: safeCsrf,
-  }), null);
-  assert.equal(parsed.context.user.uid, 7);
+  const { document } = new JSDOM().window;
+  const parse = (html) => parseColumbaScaffold(html, document, "rank.gu");
+  const html = columbaScaffoldFixture();
+  const parsed = parse(html);
+  assert.equal(parsed.viewer.uid, 7);
   assert.equal(parsed.csrf, "token:abc=");
   assert.deepEqual(parsed.scripts, [
     "https://fecdn.luogu.com.cn/columba/loader.js",
   ]);
-  assert.deepEqual(parsed.theme, { dark: false });
-  assert.match(parsed.globalsRaw, /__feInitLocalTime/);
+  assert.deepEqual(JSON.parse(parsed.themeJson), { dark: false });
+  assert.equal(parsed.configVersion, "abc");
 
-  // 正則在第一個 </script> 處停下，大小寫變體仍能把殼截斷，必須拒掉。
+  // 非空文字會使 HTML 解析器結束 head，把後續資源移入 body。
   assert.equal(
-    parseColumbaScaffold(
-      columbaScaffoldFixture().replace(
-        "window.__feInitLocalTime = 1;",
-        "window.__feInitLocalTime = 1; </SCRIPT>",
-      ),
-    ),
+    parse(html.replace("window.__feInitLocalTime = 1;", "window.__feInitLocalTime = 1; </SCRIPT>")),
     null,
   );
-  assert.equal(
-    columbaScaffoldProblem(
-      parseColumbaScaffold(
-        columbaScaffoldFixture().replace('{"dark":false}', "{"),
-      ),
-      { isTrustedUrl: trusted, isSafeCsrf: safeCsrf },
-    ),
-    "theme",
-  );
-  assert.equal(
-    columbaScaffoldProblem(
-      parseColumbaScaffold(
-        columbaScaffoldFixture().replace("token:abc=", "bad token"),
-      ),
-      { isTrustedUrl: trusted, isSafeCsrf: safeCsrf },
-    ),
-    "scaffold",
-  );
+  assert.deepEqual(parse(html.replace('{"dark":false}', "{")), { invalidTheme: true });
+  assert.equal(parse(html.replace("token:abc=", "bad token")), null);
 });
 
 test("paste.show context matches the current clipboard page and stays read-only", () => {
@@ -135,7 +103,6 @@ test("paste.show context matches the current clipboard page and stays read-only"
   const html = buildColumbaDocument({
     title: "云剪贴板 - 洛谷",
     csrf: "token:abc=",
-    globalsRaw: "window.__feInitLocalTime = 1;",
     contextJson: JSON.stringify(ctx).replace(/</g, "\\u003C"),
     scripts: ["https://fecdn.luogu.com.cn/columba/loader.js"],
     cssLinks: ["https://fecdn.luogu.com.cn/columba/loader.css"],

@@ -17,14 +17,12 @@ import {
   rstEscapeHtmlText,
   rstFmtTime,
   rstPreparationError,
-  rstSafeCsrf,
   rstTrustedCdnUrl,
   rstUserSummary,
   showRstArticleWriteNotice,
 } from "./presentation.js";
 import {
   buildColumbaDocument,
-  columbaScaffoldProblem,
   parseColumbaScaffold,
 } from "./columba-scaffold.js";
 import { createRestrictedPageDetector } from "./page-detector.js";
@@ -113,7 +111,7 @@ export function createRestrictedContentFeature({
   // 介面=/api/user/search?keyword={uid}（攔截頁源實測可用；舊 /user/{uid}?_contentOnly=1 已死，回傳 HTML），
   // 回傳 userSummary：{uid,name,avatar,slogan,badge,color,ccfLevel,xcpcLevel,…}。失敗退回存檔快照。
   const rstUserCache = new Map();
-  async function rstFetch(input, signal, bodyType, init) {
+  async function rstFetch(input, signal, init, readBody = (response) => response.json()) {
     const controller = new AbortController();
     let timedOut = false;
     const cancel = () => controller.abort();
@@ -129,7 +127,7 @@ export function createRestrictedContentFeature({
     try {
       const response = await fetch(input, { ...init, signal: controller.signal });
       if (!response.ok) throw new Error(`洛谷 HTTP ${response.status}`);
-      const body = await response[bodyType]();
+      const body = await readBody(response);
       if (controller.signal.aborted) throw controller.signal.reason;
       return body;
     } catch (error) {
@@ -138,6 +136,7 @@ export function createRestrictedContentFeature({
           new Error(timedOut ? "洛谷页面数据请求超时" : "受限文档准备已取消"),
           { kind: timedOut ? "timeout" : "cancelled" },
         );
+      controller.abort();
       throw error;
     } finally {
       clearTimeout(timer);
@@ -152,7 +151,6 @@ export function createRestrictedContentFeature({
       const json = await rstFetch(
         `/api/user/search?keyword=${encodeURIComponent(uid)}`,
         signal,
-        "json",
       );
       const list = (json && json.users) || [];
       user = list.find((u) => u && Number(u.uid) === Number(uid)) || null;
@@ -210,10 +208,21 @@ export function createRestrictedContentFeature({
   // 2026-09 剪貼簿已遷 paste.show，舊 lfe 源 /image、/theme/list 分別是 401 和 404。
   async function rstLoadColumbaShell(signal) {
     let invalidShell;
-    for (const src of ["/ranking", "/discuss"]) {
+    for (const [src, template] of [["/ranking", "rank.gu"], ["/discuss", "discuss.list"]]) {
       try {
-        const html = await rstFetch(src, signal, "text");
-        if (html.includes("lentille-context")) return readColumbaShell(html);
+        const url = new URL(src, location.origin).href;
+        const html = await rstFetch(url, signal, { redirect: "error" }, (response) => {
+          const mediaType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+          if (response.status !== 200 || response.redirected || response.url !== url || mediaType !== "text/html")
+            throw rstPreparationError("洛谷页面骨架回包验证失败。");
+          return response.text();
+        });
+        const shell = parseColumbaScaffold(html, document, template);
+        if (shell?.invalidTheme)
+          throw rstPreparationError("洛谷主题数据解析失败（结构可能已改版）。");
+        if (!shell)
+          throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
+        return shell;
       } catch (error) {
         if (error?.kind === "cancelled") throw error;
         if (error?.kind === "dom-drift") invalidShell ??= error;
@@ -221,32 +230,12 @@ export function createRestrictedContentFeature({
     }
     throw invalidShell ?? rstPreparationError("无法获取洛谷页面骨架，暂不能就地渲染。");
   }
-  function readColumbaShell(scaffold) {
-    const parsed = parseColumbaScaffold(scaffold);
-    const problem = columbaScaffoldProblem(parsed, {
-      isTrustedUrl: rstTrustedCdnUrl,
-      isSafeCsrf: rstSafeCsrf,
-    });
-    if (problem === "theme")
-      throw rstPreparationError("洛谷主题数据解析失败（结构可能已改版）。");
-    if (problem)
-      throw rstPreparationError("洛谷页面骨架解析失败（结构可能已改版）。");
-    return {
-      csrf: parsed.csrf,
-      globalsRaw: parsed.globalsRaw,
-      scripts: parsed.scripts,
-      cssLinks: parsed.cssLinks,
-      themeJson: parsed.themeRaw
-        ? serializeJsonForScript(parsed.theme)
-        : "",
-      viewer: parsed.context.user || null,
-    };
-  }
   function columbaHtml(title, shell, ctx) {
     return buildColumbaDocument({
       title,
       csrf: shell.csrf,
-      globalsRaw: shell.globalsRaw,
+      configVersion: shell.configVersion,
+      tagVersion: shell.tagVersion,
       contextJson: serializeJsonForScript(ctx),
       scripts: shell.scripts,
       cssLinks: shell.cssLinks,
@@ -296,7 +285,7 @@ export function createRestrictedContentFeature({
       rstCnUser(data.authorId, signal),
       saverWorkflow.loadComments(info.id, { signal }),
       resolveLiveArticleCounts({
-        loadPage: (path, signal, init) => rstFetch(path, signal, "json", init),
+        loadPage: rstFetch,
         authorUid: data.authorId,
         lid: info.id,
         category: data.category,

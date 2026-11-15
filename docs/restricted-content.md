@@ -47,8 +47,13 @@ establish the current account's privileges or personal state.
   The deadline and route disposal both cancel in-flight polling.
 - Each native scaffold, author, and article-list request has a 15-second
   timeout through response body consumption. Leaving the route cancels pending
-  preparation. Article and paste rebuilds use the first scaffold that passes
-  context, theme and resource validation, trying ranking before discussion.
+  preparation. Article and paste rebuilds try `/ranking` before `/discuss`.
+  Each scaffold must return HTTP 200 with `text/html` at the exact requested
+  same-origin URL. Redirects are refused. The inert parser checks the native
+  mount, route-specific context, CSRF token, theme when present and Columba
+  resources in the head. The rebuilt bootstrap sets a local startup time and
+  copies validated configuration and tag versions as data. The native loader
+  uses its default configuration and tag routes.
 - The overlay clears when the native article or paste content mounts.
   Its status follows the Saver lookup, archive wait and native page
   preparation. The indicator is static when reduced motion is set.

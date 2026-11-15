@@ -254,6 +254,21 @@ After the formulas`;
   });
 }
 
+function nativeScaffold(path, { token = "fixture-token", uid = viewer.uid, entry = "loader.fixture.js" } = {}) {
+  const context = {
+    instance: "main", template: path === "/ranking" ? "rank.gu" : "discuss.list", status: 200, user: { uid },
+  };
+  return `<!doctype html><html><head>
+    <meta name="csrf-token" content="${token}">
+    <script id="lentille-context" type="application/json">${JSON.stringify(context)}</script>
+    <script id="luogu-theme" type="application/json">{"dark":false}</script>
+    <script>window.__feInitLocalTime = new Date().getTime() / 1000;
+      window.__feConfigVersion = 'fixture-config'; window.__feConfigRequest = '\\/_lfe\\/config';
+      window.__luoguTagVersion = 'zh\\u002DCN\\/fixture'; window.__luoguTagRequest = '\\/_lfe\\/tags';</script>
+    <script src="https://fecdn.luogu.com.cn/columba/${entry}" defer></script>
+    </head><body><div id="app"></div></body></html>`;
+}
+
 function restrictedFixture(t, type, id, data, options = {}) {
   const path = `/${type}/${id}`;
   const saver = "https://api.luogu.me";
@@ -263,9 +278,6 @@ function restrictedFixture(t, type, id, data, options = {}) {
     nativeScript = "", commentsPayload = { code: 200, data: { comments: [] } },
     reply: customReply, ...pageOptions
   } = options;
-  const scaffold = `<meta name="csrf-token" content="fixture-token">
-    <script id="lentille-context" type="application/json">${JSON.stringify({ user: viewer })}</script>
-    <script src="${assets}/fixture.js"></script>`;
   return fixture(t, {
     path, waitForSettings: false, ...pageOptions,
     html: `<!doctype html><meta charset="utf-8"><title>安全访问中心</title><pre id="url">${origin}${path}</pre>`,
@@ -277,8 +289,8 @@ function restrictedFixture(t, type, id, data, options = {}) {
       if (url.origin === saver && url.pathname === `/article/comments/${id}`)
         return route.fulfill({ headers, json: commentsPayload });
       if (url.origin === origin && ["/ranking", "/discuss"].includes(url.pathname))
-        return route.fulfill({ body: scaffold, contentType: "text/html" });
-      if (url.origin === assets && url.pathname === "/fixture.js")
+        return route.fulfill({ body: nativeScaffold(url.pathname), contentType: "text/html" });
+      if (url.origin === assets && url.pathname === "/columba/loader.fixture.js")
         return route.fulfill({ body: nativeScript, contentType: "text/javascript" });
     },
   });
@@ -321,21 +333,24 @@ const nativeArticle = `
 `;
 const nativePaste = `document.querySelector("#app").innerHTML = '<article class="paste-show-card"><pre>Saved paste</pre></article>';`;
 
-const rankingScaffold = `<meta name="csrf-token" content="ranking-token">
-  <script id="lentille-context" type="application/json">{"user":{"uid":99}}</script>
-  <script id="luogu-theme" type="application/json">{"dark":false}</script>
-  <script src="https://fecdn.luogu.com.cn/ranking-fixture.js"></script>`;
+const rankingEntry = "/columba/loader.ranking-fixture.js";
+const rankingScaffold = nativeScaffold("/ranking", { token: "ranking-token", uid: 99, entry: "loader.ranking-fixture.js" });
+const archivePaste = { id: "abc", content: "Saved paste" };
 const brokenRankingScaffolds = {
-  context: rankingScaffold.replace('{"user":{"uid":99}}', "{"),
+  context: rankingScaffold.replace(/(<script id="lentille-context"[^>]*>)[^<]+/, "$1{"),
   theme: rankingScaffold.replace('{"dark":false}', "{"),
   resources: rankingScaffold.replace("https://fecdn.luogu.com.cn", "https://example.invalid"),
+  "body lookalikes": rankingScaffold.replace(/<head>([\s\S]*?)<\/head><body>/, "<head></head><body>$1"),
+  "missing mount": rankingScaffold.replace('<div id="app"></div>', "<main></main>"),
+  "wrong template": rankingScaffold.replace('"rank.gu"', '"problem.list"'),
+  "error context": rankingScaffold.replace('"status":200', '"status":403'),
 };
 const scaffoldAttempts = (requests) => requests.filter(({ origin: site, path }) =>
   site === origin && ["/ranking", "/discuss"].includes(path)).map(({ path }) => path);
 
 for (const [type, id, archive, nativeScript, title, problems] of [
-  ["article", "123", archiveArticle, nativeArticle, "Saved text", ["context", "theme"]],
-  ["paste", "abc", { id: "abc", content: "Saved paste" }, nativePaste, "Saved paste", ["context", "resources"]],
+  ["article", "123", archiveArticle, nativeArticle, "Saved text", ["context", "theme", "body lookalikes", "error context"]],
+  ["paste", "abc", archivePaste, nativePaste, "Saved paste", ["context", "resources", "missing mount", "wrong template"]],
 ]) {
   for (const problem of problems) {
     test(`restricted ${type} uses discussion after invalid ranking ${problem}`, async (t) => {
@@ -344,6 +359,8 @@ for (const [type, id, archive, nativeScript, title, problems] of [
         reply(route, url) {
           if (url.origin === origin && url.pathname === "/ranking")
             return route.fulfill({ body: brokenRankingScaffolds[problem], contentType: "text/html" });
+          if (url.pathname === rankingEntry)
+            return route.fulfill({ body: nativeScript, contentType: "text/javascript" });
         },
       });
       const outcome = page.getByText(title, { exact: true }).or(page.getByRole("heading", { name: "未能获取内容" }));
@@ -354,11 +371,102 @@ for (const [type, id, archive, nativeScript, title, problems] of [
       assert.equal(context.template, `${type}.show`);
       assert.equal(context.user.uid, viewer.uid);
       assert.equal(await page.locator('meta[name="csrf-token"]').getAttribute("content"), "fixture-token");
-      assert.equal(requests.some(({ path }) => path === "/ranking-fixture.js"), false);
+      assert.equal(requests.some(({ path }) => path === rankingEntry), false);
       await page.locator("#luogusp-rst-loader").waitFor({ state: "detached" });
     });
   }
 }
+
+for (const [problem, response, type] of [
+  ["HTTP 206", { status: 206, contentType: "text/html" }, "article"],
+  ["wrong content type", { contentType: "text/plain" }, "paste"],
+  ["wrong final URL", { contentType: "text/html", headers: { "x-fixture-final-path": "/ranking?shifted=1" } }, "article"],
+]) {
+  test(`restricted ${type} uses discussion after ranking ${problem}`, async (t) => {
+    const article = type === "article";
+    const { page, requests } = await restrictedFixture(t, type, article ? "123" : "abc", article ? archiveArticle : archivePaste, {
+      nativeScript: article ? nativeArticle : nativePaste,
+      initScript: `{
+        const fetchPage = window.fetch;
+        window.fetch = (...args) => fetchPage(...args).then(reply => {
+          const finalPath = reply.headers.get("x-fixture-final-path");
+          if (finalPath) Object.defineProperty(reply, "url", { value: new URL(finalPath, location.origin).href });
+          return reply;
+        });
+      }`,
+      reply(route, url) {
+        if (url.origin === origin && url.pathname === "/ranking")
+          return route.fulfill({ ...response, body: rankingScaffold });
+        if (url.pathname === rankingEntry)
+          return route.fulfill({ contentType: "text/javascript", body: article ? nativeArticle : nativePaste });
+      },
+    });
+    await page.getByText(article ? "Saved text" : "Saved paste", { exact: true }).waitFor();
+    assert.deepEqual(scaffoldAttempts(requests), ["/ranking", "/discuss"]);
+    assert.equal(await page.locator('meta[name="csrf-token"]').getAttribute("content"), "fixture-token");
+    assert.equal(requests.some(({ path }) => path === rankingEntry), false);
+  });
+}
+
+test("restricted paste rejects a ranking redirect before contacting its target", async (t) => {
+  const pending = responseGate(t);
+  let redirectHits = 0;
+  const server = createServer((req, res) => {
+    redirectHits++;
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Private-Network", "true");
+    res.setHeader("Content-Type", "text/html");
+    res.end(rankingScaffold);
+  });
+  const listening = once(server, "listening");
+  server.listen(0, "127.0.0.1");
+  await listening;
+  t.after(() => server.close());
+  const redirectUrl = `http://127.0.0.1:${server.address().port}/fixture-scaffold`;
+  const { page, requests } = await restrictedFixture(t, "paste", "abc", archivePaste, {
+    nativeScript: nativePaste,
+    reply(route, url) {
+      if (url.origin === origin && url.pathname === "/ranking")
+        return pending.promise.then(() => route.fulfill({ status: 302, headers: { location: redirectUrl } }));
+      if (url.pathname === rankingEntry)
+        return route.fulfill({ contentType: "text/javascript", body: nativePaste });
+    },
+  });
+  await page.context().grantPermissions(["local-network-access"], { origin });
+  pending.release();
+  await page.getByText("Saved paste", { exact: true }).waitFor();
+  assert.equal(redirectHits, 0);
+  assert.deepEqual(scaffoldAttempts(requests), ["/ranking", "/discuss"]);
+  assert.equal(requests.some(({ path }) => path === rankingEntry), false);
+});
+
+test("restricted article rebuilds native bootstrap data without running shell code or loading shell body resources", async (t) => {
+  const scaffold = nativeScaffold("/ranking")
+    .replace("</script>\n    <script src", `
+      window.__feConfigRequest = '/fixture-config-probe';
+      window.scaffoldProbe = localStorage.getItem('scaffold-fixture-value');</script>
+    <script src`)
+    .replace("</body>", '<iframe src="/fixture-scaffold-probe"></iframe></body>');
+  const { page, requests } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    initScript: `localStorage.setItem('scaffold-fixture-value', 'private fixture value');`,
+    reply(route, url) {
+      if (url.origin === origin && url.pathname === "/ranking")
+        return route.fulfill({ body: scaffold, contentType: "text/html; charset=UTF-8" });
+    },
+  });
+  await page.getByText("Saved text", { exact: true }).waitFor();
+  const bootstrap = await page.evaluate(() => ({
+    config: window.__feConfigVersion, tags: window.__luoguTagVersion,
+    safeConfig: window.__feConfigRequest === undefined || window.__feConfigRequest === "/_lfe/config",
+    time: Number.isFinite(window.__feInitLocalTime), executed: "scaffoldProbe" in window,
+  }));
+  assert.deepEqual(bootstrap, {
+    config: "fixture-config", tags: "zh-CN/fixture", safeConfig: true, time: true, executed: false,
+  });
+  assert.deepEqual(scaffoldAttempts(requests), ["/ranking"]);
+  assert.equal(requests.some(({ path }) => path === "/fixture-scaffold-probe"), false);
+});
 
 test("restricted article shows the preparation failure when both scaffolds are invalid", async (t) => {
   const { page, requests } = await restrictedFixture(t, "article", "123", archiveArticle, {
@@ -372,7 +480,7 @@ test("restricted article shows the preparation failure when both scaffolds are i
   assert.deepEqual(scaffoldAttempts(requests), ["/ranking", "/discuss"]);
   assert.equal(await page.locator("#luogusp-rst-loader, #lentille-context").count(), 0);
   assert.equal(await page.locator(".luogusp-rst-original").getAttribute("href"), "https://www.luogu.com/article/123");
-  assert.equal(requests.some(({ path }) => path === "/ranking-fixture.js"), false);
+  assert.equal(requests.some(({ path }) => path === rankingEntry), false);
 });
 
 const readArticleInteraction = (page) =>
@@ -793,20 +901,24 @@ const restrictedStreams = `
     restrictedTrace.push([event, path, Date.now()]);
     window.dispatchEvent(new Event("restricted-activity"));
   };
-  const restrictedStream = (signal, path, delay, body) => new Response(new ReadableStream({
-    start(stream) {
-      reportRestricted("headers", path);
-      const timer = setTimeout(() => {
-        stream.enqueue(new TextEncoder().encode(body));
-        stream.close();
-      }, delay);
-      signal.addEventListener("abort", () => {
-        clearTimeout(timer);
-        reportRestricted("abort", path);
-        stream.error(new DOMException("Aborted", "AbortError"));
-      }, { once: true });
-    }
-  }));
+  const restrictedStream = (signal, path, delay, body) => {
+    const response = new Response(new ReadableStream({
+      start(stream) {
+        reportRestricted("headers", path);
+        const timer = setTimeout(() => {
+          stream.enqueue(new TextEncoder().encode(body));
+          stream.close();
+        }, delay);
+        signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reportRestricted("abort", path);
+          stream.error(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      }
+    }), { headers: { "content-type": "text/html; charset=utf-8" } });
+    Object.defineProperty(response, "url", { value: new URL(path, location.origin).href });
+    return response;
+  };
 `;
 const waitForRestrictedHeaders = (page, path) => page.evaluate((path) => new Promise((resolve) => {
   const check = () => {
