@@ -14,9 +14,11 @@ const parsedContexts = new WeakMap();
 export function asLentillePage(payload) {
   if (!payload?.data || typeof payload.data !== "object") return null;
   const learnMode = payload.user?.learnMode;
+  const uid = payload.user?.uid;
   return {
     data: payload.data,
     template: payload.template,
+    viewer: payload.user === null ? 0 : Number.isSafeInteger(uid) && uid > 0 ? uid : undefined,
     academic: learnMode === true || learnMode === 1,
   };
 }

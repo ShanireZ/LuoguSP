@@ -6,6 +6,7 @@ import {
 import {
   createProblemPipeline,
 } from "../src/features/problem-color/pipeline.js";
+import { createProblemData } from "../src/features/problem-color/problem-data.js";
 import { deferred, flushMicrotasks, FakeClock } from "./helpers.js";
 
 function fixture({
@@ -22,6 +23,9 @@ function fixture({
   const clears = [];
   let observed = null;
   let route = "/problem/list";
+  const problems = createProblemData({
+    origin: "https://www.luogu.com.cn", text, now: clock?.now, ttlMs: cacheTtlMs,
+  });
   const pipeline = createProblemPipeline({
     identity: {
       resolve: (anchor) =>
@@ -52,7 +56,11 @@ function fixture({
       },
     },
     routeAdapter: { token: () => route },
-    difficultySource: { text, harvest, subscribe },
+    difficultySource: {
+      lookup: async ({ pid }, signal) => (await problems.load(pid, { signal }))?.data.problem.difficulty,
+      harvest,
+      subscribe,
+    },
     colorForDifficulty: (difficulty) => `color-${difficulty}`,
     logError,
     clock,
@@ -267,14 +275,13 @@ test("Problem Pipeline fetches all four ambiguous record tiers by pid", async ()
   fx.pipeline.dispose();
 });
 
-test("Problem Pipeline keeps temporary _contentOnly HTML from causing permanent downgrade", async () => {
+test("Problem Pipeline ignores unrecognized HTML and accepts a verified page context", async () => {
   const first = { pid: "P1", href: "/problem/P1" };
   const second = { pid: "P2", href: "/problem/P2" };
   const paths = [];
   const replies = [
-    "<html>challenge</html>",
-    '<script>{"difficulty":2}</script>',
-    '{"currentData":{"problem":{"difficulty":4}}}',
+    '<html><script>{"difficulty":2}</script></html>',
+    '<script id="lentille-context" type="application/json">{"data":{"problem":{"pid":"P2","difficulty":4}}}</script>',
   ];
   const fx = fixture({
     anchors: [first],
@@ -291,13 +298,11 @@ test("Problem Pipeline keeps temporary _contentOnly HTML from causing permanent 
 
   assert.deepEqual(paths, [
     "/problem/P1?_contentOnly=1",
-    "/problem/P1",
     "/problem/P2?_contentOnly=1",
   ]);
   assert.deepEqual(
     fx.writes.map(({ pid, color }) => ({ pid, color })),
     [
-      { pid: "P1", color: "color-2" },
       { pid: "P2", color: "color-4" },
     ],
   );
@@ -414,7 +419,7 @@ test("Problem Pipeline prefers a freshly fetched difficulty over the harvested o
     clock: clock.adapter(),
     text: async () => {
       fetches++;
-      return '{"currentData":{"problem":{"difficulty":7}}';
+      return JSON.stringify({ currentData: { problem: { difficulty: 7 } } });
     },
     harvest: () =>
       exposeHarvest ? [{ source, problems: source, at: 0 }] : [],
@@ -533,7 +538,7 @@ test("Problem Pipeline discards stale anchors, route generations and disposed wo
 
 // ★ 第二道閘：identity.js 的字元集守衛壞掉時，請求路徑也不許拼出別的介面。
 //   判據是「請求不到東西」，絕不是「請求到別的東西」（2026-08-15 實測重現，見 identity.js）。
-test("Problem Pipeline encodes the pid instead of letting it reshape the URL", async () => {
+test("Problem Pipeline never queries a malformed PID", async () => {
   const paths = [];
   const hostile = "a1/../../api/user/search";
   const fx = fixture({
@@ -547,11 +552,7 @@ test("Problem Pipeline encodes the pid instead of letting it reshape the URL", a
   fx.pipeline.mount();
   await flushMicrotasks();
 
-  assert.equal(paths.length, 1);
-  assert.equal(
-    new URL(paths[0], "https://www.luogu.com.cn").pathname,
-    `/problem/${encodeURIComponent(hostile)}`,
-  );
+  assert.deepEqual(paths, []);
   fx.pipeline.dispose();
 });
 

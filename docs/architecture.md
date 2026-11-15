@@ -32,6 +32,14 @@ observer stays active across in-document navigation, while each route cancels
 its abandoned queued lookups. Returning to a visible tab rescans with locally
 available difficulty data.
 
+Problem coloring, problem hover cards, and IDE samples share a single
+same-origin lookup scheduler and reuse fields from Lentille page responses.
+The shared cache holds only fields those features consume and scopes
+details by viewer, contest and language. A problem card displays available
+fields first and fills in details and the viewer's latest record as they
+arrive. IDE batch runs observe mutations in the native output panel from
+before the submit click until the result, deadline or cancellation.
+
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.
 pnpm quality:check applies config/quality-budget.json; pnpm test exercises source

@@ -12,8 +12,7 @@ import {
 //
 //   題目：GET /problem/{pid}                 + x-lentille-request: content-only
 //   標籤：GET /_lfe/tags                     （字典，帶 version，可長快取）
-//   上次嘗試：GET /record/list?user=&pid=    ★ 舊版頁面，不吃 lentille header，
-//                                             資料在 _feInjection.currentData.records
+//   上次嘗試：GET /record/list?user=&pid=    + x-lentille-request: content-only
 //   使用者（主）：GET /api/user/info/{uid}     ★ 洛谷**原生懸停卡自己用的介面**
 //   使用者（補）：GET /user/{uid}               + 同 header，只為拿主介面沒有的兩樣東西
 //
@@ -39,22 +38,10 @@ const LENTILLE_INIT = Object.freeze({
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 60;
 
-// 舊版頁面把資料塞在 `window._feInjection = JSON.parse(decodeURIComponent("…"))` 裡。
-export function parseLegacyInjection(html) {
-  const match = String(html || "").match(
-    /_feInjection\s*=\s*JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/,
-  );
-  if (!match) return null;
-  try {
-    return JSON.parse(decodeURIComponent(match[1]));
-  } catch (error) {
-    return null;
-  }
-}
-
 export function createHoverCardSources(config) {
   const {
     fetchPage,
+    problemData,
     clock,
     ttlMs = DEFAULT_TTL_MS,
     maxEntries = DEFAULT_MAX_ENTRIES,
@@ -97,6 +84,7 @@ export function createHoverCardSources(config) {
       .then(run)
       .then((value) => remember(key, value))
       .catch((error) => {
+        if (error?.name === "AbortError") return null;
         logError(error);
         // 失敗也記住（記成 null），避免滑鼠來回掃時反覆重打同一個失敗請求。
         return remember(key, null);
@@ -124,36 +112,70 @@ export function createHoverCardSources(config) {
     );
 
   // 上次嘗試：匿名訪客沒有提交記錄，不必發這個請求。
-  const lastAttempt = (pid, viewerUid, signal) => {
+  const lastAttempt = (pid, viewerUid, signal, href) => {
     const uid = Number(viewerUid);
     if (!Number.isSafeInteger(uid) || uid <= 0) return Promise.resolve(null);
-    return load(`record:${uid}:${pid}`, async () => {
-      const response = await fetchPage(
-        `/record/list?user=${uid}&pid=${encodeURIComponent(pid)}`,
+    const existing = problemData?.records?.(pid, { href });
+    if (existing) return Promise.resolve(pickLastAttempt(existing));
+    const query = new URLSearchParams({ user: String(uid), pid });
+    if (href) {
+      const contest = new URLSearchParams(href.split("?")[1]?.split("#")[0]).get("contestId");
+      if (contest) query.set("contestId", contest);
+    }
+    return load(`record:${query}`, async () => {
+      const payload = await readJson(
+        `/record/list?${query}`,
         signal,
-        null,
       );
-      if (!response || response.ok === false) return null;
-      const injection = parseLegacyInjection(await response.text());
-      const box = injection && injection.currentData && injection.currentData.records;
-      return pickLastAttempt(box);
+      if (payload?.template !== "record.list" || Number(payload.user?.uid) !== uid)
+        return null;
+      const rows = payload.data?.records?.result;
+      return Array.isArray(rows) ? pickLastAttempt(rows.filter((row) =>
+        row?.problem?.pid === pid && Number(row.user?.uid) === uid,
+      )) : null;
     });
   };
 
-  const problem = async (pid, viewerUid, signal) => {
+  const problem = async (pid, viewerUid, signal, { href, onUpdate } = {}) => {
     if (typeof pid !== "string" || !PID_PATTERN.test(pid)) return null;
-    return load(`problem:${viewerUid || 0}:${pid}`, async () => {
-      const [payload, dictionary, attempt] = await Promise.all([
-        readJson(`/problem/${encodeURIComponent(pid)}`, signal),
-        tags(signal),
-        lastAttempt(pid, viewerUid, signal),
-      ]);
-      return buildProblemCard({
-        payload,
-        tagDictionary: dictionary,
-        lastAttempt: attempt,
-      });
-    });
+    let payload = problemData?.peek(pid, { href });
+    let dictionary = cached("tags");
+    let attempt = null;
+    let model = null;
+    const publish = () => {
+      if (signal?.aborted || (problemData && problemData.viewerUid() !== (viewerUid || 0))) return;
+      model = buildProblemCard({ payload, tagDictionary: dictionary, lastAttempt: attempt });
+      if (model) onUpdate?.(model);
+    };
+    if (payload) publish();
+    try {
+      const detail = problemData
+        ? await problemData.load(pid, { href, signal })
+        : await load(`problem:${viewerUid || 0}:${pid}`, () =>
+            readJson(`/problem/${encodeURIComponent(pid)}`, signal));
+      if (detail?.data?.problem?.pid === pid && detail !== payload) {
+        payload = detail;
+        publish();
+      }
+    } catch (error) {
+      if (!signal?.aborted) logError(error);
+    }
+    if (!model || signal?.aborted) return model;
+    const supplements = [];
+    if (!dictionary && payload.data.problem.tags?.length)
+      supplements.push(tags().then((value) => {
+        if (!value) return;
+        dictionary = value;
+        publish();
+      }));
+    if (viewerUid)
+      supplements.push(lastAttempt(pid, viewerUid, signal, href).then((value) => {
+        if (!value) return;
+        attempt = value;
+        publish();
+      }));
+    await Promise.all(supplements);
+    return model;
   };
 
   // 洛谷說得出口的失敗原因（例如「該使用者未通過實名認證」），按目標 key 記下來。

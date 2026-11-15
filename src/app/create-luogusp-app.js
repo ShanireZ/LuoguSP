@@ -6,6 +6,7 @@ import { createProblemColorFeature } from "../features/problem-color/feature.js"
 import { createHoverCardFeatures } from "../features/hover-card/lazy-feature.js";
 import { createRestrictedContentFeature } from "../features/restricted-content/lazy-feature.js";
 import { createSettingsFeature } from "../features/settings/feature.js";
+import { createBrowserProblemResources } from "../browser/luogu-problem-resources.js";
 
 export function createBrowserStorage() {
   return Object.freeze({
@@ -59,7 +60,8 @@ export function createLuoguSPApp(options = {}) {
   const restrictedLoadingGate = options.restrictedLoadingGate || null;
   let pageLifecycle = null;
 
-  const problemColorFeature = options.problemColorFeature || createProblemColorFeature({ storage });
+  const problemResources = options.problemResources ?? createBrowserProblemResources();
+  const problemColorFeature = options.problemColorFeature || createProblemColorFeature({ storage, problemResources });
   const hiddenIntroFeature = createHiddenIntroFeature({
     storage,
     nativeIntroAdapter: options.hiddenIntroNativeAdapter,
@@ -68,6 +70,7 @@ export function createLuoguSPApp(options = {}) {
   });
   const ideBatchFeature = createIdeBatchFeature({
     storage,
+    problemData: problemResources?.data,
     idePreparationAdapter: options.idePreparationAdapter,
   });
   const restrictedContentFeature = createRestrictedContentFeature({
@@ -78,6 +81,7 @@ export function createLuoguSPApp(options = {}) {
   });
   const hoverCardFeatures = createHoverCardFeatures({
     storage,
+    problemData: problemResources?.data,
     loadBundle: options.hoverCardLoadBundle,
     fetchPage: options.hoverCardFetchPage,
   });
@@ -102,6 +106,7 @@ export function createLuoguSPApp(options = {}) {
     logError: (id, error) =>
       console.error(`LuoguSP lifecycle ${id}:`, error),
   });
+  if (problemResources) pageLifecycle.register(problemResources.observer);
   pageLifecycle.register(settingsFeature);
   configurableFeatures.forEach((feature) =>
     pageLifecycle.register(feature),

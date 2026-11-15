@@ -45,7 +45,7 @@ export function buildTagDictionary(payload) {
   });
 }
 
-// 上次嘗試：來自舊版 `/record/list` 頁面的 `_feInjection.currentData.records`。
+// 上次嘗試來自記錄列表的 Lentille 資料。
 // ★ 不能用 problem detail 的 `lastCodeAt` 代替 —— 那是 IDE 裡最後保存程式碼的時間，
 //   不是最後一次提交（兩者數值可能恰好相同，語義不同）。
 export function pickLastAttempt(records) {

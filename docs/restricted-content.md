@@ -25,6 +25,9 @@ establish the current account's privileges or personal state.
 - Saver workflow/comment-refresh requests update the archive. They do not
   interact as the current Luogu account. Follow task completion and freshness
   signals rather than treating acceptance as refreshed content.
+- A newly accepted archive workflow checks for saved content after 3 seconds,
+  then backs off to 6- and 12-second intervals with the existing 45-second
+  cumulative wait budget.
 - Keep archived paste fallback read-only; do not invent interaction controls.
 
 The examined protocol baseline includes the

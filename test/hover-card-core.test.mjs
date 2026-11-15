@@ -18,7 +18,6 @@ import {
 } from "../src/features/hover-card/follow-action.js";
 import {
   createHoverCardSources,
-  parseLegacyInjection,
 } from "../src/features/hover-card/sources.js";
 
 function manualClock(start = 1_800_000_000_000) {
@@ -523,14 +522,6 @@ test("同一用户的写请求串行化", async () => {
 });
 
 // ---- 資料源 ----
-test("旧版页面的 _feInjection 能解出来", () => {
-  const payload = { currentData: { records: { result: [{ id: 1, submitTime: 2 }] } } };
-  const html = `<script>window._feInjection = JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(payload))}"))</script>`;
-  assert.deepEqual(parseLegacyInjection(html).currentData.records.result[0].id, 1);
-  assert.equal(parseLegacyInjection("<html></html>"), null);
-  assert.equal(parseLegacyInjection(null), null);
-});
-
 function sourceHarness(routes) {
   const calls = [];
   const clock = manualClock();

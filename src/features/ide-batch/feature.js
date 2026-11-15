@@ -7,10 +7,12 @@ import {
 } from "./result-view.js";
 import { createIdeBatchRunner } from "./runner.js";
 import { IDE_BATCH_STYLE } from "./style.js";
+import { observeIdeOutput } from "./output-observer.js";
 
 export function createIdeBatchFeature({
   storage,
   idePreparationAdapter,
+  problemData,
 }) {
   const SELECTORS = {
     ideToolbar: ".ide-toolbar",
@@ -20,7 +22,6 @@ export function createIdeBatchFeature({
     ideTextarea: "textarea.ide-textarea",
     ideSampleBlock: ".io-sample-block",
     cmContent: ".cm-content",
-    lentilleContext: "script#lentille-context",
   };
   const injectStyle = () => {
     if (document.getElementById("luogusp-ide-style")) return;
@@ -36,8 +37,8 @@ export function createIdeBatchFeature({
   // 結果從輸出面板 DOM 捕獲（結果經頁面常駐 WS 推送，網路層拿不到——勿改走攔截）。
   // 錨點與配色均來自 2026-07 洛谷 columba IDE 的真實頁面觀測。
   // ============================================================
-  function ideToolbarByTitle(title) {
-    for (const tb of document.querySelectorAll(SELECTORS.ideToolbar)) {
+  function ideToolbarByTitle(title, root = document) {
+    for (const tb of root.querySelectorAll(SELECTORS.ideToolbar)) {
       const t = tb.querySelector(SELECTORS.ideToolbarText);
       if (t && t.textContent.trim() === title) return tb;
     }
@@ -60,36 +61,18 @@ export function createIdeBatchFeature({
     );
   }
 
-  function lentilleProblem() {
-    try {
-      const el = document.querySelector(SELECTORS.lentilleContext);
-      if (!el) return null;
-      const json = JSON.parse(el.textContent);
-      return (json && json.data && json.data.problem) || null;
-    } catch (e) {
-      return null;
-    }
-  }
   function currentPid() {
     const m = location.pathname.match(/^\/problem\/([A-Za-z0-9_]+)/);
     return m ? m[1] : "";
   }
   async function getIdeSamples(signal) {
     const pid = currentPid();
-    if (!pid) return null;
-    const p = lentilleProblem();
-    if (p && p.pid === pid && Array.isArray(p.samples)) return p.samples;
-    // SPA 換題後 lentille-context 滯留舊題（真機實測）→ 新版內容介面備援。
-    // 注意：舊 `?_contentOnly=1` 在 columba 頁面已死（回傳整頁 HTML），
-    // 正確姿勢是帶 x-lentille-request 頭（真機實測 2026-07-22）。
+    if (!pid || !problemData) return null;
+    const href = location.href;
+    const samples = problemData.peek(pid, { href })?.data.problem.samples;
+    if (samples) return samples;
     try {
-      const res = await fetch(`/problem/${pid}`, {
-        headers: { "x-lentille-request": "content-only" },
-        signal,
-      });
-      const json = await res.json();
-      const prob = json && json.data && json.data.problem;
-      if (prob && Array.isArray(prob.samples)) return prob.samples;
+      return (await problemData.load(pid, { href, signal }))?.data.problem.samples ?? null;
     } catch (e) {
       if (!signal || !signal.aborted)
         console.error("LuoguSP ide samples:", e);
@@ -180,12 +163,13 @@ export function createIdeBatchFeature({
       ideSubmitWaiter = { runId, resolve: fn };
     });
   }
-  function outputParts() {
-    const tb = ideToolbarByTitle("输出");
+  function outputParts(root) {
+    const tb = ideToolbarByTitle("输出", root);
     if (!tb) return null;
     const actions = tb.querySelector(SELECTORS.ideToolbarActions);
     const spans = actions ? [...actions.querySelectorAll("span")] : [];
     return {
+      panel: tb.parentElement,
       pill: spans.find((s) => !s.classList.contains("run-result")) || null,
       rr: actions ? actions.querySelector(SELECTORS.ideRunResult) : null,
       textarea: tb.parentElement
@@ -193,59 +177,40 @@ export function createIdeBatchFeature({
         : null,
     };
   }
-  // 完成錨點：膠囊 存在→消失→重現（實測清空 300~560ms、結果 1~3.5s）
-  // 注意：此處不看 stopReq——設計口徑是「當前組跑完即停」，停止只在組間生效
-  async function waitIdePill(
-    present,
-    timeoutMs,
-    isCurrent = () => true,
-    wait,
-  ) {
-    const t0 = Date.now();
-    while (Date.now() - t0 < timeoutMs) {
-      if (!isCurrent()) return null;
-      const parts = outputParts();
-      if (!parts) return null; // IDE 已卸載
-      if (!!parts.pill === present) return parts.pill || true;
-      if (!(await wait(150))) return null;
-    }
-    return null;
-  }
-
-  async function runOneSample(runBtn, runId, drive, isCurrent, wait) {
+  async function runOneSample(runBtn, { runId, drive, isCurrent, wait, signal }) {
+    let output;
+    const submit = (parts) => {
+      const root = parts.panel.parentElement || parts.panel;
+      output = observeIdeOutput({
+        root, readParts: () => outputParts(root), previousPill: parts.pill, signal, isCurrent,
+      });
+      const submitP = waitIdeSubmit(10000, runId);
+      drive(() => runBtn.click());
+      return submitP;
+    };
     const before = outputParts();
     if (!before) return { verdict: "UKE", note: "IDE 面板不存在" };
-    const hadPill = !!before.pill;
-    let submitP = waitIdeSubmit(10000, runId);
-    drive(() => runBtn.click());
-    let status = await submitP;
-    if (status === 429) {
-      if (!(await wait(3000))) return { verdict: "UKE", note: "页面已切换" };
-      if (!isCurrent()) return { verdict: "UKE", note: "页面已切换" };
-      submitP = waitIdeSubmit(10000, runId);
-      drive(() => runBtn.click());
-      status = await submitP;
+    try {
+      let status = await submit(before);
+      if (status === 429) {
+        output.dispose();
+        if (!(await wait(3000)) || !isCurrent()) return { verdict: "UKE", note: "页面已切换" };
+        const parts = outputParts();
+        if (!parts) return { verdict: "UKE", note: "IDE 面板不存在" };
+        status = await submit(parts);
+      }
+      if (status == null || status < 200 || status >= 300)
+        return {
+          verdict: "UKE",
+          note: status == null ? "未观测到提交请求" : `提交失败 HTTP ${status}`,
+        };
+      const { kind, ...result } = await output.wait();
+      if (kind === "result") return result;
+      if (kind === "uncleared") return { verdict: "UKE", note: "旧结果未清空，疑似运行未开始" };
+      return { verdict: "UKE", note: kind === "cancelled" ? "页面已切换" : "30s 未返回结果" };
+    } finally {
+      output?.dispose();
     }
-    if (status == null || status < 200 || status >= 300)
-      return {
-        verdict: "UKE",
-        note: status == null ? "未观测到提交请求" : `提交失败 HTTP ${status}`,
-      };
-    if (
-      hadPill &&
-      (await waitIdePill(false, 5000, isCurrent, wait)) === null
-    )
-      return { verdict: "UKE", note: "旧结果未清空，疑似运行未开始" };
-    const pill = await waitIdePill(true, 30000, isCurrent, wait);
-    if (!pill || pill === true)
-      return { verdict: "UKE", note: "30s 未返回结果" };
-    const parts = outputParts();
-    return {
-      verdict: (pill.textContent || "").trim() || "UKE",
-      pillStyle: pill.getAttribute("style") || "",
-      detail: parts.rr ? parts.rr.textContent.trim() : "",
-      output: parts.textarea ? parts.textarea.value : "",
-    };
   }
 
   // 提示狀態機搬到了 batch-hint.js（那邊記著它為什麼必須恢復成固定文案）。
@@ -640,13 +605,7 @@ export function createIdeBatchFeature({
     },
     runSample: async (context, index, task) => {
       try {
-        return await runOneSample(
-          context.runButtons[index],
-          task.runId,
-          task.drive,
-          task.isCurrent,
-          task.wait,
-        );
+        return await runOneSample(context.runButtons[index], task);
       } catch (error) {
         cancelIdeSubmitWaiter(task.runId);
         throw error;

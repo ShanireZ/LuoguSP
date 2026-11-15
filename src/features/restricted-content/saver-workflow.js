@@ -130,8 +130,11 @@ export function createSaverWorkflow(config, policy) {
       if (created.kind !== "accepted") return { ...created, stage: "create" };
       if (options && typeof options.onAccepted === "function")
         options.onAccepted();
-      for (let attempt = 0; attempt < pollAttempts; attempt++) {
-        if (!(await pause(pollIntervalMs, signal)))
+      let remainingWait = pollAttempts * pollIntervalMs;
+      let interval = pollIntervalMs;
+      for (let attempt = 0; attempt < pollAttempts && remainingWait > 0; attempt++) {
+        const delay = Math.min(interval, remainingWait);
+        if (!(await pause(delay, signal)))
           return {
             ...unavailableFromError({
               kind: "cancelled",
@@ -139,6 +142,8 @@ export function createSaverWorkflow(config, policy) {
             }),
             stage: "poll",
           };
+        remainingWait -= delay;
+        interval = Math.min(interval * 2, pollIntervalMs * 4);
         const result = await lookupRaw(type, id, signal);
         if (result.kind === "archived") return result;
         if (result.kind === "missing") continue;

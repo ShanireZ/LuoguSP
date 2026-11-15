@@ -1,17 +1,22 @@
 import { createBrowserStorage, createLuoguSPApp } from "../app/create-luogusp-app.js";
 import { createProblemColorFeature } from "../features/problem-color/feature.js";
+import { createBrowserProblemResources } from "../browser/luogu-problem-resources.js";
 
 export function runLuoguSP(restrictedLoadingGate, options = {}) {
   const storage = options.storageAdapter || createBrowserStorage();
-  const problemColorFeature = createProblemColorFeature({ storage });
+  const problemResources = createBrowserProblemResources();
+  const problemColorFeature = createProblemColorFeature({ storage, problemResources });
   // Observe parser-created nodes at document-start. The other features still
   // wait for DOMContentLoaded; the lifecycle then adopts this same instance.
   let disposeEarly = null;
+  let stopProblemObserver;
   try {
+    stopProblemObserver = problemResources?.observer.mount();
     const enabled = !storage.has(problemColorFeature.storageKey) || problemColorFeature.enabled();
     if (document.readyState === "loading" && enabled)
       disposeEarly = problemColorFeature.mount({ isCurrent: () => true });
   } catch (error) {
+    stopProblemObserver?.();
     restrictedLoadingGate.release();
     throw error;
   }
@@ -21,10 +26,12 @@ export function runLuoguSP(restrictedLoadingGate, options = {}) {
         restrictedLoadingGate,
         ...options,
         storageAdapter: storage,
+        problemResources,
         problemColorFeature,
       }).bootstrapBrowser();
     } catch (error) {
       if (disposeEarly) disposeEarly();
+      stopProblemObserver?.();
       restrictedLoadingGate.release();
       throw error;
     }

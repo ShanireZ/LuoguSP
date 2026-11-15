@@ -112,7 +112,7 @@ export function createGetRequestScheduler(config) {
     const index = queue.indexOf(job);
     if (index === -1) return;
     queue.splice(index, 1);
-    inflight.delete(job.url);
+    inflight.delete(job.key);
     job.reject(abortError());
     if (queue.length === 0 && wakeTimer !== null) {
       clock.clearTimeout(wakeTimer);
@@ -146,16 +146,17 @@ export function createGetRequestScheduler(config) {
   const text = (url, options) => {
     const signal = options?.signal;
     if (disposed || signal?.aborted) return Promise.reject(abortError());
-    let job = inflight.get(url);
+    const key = options?.key ?? url;
+    let job = inflight.get(key);
     if (!job) {
-      job = { url, retries: 0, consumers: 0 };
+      job = { url, key, retries: 0, consumers: 0 };
       job.promise = new Promise((resolve, reject) => {
         job.resolve = resolve;
         job.reject = reject;
       }).finally(() => {
-        if (inflight.get(url) === job) inflight.delete(url);
+        if (inflight.get(key) === job) inflight.delete(key);
       });
-      inflight.set(url, job);
+      inflight.set(key, job);
       queue.push(job);
     }
     const result = attachSignal(job, signal);

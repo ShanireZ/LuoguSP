@@ -32,7 +32,7 @@ export function createHoverCardFeature(config) {
   // ★ 設定項的身分（id/key/label）在**薄殼**手裡，不在這裡 —— 這個塊只負責幹活。
   //   `isEnabled(kind)` 是薄殼現問的：owner 把開關拆成了題目卡與使用者卡兩個，
   //   改開關要**立刻生效**，不能靠重掛。
-  const { fetchPage, isEnabled = () => true } = config || {};
+  const { fetchPage, problemData, isEnabled = () => true } = config || {};
 
   const clock = {
     now: () => Date.now(),
@@ -64,6 +64,7 @@ export function createHoverCardFeature(config) {
 
     const sources = createHoverCardSources({
       fetchPage: (path, signal, init) => fetchPage(path, signal, init),
+      problemData,
       clock,
       logError: (error) => console.error("LuoguSP hover card:", error),
     });
@@ -86,6 +87,7 @@ export function createHoverCardFeature(config) {
 
     // 當前正在展示的目標（由 hover-intent 決定），以及它的錨點矩形。
     let shown = null;
+    let openController;
     const targets = new Map();
     // ★ owner 要求屏蔽洛谷原生的題號懸停。原生那個就是 `.pid[title]` 上的 title 屬性
     //   （problem-color 的選擇器就叫這個名字）觸發的瀏覽器浮泡 —— 我們的卡片一接管，
@@ -153,45 +155,51 @@ export function createHoverCardFeature(config) {
     const draw = async (key) => {
       const target = targets.get(key);
       if (!target) return;
-      const viewer = readViewerUid(document, window);
-      const model =
-        target.kind === "problem"
-          ? await sources.problem(target.pid, viewer)
-          : await sources.user(target.uid);
-      // 等資料的過程中滑鼠可能已經走了 —— 拿到了也不許再畫。
-      if (!shown || shown.key !== key) return;
-      card.textContent = "";
-      if (!model) {
-        card.appendChild(
-          Object.assign(document.createElement("div"), {
-            className: "luogusp-hc-muted",
-            // 洛谷自己說了原因就照搬（例如「該使用者未通過實名認證」），
-            // 說不出原因才退回這句籠統的。★ 不編原因。
-            textContent: sources.lastError(target.key) || "拿不到这条数据。",
-          }),
-        );
-      } else if (model.kind === "problem") {
-        card.appendChild(
-          // ★ 展開標籤會讓卡片長高，必須就地重定位 —— 否則向下彈的卡會頂出視口。
-          renderProblemCard(model, { origin: location.origin, onResize: position }),
-        );
+      const viewer = problemData?.viewerUid() ?? readViewerUid(document, window);
+      const controller = openController;
+      const isCurrent = () => !controller?.signal.aborted && shown?.key === key;
+      let displayed;
+      const display = (model) => {
+        if (!isCurrent() || displayed === model) return;
+        displayed = model;
+        const tagsExpanded = !!card.querySelector(".luogusp-hc-taglist:not([hidden])");
+        card.textContent = "";
+        if (!model) {
+          card.appendChild(
+            Object.assign(document.createElement("div"), {
+              className: "luogusp-hc-muted",
+              textContent: sources.lastError(target.key) || "拿不到这条数据。",
+            }),
+          );
+        } else if (model.kind === "problem") {
+          card.appendChild(
+            renderProblemCard(model, { origin: location.origin, onResize: position, tagsExpanded }),
+          );
+        } else {
+          card.appendChild(
+            renderUserCard(model, {
+              origin: location.origin,
+              viewerUid: viewer,
+              onResize: position,
+              onFollow: viewer ? (next) => follow.toggle(next) : null,
+              onBlock: viewer ? (next) => follow.block(next) : null,
+              followBusy: follow.isBusy(model.uid),
+            }),
+          );
+        }
+        finalizeCard(card);
+        position();
+      };
+      if (target.kind === "problem") {
+        const href = target.anchor.pathname?.replace(/\/$/, "") === `/problem/${target.pid}`
+          ? target.anchor.href : undefined;
+        const model = await sources.problem(target.pid, viewer, controller?.signal, { href, onUpdate: display });
+        if (model || displayed === undefined) display(model);
       } else {
-        card.appendChild(
-          renderUserCard(model, {
-            origin: location.origin,
-            viewerUid: viewer,
-            onResize: position,
-            // 匿名訪客不給寫入按鈕：點了必然被洛谷拒。
-            onFollow: viewer ? (next) => follow.toggle(next) : null,
-            onBlock: viewer ? (next) => follow.block(next) : null,
-            followBusy: follow.isBusy(model.uid),
-          }),
-        );
+        display(await sources.user(target.uid));
       }
-      // 插入之後才量得到「簽名有沒有溢出兩行」。
-      // ★ 先摘掉載入態：這一次定位要用內容的真高，並沿用開卡時定的那一邊。
+      if (!isCurrent()) return;
       loading = false;
-      finalizeCard(card);
       position();
     };
 
@@ -200,6 +208,7 @@ export function createHoverCardFeature(config) {
       onOpen: (key) => {
         shown = targets.get(key) || null;
         if (!shown) return;
+        openController = new AbortController();
         loading = true;
         openSide = null;
         card.textContent = "";
@@ -213,6 +222,8 @@ export function createHoverCardFeature(config) {
         draw(key);
       },
       onClose: () => {
+        openController?.abort();
+        openController = null;
         shown = null;
         loading = false;
         openSide = null;

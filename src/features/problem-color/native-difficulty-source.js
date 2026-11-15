@@ -1,4 +1,4 @@
-import { PID_PATTERN } from "./identity.js";
+import { PID_PATTERN, isScopedProblemUrl } from "./identity.js";
 import { DIFFICULTY_TIERS } from "../../core/luogu-difficulty.js";
 import { asLentillePage, collectDifficultyBatches, readLentillePage } from "./lentille-harvest.js";
 
@@ -53,6 +53,7 @@ export function createNativeDifficultySource({
   XMLHttpRequest,
   origin,
   now = () => Date.now(),
+  onPage = () => {},
 }) {
   let initialPage;
   let initial = null;
@@ -61,20 +62,22 @@ export function createNativeDifficultySource({
   const recordPages = new Map();
   let requestOrder = 0;
   const supportedPath = /^\/(?:problem\/(?:list|[A-Za-z0-9_]+)|training\/\d+|user\/\d+\/practice)\/?$/;
-  const pageUrl = (raw) => {
+  const pageUrl = (raw, initial = false) => {
     try {
       const url = new URL(raw, origin);
       return url.origin === origin &&
-        (supportedPath.test(url.pathname) || RECORD_PATH.test(url.pathname)) ? url : null;
+        (initial || supportedPath.test(url.pathname) || RECORD_PATH.test(url.pathname)) ? url : null;
     } catch { return null; }
   };
-  const initialUrl = pageUrl(document.URL);
+  const initialUrl = pageUrl(document.URL, true);
+  const initialAt = now();
   const harvest = () => {
     const page = readLentillePage(document);
     if (page !== initialPage) {
       initialPage = page;
-      initial = page ? snapshot(page.data, now()) : null;
+      initial = page && !isScopedProblemUrl(initialUrl) ? snapshot(page.data, now()) : null;
       initialRecord = recordSnapshot(page, initialUrl);
+      if (page && initialUrl) onPage(page, initialUrl, initialAt);
     }
     return [initial, latest].filter(Boolean);
   };
@@ -82,7 +85,7 @@ export function createNativeDifficultySource({
     const record = recordPages.get(path) || initialRecord;
     return record?.path === path ? record.problems.get(`${id}:${pid}`) : undefined;
   };
-  const subscribe = (accept) => {
+  const observe = (accept) => {
     const proto = XMLHttpRequest?.prototype;
     if (!proto) return () => {};
     const rawOpen = proto.open;
@@ -114,10 +117,11 @@ export function createNativeDifficultySource({
               (!xhr.responseType || xhr.responseType === "text") ? JSON.parse(xhr.responseText) : null;
             const page = asLentillePage(payload);
             if (!page) return;
-            const batch = snapshot(page.data, request.at);
+            onPage(page, url, request.at);
+            const batch = isScopedProblemUrl(url) ? null : snapshot(page.data, request.at);
             const record = recordSnapshot(page, url);
             let updated = false;
-            if (batch.problems.length && (!latest || request.order > latest.order)) {
+            if (batch?.problems.length && (!latest || request.order > latest.order)) {
               latest = { ...batch, order: request.order };
               updated = true;
             }
@@ -147,6 +151,21 @@ export function createNativeDifficultySource({
       for (const clean of pending) clean();
       if (proto.open === open) proto.open = rawOpen;
       if (proto.send === send) proto.send = rawSend;
+    };
+  };
+  const listeners = new Set();
+  let stopObserving;
+  const subscribe = (listener) => {
+    listeners.add(listener);
+    if (!stopObserving) stopObserving = observe(() => {
+      for (const notify of listeners) notify();
+    });
+    return () => {
+      listeners.delete(listener);
+      if (!listeners.size && stopObserving) {
+        stopObserving();
+        stopObserving = null;
+      }
     };
   };
   return Object.freeze({ harvest, subscribe, recordDifficulty });

@@ -365,13 +365,33 @@ test("Saver Workflow continues polling after transient network errors", async ()
   await flushMicrotasks();
   await clock.advance(3000);
   assert.equal(gets, 2);
-  await clock.advance(3000);
+  await clock.advance(5999);
+  assert.equal(gets, 2);
+  await clock.advance(1);
   assert.deepEqual(await result, {
     kind: "archived",
     data: { id: "abc" },
   });
   assert.equal(accepted, 1);
   assert.equal(gets, 3);
+});
+
+test("Saver Workflow backs off to five follow-up queries within the existing wait budget", async () => {
+  const clock = new FakeClock();
+  const queries = [];
+  const workflow = createSaverWorkflow({
+    transport: {
+      get: async () => { queries.push(clock.nowMs); return { code: 404 }; },
+      post: async () => ({ code: 202 }),
+    },
+    clock: clock.adapter(),
+  });
+  const result = workflow.ensureArchived("article", "abc");
+  await flushMicrotasks();
+  await clock.advance(45000);
+  assert.deepEqual(queries, [0, 3000, 9000, 21000, 33000, 45000]);
+  assert.equal((await result).category, "timeout");
+  assert.equal(clock.timers.size, 0);
 });
 
 test("Saver Workflow stops polling on explicit business error and cancels timers", async () => {

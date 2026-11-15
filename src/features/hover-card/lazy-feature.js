@@ -76,6 +76,7 @@ export function createHoverCardFeatures(config) {
     storage,
     loadBundle,
     fetchPage,
+    problemData,
     logError = (error) => console.error("LuoguSP hover card bundle:", error),
   } = config || {};
 
@@ -104,6 +105,7 @@ export function createHoverCardFeatures(config) {
           feature = create({
             storage,
             fetchPage,
+            problemData,
             isEnabled: (kind) => active.has(kind),
           });
           return feature;

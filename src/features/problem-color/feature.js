@@ -1,12 +1,14 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
-import { createGetRequestScheduler } from "../../core/get-request-scheduler.js";
 import { DIFFICULTY_COLORS, DIFFICULTY_COLOR_NAMES } from "../../core/luogu-difficulty.js";
-import { createProblemIdentityResolver } from "./identity.js";
-import { createNativeDifficultySource, recordRouteId } from "./native-difficulty-source.js";
+import { createProblemIdentityResolver, isScopedProblemUrl } from "./identity.js";
+import { recordRouteId, validDifficulty } from "./native-difficulty-source.js";
+import { createBrowserProblemResources } from "../../browser/luogu-problem-resources.js";
 import { createProblemPipeline } from "./pipeline.js";
 import { isProblemAnchorColorable } from "./practice-policy.js";
 
-export function createProblemColorFeature({ storage }) {
+export function createProblemColorFeature({
+  storage, problemResources = createBrowserProblemResources(),
+}) {
   // ★ 色表**不在這裡** —— 唯一一份在 `core/luogu-difficulty.js`。
   //   它以前在這裡另存了一份，和懸停卡那份同時錯了兩檔（2.14.1 修正）。
   const FALLBACK_COLOR = DIFFICULTY_COLORS[0];
@@ -16,25 +18,6 @@ export function createProblemColorFeature({ storage }) {
     voidAnchor: "a[data-v-bade3303][data-v-4842157a]",
     standalonePid: ".pid[title]",
   };
-
-  // ============================================================
-  // 題號顯示難度顏色
-  // ============================================================
-  // 單佇列 FIFO：300ms 發起間隔、最多 3 並行、15s 超時。
-  const limiter = createGetRequestScheduler({
-    fetch: (url, init) => fetch(url, url.endsWith("?_contentOnly=1")
-      ? { ...init, headers: { "x-lentille-request": "content-only" } }
-      : init),
-    clock: {
-      now: () => Date.now(),
-      setTimeout: (fn, ms) => setTimeout(fn, ms),
-      clearTimeout: (id) => clearTimeout(id),
-    },
-    launchGap: 300,
-    concurrency: 3,
-    timeoutMs: 15000,
-    maxRetries: 1,
-  });
 
   const PROBLEM_ANCHOR_SELECTOR = [
     'a[href*="/problem/"]',
@@ -67,7 +50,10 @@ export function createProblemColorFeature({ storage }) {
         const name = DIFFICULTY_COLOR_NAMES[difficulty];
         return { ...identity, recordColor: `var(--lfe-color--${name}, ${diffColor(difficulty)})` };
       }
-      return hasNativeColor(anchor, identity.pid) ? null : identity;
+      if (hasNativeColor(anchor, identity.pid)) return null;
+      if (identity.href && isScopedProblemUrl(new URL(identity.href)))
+        return { ...identity, scoped: true };
+      return identity;
     },
   });
 
@@ -122,12 +108,7 @@ export function createProblemColorFeature({ storage }) {
     delete anchor.dataset.luoguspPid;
   };
 
-  const nativeDifficulty = typeof document === "undefined" ? null :
-    createNativeDifficultySource({
-      document,
-      XMLHttpRequest: globalThis.XMLHttpRequest,
-      origin: location.origin,
-    });
+  const nativeDifficulty = problemResources?.native;
 
   function getRecordDifficulty(anchor, record, pid) {
     const isList = record === "list";
@@ -146,7 +127,7 @@ export function createProblemColorFeature({ storage }) {
   }
 
   const problemPipeline =
-    typeof document === "undefined"
+    !problemResources
       ? null
       : createProblemPipeline({
     identity: problemAnchorIdentity,
@@ -155,7 +136,14 @@ export function createProblemColorFeature({ storage }) {
         `${location.origin}${location.pathname}${location.search}`,
     },
     difficultySource: {
-      text: (path, options) => limiter.text(path, options),
+      peek: ({ pid, href }) =>
+        problemResources.data.peek(pid, { href, refreshPage: false })?.data.problem.difficulty,
+      lookup: async ({ pid, href }, signal) => {
+        const { data } = problemResources;
+        const cached = data.peek(pid, { href })?.data.problem.difficulty;
+        if (validDifficulty(cached)) return cached;
+        return (await data.load(pid, { href, signal }))?.data.problem.difficulty;
+      },
       // 練習頁只收“嘗試過的題目”；“已通過”已按難度分組，既不著色也不入快取。
       // 評測記錄在學術模式補色時直接讀當頁資料，不使用通用題目快取。
       // 列表裡可重用的難度仍收進快取，供其他頁面的題號使用。

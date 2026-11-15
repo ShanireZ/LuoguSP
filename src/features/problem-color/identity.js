@@ -13,6 +13,8 @@
 //                                 帶著同源 Cookie 打到一個完全不相干的介面。
 //   兩條都是真機可建構的，不是理論風險。字元集守衛把它們整類關死。
 export const PID_PATTERN = /^[A-Za-z0-9_]+$/;
+export const isScopedProblemUrl = (url) =>
+  Boolean(url?.searchParams.get("contestId") || url?.searchParams.get("lang"));
 
 export function createProblemIdentityResolver(config) {
   const {
@@ -76,6 +78,7 @@ export function createProblemIdentityResolver(config) {
         return {
           pid: title,
           kind: "standalone",
+          href: url.href,
           key: `standalone:${url.href}`,
         };
     }
@@ -116,7 +119,7 @@ export function createProblemIdentityResolver(config) {
     const path = url.pathname.match(/^\/problem\/([A-Za-z0-9_]+)\/?$/);
     const pid = path && path[1];
     return isProblemId(pid) && anchorShowsPid(target, pid)
-      ? { pid, kind: "problem", key: `problem:${url.href}` }
+      ? { pid, kind: "problem", href: url.href, key: `problem:${url.href}` }
       : null;
   };
 

@@ -48,6 +48,7 @@ test("Problem Identity recognizes normal, AT, forum and void links", () => {
     {
       pid: "P1000",
       kind: "problem",
+      href: "https://www.luogu.com.cn/problem/P1000",
       key: "problem:https://www.luogu.com.cn/problem/P1000",
     },
   );
@@ -129,6 +130,7 @@ test("Problem Identity recognizes a standalone pid with a matching row link", ()
   assert.deepEqual(resolver.resolve(standalonePid("P1001").target), {
     pid: "P1001",
     kind: "standalone",
+    href: "https://www.luogu.com.cn/problem/P1001",
     key: "standalone:https://www.luogu.com.cn/problem/P1001",
   });
 });

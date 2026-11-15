@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
+import { observeIdeOutput } from "../src/features/ide-batch/output-observer.js";
 import {
   IDE_BATCH_LABEL,
   createBatchButtonHint,
@@ -29,6 +31,48 @@ test("bootstrap is explicit and idempotent", () => {
   app.bootstrapBrowser();
   app.bootstrapBrowser();
   assert.deepEqual(calls, ["initialize", "start"]);
+});
+
+test("IDE output captures a replacement result before the submission response and detaches", async () => {
+  const dom = new JSDOM('<main><span>旧结果</span><textarea></textarea></main>');
+  const root = dom.window.document.querySelector("main");
+  const clock = new FakeClock();
+  const controller = new AbortController();
+  const readParts = () => ({
+    pill: root.querySelector("span"),
+    textarea: root.querySelector("textarea"),
+  });
+  const output = observeIdeOutput({
+    root, readParts, previousPill: readParts().pill, signal: controller.signal,
+    isCurrent: () => true, clock: clock.adapter(), MutationObserverImpl: dom.window.MutationObserver,
+  });
+  const resultPill = dom.window.document.createElement("span");
+  resultPill.textContent = "AC";
+  readParts().pill.replaceWith(resultPill);
+  readParts().textarea.value = "15";
+  await flushMicrotasks();
+  assert.deepEqual(await output.wait(), {
+    kind: "result", verdict: "AC", pillStyle: "", detail: "", output: "15",
+  });
+  assert.equal(clock.timers.size, 0);
+});
+
+test("IDE output waits without polling and cancels its timeout on navigation", async () => {
+  const dom = new JSDOM("<main></main>");
+  const root = dom.window.document.querySelector("main");
+  const clock = new FakeClock();
+  const controller = new AbortController();
+  let reads = 0;
+  const output = observeIdeOutput({
+    root, readParts: () => { reads++; return { pill: null }; }, signal: controller.signal,
+    isCurrent: () => true, clock: clock.adapter(), MutationObserverImpl: dom.window.MutationObserver,
+  });
+  const result = output.wait();
+  await clock.advance(15000);
+  assert.equal(reads, 1);
+  controller.abort();
+  assert.deepEqual(await result, { kind: "cancelled" });
+  assert.equal(clock.timers.size, 0);
 });
 
 test("IDE Batch Runner prevents double start throughout preparing", async () => {

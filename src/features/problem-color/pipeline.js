@@ -27,12 +27,11 @@ export function createProblemPipeline(config) {
     typeof documentAdapter.applyColor !== "function"
   )
     throw new TypeError("Problem Pipeline requires a document adapter");
-  if (!difficultySource || typeof difficultySource.text !== "function")
+  if (!difficultySource || typeof difficultySource.lookup !== "function")
     throw new TypeError("Problem Pipeline requires a difficulty source");
   if (typeof colorForDifficulty !== "function")
     throw new TypeError("Problem Pipeline requires a color adapter");
 
-  const DIFFICULTY_RE = /"difficulty":\s*(\d+)/;
   // 兩種快取都在接收後 5 分鐘過期；讀取不續期，不輪詢伺服器。
   // colors = 最多 1000 條查詢結果，按寫入順序淘汰。
   // ★harvested 與它分開：整批資料是本頁自帶的 payload，不是請求結果，條數由頁面決定。
@@ -43,7 +42,6 @@ export function createProblemPipeline(config) {
   const harvestedLists = new WeakSet();
   const painted = new WeakMap();
   let coloringAnchors = new WeakMap();
-  let contentOnlySupport = null;
   let mounted = false;
   let generation = 0;
   let stopObserving = null;
@@ -109,64 +107,21 @@ export function createProblemPipeline(config) {
       harvestedLists.add(batch.source);
     }
   };
-  // ★ pid 已經過 identity.js 的字元集守衛，編碼後逐位元組不變；這裡編碼是**第二道閘**：
-  //   pid 的來源裡有頁面可控文字，一個 `#` 就能把 query 連同後半段路徑吃掉、
-  //   一個 `/` 就能把請求打到別的同源介面去（2026-08-15 實測重現，見 identity.js）。
-  //   判據壞掉時應當請求不到東西，而不是請求到別的東西。
-  const problemPath = (pid, query = "") =>
-    `/problem/${encodeURIComponent(pid)}${query}`;
-  const fetchDifficulty = async (pid, signal) => {
-    if (contentOnlySupport !== false) {
-      let text;
-      try {
-        text = await difficultySource.text(
-          problemPath(pid, "?_contentOnly=1"),
-          { signal },
-        );
-      } catch (error) {
-        if (signal.aborted) return null;
-        // 已刪除、無權訪問或尚未公開的題目都可能回傳 403/404；它們沒有可著色難度，
-        // 也不需要再請求完整頁面或汙染控制檯。
-        if (error && (error.status === 403 || error.status === 404)) return null;
-        /* 臨時網路錯誤不能永久降級 _contentOnly。 */
-      }
-      if (text != null) {
-        try {
-          const payload = JSON.parse(text);
-          const problem = payload?.data?.problem ?? payload?.currentData?.problem;
-          if (problem && typeof problem === "object") {
-            contentOnlySupport = true;
-            return (problem.pid === undefined || problem.pid === pid) &&
-              validDifficulty(problem.difficulty) ? problem.difficulty : null;
-          }
-        } catch (error) {
-          const htmlDifficulty = text.match(DIFFICULTY_RE);
-          if (htmlDifficulty && validDifficulty(Number(htmlDifficulty[1]))) {
-            contentOnlySupport = false;
-            return Number(htmlDifficulty[1]);
-          }
-        }
-      }
-    }
-    if (signal.aborted) return null;
+  const getColor = async (identity, signal) => {
+    const { pid } = identity;
+    const known = identity.scoped ? null : knownColor(pid);
+    if (known) return known.color;
+    const startedAt = clock.now();
     try {
-      const html = await difficultySource.text(problemPath(pid), { signal });
-      const match = html.match(DIFFICULTY_RE);
-      return match && validDifficulty(Number(match[1])) ? Number(match[1]) : null;
+      const difficulty = await difficultySource.lookup(identity, signal);
+      if (signal.aborted || !validDifficulty(difficulty)) return null;
+      if (identity.scoped) return colorForDifficulty(difficulty);
+      rememberColor(pid, colorForDifficulty(difficulty), startedAt);
+      return knownColor(pid)?.color || null;
     } catch (error) {
       if (!signal.aborted) logError(pid, error);
       return null;
     }
-  };
-  const getColor = async (pid, signal) => {
-    const known = knownColor(pid);
-    if (known) return known.color;
-    const startedAt = clock.now();
-    const difficulty = await fetchDifficulty(pid, signal);
-    if (signal.aborted || difficulty == null) return null;
-    const color = colorForDifficulty(difficulty);
-    rememberColor(pid, color, startedAt);
-    return knownColor(pid)?.color || null;
   };
   const colorAnchor = async (anchor, allowQueries) => {
     const controller = activeController;
@@ -193,11 +148,16 @@ export function createProblemPipeline(config) {
       apply(taskIdentity.recordColor);
       return;
     }
-    const known = knownColor(taskIdentity.pid);
+    const known = taskIdentity.scoped ? null : knownColor(taskIdentity.pid);
     // No await/timer on the native path: MutationObserver callbacks finish before
     // the next paint, including newly inserted or recycled list rows.
     if (known && (requestsReady || known === fresh(harvested, taskIdentity.pid))) {
       apply(known.color);
+      return;
+    }
+    const shared = difficultySource.peek?.(taskIdentity);
+    if (validDifficulty(shared)) {
+      apply(colorForDifficulty(shared));
       return;
     }
     // 洛谷記錄分頁會重複使用同一批錨點。先撤銷舊題號的樣式，避免新題查詢失敗時
@@ -209,7 +169,7 @@ export function createProblemPipeline(config) {
     if (routeQueries.get(anchor) === taskIdentity.key) return;
     routeQueries.set(anchor, taskIdentity.key);
     try {
-      const color = await getColor(taskIdentity.pid, controller.signal);
+      const color = await getColor(taskIdentity, controller.signal);
       const currentIdentity = identity.resolve(anchor);
       if (
         !mounted ||
@@ -223,7 +183,7 @@ export function createProblemPipeline(config) {
       )
         return;
       // A native response may have arrived while this query was in flight.
-      apply(knownColor(taskIdentity.pid)?.color || color);
+      apply((taskIdentity.scoped ? null : knownColor(taskIdentity.pid)?.color) || color);
     } finally {
       if (routeQueries.get(anchor) === taskIdentity.key)
         routeQueries.delete(anchor);

@@ -84,7 +84,7 @@ const linkButton = (text, href, extraClass) => {
 };
 
 export function renderProblemCard(card, options = {}) {
-  const { origin = "" } = options;
+  const { origin = "", tagsExpanded = false } = options;
   const box = document.createDocumentFragment();
 
   const head = el("div", "luogusp-hc-head");
@@ -130,10 +130,10 @@ export function renderProblemCard(card, options = {}) {
   if (card.tags.length) {
     const tags = el("div", "luogusp-hc-tags");
     // owner 要求：按鈕上不帶統計數字。
-    const toggle = el("button", "luogusp-hc-tagbtn", "显示标签");
+    const toggle = el("button", "luogusp-hc-tagbtn", tagsExpanded ? "隐藏标签" : "显示标签");
     toggle.type = "button";
     const list = el("div", "luogusp-hc-taglist");
-    list.hidden = true;
+    list.hidden = !tagsExpanded;
     for (const name of card.tags) list.appendChild(el("span", "luogusp-hc-tag", name));
     toggle.addEventListener("click", (event) => {
       event.preventDefault();
