@@ -48,7 +48,7 @@ export function createRestrictedDocumentBoot(config) {
     }
     const controller = createAbortController();
     activeController = controller;
-    pageAdapter.showLoader();
+    pageAdapter.showLoader("正在查询保存站…");
     const current = () =>
       currentTask === taskId &&
       !controller.signal.aborted &&
@@ -60,7 +60,7 @@ export function createRestrictedDocumentBoot(config) {
           onAccepted: () => {
             if (current())
               pageAdapter.showLoader(
-                "该内容尚未被保存站收录，已自动发起收录…",
+                "该内容尚未被保存站收录，已提交收录请求，正在等待…",
               );
           },
         });
@@ -81,6 +81,7 @@ export function createRestrictedDocumentBoot(config) {
               : archive.reason || "保存站在限定时间内未能完成收录。",
           );
         }
+        pageAdapter.showLoader("正在准备洛谷页面…");
         const prepared = await documentBuilder.prepare(
           info,
           archive.data,

@@ -207,7 +207,7 @@ export function renderProblemCard(card, options = {}) {
 const sectionKey = (section) => section.classList.contains("luogusp-hc-row")
   ? section.firstElementChild.textContent : section.classList[0];
 
-function updateSections(card, content, reuse) {
+function updateSections(card, content, reuse, onChange) {
   const sections = [...content.children];
   const keys = new Set(sections.map(sectionKey));
   const previous = new Map([...card.children].map(node => [sectionKey(node), node]));
@@ -223,10 +223,11 @@ function updateSections(card, content, reuse) {
     }
     if (node !== next) card.insertBefore(node, next);
     next = node.nextElementSibling;
+    if (node === section) onChange?.(node, existing);
   }
 }
 
-export function updateProblemCard(card, content) {
+export function updateProblemCard(card, content, fadeField) {
   updateSections(card, content, (existing, section) => {
     if (existing.classList.contains("luogusp-hc-actions")) {
       // A late best-record link must not unset focus on the problem link.
@@ -245,15 +246,28 @@ export function updateProblemCard(card, content) {
       return true;
     }
     return false;
-  });
+  }, fadeField && ((node) => {
+    if (node.classList.contains("luogusp-hc-row")) fadeField(node);
+  }));
 }
 
-export function updateUserCard(card, content, preserveActions) {
+export function updateUserCard(card, content, preserveActions, fadeField) {
   updateSections(card, content, (existing, section) => {
     if (!existing.classList.contains("luogusp-hc-userbody")) return false;
     updateSections(existing, section, (old, next) =>
       (old.classList.contains("luogusp-hc-slogan") && old.firstElementChild.isEqualNode(next.firstElementChild)) ||
       (preserveActions && old.classList.contains("luogusp-hc-actions")),
+      fadeField && ((node, previous) => {
+        if (node.classList.contains("luogusp-hc-stats")) {
+          const tiles = new Map(Array.from(previous?.children ?? [], (tile) =>
+            [tile.firstElementChild.textContent, tile],
+          ));
+          for (const tile of node.children)
+            if (!tiles.get(tile.firstElementChild.textContent)?.isEqualNode(tile)) fadeField(tile);
+        } else if (node.classList.contains("luogusp-hc-extra")) {
+          fadeField(node);
+        }
+      }),
     );
     return true;
   });

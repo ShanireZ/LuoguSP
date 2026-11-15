@@ -1,16 +1,17 @@
+import { IMAGE_UNAVAILABLE, resolveIntroImageUrl } from "./intro-image.js";
 import { renderMarkdownLite } from "./markdown-lite.js";
 
 const AUTHOR_MARKUP = {
   ALLOWED_TAGS: [
     "a", "abbr", "b", "blockquote", "br", "caption", "code", "dd", "del",
     "details", "div", "dl", "dt", "em", "h1", "h2", "h3", "h4", "h5", "h6",
-    "hr", "i", "img", "input", "ins", "kbd", "li", "mark", "ol", "p", "pre",
+    "hr", "i", "input", "ins", "kbd", "li", "mark", "ol", "p", "pre",
     "s", "samp", "small", "span", "strong", "sub", "summary", "sup", "table",
     "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
   ],
   ALLOWED_ATTR: [
-    "align", "alt", "checked", "class", "colspan", "disabled", "href", "open",
-    "rowspan", "src", "start", "title", "type",
+    "align", "checked", "class", "colspan", "disabled", "href", "open",
+    "rowspan", "start", "title", "type",
   ],
   ALLOW_ARIA_ATTR: false,
   ALLOW_DATA_ATTR: false,
@@ -54,6 +55,36 @@ function validateDependencies({ marked, sanitizer, katex, document }) {
     throw new TypeError("Invalid markdown renderer dependencies");
 }
 
+function replaceImages(content, document) {
+  // The template is inert. Even a same-origin image can redirect elsewhere,
+  // so no author image source is copied into a fetch-capable element.
+  const lastLinkByAnchor = new Map();
+  for (const image of content.querySelectorAll("img")) {
+    const alt = image.getAttribute("alt")?.trim();
+    const href = resolveIntroImageUrl(image.getAttribute("src"), document.baseURI);
+    if (!href) {
+      const fallback = document.createElement("span");
+      fallback.textContent = alt || IMAGE_UNAVAILABLE;
+      image.replaceWith(fallback);
+      continue;
+    }
+    const link = document.createElement("a");
+    link.setAttribute("href", href);
+    const title = image.getAttribute("title");
+    if (title) link.setAttribute("title", title);
+    link.textContent = alt || "打开图片";
+    const enclosing = image.closest("a");
+    if (enclosing) {
+      // Retain a linked image's original destination without nesting links.
+      image.replaceWith(document.createTextNode(alt || "图片"));
+      if (alt) link.textContent = `打开图片：${alt}`;
+      const after = lastLinkByAnchor.get(enclosing) || enclosing;
+      after.after(document.createTextNode(" "), link);
+      lastLinkByAnchor.set(enclosing, link);
+    } else image.replaceWith(link);
+  }
+}
+
 export function createMarkdownFullRenderer(dependencies) {
   const { marked, sanitizer, katex, document } = dependencies || {};
   validateDependencies({ marked, sanitizer, katex, document });
@@ -84,6 +115,7 @@ export function createMarkdownFullRenderer(dependencies) {
         if (literal !== attr.value) attr.value = literal;
       }
     }
+    replaceImages(template.content, document);
     template.innerHTML = sanitizer.sanitize(template.innerHTML, AUTHOR_MARKUP);
     for (const node of template.content.querySelectorAll("[class]")) {
       const language = node.matches("pre > code") &&
@@ -99,9 +131,6 @@ export function createMarkdownFullRenderer(dependencies) {
       link.setAttribute("target", "_blank");
       link.setAttribute("rel", "noopener noreferrer");
     }
-    for (const image of template.content.querySelectorAll("img"))
-      image.style.maxWidth = "100%";
-
     // KaTeX styles belong to generated formula fragments. Only text nodes
     // can receive those fragments, after author markup has been sanitized.
     const walker = document.createTreeWalker(template.content, 4); // SHOW_TEXT
@@ -170,6 +199,7 @@ export function createMarkdownFullRenderer(dependencies) {
         math.length = 0;
         try {
           const lite = renderMarkdownLite(markdown, {
+            document,
             katex: { renderToString(text, { displayMode }) {
               const delimiter = displayMode ? "$$" : "$";
               return hold(delimiter + text + delimiter, text, displayMode);

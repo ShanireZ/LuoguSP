@@ -1,14 +1,17 @@
 export const IDE_BATCH_STYLE = `
   .luogusp-ide-tabbar{display:flex;gap:20px;padding:0 12px;border-bottom:1px solid #e8e8e8;flex:none;}
+  .luogusp-ide-tab,.luogusp-ide-rowhead{appearance:none;background:transparent;border:0;color:inherit;font:inherit;}
   .luogusp-ide-tab{font-size:13px;color:#606266;padding:7px 2px 5px;cursor:pointer;border-bottom:2px solid transparent;}
-  .luogusp-ide-tab.on{color:#3498db;border-bottom-color:#3498db;font-weight:500;}
+  .luogusp-ide-tab[aria-selected="true"]{color:#3498db;border-bottom-color:#3498db;font-weight:500;}
   .luogusp-ide-panel{overflow:auto;flex:1 1 0;min-height:0;padding:8px 12px 12px;font-size:13px;color:#333;}
+  .luogusp-ide-tab:focus-visible,.luogusp-ide-panel:focus-visible,.luogusp-ide-rowhead:focus-visible,
+  [aria-labelledby="luogusp-ide-custom-tab"]:focus-visible,.luogusp-ide-panel .copy-button:focus-visible{outline:2px solid #1d5f91;outline-offset:-2px;}
   .luogusp-ide-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
   .luogusp-ide-title{font-weight:500;}
-  .luogusp-ide-summary{font-size:12px;color:#888;}
+  .luogusp-ide-summary{font-size:12px;color:#666;}
   .luogusp-ide-headbtns{margin-left:auto;display:flex;gap:6px;}
   .luogusp-ide-row{border:1px solid #e8e8e8;border-radius:6px;margin:0 0 8px;background:#fff;overflow:hidden;}
-  .luogusp-ide-rowhead{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;}
+  .luogusp-ide-rowhead{display:flex;align-items:center;width:100%;gap:10px;padding:8px 12px;text-align:left;cursor:pointer;}
   .luogusp-ide-rowhead:hover{background:#f7fbfe;}
   .luogusp-ide-chev{color:#999;width:10px;transition:transform .2s;}
   .luogusp-ide-row.open .luogusp-ide-chev{transform:rotate(90deg);}
@@ -28,6 +31,10 @@ export const IDE_BATCH_STYLE = `
   .luogusp-ide-empty{color:#aaa;font-style:italic;}
   .luogusp-ide-panel .code-container:hover>.copy-button{opacity:1;}
   .luogusp-ide-panel .copy-button{position:absolute;top:.3em;right:.3em;padding:.45em;display:flex;align-items:center;justify-content:center;transition:opacity .2s;opacity:0;background:transparent;border:0;border-radius:4px;cursor:pointer;color:#555;}
+  .luogusp-ide-panel .copy-button:focus-visible{opacity:1;transition:none;}
   .luogusp-ide-panel .copy-button.copied{color:#52c41a;}
   .luogusp-ide-panel .copy-icon{width:1em;height:1em;}
+  @media (prefers-reduced-motion:reduce){
+    .luogusp-ide-chev,.luogusp-ide-panel .copy-button{transition:none;}
+  }
 `;

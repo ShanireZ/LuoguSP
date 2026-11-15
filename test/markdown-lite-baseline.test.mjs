@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { JSDOM } from "jsdom";
 import { renderMarkdownLite } from "../src/rendering/markdown-lite.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,6 +23,7 @@ function sourceFor(fixture) {
 }
 
 test("MarkdownLite preserves the hidden-intro baseline and blocks active HTML", () => {
+  const { document } = new JSDOM("<!doctype html>", { url: "https://www.luogu.com.cn/user/42" }).window;
   const originalKatex = globalThis.katex;
   globalThis.katex = {
     renderToString(formula, { displayMode }) {
@@ -32,6 +34,7 @@ test("MarkdownLite preserves the hidden-intro baseline and blocks active HTML", 
   try {
     for (const fixture of fixtures.cases) {
       const html = renderMarkdownLite(sourceFor(fixture), {
+        document,
         katex: globalThis.katex,
       });
       for (const expected of fixture.expectContains || [])

@@ -89,7 +89,7 @@ export function buildColumbaDocument({
 }) {
   return (
     `<!DOCTYPE html><html lang="zh-CN" class="no-js"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<meta name="csrf-token" content="${csrf}">` +
     `<title>${title}</title>` +
     `<link rel="icon" href="https://fecdn.luogu.com.cn/favicon.ico">` +

@@ -1,4 +1,7 @@
+import { IMAGE_UNAVAILABLE, resolveIntroImageUrl } from "./intro-image.js";
+
 export function renderMarkdownLite(md, options = {}) {
+  const { document } = options;
   const esc = (source) =>
     source.replace(
       /[&<>"]/g,
@@ -33,6 +36,13 @@ export function renderMarkdownLite(md, options = {}) {
   const restore = (source) => source.replace(spanMarker, (_, index) => spans[index]);
   const getAttribute = (tag, pattern) => (tag.match(pattern) || [])[1] || "";
   const titleAttribute = (title) => title ? ` title="${esc(title)}"` : "";
+  // The renderer inserts this intermediate markup only into an inert template.
+  const imageMarkup = (source, alt, title) => {
+    const href = resolveIntroImageUrl(source, document.baseURI);
+    return href
+      ? `<img src="${esc(href)}" alt="${esc(alt)}"${title}>`
+      : `<span>${esc(alt.trim() || IMAGE_UNAVAILABLE)}</span>`;
+  };
   const inline = (source) =>
     source
       .replace(/~~([^~]+)~~/g, "<del>$1</del>")
@@ -55,11 +65,10 @@ export function renderMarkdownLite(md, options = {}) {
     /`([^`]+)`|(!?)\[([^\]\n]*)\]\(([^)\s]+)([^)\n]*)\)/g,
     (match, code, image, label, value, suffix) => {
       if (code !== undefined) return stashCode(code);
+      const title = titleAttribute(suffix.trim().match(/^(['"])(.*)\1$/)?.[2]);
+      if (image) return stash(imageMarkup(value, label, title));
       const safeUrl = url(value);
       if (!safeUrl) return stash(esc(match));
-      const title = titleAttribute(suffix.trim().match(/^(['"])(.*)\1$/)?.[2]);
-      if (image)
-        return stash(`<img src="${esc(safeUrl)}" alt="${esc(label)}"${title} style="max-width:100%">`);
       const labelWithCode = label.replace(/`([^`]+)`/g, (_, code) => stashCode(code));
       const text = restore(inline(esc(mathInFragments(labelWithCode))));
       return stash(`<a href="${esc(safeUrl)}"${title} target="_blank" rel="noopener noreferrer">${text}</a>`);
@@ -94,13 +103,15 @@ export function renderMarkdownLite(md, options = {}) {
           `<pre${className}><code${className}>${esc(code.replace(/\n$/, ""))}</code></pre>`,
         );
       })
-    .replace(/<img\b[^>]*>/gi, (tag) => {
-      const safeUrl = url(getAttribute(tag, /\bsrc\s*=\s*["']?([^"'\s>]+)/i));
-      return safeUrl
-        ? stash(
-            `<img src="${esc(safeUrl)}" alt="${esc(getAttribute(tag, /\balt\s*=\s*["']([^"']*)["']/i))}" style="max-width:100%">`,
-          )
-        : "";
+    .replace(/<img(?=[\s/>])(?:"[^"]*"|'[^']*'|[^"'<>])*>/gi, (tag) => {
+      const template = document.createElement("template");
+      template.innerHTML = tag;
+      const image = template.content.firstElementChild;
+      return image ? stash(imageMarkup(
+        image.getAttribute("src"),
+        image.getAttribute("alt") || "",
+        titleAttribute(image.getAttribute("title")),
+      )) : "";
     })
     .replace(/<a\b[^>]*>/gi, (tag) => {
       const safeUrl = url(getAttribute(tag, /\bhref\s*=\s*["']?([^"'\s>]+)/i));

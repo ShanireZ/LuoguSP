@@ -131,6 +131,72 @@ test("the embedded renderer can safely render the lightweight fallback without G
   assert.equal(requests.some((r) => r.path.includes("/render/markdown-renderer.")), false);
 });
 
+for (const mode of ["full", "lite"]) {
+  test(`profile introduction opens images only on request in ${mode} rendering`, async (t) => {
+    const imageOrigin = "https://images.example.test";
+    const photo = imageOrigin + "/intro-images/markdown.png";
+    const redirect = origin + "/intro-images/redirect.png";
+    const introduction = [
+      "## Image privacy",
+      `![Markdown photo](${photo} "Photo title")`,
+      '<picture><source srcset="https://images.example.test/intro-images/source.png"><img src="//images.example.test/intro-images/raw.png" srcset="https://images.example.test/intro-images/srcset.png" alt="Raw &amp; safe"></picture>',
+      '<a href="https://example.test/gallery"><img src="https://images.example.test/intro-images/badge.png" alt="Badge"></a>',
+      "![Luogu photo](/intro-images/redirect.png)",
+      "![Relative photo](../intro-images/relative.png)",
+      "![](https://images.example.test/intro-images/untitled.png)",
+      '![No scheme access](data:image/png;base64,AAAA)',
+      '<img alt="An unsafe source" src="javascript&#58;alert(1)">',
+      '<img alt="An image with only srcset" srcset="https://images.example.test/intro-images/only-srcset.png">',
+      '<img alt="A URL with credentials" src="https://user:pass@images.example.test/intro-images/credentialed.png">',
+      '<iframe src="https://images.example.test/intro-images/frame"></iframe><link rel="prefetch" href="https://images.example.test/intro-images/prefetch.png">',
+      '<input type="image" src="https://images.example.test/intro-images/input.png">',
+    ].join("\n\n");
+    const { page, requests } = await fixture(t, {
+      path: "/user/42?luogusp-qa=fallback" + (mode === "lite" ? "-lite" : ""),
+      html: fixtureHtml('<button id="before-intro">Before introduction</button><div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+      reply(route, url) {
+        if (url.href === redirect) return route.fulfill({
+          status: 302, headers: { location: imageOrigin + "/intro-images/redirected.png" },
+        });
+      },
+    });
+    const status = mode === "lite" ? "fallback-lite" : "fallback-rendered";
+    await page.locator(`#luogusp-qa-hidden-intro[data-fallback-status="${status}"]`).waitFor({ state: "attached" });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.deepEqual(requests.filter((request) => request.path.includes("/intro-images/")), [], "Rendering must not request an author image or start a redirect");
+
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    assert.equal(await intro.locator("img, picture, source, iframe, link, [src], [srcset]").count(), 0);
+    const photoLink = intro.getByRole("link", { name: "Markdown photo", exact: true });
+    assert.equal(await photoLink.getAttribute("title"), "Photo title");
+    assert.equal(await intro.getByRole("link", { name: "Raw & safe", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/raw.png");
+    assert.equal(await intro.getByRole("link", { name: "Badge", exact: true }).getAttribute("href"), "https://example.test/gallery");
+    assert.equal(await intro.getByRole("link", { name: "打开图片：Badge", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/badge.png");
+    assert.equal(await intro.getByRole("link", { name: "Luogu photo", exact: true }).getAttribute("href"), redirect);
+    assert.equal(await intro.getByRole("link", { name: "Relative photo", exact: true }).getAttribute("href"), origin + "/intro-images/relative.png");
+    assert.equal(await intro.getByRole("link", { name: "打开图片", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/untitled.png");
+    for (const alt of ["No scheme access", "An unsafe source", "An image with only srcset", "A URL with credentials"]) {
+      assert.equal(await intro.getByText(alt, { exact: true }).count(), 1);
+      assert.equal(await intro.getByRole("link", { name: alt, exact: true }).count(), 0);
+    }
+
+    let navigation;
+    await page.context().route(photo, async (route) => {
+      navigation = { isNavigation: route.request().isNavigationRequest(), referer: await route.request().headerValue("referer") };
+      await route.fulfill({ contentType: "text/html", body: "<title>Photo fixture</title>" });
+    });
+    await page.locator("#before-intro").focus();
+    await page.keyboard.press("Tab");
+    assert.equal(await focused(photoLink), true);
+    const [tab] = await Promise.all([page.waitForEvent("popup"), page.keyboard.press("Enter")]);
+    await tab.waitForLoadState();
+    assert.equal(tab.url(), photo);
+    assert.deepEqual(navigation, { isNavigation: true, referer: null });
+    assert.equal(await tab.evaluate(() => window.opener), null);
+  });
+}
+
 test("profile introduction preserves a Bash fence before display math", async (t) => {
   const introduction = '## Code and math\n\n```bash\necho "$$"\n```\n\n$$\nx^2\n$$';
   const { page } = await fixture(t, {
@@ -199,6 +265,8 @@ function restrictedFixture(t, type, id, data, options = {}) {
     path, waitForSettings: false, ...pageOptions,
     html: `<!doctype html><meta charset="utf-8"><title>安全访问中心</title><pre id="url">${origin}${path}</pre>`,
     reply(route, url) {
+      const custom = customReply?.(route, url);
+      if (custom) return custom;
       if (url.origin === saver && url.pathname === `/${type}/query/${id}`)
         return route.fulfill({ headers, json: { code: 200, data } });
       if (url.origin === saver && url.pathname === `/article/comments/${id}`)
@@ -207,7 +275,6 @@ function restrictedFixture(t, type, id, data, options = {}) {
         return route.fulfill({ body: scaffold, contentType: "text/html" });
       if (url.origin === assets && url.pathname === "/fixture.js")
         return route.fulfill({ body: nativeScript, contentType: "text/javascript" });
-      return customReply?.(route, url);
     },
   });
 }
@@ -407,6 +474,112 @@ test("restricted native article is clickable without the optional time row", asy
   await action.click();
   assert.equal(await page.getByRole("button", { name: "Clicked" }).count(), 1);
   assert.equal(await page.locator(".luogusp-rst-abtn").count(), 2);
+});
+
+test("restricted archive actions work by keyboard with focus and status, and the viewport permits zoom", async (t) => {
+  const refresh = responseGate(t);
+  const saver = "https://api.luogu.me";
+  const workflow = "/workflow/create/template/article-save-pipeline";
+  const original = "https://www.luogu.com/article/123";
+  const { page, requests } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    nativeScript: nativeArticle,
+    reply(route, url) {
+      if (url.origin === saver && url.pathname === workflow)
+        return refresh.promise.then(() => route.fulfill({
+          headers: { "access-control-allow-origin": "*" }, json: { code: 202 },
+        }));
+    },
+  });
+  const actionBar = page.locator(".article-content .actions");
+  const update = actionBar.getByRole("button", { name: "申请更新" });
+  await update.waitFor();
+  await actionBar.getByRole("button", { name: "Native action" }).focus();
+  await page.keyboard.press("Tab");
+  assert.ok(await focused(update));
+  assert.equal(await update.evaluate((node) => getComputedStyle(node).outlineStyle), "solid");
+  await page.keyboard.press("Space");
+  const status = page.getByRole("status").filter({ hasText: "更新中…" });
+  await status.waitFor({ state: "attached" });
+  const busyUpdate = actionBar.getByRole("button", { name: "更新中…" });
+  assert.ok(await focused(busyUpdate));
+  assert.equal(await busyUpdate.getAttribute("aria-disabled"), "true");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  const originalLink = actionBar.getByRole("link", { name: "国际站原文" });
+  assert.ok(await focused(originalLink));
+  assert.equal(await originalLink.getAttribute("href"), original);
+  await page.context().route(original, (route) => route.fulfill({ body: "Fixture original" }));
+  const opened = page.context().waitForEvent("page");
+  await page.keyboard.press("Enter");
+  const originalPage = await opened;
+  await originalPage.waitForURL(original);
+  await originalPage.close();
+  refresh.release();
+  await page.getByRole("status").filter({ hasText: "已申请" }).waitFor({ state: "attached" });
+  assert.equal(requests.filter((entry) => entry.origin === saver && entry.path === workflow).length, 1);
+  const viewport = await page.locator('meta[name="viewport"]').getAttribute("content");
+  assert.equal(viewport, "width=device-width, initial-scale=1");
+});
+
+test("restricted early indicator stays static with reduced motion", async (t) => {
+  const { page } = await fixture(t, {
+    path: "/article/123", reducedMotion: "reduce", waitForSettings: false,
+    html: `<!doctype html><meta charset="utf-8"><title>Native article</title>
+      <script>
+        window.earlyIndicator = {
+          active: document.documentElement.classList.contains("luogusp-rst-preparing"),
+          animation: getComputedStyle(document.documentElement, "::before").animationName,
+          label: getComputedStyle(document.documentElement, "::after").content,
+        };
+      </script><p>Native content</p>`,
+  });
+  const early = await page.evaluate(() => window.earlyIndicator);
+  assert.ok(early.active);
+  assert.equal(early.animation, "none");
+  assert.match(early.label, /加载/);
+  await page.getByText("Native content").waitFor();
+  assert.equal(await page.locator(".luogusp-rst-preparing").count(), 0);
+});
+
+test("restricted loader announces lookup, archive wait and native preparation with static reduced motion", async (t) => {
+  const lookup = responseGate(t);
+  const scaffold = responseGate(t);
+  const headers = { "access-control-allow-origin": "*" };
+  let lookups = 0;
+  const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
+    reducedMotion: "reduce", useClock: true,
+    nativeScript: `globalThis.mountArchive = () => { ${nativeArticle} };`,
+    reply(route, url) {
+      if (url.origin === "https://api.luogu.me") {
+        if (url.pathname === "/article/query/123" && lookups++ === 0)
+          return lookup.promise.then(() => route.fulfill({ headers, json: { code: 404 } }));
+        if (url.pathname.startsWith("/workflow/create/"))
+          return route.fulfill({ headers, json: { code: 202 } });
+      }
+      if (url.origin === origin && url.pathname === "/ranking")
+        return scaffold.promise.then(() => route.fulfill({
+          contentType: "text/html",
+          body: `<script id="lentille-context" type="application/json">${JSON.stringify({ user: viewer })}</script>
+            <meta name="csrf-token" content="fixture-token"><script src="https://fecdn.luogu.com.cn/fixture.js"></script>`,
+        }));
+    },
+  });
+  const status = page.locator("#luogusp-rst-loader").and(page.getByRole("status"));
+  await page.clock.runFor(50);
+  await status.getByText("正在查询保存站…").waitFor();
+  const spinner = status.locator(".luogusp-rst-spinner");
+  assert.equal(await spinner.evaluate(node => getComputedStyle(node).animationName), "none");
+  lookup.release();
+  await status.getByText("该内容尚未被保存站收录，已提交收录请求，正在等待…").waitFor();
+  await page.clock.runFor(3000);
+  await status.getByText("正在准备洛谷页面…").waitFor();
+  scaffold.release();
+  await status.getByText("正在加载洛谷页面…").waitFor();
+  assert.equal(await spinner.evaluate(node => getComputedStyle(node).animationName), "none");
+  await page.waitForFunction(() => typeof window.mountArchive === "function");
+  await page.evaluate(() => window.mountArchive());
+  await page.clock.runFor(50);
+  await status.waitFor({ state: "detached" });
 });
 
 test("restricted article opens with malformed Saver comments and keeps usable replies", async (t) => {
@@ -656,10 +829,46 @@ test("settings traps focus and Enter chooses the focused refresh action", async 
   assert.equal(requests.filter(r => r.type === "document").length, 2);
 });
 
+for (const reducedMotion of ["no-preference", "reduce"]) {
+  test(`settings dialog respects ${reducedMotion} without delaying keyboard focus`, async (t) => {
+    const { page } = await fixture(t, { html: FIXTURE_HTML, reducedMotion });
+    const entry = page.locator(".luogusp-setting-entry");
+    await entry.press("Enter");
+    const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+    const expected = reducedMotion === "reduce" ? ["none", "0s"] : ["luogusp-settings-in", "0.16s"];
+    assert.deepEqual(await modal.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return [style.animationName, style.animationDuration];
+    }), expected);
+    assert.ok(await focused(modal.getByRole("checkbox").first()));
+    await page.keyboard.press("Escape");
+    await modal.waitFor({ state: "detached" });
+    assert.ok(await focused(entry));
+  });
+}
+
+const watchPreviewMotion = (preview, selector, label) => preview.evaluate((node, { selector, label }) => {
+  window.previewMotion = new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      if (![...node.querySelectorAll(selector)].some((field) => field.textContent === label))
+        return;
+      observer.disconnect();
+      resolve(node.getAnimations({ subtree: true }).map(({ effect }) => ({
+        label: effect.target.querySelector(selector)?.textContent,
+        duration: effect.getTiming().duration,
+        properties: Object.keys(effect.getKeyframes()[0]).filter((name) =>
+          !["offset", "computedOffset", "easing", "composite"].includes(name)),
+      })));
+    });
+    observer.observe(node, { childList: true, subtree: true });
+  });
+}, { selector, label });
+
 test("problem preview renders native fields first and patches late records in place", async (t) => {
   const detail = responseGate(t);
   const record = responseGate(t);
   const { page } = await fixture(t, {
+    reducedMotion: "no-preference",
     viewport: { width: 900, height: 300 },
     html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [problem] }),
     reply(route, url) {
@@ -688,11 +897,47 @@ test("problem preview renders native fields first and patches late records in pl
   assert.ok(await focused(tags));
   const scrollTop = await preview.evaluate(el => { el.scrollTop = 30; return el.scrollTop; });
   assert.ok(scrollTop > 0);
+  await watchPreviewMotion(preview, ".luogusp-hc-key", "上次尝试");
   record.release();
   await preview.getByText("上次尝试", { exact: true }).waitFor();
   assert.ok(await oldButton.evaluate(el => el === document.activeElement));
   assert.equal(await tags.getAttribute("aria-expanded"), "true");
   assert.equal(await preview.evaluate(el => el.scrollTop), scrollTop);
+  const animations = await page.evaluate(() => window.previewMotion);
+  assert.ok(animations.some(({ label }) => label === "上次尝试"));
+  assert.ok(animations.every(({ label, duration, properties }) =>
+    label && duration === 125 && properties.join() === "opacity"));
+});
+
+test("problem preview loading and late fields stay static with reduced motion", async (t) => {
+  const detail = responseGate(t);
+  const record = responseGate(t);
+  const { page } = await fixture(t, {
+    reducedMotion: "reduce",
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>'),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({
+        json: { user: viewer, data: { problem: { ...problem, tags: [] } } },
+      }));
+      if (url.pathname === "/record/list") return record.promise.then(() => route.fulfill({
+        json: { template: "record.list", user: viewer, data: { records: { result: [{
+          id: 77, problem: { pid: problem.pid }, user: viewer, submitTime: 1700000000, score: 100,
+        }] } } },
+      }));
+    },
+  });
+  await page.locator("#problem").hover();
+  const preview = card(page);
+  const spinner = preview.locator(".luogusp-hc-spin");
+  await spinner.waitFor();
+  assert.equal(await spinner.evaluate((node) => getComputedStyle(node).animationName), "none");
+  await preview.getByRole("status").getByText("正在加载预览…").waitFor();
+  detail.release();
+  await preview.getByText("P1000 Native preview", { exact: true }).waitFor();
+  await watchPreviewMotion(preview, ".luogusp-hc-key", "上次尝试");
+  record.release();
+  await preview.getByText("上次尝试", { exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.previewMotion), []);
 });
 
 test("problem preview retries a failed record lookup on reopening and caches the recovery", async (t) => {
@@ -860,6 +1105,7 @@ test("user preview joins a native XHR and shows basic fields ahead of the profil
   const profile = responseGate(t);
   const supplement = Promise.withResolvers();
   const { page, requests } = await fixture(t, {
+    reducedMotion: "no-preference",
     html: fixtureHtml('<a id="user" href="/user/123">User</a>')
       .replace("</head>", '<meta name="csrf-token" content="fixture-only"></head>'),
     reply(route, url) {
@@ -895,8 +1141,12 @@ test("user preview joins a native XHR and shows basic fields ahead of the profil
   await name.focus();
   assert.ok(await preview.getByText("1800", { exact: true }).isVisible());
   assert.equal(await preview.getByText("咕值", { exact: true }).count(), 0);
+  await watchPreviewMotion(preview, ".luogusp-hc-stat-k", "咕值");
   profile.release();
   await preview.getByText("咕值", { exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.previewMotion), [
+    { label: "咕值", duration: 125, properties: ["opacity"] },
+  ]);
   assert.ok(await focused(name));
   assert.ok(await following.isEnabled());
   assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["xhr"]);
@@ -1038,7 +1288,7 @@ async function ideFixture(t, submitReply = (route, index) =>
       ${toolbar("代码", "<button>自测</button>")}<div contenteditable="true" class="cm-content">code</div>
       <div class="io-sample-block">输入 #1 <button>运行</button></div>
       <div class="io-sample-block">输入 #2 <button>运行</button></div>
-      <div><div class="panel-layout" style="display:flex">
+      <div><div id="native-io" class="panel-layout" role="group" tabindex="-1" style="display:flex">
         <div>${toolbar("输入")}<textarea class="ide-textarea"></textarea></div>
         <div id="output">${toolbar("输出", '<span>AC</span><span class="run-result"></span>')}<textarea class="ide-textarea"></textarea></div>
       </div></div>
@@ -1073,6 +1323,137 @@ async function ideFixture(t, submitReply = (route, index) =>
   });
   return { page, requests, submitted, firstSubmit: submit.promise };
 }
+
+test("IDE tabs support keyboard selection and expose the active panel", async (t) => {
+  const { page } = await ideFixture(t);
+  const custom = page.locator('.luogusp-ide-tab[data-tab="custom"]');
+  const samples = page.locator('.luogusp-ide-tab[data-tab="samples"]');
+  const nativeInput = page.locator(".panel-layout");
+  const samplesPanel = page.locator(".luogusp-ide-panel");
+  await custom.waitFor();
+  await page.locator(".io-sample-block button").last().focus();
+  await page.keyboard.press("Tab");
+  assert.ok(await focused(custom), "Tab focuses the selected IDE tab");
+  await assertIdeFocusVisible(custom);
+  assert.equal(await page.getByRole("tab", { selected: true }).textContent(), "自定义测试");
+  assert.equal(await custom.getAttribute("aria-controls"), await nativeInput.getAttribute("id"));
+  assert.ok(await nativeInput.isVisible());
+  assert.equal(await samplesPanel.isVisible(), false);
+
+  await page.keyboard.press("ArrowLeft");
+  assert.ok(await focused(samples));
+  await assertIdeFocusVisible(samples);
+  assert.equal(await page.getByRole("tab", { selected: true }).textContent(), "样例测试");
+  assert.equal(await samples.getAttribute("aria-controls"), await samplesPanel.getAttribute("id"));
+  assert.ok(await page.getByRole("tabpanel", { name: "样例测试" }).isVisible());
+  assert.equal(await nativeInput.isVisible(), false);
+  await page.keyboard.press("Tab");
+  assert.ok(await focused(samplesPanel));
+  await page.keyboard.press("Shift+Tab");
+  assert.ok(await focused(samples));
+  await page.keyboard.press("ArrowRight");
+  assert.ok(await focused(custom));
+  assert.ok(await page.getByRole("tabpanel", { name: "自定义测试" }).isVisible());
+  await page.keyboard.press("End");
+  assert.ok(await focused(samples));
+  await page.keyboard.press("Home");
+  assert.ok(await focused(custom));
+  await samples.click();
+  assert.ok(await samplesPanel.isVisible());
+
+  await page.evaluate(() => history.pushState({}, "", "/problem/P1000"));
+  await samples.waitFor({ state: "detached" });
+  assert.ok(await nativeInput.isVisible());
+  assert.equal(await nativeInput.getAttribute("id"), "native-io");
+  assert.equal(await nativeInput.getAttribute("role"), "group");
+  assert.equal(await nativeInput.getAttribute("tabindex"), "-1");
+  assert.equal(await nativeInput.getAttribute("aria-labelledby"), null);
+});
+
+async function assertIdeFocusVisible(locator) {
+  assert.ok(await locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return element.matches(":focus-visible") && style.outlineStyle === "solid" &&
+      parseFloat(style.outlineWidth) >= 2;
+  }));
+}
+
+test("IDE sample disclosures respond to Tab, Enter and Space", async (t) => {
+  const { page } = await ideFixture(t);
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
+  await page.evaluate(() => window.finishSample("AC"));
+  await page.waitForFunction(() => window.ideAcknowledged === 2);
+  await page.evaluate(() => window.finishSample("WA"));
+  await page.getByText("1/2 通过 · 1 WA", { exact: true }).waitFor();
+
+  const first = page.locator(".luogusp-ide-rowhead").nth(0);
+  const second = page.locator(".luogusp-ide-rowhead").nth(1);
+  const details = page.locator(".luogusp-ide-detail");
+  assert.ok(await details.nth(1).isVisible());
+  await page.getByRole("button", { name: "重新测试", exact: true }).focus();
+  await page.keyboard.press("Tab");
+  assert.ok(await focused(first), "Tab focuses the first sample disclosure");
+  await assertIdeFocusVisible(first);
+  assert.equal(await first.getAttribute("aria-expanded"), "false");
+  assert.equal(await second.getAttribute("aria-expanded"), "true");
+  await page.keyboard.press("Enter");
+  assert.equal(await first.getAttribute("aria-expanded"), "true");
+  assert.equal(await first.getAttribute("aria-controls"), await details.nth(0).getAttribute("id"));
+  assert.equal(await second.getAttribute("aria-expanded"), "false");
+  assert.ok(await details.nth(0).isVisible());
+  assert.equal(await details.nth(1).isVisible(), false);
+
+  await page.keyboard.press("Space");
+  assert.equal(await first.getAttribute("aria-expanded"), "false");
+  assert.equal(await details.nth(0).isVisible(), false);
+  await second.click();
+  assert.equal(await second.getAttribute("aria-expanded"), "true");
+  assert.ok(await details.nth(1).isVisible());
+});
+
+test("IDE copy is visible on keyboard focus and copies the sample input", async (t) => {
+  const { page } = await ideFixture(t);
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = async (text) => { window.ideClipboard = text; };
+  });
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.getByRole("button", { name: "停止", exact: true }).click();
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
+  await page.evaluate(() => window.finishSample("WA"));
+  const jump = page.getByRole("button", { name: "跳到第一处差异" });
+  const copy = page.getByRole("button", { name: "复制代码" }).first();
+  await jump.focus();
+  await page.keyboard.press("Tab");
+  assert.ok(await focused(copy));
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => window.ideClipboard), "first");
+  assert.equal(await copy.evaluate((element) => getComputedStyle(element).opacity), "1");
+  await assertIdeFocusVisible(copy);
+});
+
+test("IDE reduced motion removes disclosure and copy transitions", async (t) => {
+  const { page } = await ideFixture(t);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.locator(".luogusp-ide-batch-btn").click();
+  await page.getByRole("button", { name: "停止", exact: true }).click();
+  await page.waitForFunction(() => window.ideAcknowledged === 1);
+  await page.evaluate(() => window.finishSample("WA"));
+  const row = page.locator(".luogusp-ide-row").first();
+  const chevron = row.locator(".luogusp-ide-chev");
+  const copy = row.getByRole("button", { name: "复制代码" }).first();
+  await copy.waitFor();
+  const durations = () => Promise.all([chevron, copy].map((locator) =>
+    locator.evaluate((element) => getComputedStyle(element).transitionDuration)));
+  assert.deepEqual(await durations(), ["0.2s", "0.2s"]);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.deepEqual(await durations(), ["0s", "0s"]);
+  await row.locator(".code-container").first().hover();
+  assert.equal(await copy.evaluate((element) => getComputedStyle(element).opacity), "1");
+  await row.locator(".luogusp-ide-rowhead").click();
+  assert.equal(await chevron.evaluate((element) => getComputedStyle(element).transform), "none");
+});
 
 test("leaving IDE restores native panels and waits for an outstanding submission to be rejected", async (t) => {
   const first = responseGate(t);

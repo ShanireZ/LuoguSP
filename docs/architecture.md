@@ -41,6 +41,10 @@ fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
 failures. A successful empty record list uses the normal cache lifetime.
+New or updated data fields can fade in over 125 ms. The initial preview and
+navigation controls appear immediately. Reduced motion stops the preview's
+loading indicator and skips the field fade. The main settings dialog uses
+a 160 ms opacity entrance only when reduced motion is off.
 A focused eligible link opens its preview with Alt+Down Arrow. Escape closes
 the preview and returns focus to the link. Pointer and keyboard activation resolve links against
 the document base and verify the destination against the current origin and
@@ -61,6 +65,9 @@ An explicit server rejection releases that restriction.
 Each batch captures the source at start. Edits stop later submissions and mark
 results from that batch stale. Leaving the IDE removes its batch controls and
 restores the native input layout.
+The IDE test tabs switch with Left and Right Arrow, Home, and End. Sample
+buttons report their expanded state and toggle details with Enter or Space.
+The batch summary announces updates, and copy controls appear on keyboard focus.
 Output highlighting aligns insertions and deletions within a bounded comparison.
 
 The profile introduction renderer sanitizes author markup before inserting
@@ -68,6 +75,12 @@ KaTeX fragments into text nodes. Author CSS and page-scoped identifiers are
 discarded, while generated KaTeX styles are retained. Math parsing preserves
 code fences, inline code, and link attributes. Each introduction has bounded
 formula rendering, and wide output scrolls within the fallback card.
+Both fallback modes convert author images with HTTP(S) sources into ordinary
+links that open in a new tab without sending a referrer. Relative sources are
+resolved against the page base. Even same-origin URLs and Luogu's CDN can
+redirect, so the fallback makes no automatic image requests. Unsupported or
+credential-bearing sources are represented as alt text or an unavailable label.
+The fallback discards alternate sources such as `srcset`.
 
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.

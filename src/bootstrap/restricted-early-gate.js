@@ -51,7 +51,7 @@ function createGate() {
               html.${className}::before{content:"";${LOADER_SPINNER_BOX}z-index:2147483646;animation:luogusp-rst-early-spin .8s linear infinite;}
               html.${className}::after{content:"加载中…";${LOADER_MESSAGE_BOX}z-index:2147483646;color:${LOADER_TEXT_COLOR};font:${LOADER_FONT};}
               @keyframes luogusp-rst-early-spin{to{transform:rotate(360deg);}}
-              @media (prefers-reduced-motion:reduce){html.${className}::before{animation-duration:1.8s;}}
+              @media (prefers-reduced-motion:reduce){html.${className}::before{animation:none;}}
             `;
             (document.head || root).appendChild(style);
           }

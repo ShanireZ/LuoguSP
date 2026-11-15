@@ -39,7 +39,10 @@ test("full markdown renderer parses GFM, KaTeX, links, and images", () => {
   const link = root.querySelector("a");
   assert.equal(link?.target, "_blank");
   assert.equal(link?.rel, "noopener noreferrer");
-  assert.equal(root.querySelector("img")?.style.maxWidth, "100%");
+  assert.equal(root.querySelector("img"), null);
+  const imageLink = root.querySelector('a[href="https://example.test/image.png"]');
+  assert.equal(imageLink?.textContent, "image");
+  assert.equal(imageLink?.rel, "noopener noreferrer");
 });
 
 test("full markdown renderer removes executable HTML while retaining safe text", () => {

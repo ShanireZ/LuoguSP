@@ -8,6 +8,7 @@ import {
 import { createIdeBatchRunner } from "./runner.js";
 import { IDE_BATCH_STYLE } from "./style.js";
 import { observeIdeOutput } from "./output-observer.js";
+import { createIdeTabControls } from "./tab-controls.js";
 
 export function createIdeBatchFeature({ storage, problemData }) {
   const SELECTORS = {
@@ -51,6 +52,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     panel: null,
     ioLayout: null, // 原生 輸入|輸出 水平分欄（tab 切換時顯隱）
     hiddenInput: null,
+    restoreInputAttributes: null,
     rowsEl: null,
     summaryEl: null,
     stopBtn: null,
@@ -373,12 +375,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
       });
     }
     IDE_VIEW.summaryEl.textContent = text;
-    const firstBad = rs.findIndex((r) => r && r.verdict !== "AC");
-    if (firstBad !== -1) expandIdeRow(firstBad);
-    else if (IDE_VIEW.rowsEl)
-      IDE_VIEW.rowsEl
-        .querySelectorAll(".luogusp-ide-row.open")
-        .forEach((r) => r.classList.remove("open"));
+    expandIdeRow(rs.findIndex((r) => r && r.verdict !== "AC"));
   }
 
   function showIdeStale(active) {
@@ -467,21 +464,12 @@ export function createIdeBatchFeature({ storage, problemData }) {
       controls.invalidate();
       unmountIdeTabs();
     }
-    const tabBar = document.createElement("div");
-    tabBar.className = "luogusp-ide-tabbar";
-    tabBar.innerHTML =
-      '<span class="luogusp-ide-tab" data-tab="custom">自定义测试</span>' +
-      '<span class="luogusp-ide-tab" data-tab="samples">样例测试</span>';
-    tabBar.addEventListener("click", (e) => {
-      const t = e.target.closest("[data-tab]");
-      if (t) switchIdeTab(t.dataset.tab);
-    });
-    const panel = document.createElement("div");
-    panel.className = "luogusp-ide-panel";
+    const { tabBar, panel, restoreInputAttributes } = createIdeTabControls(ioLayout, switchIdeTab);
+    IDE_VIEW.restoreInputAttributes = restoreInputAttributes;
     panel.innerHTML =
       '<div class="luogusp-ide-head">' +
       '<span class="luogusp-ide-title">样例测试</span>' +
-      '<span class="luogusp-ide-summary">尚未运行</span>' +
+      '<span class="luogusp-ide-summary" role="status">尚未运行</span>' +
       '<span class="luogusp-ide-headbtns"></span>' +
       "</div>" +
       '<div class="luogusp-ide-rows"></div>';
@@ -537,6 +525,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     const { tabBar, panel, ioLayout } = IDE_VIEW;
     if (!tabBar || !document.contains(tabBar) || !panel || !ioLayout) return;
     const samples = IDE_VIEW.activeTab === "samples";
+    const focusWillHide = (samples ? ioLayout : panel).contains(document.activeElement);
     if (samples && !IDE_VIEW.hiddenInput) {
       IDE_VIEW.hiddenInput = {
         layout: ioLayout,
@@ -548,7 +537,10 @@ export function createIdeBatchFeature({ storage, problemData }) {
     if (!samples) restoreIdeInput();
     panel.style.display = samples ? "" : "none";
     tabBar.querySelectorAll(".luogusp-ide-tab").forEach((t) => {
-      t.classList.toggle("on", (t.dataset.tab === "samples") === samples);
+      const selected = t.dataset.tab === IDE_VIEW.activeTab;
+      t.setAttribute("aria-selected", String(selected));
+      t.tabIndex = selected ? 0 : -1;
+      if (selected && focusWillHide) t.focus({ preventScroll: true });
     });
   }
 
@@ -563,23 +555,19 @@ export function createIdeBatchFeature({ storage, problemData }) {
       .map(
         (s, i) => `
       <div class="luogusp-ide-row" data-idx="${i}">
-        <div class="luogusp-ide-rowhead">
-          <span class="luogusp-ide-chev">▶</span>样例 #${i + 1}
+        <button type="button" class="luogusp-ide-rowhead" aria-expanded="false" aria-controls="luogusp-ide-detail-${i}">
+          <span class="luogusp-ide-chev" aria-hidden="true">▶</span>样例 #${i + 1}
           <span class="luogusp-ide-meta"></span>
           <span class="luogusp-ide-pill" style="${IDE_PILL_WAIT}">等待</span>
-        </div>
-        <div class="luogusp-ide-detail"></div>
+        </button>
+        <div class="luogusp-ide-detail" id="luogusp-ide-detail-${i}"></div>
       </div>`,
       )
       .join("");
     rowsEl.querySelectorAll(".luogusp-ide-rowhead").forEach((h) => {
       h.addEventListener("click", () => {
         const row = h.parentElement;
-        const was = row.classList.contains("open");
-        rowsEl
-          .querySelectorAll(".luogusp-ide-row.open")
-          .forEach((r) => r.classList.remove("open"));
-        if (!was) row.classList.add("open");
+        expandIdeRow(row.classList.contains("open") ? -1 : Number(row.dataset.idx));
       });
     });
   }
@@ -597,11 +585,20 @@ export function createIdeBatchFeature({ storage, problemData }) {
   }
   function expandIdeRow(i) {
     if (!IDE_VIEW.rowsEl) return;
-    IDE_VIEW.rowsEl
-      .querySelectorAll(".luogusp-ide-row.open")
-      .forEach((r) => r.classList.remove("open"));
-    const p = ideRowParts(i);
-    if (p) p.row.classList.add("open");
+    const previous = IDE_VIEW.rowsEl.querySelector(".luogusp-ide-row.open");
+    const next = ideRowParts(i)?.row;
+    if (previous === next) return;
+    if (previous) {
+      const button = previous.querySelector(".luogusp-ide-rowhead");
+      const detail = previous.querySelector(".luogusp-ide-detail");
+      if (detail.contains(document.activeElement)) button.focus({ preventScroll: true });
+      button.setAttribute("aria-expanded", "false");
+      previous.classList.remove("open");
+    }
+    if (next) {
+      next.querySelector(".luogusp-ide-rowhead").setAttribute("aria-expanded", "true");
+      next.classList.add("open");
+    }
   }
 
   function ensureIdeBatchUI(controls) {
@@ -618,6 +615,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
 
   function unmountIdeTabs() {
     restoreIdeInput();
+    IDE_VIEW.restoreInputAttributes?.();
+    IDE_VIEW.restoreInputAttributes = null;
     IDE_VIEW.tabBar?.remove();
     IDE_VIEW.panel?.remove();
     IDE_VIEW.activeTab = "custom";

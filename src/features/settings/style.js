@@ -15,4 +15,8 @@ export const SETTINGS_STYLE = `
   #luogusp-settings .luogusp-hint{margin:10px 0 0;color:#888;font-size:12px;}
   #luogusp-settings .luogusp-confirm{margin:0 0 16px;font-size:14px;line-height:1.6;}
   .luogusp-setting-entry{cursor:pointer;}
+  @keyframes luogusp-settings-in{from{opacity:.8;}}
+  @media (prefers-reduced-motion:no-preference){
+    #luogusp-settings .luogusp-panel[role=dialog]{animation:luogusp-settings-in 160ms ease-out;}
+  }
 `;

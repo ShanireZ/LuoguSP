@@ -10,7 +10,7 @@ import { SHELL_LOADER_CSS } from "./loader-geometry.js";
 // 轉圈與文案都絕對定位（見 loader-geometry.js）：不隨文案變長而位移，也與早期載入層嚴絲合縫。
 export const RST_LOADER_CSS = SHELL_LOADER_CSS;
 export const RST_LOADER_CONTENT_HTML =
-  '<div class="luogusp-rst-spinner" aria-hidden="true"></div><div class="msg">加载中…</div>';
+  '<div class="luogusp-rst-spinner" aria-hidden="true"></div><div class="msg">正在加载洛谷页面…</div>';
 export const RST_LOADER_HTML =
   `<div id="luogusp-rst-loader" class="luogusp-rst-loader" role="status" aria-live="polite">${RST_LOADER_CONTENT_HTML}</div>`;
 
@@ -32,14 +32,16 @@ export function injectRstStyle() {
 // ★button-2line 的官方規則是 data-v 作用域的，注入節點吃不到 → 佈局自帶（鏡像官方值）。
 export const RST_EXTRA_CSS =
   RST_LOADER_CSS +
-  ".luogusp-rst-abtn{display:flex;flex-direction:column;align-items:center;margin:0 1em;cursor:pointer;}" +
+  ".luogusp-rst-abtn{display:flex;flex-direction:column;align-items:center;margin:0 1em;padding:0;border:0;background:none;font:inherit;cursor:pointer;text-decoration:none;}" +
   ".luogusp-rst-abtn .icon{font-size:1.25em;margin-bottom:.3em;}" +
   ".luogusp-rst-abtn .text{text-align:center;font-size:.75em;}" +
   ".luogusp-rst-abtn>*{color:#3498db !important;}" +
   ".luogusp-rst-pactions{display:flex;align-items:center;flex:none;}" +
   ".luogusp-rst-pbtn{font-size:.875em;line-height:1.5;padding:.3125em 1em;margin-left:.5em;color:#fff;background:#3498db;border:1px solid #3498db;border-radius:3px;cursor:pointer;}" +
   ".luogusp-rst-pbtn:hover{background:rgba(52,152,219,.9);}" +
-  ".luogusp-rst-off{opacity:.55;cursor:not-allowed;pointer-events:none;}" +
+  ".luogusp-rst-abtn:focus-visible,.luogusp-rst-pbtn:focus-visible{outline:2px solid #3498db;outline-offset:4px;}" +
+  ".luogusp-rst-abtn[aria-disabled=true],.luogusp-rst-pbtn[aria-disabled=true]{opacity:.55;cursor:not-allowed;}" +
+  "#luogusp-rst-refresh-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}" +
   ".luogusp-rst-write-notice{margin:.75em 0;padding:.5em .75em;border-inline-start:3px solid currentColor;font-size:.875em;}";
 
 export function showRstArticleWriteNotice(kind, message) {

@@ -5,7 +5,7 @@
 // 它們會先後出現在同一個位置，幾何一旦不一致，切換的瞬間轉圈就會跳一下。
 //
 // ★ 轉圈與文案都按視口中心**絕對定位**，不要用 flex 居中整列。
-//   文案是會變的（"載入中…" → "該內容尚未被保存站收錄，已自動發起收錄…"），
+//   文案會隨查詢、等待收錄和洛谷頁面準備而變，
 //   flex 列一旦因為文案變長或換行而改變總高，就會重新居中，把轉圈往上頂 ——
 //   owner 2026-08-13 報的「轉圈隨載入狀態產生位移」就是這個。
 //   絕對定位下文案只會向下生長，轉圈一動不動。
@@ -31,4 +31,4 @@ export const SHELL_LOADER_CSS =
   `.luogusp-rst-spinner{${LOADER_SPINNER_BOX}animation:luogusp-rst-spin .8s linear infinite;}` +
   `.luogusp-rst-loader .msg{${LOADER_MESSAGE_BOX}padding:0 16px;}` +
   "@keyframes luogusp-rst-spin{to{transform:rotate(360deg);}}" +
-  "@media (prefers-reduced-motion:reduce){.luogusp-rst-spinner{animation-duration:1.8s;}}";
+  "@media (prefers-reduced-motion:reduce){.luogusp-rst-spinner{animation:none;}}";

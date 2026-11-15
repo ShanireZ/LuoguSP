@@ -40,7 +40,7 @@
             "expectContains": [
                 "<p>https://example.test</p>",
                 "<a href=\"https://example.test/path\" target=\"_blank\" rel=\"noopener noreferrer\">link</a>",
-                "<img src=\"https://img.example.test/photo.png\" alt=\"photo\" style=\"max-width:100%\">",
+                "<img src=\"https://img.example.test/photo.png\" alt=\"photo\">",
                 "<em>safe</em>",
                 "&lt;span"
             ],

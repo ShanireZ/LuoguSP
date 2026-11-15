@@ -177,7 +177,8 @@ export function createRestrictedContentFeature({
       el.innerHTML = RST_LOADER_CONTENT_HTML;
       (document.body || document.documentElement).appendChild(el);
     }
-    el.querySelector(".msg").textContent = text || "加载中…";
+    const message = el.querySelector(".msg");
+    if (message.textContent !== text) message.textContent = text;
     if (restrictedLoadingGate) restrictedLoadingGate.release();
   }
   function rstHideLoader() {
@@ -472,12 +473,11 @@ export function createRestrictedContentFeature({
   function rstMountArticleButtons(info, data, live) {
     const updText = rstFmtTime(data && data.updatedAt, true);
     // owner 要求：擴充按鈕不帶 title 懸浮說明（與時間欄一致，頁面不出瀏覽器浮泡）
-    const make = (icon, extraCls, text, onClick) => {
-      const div = document.createElement("div");
-      div.className = `button-2line luogusp-rst-abtn ${extraCls}`;
-      div.innerHTML = `<svg class="svg-inline--fa icon" style="font-size:1.25em" viewBox="${icon.vb}" aria-hidden="true"><path fill="currentColor" d="${icon.d}"/></svg><span class="text">${text}</span>`;
-      div.addEventListener("click", onClick);
-      return div;
+    const makeAction = (tag, icon, text) => {
+      const action = document.createElement(tag);
+      action.className = "button-2line luogusp-rst-abtn";
+      action.innerHTML = `<svg class="svg-inline--fa icon" style="font-size:1.25em" viewBox="${icon.vb}" aria-hidden="true"><path fill="currentColor" d="${icon.d}"/></svg><span class="text">${text}</span>`;
+      return action;
     };
     const inject = () => {
       const actionBars = [
@@ -486,19 +486,15 @@ export function createRestrictedContentFeature({
       actionBars.forEach((bar) => {
         // owner 拍板：左浮條（left-mode）不放擴充按鈕，只掛內聯互動條
         if (bar.querySelector(".luogusp-rst-abtn")) return;
-        bar.appendChild(
-          make(
-            RST_BTN_ICONS.refresh,
-            "luogusp-rst-btn-refresh",
-            "申请更新",
-            () => rstManualRefresh(info),
-          ),
-        );
-        bar.appendChild(
-          make(RST_BTN_ICONS.external, "", "国际站原文", () =>
-            window.open(info.origUrl, "_blank", "noopener"),
-          ),
-        );
+        const refresh = makeAction("button", RST_BTN_ICONS.refresh, "申请更新");
+        refresh.type = "button";
+        refresh.classList.add("luogusp-rst-btn-refresh");
+        refresh.addEventListener("click", () => rstManualRefresh(info));
+        const original = makeAction("a", RST_BTN_ICONS.external, "国际站原文");
+        original.href = info.origUrl;
+        original.target = "_blank";
+        original.rel = "noopener";
+        bar.append(refresh, original);
       });
       // owner 要求：指向建立/更新時間不出瀏覽器懸浮泡 → 整條時間欄剝 title
       // （removeAttribute 無屬性時不產生變更記錄，天然冪等）
@@ -602,13 +598,24 @@ export function createRestrictedContentFeature({
   // textContent 同值重寫也會刪舊建新 Text 節點、產生 childList 變更記錄，
   // 會把觀察器自己再觸發一遍 → 微任務死循環整頁卡死（2.11.0 事故），故同值不寫。
   function rstApplyRefreshBtns() {
-    const off = rstRefreshState !== "idle";
-    document.querySelectorAll(".luogusp-rst-btn-refresh").forEach((el) => {
+    const buttons = document.querySelectorAll("button.luogusp-rst-btn-refresh");
+    if (!buttons.length) return;
+    const disabled = String(rstRefreshState !== "idle");
+    buttons.forEach((el) => {
       const t = el.querySelector(".text") || el;
       if (t.textContent !== rstRefreshText) t.textContent = rstRefreshText;
-      el.classList.toggle("luogusp-rst-off", off);
-      if (el.tagName === "BUTTON" && el.disabled !== off) el.disabled = off;
+      if (el.getAttribute("aria-disabled") !== disabled)
+        el.setAttribute("aria-disabled", disabled);
     });
+    let status = document.getElementById("luogusp-rst-refresh-status");
+    if (!status) {
+      status = document.createElement("span");
+      status.id = "luogusp-rst-refresh-status";
+      status.setAttribute("role", "status");
+      buttons[0].after(status);
+    }
+    const message = rstRefreshText === "申请更新" ? "" : rstRefreshText;
+    if (status.textContent !== message) status.textContent = message;
   }
   function rstSetRefresh(state, text) {
     rstRefreshState = state;
@@ -694,7 +701,7 @@ export function createRestrictedContentFeature({
       rstRefreshText = "申请更新";
       document
         .querySelectorAll(
-          ".luogusp-rst-abtn,.luogusp-rst-pactions,.luogusp-rst-updtime,.luogusp-rst-write-notice",
+          ".luogusp-rst-abtn,.luogusp-rst-pactions,.luogusp-rst-updtime,.luogusp-rst-write-notice,#luogusp-rst-refresh-status",
         )
         .forEach((node) => node.remove());
     },

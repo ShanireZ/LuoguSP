@@ -147,7 +147,7 @@ function bootFixture(overrides = {}) {
   };
   const pageAdapter = {
     detect: () => info,
-    showLoader: (message) => calls.push(["loader", message || "default"]),
+    showLoader: (message) => calls.push(["loader", message]),
     hideLoader: () => calls.push(["loaderHidden"]),
     showUnavailable: (_info, message) => calls.push(["unavailable", message]),
     showFailure: (_info, message) => calls.push(["failure", message]),
@@ -202,8 +202,9 @@ test("Restricted Document Boot prepares everything before a single lifecycle com
   const fx = bootFixture();
   const dispose = fx.boot.mount({ isCurrent: () => true });
   await flushMicrotasks();
-  assert.deepEqual(fx.calls.slice(0, 4), [
-    ["loader", "default"],
+  assert.deepEqual(fx.calls.slice(0, 5), [
+    ["loader", "正在查询保存站…"],
+    ["loader", "正在准备洛谷页面…"],
     ["replace"],
     ["commit", fx.prepared],
     ["afterReady"],
@@ -211,7 +212,7 @@ test("Restricted Document Boot prepares everything before a single lifecycle com
 
   fx.setPath("/article/next");
   fx.boot.onRoute();
-  assert.deepEqual(fx.calls.slice(4), [["builderDispose"], ["reload"]]);
+  assert.deepEqual(fx.calls.slice(5), [["builderDispose"], ["reload"]]);
   dispose();
 });
 
@@ -224,7 +225,8 @@ test("Restricted Document Boot shows a stable failure when commit is rejected", 
   fx.boot.mount({ isCurrent: () => true });
   await flushMicrotasks();
   assert.deepEqual(fx.calls, [
-    ["loader", "default"],
+    ["loader", "正在查询保存站…"],
+    ["loader", "正在准备洛谷页面…"],
     ["failure", "原生页面提交失败，请刷新页面后重试。"],
   ]);
 });
@@ -285,7 +287,7 @@ test("Restricted Document Boot maps lookup failure and cancels stale preparation
   unavailable.boot.mount({ isCurrent: () => true });
   await flushMicrotasks();
   assert.deepEqual(unavailable.calls, [
-    ["loader", "default"],
+    ["loader", "正在查询保存站…"],
     ["unavailable", "LuoguSP：offline，未自动发起收录。"],
   ]);
   assert.equal(unavailable.boot.getState().running, false);
@@ -301,7 +303,7 @@ test("Restricted Document Boot maps lookup failure and cancels stale preparation
   unknown.boot.mount({ isCurrent: () => true });
   await flushMicrotasks();
   assert.deepEqual(unknown.calls, [
-    ["loader", "default"],
+    ["loader", "正在查询保存站…"],
     [
       "failure",
       "收录请求已发送，但保存站未在超时前确认结果，请稍后刷新页面查看。",

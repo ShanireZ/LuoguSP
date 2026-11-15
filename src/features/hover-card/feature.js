@@ -56,6 +56,11 @@ export function createHoverCardFeature(config) {
     card.tabIndex = -1;
     card.setAttribute("role", "dialog");
     document.body.appendChild(card);
+    const allowMotion = window.matchMedia?.("(prefers-reduced-motion: no-preference)");
+    const fadeLateField = (node) => node.animate?.(
+      [{ opacity: 0.8 }, { opacity: 1 }],
+      { duration: 125, easing: "ease-out" },
+    );
 
     const sources = createHoverCardSources({
       fetchPage: (path, signal, init) => fetchPage(path, signal, init),
@@ -162,6 +167,7 @@ export function createHoverCardFeature(config) {
         if (target.kind === "user" && currentViewer() !== viewer) return;
         const previous = displayed;
         displayed = model;
+        const fadeField = previous && busy === undefined && allowMotion?.matches ? fadeLateField : undefined;
         const tagsExpanded = !!card.querySelector(".luogusp-hc-taglist:not([hidden])");
         const scrollTop = card.scrollTop;
         if (!model) {
@@ -174,7 +180,7 @@ export function createHoverCardFeature(config) {
         } else if (model.kind === "problem") {
           updateProblemCard(card, renderProblemCard(model, {
             origin: location.origin, href: target.href, onResize: position, tagsExpanded,
-          }));
+          }), fadeField);
         } else {
           updateUserCard(card,
             renderUserCard(model, {
@@ -188,6 +194,7 @@ export function createHoverCardFeature(config) {
             busy === undefined && previous?.name === model.name &&
               previous.relation === model.relation && previous.reverseRelation === model.reverseRelation &&
               previous.followerCount === model.followerCount,
+            fadeField,
           );
         }
         finalizeCard(card);
@@ -225,12 +232,14 @@ export function createHoverCardFeature(config) {
         openController = new AbortController();
         loading = true;
         openSide = null;
-        card.textContent = "";
-        card.appendChild(
-          Object.assign(document.createElement("div"), {
-            className: "luogusp-hc-spin",
-          }),
-        );
+        const status = document.createElement("div");
+        status.className = "luogusp-hc-loading";
+        status.setAttribute("role", "status");
+        const indicator = document.createElement("span");
+        indicator.className = "luogusp-hc-spin";
+        indicator.setAttribute("aria-hidden", "true");
+        status.append(indicator, "正在加载预览…");
+        card.replaceChildren(status);
         card.hidden = false;
         card.setAttribute("aria-label", target.kind === "problem" ? "题目预览" : "用户预览");
         position();

@@ -45,9 +45,14 @@ establish the current account's privileges or personal state.
   timeout through response body consumption. Leaving the route cancels pending
   preparation. The scaffold can fall back from ranking to discussion.
 - The overlay clears when the native article or paste content mounts.
+  Its status follows the Saver lookup, archive wait and native page
+  preparation. The indicator is static when reduced motion is set.
   Time labels and action bars can appear later. If native startup has
   not rendered content within 15 seconds after document replacement,
   the page shows a failure message with a link to the original.
+- The rebuilt viewport permits zoom. Article archive actions use a
+  keyboard-focusable update button and original-page link. Refresh
+  progress is announced while focus stays on the user's control.
 - Keep archived paste fallback read-only; do not invent interaction controls.
 
 The examined protocol baseline includes the
