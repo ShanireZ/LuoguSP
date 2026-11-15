@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ import {
 } from "../../src/rendering/renderer-dependencies.js";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 import { committedReleaseFiles } from "./committed-releases.mjs";
+import { writeRelease } from "./release-transaction.mjs";
 import {
   RELEASE_VERSION, readRegularFile, requireRegularDirectory, snapshotRelease,
 } from "./release-integrity.mjs";
@@ -72,10 +73,7 @@ if (!dryRun) {
       throw new Error(`CDN release ${version} already exists; release paths are immutable`);
   }
 }
-if (!verifyExisting && !dryRun) {
-  // Reserve a new release directory without following a concurrent replacement.
-  await mkdir(releaseDir);
-}
+const outputFiles = new Map();
 
 const digest = (body) => createHash("sha256").update(body).digest("hex");
 const sri = (body) =>
@@ -110,10 +108,7 @@ async function buildCompat(entryPoint, prefix, define = {}) {
     throw new Error(`Expected one ${prefix} compatibility output`);
   const body = Buffer.from(result.outputFiles[0].contents);
   const relativePath = `compat/${prefix}.${digest(body).slice(0, 16)}.js`;
-  if (!verifyExisting && !dryRun) {
-    await mkdir(resolve(releaseDir, "compat"), { recursive: true });
-    await writeFile(resolve(releaseDir, relativePath), body);
-  }
+  outputFiles.set(relativePath, body);
   return fileRecord(`releases/${version}/${relativePath}`, body);
 }
 
@@ -127,13 +122,7 @@ for (const [name, dependencyVersion] of Object.entries(
 }
 const markdownRendererBody = await buildMarkdownRenderer({ root });
 const markdownRendererRelativePath = `render/markdown-renderer.${digest(markdownRendererBody).slice(0, 16)}.js`;
-if (!verifyExisting && !dryRun) {
-  await mkdir(resolve(releaseDir, "render"), { recursive: true });
-  await writeFile(
-    resolve(releaseDir, markdownRendererRelativePath),
-    markdownRendererBody,
-  );
-}
+outputFiles.set(markdownRendererRelativePath, markdownRendererBody);
 const markdownRendererFile = fileRecord(
   `releases/${version}/${markdownRendererRelativePath}`,
   markdownRendererBody,
@@ -168,13 +157,7 @@ const restrictedContentBody = Buffer.from(
   restrictedContentResult.outputFiles[0].contents,
 );
 const restrictedContentRelativePath = `feature/restricted-content.${digest(restrictedContentBody).slice(0, 16)}.js`;
-if (!verifyExisting && !dryRun) {
-  await mkdir(resolve(releaseDir, "feature"), { recursive: true });
-  await writeFile(
-    resolve(releaseDir, restrictedContentRelativePath),
-    restrictedContentBody,
-  );
-}
+outputFiles.set(restrictedContentRelativePath, restrictedContentBody);
 const restrictedContentFile = fileRecord(
   `releases/${version}/${restrictedContentRelativePath}`,
   restrictedContentBody,
@@ -205,10 +188,7 @@ if (hoverCardResult.outputFiles?.length !== 1)
   throw new Error("Expected one hover card bundle output");
 const hoverCardBody = Buffer.from(hoverCardResult.outputFiles[0].contents);
 const hoverCardRelativePath = `feature/hover-card.${digest(hoverCardBody).slice(0, 16)}.js`;
-if (!verifyExisting && !dryRun) {
-  await mkdir(resolve(releaseDir, "feature"), { recursive: true });
-  await writeFile(resolve(releaseDir, hoverCardRelativePath), hoverCardBody);
-}
+outputFiles.set(hoverCardRelativePath, hoverCardBody);
 const hoverCardFile = fileRecord(
   `releases/${version}/${hoverCardRelativePath}`,
   hoverCardBody,
@@ -284,12 +264,7 @@ for (const output of esmResult.outputFiles || []) {
   if (relativePath.startsWith("../"))
     throw new Error(`Unexpected ESM output path: ${output.path}`);
   const body = Buffer.from(output.contents);
-  if (!verifyExisting && !dryRun) {
-    await mkdir(dirname(resolve(releaseDir, relativePath)), {
-      recursive: true,
-    });
-    await writeFile(resolve(releaseDir, relativePath), body);
-  }
+  outputFiles.set(relativePath, body);
   const deploymentPath = `releases/${version}/${relativePath}`;
   files[deploymentPath] = fileRecord(deploymentPath, body);
 }
@@ -360,13 +335,8 @@ if (verifyExisting) {
 const manifestBody = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
 const manifestSha256 = digest(manifestBody);
 const manifestPath = `releases/${version}/manifest.${manifestSha256.slice(0, 16)}.json`;
-if (!dryRun) {
-  await writeFile(resolve(releaseDir, "manifest.json"), manifestBody);
-  await writeFile(
-    resolve(releaseDir, `manifest.${manifestSha256.slice(0, 16)}.json`),
-    manifestBody,
-  );
-}
+outputFiles.set("manifest.json", manifestBody);
+outputFiles.set(`manifest.${manifestSha256.slice(0, 16)}.json`, manifestBody);
 
 const channel = {
   schemaVersion: 2,
@@ -377,12 +347,13 @@ const channel = {
   origin: manifest.origin,
   updatedAt: new Date().toISOString(),
 };
-if (!dryRun)
-  await writeFile(
-    resolve(channelsRoot, "canary.json"),
-    `${JSON.stringify(channel, null, 2)}\n`,
-    "utf8",
-  );
+const transaction = dryRun ? undefined : await writeRelease({
+  releasesRoot,
+  version,
+  channelPath: resolve(channelsRoot, "canary.json"),
+  channelBody: `${JSON.stringify(channel, null, 2)}\n`,
+  files: outputFiles,
+});
 
 console.log(
   JSON.stringify(
@@ -392,6 +363,7 @@ console.log(
       releaseDir: normalizePath(relative(root, releaseDir)),
       manifestPath,
       manifestSha256,
+      transaction,
       compat: manifest.compat,
       optionalBundles: manifest.optionalBundles,
       esmEntries,

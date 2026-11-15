@@ -3,7 +3,6 @@ import {
   mkdir,
   readdir,
   readFile,
-  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -17,6 +16,7 @@ import {
   userscriptVersion,
   verifyStagedActivation,
 } from "./publish-lib.mjs";
+import { rollbackRelease } from "./cdn/release-transaction.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const planOnly = process.argv.includes("--plan");
@@ -45,7 +45,6 @@ const [
   initialPackage,
   initialReadmes,
   initialQualityReport,
-  initialChannel,
   previousReport,
   initialConfigText,
 ] = await Promise.all([
@@ -54,7 +53,6 @@ const [
   readFile(packagePath, "utf8"),
   Promise.all(README_EDITIONS.map(async (name) => [name, await readFile(resolve(root, name), "utf8")])).then(Object.fromEntries),
   readFile(qualityReportPath, "utf8"),
-  readFile(channelPath, "utf8"),
   readJsonIfPresent(reportPath),
   readFile(resolve(root, "config/cdn.json"), "utf8"),
 ]);
@@ -185,12 +183,14 @@ const run = (args) => {
       error.exitCode = result.status;
       throw error;
     }
+  return result.stdout;
 };
 const startedAt = new Date().toISOString();
 let phase = "preflight";
 let deploymentStarted = false;
 let productionModified = false;
 let rendererReport = null;
+let buildTransaction = null;
 const restoreProduction = async () => {
   await Promise.all([
     writeFile(metadataPath, initialMetadata, "utf8"),
@@ -222,12 +222,13 @@ try {
       ? "verify existing immutable release"
       : "build",
   );
-  run([
+  const buildOutput = run([
     "scripts/cdn/build.mjs",
     "--version",
     version,
     ...(resumeMode ? ["--verify-existing"] : []),
   ]);
+  if (!resumeMode) buildTransaction = JSON.parse(buildOutput).transaction;
   const builtManifest = JSON.parse(
     await readFile(
       resolve(releaseDirectory, "manifest.json"),
@@ -371,9 +372,17 @@ try {
     }
   }
   if (productionModified) await restoreProduction();
-  if (!resumeMode && !deploymentStarted) {
-    await rm(releaseDirectory, { recursive: true, force: true });
-    await writeFile(channelPath, initialChannel, "utf8");
+  let releaseRollback = null;
+  let rollbackError = null;
+  if (buildTransaction && !deploymentStarted) {
+    try {
+      releaseRollback = await rollbackRelease({
+        releasesRoot, version, channelPath, transaction: buildTransaction,
+      });
+    } catch (cleanupError) {
+      rollbackError = cleanupError.message;
+      console.error(`[publish] release rollback failed: ${rollbackError}`);
+    }
   }
   await writeReport({
     startedAt,
@@ -389,6 +398,8 @@ try {
       ? [initialConfig.origins.primary]
       : [],
     productionRestored: productionModified,
+    releaseRollback,
+    rollbackError,
     deploymentStarted: deploymentStarted || resumeMode,
     resumed: resumeMode,
     resumeAllowed: deploymentStarted || resumeMode,

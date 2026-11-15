@@ -20,7 +20,7 @@ test("real release preflight rejects a stale or missing translated edition", () 
   const base = tmpdir();
   const root = mkdtempSync(path.join(base, "luogusp-readme-publication-20261029-"));
   try {
-    const required = ["scripts/publish.mjs", "scripts/publish-lib.mjs", "scripts/cdn/origin-policy.mjs", "src/userscript.meta.js", "LuoguSP.user.js", "package.json", "README.md", "README.zh-CN.md", "README.zh-TW.md", "README.ja.md", "reports/quality-report.json", "cdn/channels/canary.json", "config/cdn.json"];
+    const required = ["scripts/publish.mjs", "scripts/publish-lib.mjs", "scripts/cdn/origin-policy.mjs", "scripts/cdn/release-transaction.mjs", "scripts/cdn/release-integrity.mjs", "src/userscript.meta.js", "LuoguSP.user.js", "package.json", "README.md", "README.zh-CN.md", "README.zh-TW.md", "README.ja.md", "reports/quality-report.json", "cdn/channels/canary.json", "config/cdn.json"];
     for (const file of required) {
       mkdirSync(path.dirname(path.join(root, file)), {recursive: true});
       copyFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), path.join(root, file));

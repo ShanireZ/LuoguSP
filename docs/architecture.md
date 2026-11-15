@@ -131,6 +131,15 @@ version and staged files before deploying. It checks the remote manifest of
 every staged release, including committed ones, before invoking Wrangler. It
 accepts HTTP 404 for an unused manifest URL or an exact byte match for HTTP 200.
 Published version paths are immutable.
+The CDN builder finishes compilation before claiming a version directory.
+Handled write failures clean up that build's directory. A successful build
+returns its directory identity, manifest digest and channel transition to the
+publisher. Before deployment, rollback removes a release only while its
+identity and verified contents still match that receipt. Channel updates and
+rollback share a short exclusive file lock and atomic replacement. Rollback
+restores the channel captured at the build's own update only if its current
+bytes still match and the previous target remains valid. Changed output or an
+unavailable previous target causes the complete release to be retained.
 
 Generated publishing, origin and deployment receipts remain local and ignored.
 Only the de-identified browser-QA and quality summaries required by the current
