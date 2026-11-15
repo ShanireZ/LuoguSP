@@ -87,10 +87,15 @@ export function createFollowAction(config) {
     logError = () => {},
   } = config || {};
 
-  // 同一個使用者的寫請求串行化：連點兩次不能讓兩個請求競速，最後完成實作的狀態會隨機。
+  // 同一帳號對同一個使用者的寫入不可競速。
   const inFlight = new Set();
+  const keyFor = (viewer, uid) => `${viewer}:${uid}`;
 
-  const send = async (uid, plan, relationship, label) => {
+  const send = async (viewer, state, plan, relationship, label) => {
+    const uid = Number(state.uid);
+    const key = keyFor(viewer, uid);
+    if (!Number.isSafeInteger(viewer) || viewer <= 0 || viewer === uid || inFlight.has(key))
+      return null;
     const payload = buildRelationRequest({
       uid,
       relationship,
@@ -98,35 +103,33 @@ export function createFollowAction(config) {
     });
     // 拿不到 CSRF 就別發 —— 發出去只會被洛谷拒絕，還白改一次介面。
     if (!payload) return null;
-    inFlight.add(uid);
-    if (typeof onState === "function") onState(uid, plan.optimistic, "pending");
+    inFlight.add(key);
     try {
+      if (typeof onState === "function") onState(viewer, uid, plan.optimistic, "pending");
       const response = await request(payload);
       if (!response || response.ok === false)
         throw new Error(
           `${label}请求失败：HTTP ${response ? response.status : "无响应"}`,
         );
       if (typeof onState === "function")
-        onState(uid, plan.optimistic, "confirmed");
+        onState(viewer, uid, plan.optimistic, "confirmed");
       return plan.optimistic;
     } catch (error) {
       logError(error);
       // ★ 回復。回應體不帶狀態，伺服器沒確認就必須退回原樣，不能留一個假的「已關注」。
-      if (typeof onState === "function") onState(uid, plan.rollback, "failed");
+      if (typeof onState === "function") onState(viewer, uid, plan.rollback, "failed");
       return null;
     } finally {
-      inFlight.delete(uid);
+      inFlight.delete(key);
     }
   };
 
-  const toggle = async (state) => {
-    const uid = Number(state && state.uid);
-    if (!Number.isSafeInteger(uid) || uid <= 0) return null;
-    if (inFlight.has(uid)) return null;
+  const toggle = async (viewer, state) => {
     const plan = planFollowToggle(state);
     if (!plan) return null;
     return send(
-      uid,
+      viewer,
+      state,
       plan,
       plan.follow ? RELATIONSHIP_FOLLOWING : RELATIONSHIP_UNRELATED,
       "关注",
@@ -136,18 +139,15 @@ export function createFollowAction(config) {
   // ★★ 屏蔽是替使用者對**第三方**做的社交動作，必須先讓他點頭 —— 但**確認在視圖層做**
   //    （卡內就地確認，owner 2026-08-14 拍板），這裡拿到呼叫就直接發。
   //    結構守衛盯著「視圖層必須先問一句」，見 test/hover-card-render.test.mjs。
-  const block = async (state) => {
-    const uid = Number(state && state.uid);
-    if (!Number.isSafeInteger(uid) || uid <= 0) return null;
-    if (inFlight.has(uid)) return null;
+  const block = async (viewer, state) => {
     const plan = planBlockToggle(state);
     if (!plan) return null;
-    return send(uid, plan, plan.relationship, plan.block ? "屏蔽" : "取消屏蔽");
+    return send(viewer, state, plan, plan.relationship, plan.block ? "屏蔽" : "取消屏蔽");
   };
 
   return Object.freeze({
     toggle,
     block,
-    isBusy: (uid) => inFlight.has(Number(uid)),
+    isBusy: (viewer, uid) => inFlight.has(keyFor(viewer, uid)),
   });
 }

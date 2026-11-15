@@ -1,4 +1,9 @@
 export const HIDDEN_INTRO_STYLE = `
+  .luogusp-intro-card .lfe-marked{contain:inline-size;overflow-x:auto;}
+  .luogusp-intro-card .katex-display,.luogusp-intro-card .katex:not(.katex-display .katex){max-inline-size:100%;max-block-size:75vh;overflow:auto;}
+  .luogusp-intro-card .katex-display{display:block;}
+  .luogusp-intro-card .katex-display>.katex{min-inline-size:max-content;}
+  .luogusp-intro-card .katex:not(.katex-display .katex){display:inline-block;vertical-align:middle;}
   .luogusp-mdstyle li:has(> input[type="checkbox"]){list-style:none;margin-left:-1.2em;}
   .luogusp-mdstyle li > input[type="checkbox"]{margin-right:.4em;}
   .luogusp-mdstyle .code-container{margin:1rem 0;position:relative;}

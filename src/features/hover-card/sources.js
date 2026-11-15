@@ -37,12 +37,15 @@ const LENTILLE_INIT = Object.freeze({
 });
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 60;
+const RETRY_COOLDOWN_MS = 2000;
+const RETRYABLE_READ = Symbol("retryable hover read");
 
 export function createHoverCardSources(config) {
   const {
     fetchPage,
     problemData,
     nativeUserInfo,
+    viewer = () => problemData?.viewerUid() ?? 0,
     clock,
     ttlMs = DEFAULT_TTL_MS,
     maxEntries = DEFAULT_MAX_ENTRIES,
@@ -56,63 +59,79 @@ export function createHoverCardSources(config) {
   const cache = new Map();
   const pending = new Map();
   const userPreviews = new Map();
-  const viewer = () => problemData?.viewerUid() ?? 0;
 
-  const remember = (key, value) => {
+  const remember = (key, value, retryAfter) => {
     // 簡單 FIFO 上限：hover 卡是瀏覽態快取，不值得為它上 LRU。
-    if (cache.size >= maxEntries) {
+    if (!cache.has(key) && cache.size >= maxEntries) {
       const oldest = cache.keys().next();
       if (!oldest.done) cache.delete(oldest.value);
     }
-    cache.set(key, { value, at: now() });
+    cache.set(key, { value, at: now(), retryAfter });
     return value;
   };
 
   const cached = (key) => {
     const entry = cache.get(key);
     if (!entry) return undefined;
-    if (now() - entry.at > ttlMs) {
+    const age = now() - entry.at;
+    if (age > ttlMs) {
       cache.delete(key);
       return undefined;
     }
+    if (entry.retryAfter !== undefined && age >= entry.retryAfter) return undefined;
     return entry.value;
   };
 
-  const load = (key, run) => {
+  const load = (key, run, signal) => {
+    if (signal?.aborted) return Promise.resolve(null);
     const hit = cached(key);
     if (hit !== undefined) return Promise.resolve(hit);
     const existing = pending.get(key);
-    if (existing) return existing;
+    if (existing && !existing.signal?.aborted) return existing.promise;
     const task = Promise.resolve()
-      .then(run)
-      .then((value) => remember(key, value))
+      .then(() => signal?.aborted ? null : run())
+      .then((value) => {
+        if (signal?.aborted) return null;
+        if (value === RETRYABLE_READ) {
+          // Retry on reopening. Repeated failures get a per-key cooldown.
+          const repeated = cache.get(key)?.retryAfter !== undefined;
+          return remember(key, null, repeated ? RETRY_COOLDOWN_MS : 0);
+        }
+        return remember(key, value);
+      })
       .catch((error) => {
-        if (error?.name === "AbortError") return null;
+        if (signal?.aborted || error?.name === "AbortError") return null;
         logError(error);
         // 失敗也記住（記成 null），避免滑鼠來回掃時反覆重打同一個失敗請求。
         return remember(key, null);
       })
-      .finally(() => pending.delete(key));
-    pending.set(key, task);
+      .finally(() => {
+        if (pending.get(key)?.promise === task) pending.delete(key);
+      });
+    pending.set(key, { promise: task, signal });
     return task;
   };
 
-  const readJson = async (path, signal) => {
-    const response = await fetchPage(path, signal, LENTILLE_INIT);
-    if (!response || response.ok === false) return null;
-    return response.json();
+  const readJson = async (path, signal, init = LENTILLE_INIT) => {
+    try {
+      const response = await fetchPage(path, signal, init);
+      if (!response) return RETRYABLE_READ;
+      if (response.ok === false) {
+        const { status } = response;
+        return status === 408 || status === 429 || status >= 500 ? RETRYABLE_READ : null;
+      }
+      return await response.json();
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") throw error;
+      return RETRYABLE_READ;
+    }
   };
 
   const tags = (signal) =>
-    load("tags", async () =>
-      buildTagDictionary(
-        await (async () => {
-          const response = await fetchPage("/_lfe/tags", signal, null);
-          if (!response || response.ok === false) return null;
-          return response.json();
-        })(),
-      ),
-    );
+    load("tags", async () => {
+      const payload = await readJson("/_lfe/tags", signal, null);
+      return payload === RETRYABLE_READ ? payload : buildTagDictionary(payload);
+    }, signal);
 
   // 上次嘗試：匿名訪客沒有提交記錄，不必發這個請求。
   const lastAttempt = (pid, viewerUid, signal, href) => {
@@ -133,13 +152,14 @@ export function createHoverCardSources(config) {
         `/record/list?${query}`,
         signal,
       );
+      if (payload === null || payload === RETRYABLE_READ) return payload;
       if (payload?.template !== "record.list" || Number(payload.user?.uid) !== uid)
-        return null;
+        return RETRYABLE_READ;
       const rows = payload.data?.records?.result;
       return Array.isArray(rows) ? pickLastAttempt(rows.filter((row) =>
         row?.problem?.pid === pid && Number(row.user?.uid) === uid,
-      )) : null;
-    });
+      )) : RETRYABLE_READ;
+    }, signal);
   };
 
   const problem = async (pid, viewerUid, signal, { href, onUpdate } = {}) => {
@@ -158,7 +178,7 @@ export function createHoverCardSources(config) {
       const detail = problemData
         ? await problemData.load(pid, { href, signal })
         : await load(`problem:${viewerUid || 0}:${pid}`, () =>
-            readJson(`/problem/${encodeURIComponent(pid)}`, signal));
+            readJson(`/problem/${encodeURIComponent(pid)}`, signal), signal);
       if (detail?.data?.problem?.pid === pid && detail !== payload) {
         payload = { data: {
           ...detail.data,
@@ -259,14 +279,13 @@ export function createHoverCardSources(config) {
 
   // 關注成功後卡片上的關係與粉絲數已經改了，快取裡那份必須跟著走，
   // 否則重新 hover 會把舊狀態擺回來 —— 看起來就像「關注沒生效」。
-  const patchUser = (uid, patch) => {
-    const account = viewer();
-    nativeUserInfo?.invalidate(uid, account);
-    const key = `${account}:user:${Number(uid)}`;
+  const patchUser = (viewer, uid, patch) => {
+    nativeUserInfo?.invalidate(uid, viewer);
+    const key = `${viewer}:user:${uid}`;
     const preview = userPreviews.get(key);
-    if (preview?.card) {
+    if (preview) {
       preview.patch = { ...preview.patch, ...patch };
-      preview.card = Object.freeze({ ...preview.card, ...patch });
+      if (preview.card) preview.card = Object.freeze({ ...preview.card, ...patch });
     }
     const entry = cache.get(key);
     if (!entry?.value) return preview?.card;

@@ -481,9 +481,9 @@ test("写失败必须回滚，不留假的已关注", async () => {
   const action = createFollowAction({
     csrfToken: "tok",
     request: async () => ({ ok: false, status: 403 }),
-    onState: (uid, next, phase) => states.push(`${phase}:${next.relation}:${next.followerCount}`),
+    onState: (viewer, uid, next, phase) => states.push(`${phase}:${next.relation}:${next.followerCount}`),
   });
-  const result = await action.toggle({ uid: 116524, relation: "unrelated", followerCount: 176 });
+  const result = await action.toggle(42, { uid: 116524, relation: "unrelated", followerCount: 176 });
   assert.equal(result, null);
   assert.deepEqual(states, ["pending:following:177", "failed:unrelated:176"]);
 });
@@ -493,9 +493,9 @@ test("写成功保留乐观状态", async () => {
   const action = createFollowAction({
     csrfToken: () => "tok",
     request: async () => ({ ok: true, status: 200 }),
-    onState: (uid, next, phase) => states.push(`${phase}:${next.relation}`),
+    onState: (viewer, uid, next, phase) => states.push(`${phase}:${next.relation}`),
   });
-  const result = await action.toggle({ uid: 1, relation: "unrelated", followerCount: 0 });
+  const result = await action.toggle(42, { uid: 1, relation: "unrelated", followerCount: 0 });
   assert.deepEqual(result, { relation: "following", followerCount: 1 });
   assert.deepEqual(states, ["pending:following", "confirmed:following"]);
 });
@@ -512,13 +512,51 @@ test("同一用户的写请求串行化", async () => {
         release = () => done({ ok: true, status: 200 });
       }),
   });
-  const first = action.toggle({ uid: 1, relation: "unrelated", followerCount: 0 });
-  const second = await action.toggle({ uid: 1, relation: "unrelated", followerCount: 0 });
-  assert.equal(second, null, "在途时第二次点击应当被忽略");
+  const state = { uid: 1, relation: "unrelated", followerCount: 0 };
+  const first = action.toggle(42, state);
+  assert.equal(await action.toggle(42, state), null, "在途时第二次点击应当被忽略");
+  assert.equal(await action.block(42, state), null);
   assert.equal(calls, 1);
   release();
   await first;
-  assert.equal(action.isBusy(1), false);
+  assert.equal(action.isBusy(42, 1), false);
+});
+
+test("relation writes keep pending state and settlement scoped to each viewer and target", async () => {
+  const writes = [];
+  const states = [];
+  const action = createFollowAction({
+    csrfToken: "tok",
+    request: (payload) => {
+      const write = Promise.withResolvers();
+      writes.push({ ...JSON.parse(payload.body), ...write });
+      return write.promise;
+    },
+    onState: (viewer, uid, patch, phase) => states.push({ viewer, uid, patch, phase }),
+  });
+  const state = { uid: 123, relation: "unrelated", followerCount: 5 };
+  const first = action.toggle(42, state);
+  assert.equal(action.isBusy(42, 123), true);
+  assert.equal(action.isBusy(43, 123), false);
+  assert.equal(action.isBusy(42, 124), false);
+  const second = action.block(43, state);
+  const otherTarget = action.block(42, { ...state, uid: 124 });
+  assert.deepEqual(writes.map(({ uid, relationship }) => [uid, relationship]), [[123, 1], [123, 2], [124, 2]]);
+  writes[0].resolve({ ok: false, status: 503 });
+  assert.equal(await first, null);
+  assert.equal(action.isBusy(42, 123), false);
+  assert.equal(action.isBusy(43, 123), true);
+  assert.equal(action.isBusy(42, 124), true);
+  assert.deepEqual(states.at(-1), { viewer: 42, uid: 123,
+    patch: { relation: "unrelated", followerCount: 5 }, phase: "failed" });
+  writes[1].resolve({ ok: true });
+  assert.deepEqual(await second, { relation: "blacklisted" });
+  assert.deepEqual(states.at(-1), { viewer: 43, uid: 123,
+    patch: { relation: "blacklisted" }, phase: "confirmed" });
+  writes[2].resolve({ ok: true });
+  await otherTarget;
+  assert.equal(action.isBusy(43, 123), false);
+  assert.equal(action.isBusy(42, 124), false);
 });
 
 // ---- 資料源 ----
@@ -589,14 +627,30 @@ test("非法 pid / uid 不发请求", async () => {
 
 // 關注成功後快取裡的關係必須跟著改，否則重新 hover 會把舊狀態擺回來，
 // 看起來就像「關注沒生效」。
-test("patchUser 让缓存跟上乐观更新", async () => {
-  const { sources } = sourceHarness({ "/api/user/info/697932": userInfoPayload, "/user/697932": userPagePayload });
-  const first = await sources.user(697932);
-  assert.equal(first.relation, "unrelated");
-  sources.patchUser(697932, { relation: "following", followerCount: 177 });
-  const again = await sources.user(697932);
-  assert.equal(again.relation, "following");
-  assert.equal(again.followerCount, 177);
+test("patchUser updates the initiating viewer's cache and invalidates only that viewer's native lookup", async () => {
+  let viewer = 42;
+  const invalidations = [];
+  const sources = createHoverCardSources({
+    viewer: () => viewer,
+    nativeUserInfo: {
+      read: (uid, account) => ({ user: { uid, name: "Target", userRelationship: 0,
+        followerCount: account === 42 ? 5 : 77 } }),
+      invalidate: (uid, account) => invalidations.push([uid, account]),
+    },
+    fetchPage: async () => null,
+  });
+  const first = await sources.user(123);
+  assert.equal(first.followerCount, 5);
+  sources.patchUser(42, 123, { relation: "following", followerCount: 6 });
+  assert.equal((await sources.user(123)).relation, "following");
+  viewer = 43;
+  const second = await sources.user(123);
+  assert.equal(second.followerCount, 77);
+  sources.patchUser(42, 123, { relation: "unrelated", followerCount: 5 });
+  assert.equal(await sources.user(123), second);
+  viewer = 42;
+  assert.deepEqual(await sources.user(123), first);
+  assert.deepEqual(invalidations, [[123, 42], [123, 42]]);
 });
 
 test("缓存过期后重新取", async () => {

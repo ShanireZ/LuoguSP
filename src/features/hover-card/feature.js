@@ -33,6 +33,7 @@ export function createHoverCardFeature(config) {
   //   `isEnabled(kind)` 是薄殼現問的：owner 把開關拆成了題目卡與使用者卡兩個，
   //   改開關要**立刻生效**，不能靠重掛。
   const { fetchPage, problemData, nativeUserInfo, isEnabled = () => true } = config || {};
+  const currentViewer = () => problemData?.viewerUid() ?? readViewerUid(document, window) ?? 0;
 
   const clock = {
     now: () => Date.now(),
@@ -60,6 +61,7 @@ export function createHoverCardFeature(config) {
       fetchPage: (path, signal, init) => fetchPage(path, signal, init),
       problemData,
       nativeUserInfo,
+      viewer: currentViewer,
       clock,
       logError: (error) => console.error("LuoguSP hover card:", error),
     });
@@ -72,10 +74,9 @@ export function createHoverCardFeature(config) {
           body: payload.body,
           credentials: "same-origin",
         }),
-      onState: (uid, next, phase) => {
-        const updated = sources.patchUser(uid, next);
-        if (updated && shown?.kind === "user" && shown.uid === uid)
-          updateShownUser?.(updated, phase === "pending");
+      onState: (viewer, uid, patch, phase) => {
+        const updated = sources.patchUser(viewer, uid, patch);
+        updateShownUser?.(viewer, uid, updated, patch, phase === "pending");
       },
       logError: (error) => console.error("LuoguSP hover follow:", error),
     });
@@ -146,12 +147,19 @@ export function createHoverCardFeature(config) {
     };
 
     const draw = async (target) => {
-      const viewer = problemData?.viewerUid() ?? readViewerUid(document, window);
+      const viewer = currentViewer();
       const controller = openController;
       const isCurrent = () => !controller?.signal.aborted && shown === target;
+      const canAct = () => {
+        if (!isCurrent()) return false;
+        if (currentViewer() === viewer) return true;
+        intent.dismiss();
+        return false;
+      };
       let displayed;
       const display = (model, busy) => {
         if (!isCurrent() || displayed === model) return;
+        if (target.kind === "user" && currentViewer() !== viewer) return;
         const previous = displayed;
         displayed = model;
         const tagsExpanded = !!card.querySelector(".luogusp-hc-taglist:not([hidden])");
@@ -173,9 +181,9 @@ export function createHoverCardFeature(config) {
               origin: location.origin,
               viewerUid: viewer,
               onResize: position,
-              onFollow: viewer ? (next) => follow.toggle(next) : null,
-              onBlock: viewer ? (next) => follow.block(next) : null,
-              followBusy: busy ?? follow.isBusy(model.uid),
+              onFollow: viewer ? (next) => canAct() && follow.toggle(viewer, next) : null,
+              onBlock: viewer ? (next) => canAct() && follow.block(viewer, next) : null,
+              followBusy: busy ?? follow.isBusy(viewer, model.uid),
             }),
             busy === undefined && previous?.name === model.name &&
               previous.relation === model.relation && previous.reverseRelation === model.reverseRelation &&
@@ -192,7 +200,10 @@ export function createHoverCardFeature(config) {
         });
         if (model || displayed === undefined) display(model);
       } else {
-        updateShownUser = display;
+        updateShownUser = (account, uid, model, patch, busy) => {
+          if (account === viewer && uid === target.uid && (model || displayed))
+            display(model ?? { ...displayed, ...patch }, busy);
+        };
         display(await sources.user(target.uid, display));
       }
       if (!isCurrent()) return;

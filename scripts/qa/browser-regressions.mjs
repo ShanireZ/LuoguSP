@@ -130,6 +130,58 @@ test("the embedded renderer can safely render the lightweight fallback without G
   assert.equal(requests.some((r) => r.path.includes("/render/markdown-renderer.")), false);
 });
 
+test("profile introduction preserves a Bash fence before display math", async (t) => {
+  const introduction = '## Code and math\n\n```bash\necho "$$"\n```\n\n$$\nx^2\n$$';
+  const { page } = await fixture(t, {
+    path: "/user/42",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  await intro.getByRole("heading", { name: "Code and math" }).waitFor();
+  const code = intro.locator("pre code.language-bash");
+  assert.equal(await code.count(), 1);
+  assert.equal((await code.textContent()).trim(), 'echo "$$"');
+  assert.equal(await intro.locator("pre code.language-bash.hljs").count(), 1);
+  assert.equal(await intro.locator(".katex-display").count(), 1);
+});
+
+for (const query of ["", "?luogusp-qa=fallback-lite"]) {
+  test(`profile introduction contains wide math in ${query ? "lite" : "full"} rendering`, async (t) => {
+    const introduction = String.raw`$$\rule{1000000em}{1000000em}$$
+
+$$\rule{48em}{1em}$$
+
+| Formula in a table |
+| --- |
+| $\rule{1000000em}{1em}$ |
+
+After the formulas`;
+    const katexCss = await readFile(new URL("../../node_modules/katex/dist/katex.min.css", import.meta.url), "utf8");
+    const { page } = await fixture(t, {
+      viewport: { width: 900, height: 720 },
+      path: "/user/42" + query,
+      html: fixtureHtml('<div class="sidebar-container" style="display:flex;width:320px"><div class="main" style="flex:1"></div></div>',
+        { user: { ...viewer, introduction } }).replace("</head>", () => `<style>${katexCss}</style></head>`),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.getByText("After the formulas", { exact: true }).waitFor();
+    const width = await page.evaluate(() => document.documentElement.scrollWidth);
+    assert.equal(width, 900);
+    assert.equal(await page.locator(".sidebar-container .main").evaluate((node) => node.clientWidth), 320);
+    assert.equal(await intro.locator("td .katex").count(), 1);
+    const math = intro.locator(".katex-display");
+    assert.equal(await math.count(), 2);
+    const large = await math.first().evaluate((node) => node.scrollWidth);
+    assert.ok(large < 4_000, `Oversized rule produced ${large}px of content`);
+    const scroll = await math.nth(1).evaluate((node) => {
+      node.scrollLeft = node.scrollWidth;
+      return { left: node.scrollLeft, clientWidth: node.clientWidth, scrollWidth: node.scrollWidth };
+    });
+    assert.ok(scroll.left > 0, `A wide formula must scroll locally: ${JSON.stringify(scroll)}`);
+  });
+}
+
 function restrictedFixture(t, type, id, data, options = {}) {
   const path = `/${type}/${id}`;
   const saver = "https://api.luogu.me";
@@ -429,6 +481,52 @@ test("problem preview renders native fields first and patches late records in pl
   assert.equal(await preview.evaluate(el => el.scrollTop), scrollTop);
 });
 
+test("problem preview retries a failed record lookup on reopening and caches the recovery", async (t) => {
+  const recovery = responseGate(t);
+  const summary = { ...problem, tags: [] };
+  let recordReads = 0;
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [summary] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000")
+        return route.fulfill({ json: { user: viewer, data: { problem: summary } } });
+      if (url.pathname !== "/record/list") return;
+      if (++recordReads === 1) return route.fulfill({ status: 503, json: {} });
+      return recovery.promise.then(() => route.fulfill({ json: {
+        template: "record.list", user: viewer, data: { records: { result: [{
+          id: 77, user: viewer, problem: summary, submitTime: 1700000000, score: 100,
+        }] } },
+      } }));
+    },
+  });
+  const link = page.locator("#problem");
+  const preview = card(page);
+  const title = preview.getByText("P1000 Native preview", { exact: true });
+  const lastAttempt = preview.getByText("上次尝试", { exact: true });
+  const failed = page.waitForResponse(response => response.url().includes("/record/list?") && response.status() === 503);
+  await link.press("Alt+ArrowDown");
+  await title.waitFor();
+  await (await failed).finished();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  assert.equal(await lastAttempt.count(), 0);
+
+  await page.keyboard.press("Escape");
+  await preview.waitFor({ state: "hidden" });
+  const retried = page.waitForRequest(request => request.url().includes("/record/list?"));
+  await link.press("Alt+ArrowDown");
+  await title.waitFor();
+  await retried;
+  assert.equal(await lastAttempt.count(), 0);
+  recovery.release();
+  await lastAttempt.waitFor();
+
+  await page.keyboard.press("Escape");
+  await preview.waitFor({ state: "hidden" });
+  await link.press("Alt+ArrowDown");
+  await lastAttempt.waitFor();
+  assert.equal(recordReads, 2);
+});
+
 test("keyboard opens a cold preview, enters its links and returns focus on Escape", async (t) => {
   const { page } = await fixture(t, {
     html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [problem] }),
@@ -608,6 +706,112 @@ test("user preview falls back to one GET when the native page has no lookup", as
   await card(page).getByText("Fallback basic fields", { exact: true }).waitFor();
   assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["fetch"]);
 });
+
+async function userRelationFixture(t, firstWrite) {
+  let account = viewer.uid;
+  const submitted = [];
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="user" href="/user/123">User</a>')
+      .replace("</head>", '<meta name="csrf-token" content="fixture-only"></head>'),
+    initScript: `{
+      window.relationRequests = 0;
+      window.relationReplies = 0;
+      const fetchPage = window.fetch;
+      window.fetch = (...args) => {
+        const response = fetchPage(...args);
+        if (args[0] !== "/api/user/updateRelationShip") return response;
+        window.relationRequests++;
+        return response.then(reply => {
+          setTimeout(() => window.relationReplies++, 0);
+          return reply;
+        });
+      };
+    }`,
+    async reply(route, url) {
+      if (url.pathname === "/problem/list") {
+        account = Number(url.searchParams.get("viewer"));
+        return route.fulfill({ json: { user: { uid: account }, data: {} } });
+      }
+      if (url.pathname === "/api/user/info/123") return route.fulfill({ json: {
+        user: { uid: 123, name: "Target user", userRelationship: 0,
+          followerCount: account === viewer.uid ? 5 : 77 },
+      } });
+      if (url.pathname === "/user/123") return route.fulfill({ json: {
+        data: { user: { uid: 123, name: "Target user" }, gu: { rating: 42 } },
+      } });
+      if (url.pathname === "/api/user/updateRelationShip" && route.request().method() === "POST") {
+        submitted.push({ viewer: account, ...route.request().postDataJSON() });
+        if (submitted.length === 1) await firstWrite?.promise;
+        return route.fulfill({ json: { _empty: true } });
+      }
+      return route.abort();
+    },
+  });
+  const preview = card(page);
+  const open = async () => {
+    await page.locator("#user").press("Alt+ArrowDown");
+    await preview.getByRole("link", { name: "Target user", exact: true }).waitFor();
+    await preview.getByText("咕值", { exact: true }).waitFor();
+  };
+  const switchViewer = (uid) => page.evaluate(uid => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", `/problem/list?viewer=${uid}`);
+    xhr.addEventListener("loadend", () => xhr.status === 200 ? resolve() : reject(Error(String(xhr.status))));
+    xhr.send();
+  }), uid);
+  return { page, preview, open, switchViewer, submitted };
+}
+
+test("user preview keeps another viewer's follow state and count through an outstanding write", async (t) => {
+  const firstWrite = responseGate(t);
+  const { page, preview, open, switchViewer, submitted } = await userRelationFixture(t, firstWrite);
+  const follow = preview.getByRole("button", { name: "关注", exact: true });
+  const following = preview.getByRole("button", { name: "已关注", exact: true });
+  await open();
+  await Promise.all([page.waitForRequest("**/api/user/updateRelationShip"), follow.click()]);
+  assert.ok(await following.isDisabled());
+  assert.ok(await preview.getByText("6", { exact: true }).isVisible());
+  await page.keyboard.press("Escape");
+  await switchViewer(43);
+  await open();
+  assert.ok(await preview.getByText("77", { exact: true }).isVisible());
+  const enabledDuringFirstWrite = await follow.isEnabled();
+  firstWrite.release();
+  await page.waitForFunction(() => window.relationReplies === 1);
+  assert.ok(await preview.getByText("77", { exact: true }).isVisible());
+  assert.ok(enabledDuringFirstWrite);
+  assert.ok(await follow.isEnabled());
+
+  await page.keyboard.press("Escape");
+  await open();
+  assert.ok(await preview.getByText("77", { exact: true }).isVisible());
+  await preview.getByRole("button", { name: "屏蔽", exact: true }).click();
+  await preview.getByRole("button", { name: "确定", exact: true }).click();
+  await page.waitForFunction(() => window.relationReplies === 2);
+  assert.ok(await preview.getByRole("button", { name: "取消屏蔽", exact: true }).isEnabled());
+  await page.keyboard.press("Escape");
+  await switchViewer(viewer.uid);
+  await open();
+  assert.ok(await preview.getByText("6", { exact: true }).isVisible());
+  assert.ok(await following.isEnabled());
+  assert.deepEqual(submitted, [
+    { viewer: viewer.uid, uid: 123, relationship: 1 },
+    { viewer: 43, uid: 123, relationship: 2 },
+  ]);
+});
+
+for (const action of ["follow", "block confirmation"]) {
+  test(`user preview rejects stale ${action} after the viewer changes`, async (t) => {
+    const { page, preview, open, switchViewer } = await userRelationFixture(t);
+    await open();
+    if (action === "block confirmation")
+      await preview.getByRole("button", { name: "屏蔽", exact: true }).click();
+    await switchViewer(43);
+    const button = action === "follow" ? "关注" : "确定";
+    await preview.getByRole("button", { name: button, exact: true }).click();
+    assert.equal(await page.evaluate(() => window.relationRequests), 0);
+  });
+}
 
 async function ideFixture(t, submitReply = (route, index) =>
   route.fulfill({ json: { status: 200, data: { rid: index } } })) {

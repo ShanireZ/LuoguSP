@@ -38,15 +38,19 @@ same-origin lookup scheduler and reuse fields from Lentille page responses.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. A problem card displays available
 fields first and fills in details and the viewer's latest record as they
-arrive, retaining focused controls and scroll position. A focused eligible
-link opens its preview with Alt+Down Arrow. Escape closes the preview and
-returns focus to the link. Pointer and keyboard activation resolve links against
+arrive, retaining focused controls and scroll position. Temporary lookup
+failures can retry on reopening, with a two-second cooldown after repeated
+failures. A successful empty record list uses the normal cache lifetime.
+A focused eligible link opens its preview with Alt+Down Arrow. Escape closes
+the preview and returns focus to the link. Pointer and keyboard activation resolve links against
 the document base and verify the destination against the current origin and
 supported routes before loading the preview. Problem card navigation retains
 the source link's contest and language. Native void problem anchors continue
 to use their visible problem ID. Standalone avatars use the current origin or
 Luogu's avatar CDN. User cards reuse observed same-origin user-info XHRs and
-display basic information before profile-only fields arrive.
+display basic information before profile-only fields arrive. Follow and block
+requests, pending state, and results use the initiating viewer and target
+account. A card from a previously observed viewer cannot start a new action.
 IDE batch runs observe mutations in the native output panel after the
 matching same-origin submit is acknowledged, until the result, deadline
 or cancellation. An output already present at acknowledgement is treated
@@ -61,7 +65,9 @@ Output highlighting aligns insertions and deletions within a bounded comparison.
 
 The profile introduction renderer sanitizes author markup before inserting
 KaTeX fragments into text nodes. Author CSS and page-scoped identifiers are
-discarded, while generated KaTeX styles are retained.
+discarded, while generated KaTeX styles are retained. Math parsing preserves
+code fences, inline code, and link attributes. Each introduction has bounded
+formula rendering, and wide output scrolls within the fallback card.
 
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.

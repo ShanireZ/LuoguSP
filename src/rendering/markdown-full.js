@@ -16,6 +16,26 @@ const AUTHOR_MARKUP = {
   ALLOW_DATA_ATTR: false,
 };
 
+const MAX_MATH_FORMULAS = 64;
+const MAX_MATH_LENGTH = 4096;
+const MAX_MATH_SIZE_EM = 64;
+
+function tokenizeInlineMath(source) {
+  if (this.lexer.state.inRawBlock || !source.startsWith("$")) return;
+  const displayMode = source.startsWith("$$");
+  const match = displayMode
+    ? /^\$\$((?:\\[\s\S]|[^\\$]|\$(?!\$))+?)\$\$/.exec(source)
+    : /^\$((?:\\[^\n]|[^\\\n$])+?)\$(?!\$)/.exec(source);
+  if (match)
+    return { type: "math", raw: match[0], text: match[1], displayMode };
+}
+
+function tokenizeDisplayMath(source) {
+  const match = /^ {0,3}\$\$[ \t]*\n((?:(?! {0,3}(?:```|~~~))[^\n]*\n)*?) {0,3}\$\$[ \t]*(?:\n|$)/.exec(source);
+  if (match)
+    return { type: "math", raw: match[0], text: match[1], displayMode: true };
+}
+
 function escapeHtml(source) {
   return source.replace(
     /[&<>"]/g,
@@ -44,6 +64,8 @@ export function createMarkdownFullRenderer(dependencies) {
         katex.renderToString(formula, {
           throwOnError: false,
           displayMode,
+          maxSize: MAX_MATH_SIZE_EM,
+          maxExpand: 1000,
           trust: false,
         }),
         { FORBID_TAGS: ["style"] },
@@ -85,6 +107,7 @@ export function createMarkdownFullRenderer(dependencies) {
     const walker = document.createTreeWalker(template.content, 4); // SHOW_TEXT
     const textNodes = [];
     while (walker.nextNode()) textNodes.push(walker.currentNode);
+    let remaining = MAX_MATH_FORMULAS;
     for (const node of textNodes) {
       const source = node.data;
       const matches = [...source.matchAll(marker)];
@@ -96,7 +119,10 @@ export function createMarkdownFullRenderer(dependencies) {
         const start = source.indexOf(match, offset);
         fragment.append(document.createTextNode(source.slice(offset, start)));
         const formula = math[index];
-        const rendered = formula && !literal && renderMath(formula.text, formula.displayMode);
+        const renderable = formula && !literal && remaining > 0 &&
+          formula.text.length <= MAX_MATH_LENGTH;
+        const rendered = renderable && renderMath(formula.text, formula.displayMode);
+        if (renderable) remaining--;
         if (rendered) {
           const element = document.createElement("template");
           element.innerHTML = rendered;
@@ -118,17 +144,24 @@ export function createMarkdownFullRenderer(dependencies) {
       while (markdown.includes(mathPrefix)) mathPrefix += "X";
       const marker = new RegExp(`${mathPrefix}(\\d+)%%`, "g");
       const hold = (raw, text, displayMode) =>
-        `${mathPrefix}${math.push({ raw, text, displayMode }) - 1}%%`;
+        `${mathPrefix}${math.push({ raw, text: displayMode ? text.trim() : text, displayMode }) - 1}%%`;
 
       try {
         if (options.forceFullFailure === true)
           throw new Error("Full renderer failure was requested");
-        const parsed = marked.parse(
-          markdown
-            .replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => hold(match, formula.trim(), true))
-            .replace(/(?<!\\)\$([^\n$]+?)\$/g, (match, formula) => hold(match, formula, false)),
-          { async: false, gfm: true, breaks: true },
-        );
+        const parsed = marked.parse(markdown, {
+          async: false,
+          gfm: true,
+          breaks: true,
+          extensions: {
+            block: [tokenizeDisplayMath],
+            inline: [tokenizeInlineMath],
+            startInline: [(source) => source.indexOf("$")],
+            renderers: {
+              math: ({ raw, text, displayMode }) => hold(raw, text, displayMode),
+            },
+          },
+        });
         if (typeof parsed !== "string")
           throw new TypeError("Marked returned a non-string result");
         const html = renderSafeHtml(parsed, marker, math);

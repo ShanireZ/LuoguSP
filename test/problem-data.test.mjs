@@ -105,3 +105,62 @@ test("hover card publishes a native preview before the Lentille detail and recor
   assert.equal((await card).mine.lastAttempt.id, 1);
   assert.equal(updates.at(-1).mine.lastAttempt.id, 1);
 });
+
+function recordPreviewSources(fetchPage, clock) {
+  const data = createProblemData({ origin, text: () => assert.fail("unexpected detail lookup") });
+  data.rememberPage({ viewer: 42, data: { problem } }, url("/problem/P1001"), Date.now());
+  return createHoverCardSources({ problemData: data, fetchPage, clock });
+}
+
+const recordReply = (result) => ({
+  ok: true,
+  json: async () => ({ template: "record.list", user: { uid: 42 }, data: { records: { result } } }),
+});
+
+test("record previews retry transient failures but cache a successful empty list", async () => {
+  const clock = new FakeClock();
+  let reads = 0;
+  const sources = recordPreviewSources(() => ++reads <= 2
+    ? { ok: false, status: 503 }
+    : recordReply([]), clock.adapter());
+  const open = () => sources.problem(problem.pid, 42);
+
+  await open();
+  await open();
+  assert.equal(reads, 2);
+  await clock.advance(1999);
+  await open();
+  assert.equal(reads, 2);
+  await clock.advance(1);
+  const recovered = await Promise.all([open(), open()]);
+  assert.equal(reads, 3);
+  assert.ok(recovered.every(card => card.mine.lastAttempt === null));
+  await clock.advance(2000);
+  await open();
+  assert.equal(reads, 3);
+});
+
+test("reopening a preview does not join or cache an aborted record request", async () => {
+  const started = deferred();
+  const oldResponse = deferred();
+  let reads = 0;
+  const sources = recordPreviewSources((_path, signal) => {
+    if (++reads !== 1) return recordReply([{ id: 77, user: { uid: 42 }, problem, submitTime: 123 }]);
+    started.resolve(signal);
+    return oldResponse.promise;
+  });
+  const controller = new AbortController();
+  const old = sources.problem(problem.pid, 42, controller.signal);
+  const oldSignal = await started.promise;
+  controller.abort();
+  assert.equal(oldSignal.aborted, true);
+  try {
+    const recovered = await sources.problem(problem.pid, 42);
+    assert.equal(recovered.mine.lastAttempt.id, 77);
+  } finally {
+    oldResponse.resolve({ ok: false, status: 503 });
+    await old;
+  }
+  assert.equal((await sources.problem(problem.pid, 42)).mine.lastAttempt.id, 77);
+  assert.equal(reads, 2);
+});

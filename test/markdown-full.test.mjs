@@ -87,3 +87,40 @@ test("full markdown renderer exposes a deterministic QA failure injection", () =
     "<p></p><h1>Lite heading</h1><p></p>",
   );
 });
+
+for (const forceFullFailure of [false, true]) {
+  const mode = forceFullFailure ? "lite" : "full";
+  test("literal dollar delimiters in code and link attributes survive " + mode + " rendering", () => {
+    const { dom, renderer } = createRenderer();
+    const source = [
+      'A literal \\$x\\$ and code `$code$`.',
+      '[link](https://example.test/$path$ "$title$")',
+      '[`$label$`](/problem/P1000)',
+      '<code>$$</code> and $$x+1$$',
+      '$x^{2} + y^{2}$',
+      '$$\n\\frac{1}{2}\n$$',
+    ].join("\n\n");
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown(source, { forceFullFailure }).html;
+    assert.equal(root.querySelector("code")?.textContent, "$code$");
+    assert.equal(root.querySelector("a code")?.textContent, "$label$");
+    assert.ok(root.textContent.includes("A literal $x$"));
+    assert.equal(root.querySelector("a")?.getAttribute("href"), "https://example.test/$path$");
+    assert.equal(root.querySelector("a")?.getAttribute("title"), "$title$");
+    assert.equal(root.querySelectorAll(".katex").length, 3);
+    assert.equal(root.querySelectorAll(".katex-display").length, 2);
+  });
+
+  test("math past the size and count limits stays as text in " + mode + " rendering", () => {
+    const { dom, renderer } = createRenderer();
+    const oversized = "$" + "x".repeat(4097) + "$";
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown(
+      [oversized, ...Array(64).fill("$x$"), "$beyond$"].join("\n\n"),
+      { forceFullFailure },
+    ).html;
+    assert.equal(root.querySelectorAll(".katex").length, 64);
+    assert.ok(root.textContent.includes(oversized));
+    assert.ok(root.textContent.includes("$beyond$"));
+  });
+}

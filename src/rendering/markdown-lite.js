@@ -29,25 +29,42 @@ export function renderMarkdownLite(md, options = {}) {
   let spanPrefix = "@@LGB";
   while (md.includes(spanPrefix)) spanPrefix += "X";
   const stash = (html) => `${spanPrefix}${spans.push(html) - 1}@@`;
+  const spanMarker = new RegExp(`${spanPrefix}(\\d+)@@`, "g");
+  const restore = (source) => source.replace(spanMarker, (_, index) => spans[index]);
   const getAttribute = (tag, pattern) => (tag.match(pattern) || [])[1] || "";
+  const titleAttribute = (title) => title ? ` title="${esc(title)}"` : "";
   const inline = (source) =>
     source
-      .replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`)
-      .replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (match, alt, value) => {
-        const safeUrl = url(value);
-        return safeUrl
-          ? `<img src="${safeUrl}" alt="${alt}" style="max-width:100%">`
-          : match;
-      })
-      .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (match, text, value) => {
-        const safeUrl = url(value);
-        return safeUrl
-          ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${text}</a>`
-          : match;
-      })
       .replace(/~~([^~]+)~~/g, "<del>$1</del>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  const mathInText = (source) => source
+    .replace(/(?<!\\)\$\$((?:\\[\s\S]|[^\\$]|\$(?!\$))+?)\$\$|(?<![\\$])\$((?:\\[^\n]|[^\\\n$])+?)\$(?!\$)/g,
+      (match, display, formula) => {
+        const html = renderTex(display?.trim() ?? formula, display !== undefined);
+        return html ? stash(html) : match;
+      })
+    .replace(/\\\$/g, "$");
+  // Stashed code and attributes end a text context before math is scanned.
+  const mathInFragments = (source) => source
+    .split(new RegExp(`(${spanPrefix}\\d+@@)`))
+    .map((part, index) => index % 2 ? part : mathInText(part))
+    .join("");
+  const stashCode = (code) => stash(`<code>${esc(code)}</code>`);
+  const inlineLiterals = (source) => source.replace(
+    /`([^`]+)`|(!?)\[([^\]\n]*)\]\(([^)\s]+)([^)\n]*)\)/g,
+    (match, code, image, label, value, suffix) => {
+      if (code !== undefined) return stashCode(code);
+      const safeUrl = url(value);
+      if (!safeUrl) return stash(esc(match));
+      const title = titleAttribute(suffix.trim().match(/^(['"])(.*)\1$/)?.[2]);
+      if (image)
+        return stash(`<img src="${esc(safeUrl)}" alt="${esc(label)}"${title} style="max-width:100%">`);
+      const labelWithCode = label.replace(/`([^`]+)`/g, (_, code) => stashCode(code));
+      const text = restore(inline(esc(mathInFragments(labelWithCode))));
+      return stash(`<a href="${esc(safeUrl)}"${title} target="_blank" rel="noopener noreferrer">${text}</a>`);
+    },
+  );
   const cells = (row) =>
     row
       .trim()
@@ -69,12 +86,14 @@ export function renderMarkdownLite(md, options = {}) {
   const safeInlineTag =
     /^(b|strong|i|em|u|s|del|ins|mark|sub|sup|br|hr|code|kbd|small)$/i;
   let source = md
-    .replace(/```([^\n]*)\n?([\s\S]*?)```/g, (_, rawLanguage, code) => {
-      const className = codeLanguageClass(rawLanguage);
-      return stash(
-        `<pre${className}><code${className}>${esc(code.replace(/\n$/, ""))}</code></pre>`,
-      );
-    })
+    .replace(/\r\n?/g, "\n")
+    .replace(/^ {0,3}((`|~)\2{2,})([^\n]*)\n([\s\S]*?)(?:^ {0,3}\1\2*[ \t]*(?=\n|$)|(?![\s\S]))/gm,
+      (_, _fence, _delimiter, rawLanguage, code) => {
+        const className = codeLanguageClass(rawLanguage);
+        return stash(
+          `<pre${className}><code${className}>${esc(code.replace(/\n$/, ""))}</code></pre>`,
+        );
+      })
     .replace(/<img\b[^>]*>/gi, (tag) => {
       const safeUrl = url(getAttribute(tag, /\bsrc\s*=\s*["']?([^"'\s>]+)/i));
       return safeUrl
@@ -85,24 +104,18 @@ export function renderMarkdownLite(md, options = {}) {
     })
     .replace(/<a\b[^>]*>/gi, (tag) => {
       const safeUrl = url(getAttribute(tag, /\bhref\s*=\s*["']?([^"'\s>]+)/i));
+      const title = titleAttribute(getAttribute(tag, /\btitle\s*=\s*["']([^"']*)["']/i));
       return stash(
         safeUrl
-          ? `<a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">`
+          ? `<a href="${esc(safeUrl)}"${title} target="_blank" rel="noopener noreferrer">`
           : "<span>",
       );
     })
     .replace(/<\/a>/gi, () => stash("</a>"))
     .replace(/<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, (tag, slash, name) =>
       safeInlineTag.test(name) ? stash(`<${slash}${name.toLowerCase()}>`) : tag,
-    )
-    .replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
-      const html = renderTex(formula.trim(), true);
-      return html ? stash(html) : match;
-    })
-    .replace(/(?<!\\)\$([^\n$]+?)\$/g, (match, formula) => {
-      const html = renderTex(formula, false);
-      return html ? stash(html) : match;
-    });
+    );
+  source = mathInFragments(inlineLiterals(source));
   source = esc(source)
     .replace(/^([^\n]+)\n=+[ \t]*$/gm, "# $1")
     .replace(/^([^\n]+)\n-{2,}[ \t]*$/gm, "## $1")
@@ -133,8 +146,5 @@ export function renderMarkdownLite(md, options = {}) {
       return `<p>${inline(block).replace(/\n/g, "<br>")}</p>`;
     })
     .join("");
-  return html.replace(
-    new RegExp(`${spanPrefix}(\\d+)@@`, "g"),
-    (_, index) => spans[index],
-  );
+  return restore(html);
 }

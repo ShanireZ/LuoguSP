@@ -1,4 +1,5 @@
 const languageAliases = Object.freeze({
+  bash: "bash",
   c: "c",
   "c++": "cpp",
   cpp: "cpp",
