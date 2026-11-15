@@ -31,6 +31,21 @@ export function createRestrictedReplyFetchInstaller(config) {
     const observeWrite = typeof onWrite === "function" ? (event) => {
       if (active) onWrite(event);
     } : null;
+    const latestWrites = new Map();
+    const beginWrite = (url) => {
+      const kind = url.pathname.endsWith("/vote") ? "vote" : "favor";
+      const previous = latestWrites.get(kind);
+      const request = {};
+      latestWrites.set(kind, request);
+      return {
+        observe(event) {
+          if (latestWrites.get(kind) === request) observeWrite?.(event);
+        },
+        cancel() {
+          if (latestWrites.get(kind) === request) latestWrites.set(kind, previous);
+        },
+      };
+    };
     const articleFetch = csrf
       ? createOfficialArticleWriteAdapter({
           fetch: (input, init) => realFetch.call(host, input, init),
@@ -41,6 +56,7 @@ export function createRestrictedReplyFetchInstaller(config) {
           lid,
           csrf,
           onWrite: observeWrite,
+          beginWrite,
           getBaseUrl,
         }).fetch
       : (input, init) => realFetch.call(host, input, init);
@@ -65,6 +81,7 @@ export function createRestrictedReplyFetchInstaller(config) {
             lid,
             replies,
             onWrite: observeWrite,
+            beginWrite,
             isActive: () => active,
             getBaseUrl,
           }).XMLHttpRequest

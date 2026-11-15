@@ -51,6 +51,10 @@ establish the current account's privileges or personal state.
   cannot be saved has a separate warning until a successful save for that
   action. Confirmations use the rebuilt page's recognized account. Never log
   live headers or cookies.
+  Fetch and XHR share a send-order check for each action. Only the latest
+  dispatched vote or favorite can update its cached state, count or notice.
+  XHR ordering starts at send. A synchronous send failure releases its reservation,
+  allowing an earlier request to settle and the failed XHR to retry.
 - Saver workflow/comment-refresh requests update the archive. They do not
   interact as the current Luogu account. Follow task completion and freshness
   signals rather than treating acceptance as refreshed content.

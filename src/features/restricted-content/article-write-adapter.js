@@ -8,6 +8,7 @@ export function createOfficialArticleWriteAdapter(config) {
     lid,
     csrf,
     onWrite,
+    beginWrite,
     getBaseUrl = () => origin,
   } = config || {};
   if (
@@ -66,9 +67,16 @@ export function createOfficialArticleWriteAdapter(config) {
     });
     if (!protectedRequest.headers.has("x-csrf-token"))
       protectedRequest.headers.set("x-csrf-token", csrf);
-    const result = realFetch(protectedRequest);
     if (typeof onWrite !== "function" ||
-      !/\/(?:vote|favor)$/.test(requestUrl.pathname)) return result;
+      !/\/(?:vote|favor)$/.test(requestUrl.pathname)) return realFetch(protectedRequest);
+    const observation = typeof beginWrite === "function" ? beginWrite(requestUrl) : null;
+    let result;
+    try {
+      result = realFetch(protectedRequest);
+    } catch (error) {
+      observation?.cancel();
+      throw error;
+    }
     // 官方前端目前用 axios/XHR 寫入，這裡只是同一契約在 fetch 側的旁觀鏡像：
     // 讀取回應副本，絕不改動交還給呼叫方的原回應。
     return Promise.resolve(result).then((response) => {
@@ -76,7 +84,7 @@ export function createOfficialArticleWriteAdapter(config) {
         if (response && typeof response.clone === "function")
           response.clone().text()
             .catch(() => undefined)
-            .then((responseText) => onWrite({
+            .then((responseText) => (observation?.observe ?? onWrite)({
               method: request.method,
               url: request.url,
               status: response.status,

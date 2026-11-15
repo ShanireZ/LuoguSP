@@ -10,6 +10,7 @@ export function createRestrictedReplyXhrAdapter(config) {
     lid,
     replies,
     onWrite,
+    beginWrite,
     isActive = () => true,
     getBaseUrl = () => origin,
   } = config || {};
@@ -43,6 +44,7 @@ export function createRestrictedReplyXhrAdapter(config) {
       this.#request = url && {
         replyUrl: method.toUpperCase() === "GET" ? url : null,
         writeUrl: method.toUpperCase() === "POST" ? url.href : null,
+        writeObserver: null,
         checked: false,
         aborting: false,
         fallback: null,
@@ -51,6 +53,21 @@ export function createRestrictedReplyXhrAdapter(config) {
         return super.open(method, rawUrl, ...options);
       } catch (error) {
         this.#request = previous;
+        throw error;
+      }
+    }
+
+    send(...args) {
+      const request = this.#request;
+      if (!request?.writeUrl || request.writeObserver) return super.send(...args);
+      const observation = typeof beginWrite === "function"
+        ? beginWrite(new URLCtor(request.writeUrl)) : null;
+      request.writeObserver = observation?.observe ?? onWrite;
+      try {
+        return super.send(...args);
+      } catch (error) {
+        observation?.cancel();
+        if (this.#request === request) request.writeObserver = null;
         throw error;
       }
     }
@@ -80,7 +97,7 @@ export function createRestrictedReplyXhrAdapter(config) {
       if (request.writeUrl) {
         const url = request.writeUrl;
         request.writeUrl = null;
-        this.#reportWrite(url);
+        this.#reportWrite(url, request.writeObserver || onWrite);
       }
       if (!request.replyUrl || request.checked || request.aborting) return;
       if (!super.status) {
@@ -128,7 +145,7 @@ export function createRestrictedReplyXhrAdapter(config) {
       }
     }
 
-    #reportWrite(url) {
+    #reportWrite(url, reportWrite) {
       try {
         const { status, responseType, responseURL } = this;
         let responseText;
@@ -136,7 +153,7 @@ export function createRestrictedReplyXhrAdapter(config) {
         else if (responseType === "json" && this.response !== null)
           responseText = JSON.stringify(this.response);
         else if (status === 204 || status === 205) responseText = "";
-        onWrite({
+        reportWrite({
           method: "POST",
           url,
           status,

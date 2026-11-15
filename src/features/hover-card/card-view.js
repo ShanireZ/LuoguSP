@@ -254,8 +254,12 @@ export function updateUserCard(card, content, preserveActions, fadeField, pendin
         old.textContent = next.textContent;
         return true;
       }
-      return (old.classList.contains("luogusp-hc-slogan") && old.firstElementChild.isEqualNode(next.firstElementChild)) ||
-        (preserveActions && old.classList.contains("luogusp-hc-actions"));
+      if (old.classList.contains("luogusp-hc-slogan")) {
+        if (!old.firstElementChild.isEqualNode(next.firstElementChild))
+          old.firstElementChild.textContent = next.firstElementChild.textContent;
+        return true;
+      }
+      return preserveActions && old.classList.contains("luogusp-hc-actions");
     },
       fadeField && ((node, previous) => {
         if (node.classList.contains("luogusp-hc-stats")) {
@@ -349,12 +353,14 @@ export function renderUserCard(card, options = {}) {
   );
   const expand = el("button", "luogusp-hc-expand", "展开");
   expand.type = "button";
+  expand.setAttribute("aria-expanded", "false");
   expand.hidden = true;
   expand.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     const open = sloganBox.classList.toggle("is-open");
     expand.textContent = open ? "收起" : "展开";
+    expand.setAttribute("aria-expanded", String(open));
     if (typeof options.onResize === "function") options.onResize();
   });
   sloganBox.append(slogan, expand);
@@ -519,7 +525,18 @@ export function finalizeCard(cardEl) {
   const slogan = box && box.querySelector(".luogusp-hc-clamp");
   const expand = box && box.querySelector(".luogusp-hc-expand");
   if (!slogan || !expand) return;
-  expand.hidden = !box.classList.contains("is-open") && slogan.scrollHeight <= slogan.clientHeight + 1;
+  const wasOpen = box.classList.contains("is-open");
+  // Measure against the same two-line limit even when the user expanded it.
+  box.classList.remove("is-open");
+  const overflowing = slogan.scrollHeight > slogan.clientHeight + 1;
+  const restoreFocus = !overflowing && document.activeElement === expand;
+  const open = wasOpen && overflowing;
+  box.classList.toggle("is-open", open);
+  expand.hidden = !overflowing;
+  expand.textContent = open ? "收起" : "展开";
+  expand.setAttribute("aria-expanded", String(open));
+  if (restoreFocus)
+    (cardEl.querySelector(".luogusp-hc-name") || cardEl).focus({ preventScroll: true });
 }
 
 // 卡片位置。

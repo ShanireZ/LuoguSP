@@ -641,6 +641,159 @@ for (const transport of ["fetch", "xhr"]) {
   });
 }
 
+async function reorderedArticleWrites(t, responses) {
+  const older = responseGate(t);
+  const received = Promise.withResolvers();
+  const { page } = await restrictedFixture(t, "article", "123", {
+    ...archiveArticle, upvote: 10, favorCount: 3,
+  }, {
+    nativeScript: nativeArticle,
+    initScript: `
+      window.articleWrites = {};
+      window.observedArticleWrites = [];
+      const clone = Response.prototype.clone;
+      Response.prototype.clone = function () {
+        const copy = clone.call(this);
+        const slot = this.headers.get("x-fixture-write");
+        if (slot) {
+          const text = copy.text.bind(copy);
+          copy.text = () => text().then(body => {
+            setTimeout(() => observedArticleWrites.push(slot), 0);
+            return body;
+          });
+        }
+        return copy;
+      };
+      const at = Date.now();
+      if (!localStorage.getItem("luogusp.article-interaction.v2"))
+        localStorage.setItem("luogusp.article-interaction.v2", JSON.stringify({ "42:123": {
+        voted: 0, upvote: 10, favored: false, favorCount: 3, voteAt: at, favorAt: at, at,
+      } }));
+    `,
+    reply(route, url) {
+      if (url.origin !== origin || route.request().method() !== "POST") return;
+      const slot = route.request().headers()["x-fixture-write"];
+      if (!Object.hasOwn(responses, slot)) return;
+      const fulfill = () => route.fulfill({ json: responses[slot], headers: { "x-fixture-write": slot } });
+      if (slot === "older") {
+        received.resolve();
+        return older.promise.then(fulfill);
+      }
+      return fulfill();
+    },
+  });
+  await page.getByRole("button", { name: "Native action" }).waitFor();
+  const start = (slot, transport, path) => page.evaluate(({ slot, transport, path }) => {
+    if (transport === "fetch") {
+      articleWrites[slot] = fetch(path, { method: "POST", headers: { "x-fixture-write": slot } })
+        .then(response => response.text());
+    } else {
+      articleWrites[slot] = new Promise((resolve, reject) => {
+        const xhr = slot === "newer" && window.preparedVote ? preparedVote : new XMLHttpRequest();
+        if (xhr !== window.preparedVote) xhr.open("POST", path);
+        xhr.setRequestHeader("x-fixture-write", slot);
+        xhr.onload = () => {
+          observedArticleWrites.push(slot);
+          resolve(xhr.responseText);
+        };
+        xhr.onerror = reject;
+        xhr.send();
+      });
+    }
+  }, { slot, transport, path });
+  const finish = async (slot) => {
+    await page.evaluate(slot => articleWrites[slot], slot);
+    await page.waitForFunction(slot => observedArticleWrites.includes(slot), slot);
+  };
+  return { page, start, finish, received: received.promise, release: older.release };
+}
+
+for (const [olderTransport, newerTransport] of [["fetch", "fetch"], ["xhr", "xhr"], ["fetch", "xhr"], ["xhr", "fetch"]]) {
+  test(`restricted article keeps the newer vote after an older ${olderTransport} completes behind ${newerTransport}`, async (t) => {
+    const { page, start, finish, received, release } = await reorderedArticleWrites(t, {
+      older: { upvotes: 11, voted: 1 }, newer: { upvotes: 10, voted: 0 },
+    });
+    if (newerTransport === "xhr") await page.evaluate(() => {
+      window.preparedVote = new XMLHttpRequest();
+      preparedVote.open("POST", "/article/123/vote?vote=0");
+    });
+    await start("older", olderTransport, "/article/123/vote?vote=1");
+    await received;
+    await start("newer", newerTransport, "/article/123/vote?vote=0");
+    await finish("newer");
+    const latest = await readArticleInteraction(page);
+    assert.equal(latest.voted, 0);
+    assert.equal(latest.upvote, 10);
+    release();
+    await finish("older");
+    assert.deepEqual(await readArticleInteraction(page), latest);
+    await page.reload();
+    await page.getByRole("button", { name: "Native action" }).waitFor();
+    const { data } = JSON.parse(await page.locator("#lentille-context").textContent());
+    assert.equal(data.voted, 0);
+    assert.equal(data.article.upvote, 10);
+  });
+}
+
+for (const latestConfirmed of [true, false]) {
+  test(`restricted article ignores an older vote when the newer result is ${latestConfirmed ? "confirmed" : "uncertain"}`, async (t) => {
+    const success = { upvotes: 11, voted: 1 };
+    const invalid = { success: false };
+    const { page, start, finish, received, release } = await reorderedArticleWrites(t, {
+      older: latestConfirmed ? invalid : success, newer: latestConfirmed ? success : invalid,
+    });
+    await start("older", "xhr", "/article/123/vote?vote=1");
+    await received;
+    await start("newer", "fetch", "/article/123/vote?vote=1");
+    await finish("newer");
+    const latest = await readArticleInteraction(page);
+    const notice = page.locator("#luogusp-rst-write-vote-unconfirmed");
+    assert.equal(await notice.count(), latestConfirmed ? 0 : 1);
+    release();
+    await finish("older");
+    assert.deepEqual(await readArticleInteraction(page), latest);
+    assert.equal(await notice.count(), latestConfirmed ? 0 : 1);
+  });
+}
+
+test("a synchronously rejected XHR send preserves the earlier vote and permits retry", async (t) => {
+  const { page, start, finish, received, release } = await reorderedArticleWrites(t, {
+    older: { upvotes: 11, voted: 1 }, newer: { upvotes: 10, voted: 0 },
+  });
+  await start("older", "xhr", "/article/123/vote?vote=1");
+  await received;
+  const failure = await page.evaluate(() => {
+    window.preparedVote = new XMLHttpRequest();
+    preparedVote.open("POST", "/article/123/vote?vote=0");
+    try {
+      preparedVote.send(Symbol("Invalid XHR body"));
+    } catch (error) {
+      return error.name;
+    }
+  });
+  assert.equal(failure, "TypeError");
+  release();
+  await finish("older");
+  assert.equal((await readArticleInteraction(page)).voted, 1);
+  await start("newer", "xhr", "/article/123/vote?vote=0");
+  await finish("newer");
+  assert.equal((await readArticleInteraction(page)).voted, 0);
+});
+
+test("restricted article keeps vote and favorite ordering independent", async (t) => {
+  const { page, start, finish, received, release } = await reorderedArticleWrites(t, {
+    older: { favored: true, favorCount: 4 }, newer: { upvotes: 11, voted: 1 },
+  });
+  await start("older", "xhr", "/article/123/favor");
+  await received;
+  await start("newer", "fetch", "/article/123/vote?vote=1");
+  await finish("newer");
+  release();
+  await finish("older");
+  const state = await readArticleInteraction(page);
+  assert.deepEqual([state.voted, state.upvote, state.favored, state.favorCount], [1, 11, true, 4]);
+});
+
 test("restricted reply adapters accept only aligned JSON and preserve cancellation", async (t) => {
   const redirectTarget = createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -2055,6 +2208,49 @@ test("user preview joins a native XHR and shows basic fields ahead of the profil
   assert.ok(await following.isEnabled());
   assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["xhr"]);
 });
+
+for (const [updated, expanded, focusToggle] of [["long", true, true], ["long", false, true], ["short", true, true], ["short", true, false]]) {
+  test(`user preview preserves signature disclosure after a late ${updated} signature while ${expanded ? "expanded" : "collapsed"} and focused on ${focusToggle ? "the toggle" : "another control"}`, async (t) => {
+    const info = responseGate(t);
+    const nextText = updated === "long" ? "Updated signature ".repeat(45) : "Short signature";
+    const user = { uid: 123, name: "Signature fixture", slogan: "Initial signature ".repeat(40) };
+    const { page } = await fixture(t, {
+      html: fixtureHtml('<a id="signature-user" href="/user/123">User</a>'),
+      reply(route, url) {
+        if (url.pathname === "/api/user/info/123") return info.promise.then(() => route.fulfill({
+          json: { user: { ...user, slogan: nextText } },
+        }));
+        if (url.pathname === "/user/123") return route.fulfill({ json: { data: { user } } });
+      },
+    });
+    const trigger = page.locator("#signature-user");
+    await trigger.press("Alt+ArrowDown");
+    const preview = card(page);
+    const signature = preview.locator(".luogusp-hc-slogan");
+    const toggle = signature.getByRole("button", { name: "展开", exact: true });
+    await toggle.waitFor();
+    await toggle.focus();
+    const original = await toggle.elementHandle();
+    if (expanded) await toggle.press("Enter");
+    if (!focusToggle) await preview.getByRole("link", { name: user.name }).focus();
+    info.release();
+    await page.waitForFunction(text => document.querySelector(".luogusp-hc-clamp")?.textContent === text, nextText);
+    const currentToggle = signature.locator(".luogusp-hc-expand");
+    assert.ok(await original.evaluate(node => node === document.querySelector(".luogusp-hc-expand")));
+    const remainsExpanded = expanded && updated === "long";
+    assert.equal(await signature.evaluate(node => node.classList.contains("is-open")), remainsExpanded);
+    assert.equal(await currentToggle.getAttribute("aria-expanded"), String(remainsExpanded));
+    assert.equal(await focused(updated === "short" ? preview.getByRole("link", { name: user.name }) : currentToggle), true);
+    assert.equal(await currentToggle.isVisible(), updated === "long");
+    if (remainsExpanded) {
+      await currentToggle.press("Enter");
+      assert.equal(await currentToggle.getAttribute("aria-expanded"), "false");
+      assert.equal(await currentToggle.textContent(), "展开");
+    }
+    await page.keyboard.press("Escape");
+    assert.ok(await focused(trigger));
+  });
+}
 
 test("user preview falls back to one GET when the native page has no lookup", async (t) => {
   const { page, requests } = await fixture(t, {

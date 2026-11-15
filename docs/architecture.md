@@ -68,6 +68,10 @@ to use their visible problem ID. Standalone avatars use the current origin or
 Luogu's avatar CDN. User cards reuse observed same-origin user-info XHRs and
 display basic information before profile-only fields arrive. They retry transient
 profile failures on reopening, with bounded requests and per-account cache keys.
+Late signature updates retain the existing disclosure button and expansion
+state. The button reports its expanded state. When a shorter signature fits
+within two lines, the disclosure collapses and hides. Focus held on that button
+returns to the user-name link. Focus on another control stays with that control.
 The preview replaces the native user card after the optional feature has mounted.
 User previews load avatar and cover media from allowed HTTPS origins without
 credentials or a referrer, and use a local visual fallback if loading fails.
