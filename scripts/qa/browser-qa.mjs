@@ -83,7 +83,7 @@ try {
       .waitForFunction(
         () =>
           !!document.querySelector(".luogusp-setting-entry") &&
-          !!document.querySelector('a[href="/problem/P1000"] b[style*="color"]'),
+          !!document.querySelector('a[data-luogusp-pid="P1000"] > [style*="color"]'),
         null,
         { timeout: 5000 },
       )
@@ -110,10 +110,8 @@ try {
           )
           .filter((value, index, all) => all.indexOf(value) === index);
       })(),
-      // 著色是把題號包進一個帶 inline color 的 <b> 裡。
       colouredPid: (() => {
-        const link = document.querySelector('a[href="/problem/P1000"]');
-        const painted = link && link.querySelector("b");
+        const painted = document.querySelector('a[data-luogusp-pid="P1000"] > [style*="color"]');
         return painted ? getComputedStyle(painted).color : null;
       })(),
     }));

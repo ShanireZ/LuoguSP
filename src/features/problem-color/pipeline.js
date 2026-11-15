@@ -132,11 +132,12 @@ export function createProblemPipeline(config) {
       }
       if (text != null) {
         try {
-          const difficulty =
-            JSON.parse(text)?.currentData?.problem?.difficulty;
-          if (validDifficulty(difficulty)) {
+          const payload = JSON.parse(text);
+          const problem = payload?.data?.problem ?? payload?.currentData?.problem;
+          if (problem && typeof problem === "object") {
             contentOnlySupport = true;
-            return difficulty;
+            return (problem.pid === undefined || problem.pid === pid) &&
+              validDifficulty(problem.difficulty) ? problem.difficulty : null;
           }
         } catch (error) {
           const htmlDifficulty = text.match(DIFFICULTY_RE);
@@ -179,8 +180,7 @@ export function createProblemPipeline(config) {
         ? documentAdapter.appliedPid(anchor)
         : null;
     if (!taskIdentity) {
-      if (appliedPid && typeof documentAdapter.clearColor === "function")
-        documentAdapter.clearColor(anchor, appliedPid);
+      documentAdapter.clearColor?.(anchor, appliedPid);
       return;
     }
     const apply = (color) => {

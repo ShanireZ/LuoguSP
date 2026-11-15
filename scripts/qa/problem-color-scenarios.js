@@ -31,6 +31,7 @@ lifecycle.register(feature);
 // Match the verified Luogu list DOM, including the separate pid and title link.
 const row = (pid) => `<div class="row"><div class="pid" title="${pid}">${pid}</div><div class="title"><a href="/problem/${pid}">题目标题</a></div></div>`;
 const color = () => stage.querySelector(".pid")?.style.color;
+const coloredPid = 'a > [style*="color"]';
 const nativeNavigate = (url, render) => new Promise((resolve, reject) => {
   const xhr = new XMLHttpRequest();
   xhr.open("GET", url);
@@ -49,13 +50,16 @@ const nativeNavigate = (url, render) => new Promise((resolve, reject) => {
 
 async function run() {
   lifecycle.start();
-  check(stage.querySelector("b")?.style.color === "rgb(254, 76, 97)", "detail not colored synchronously");
+  const firstPid = stage.querySelector(coloredPid);
+  check(firstPid?.style.color === "rgb(254, 76, 97)", "detail not colored synchronously");
+  check(getComputedStyle(firstPid).fontWeight === "400", "inline problem ID gained font weight");
   check(queries.length === 0, "detail queried despite native data");
   report("题目详情首屏同步着色，零额外查询");
 
   await nativeNavigate("/training/100", (data) => { stage.innerHTML = row(data.training.problems[0].pid); });
   await frame();
   check(color() === "rgb(243, 156, 17)", "training missing color on first frame");
+  check(getComputedStyle(stage.querySelector(".pid")).fontWeight === "400", "standalone problem ID gained font weight");
   check(queries.length === 0, "training queried despite native data");
   report("站内跳转至题单，第一帧题号已有颜色");
 
@@ -79,29 +83,47 @@ async function run() {
       '<div class="l-card"><h3>已通过的题目</h3><a href="/problem/P9998">P9998</a></div>';
   });
   await frame();
-  check(stage.querySelector(".l-card a b")?.style.color === "rgb(243, 156, 17)", "attempted problem not colored");
+  check(stage.querySelector(coloredPid)?.style.color === "rgb(243, 156, 17)", "attempted problem not colored");
   check(!stage.querySelectorAll(".l-card a")[1].dataset.luoguspPid, "passed problem colored");
   report("练习页只处理尝试过的题目");
 
-  history.pushState({}, "", "/record/list");
-  stage.innerHTML = '<a href="/problem/P9997"><span class="pid" style="color:rgb(19,194,194)">P9997</span></a>';
-  await frame(); await pause(320);
-  check(!stage.querySelector("a").dataset.luoguspPid && queries.length === 0, "record list recolored or fetched");
-  report("评测记录保留原生颜色，零查询");
+  for (const path of ["/record/list", "/record/303491732"]) {
+    history.pushState({}, "", path);
+    stage.innerHTML = '<a href="/problem/P9997"><strong style="color:rgb(19,194,194)">P9997</strong> 标题</a>';
+    await frame(); await pause(320);
+    check(!stage.querySelector("a").dataset.luoguspPid && queries.length === 0, "record link recolored or fetched");
+  }
+  report("评测记录列表与详情页保留原生颜色，零查询");
 
   history.pushState({}, "", "/");
-  stage.innerHTML = '<a href="/problem/P9999">P9999</a>';
+  stage.innerHTML = `<a id="native" href="/problem/P9996"><span class="lcolor--pink-3">P9996</span> 标题</a>
+    <a id="uncolored" href="/problem/P9999"><span class="pid" style="font-weight: 550">P9999</span> 标题</a>`;
   await frame();
   const mountedAt = performance.now();
   await pause(260);
   check(queries.length === 0, "fallback began before 300ms");
   await pause(120);
   check(queries.length === 1 && queries[0].at - mountedAt >= 290, "fallback timing/count incorrect");
-  check(stage.querySelector("b")?.style.color === "rgb(255, 193, 22)", "fallback color missing");
+  const homePid = stage.querySelector("#uncolored .pid");
+  check(homePid.style.color === "rgb(255, 193, 22)", "academic mode fallback color missing");
+  check(getComputedStyle(homePid).fontWeight === "550", "home problem ID changed font weight");
+  const native = stage.querySelector("#native");
+  check(!native.dataset.luoguspPid && getComputedStyle(native.firstElementChild).color === "rgb(223, 65, 96)", "native class-based color overwritten");
   stage.insertAdjacentHTML("beforeend", '<a href="/problem/P9999">P9999</a>');
   await frame();
-  check(stage.querySelectorAll("b").length === 2 && queries.length === 1, "cache not reused");
-  report(`缺失数据约 ${Math.round(queries[0].at - mountedAt)}ms 后查询；同题新链接复用缓存`);
+  check(stage.querySelectorAll("[data-luogusp-pid]").length === 2 && queries.length === 1, "cache not reused");
+  report(`学术模式约 ${Math.round(queries[0].at - mountedAt)}ms 后查询；首页补色保留字重，原生颜色不重复处理`);
+
+  homePid.style.color = "rgb(19, 194, 194)";
+  await frame();
+  check(homePid.style.color === "rgb(19, 194, 194)" && !homePid.closest("a").dataset.luoguspPid, "late native color overwritten");
+  homePid.style.removeProperty("color");
+  await frame();
+  check(homePid.style.color === "rgb(255, 193, 22)" && queries.length === 1, "missing native color not filled from cache");
+  history.pushState({}, "", "/record/303491732");
+  await frame(); await frame();
+  check(!stage.querySelector("[data-luogusp-pid]") && !homePid.style.color, "previous route's color survived on record details");
+  report("动态原生颜色接管同一题号，切到记录详情清除 LuoguSP 颜色");
 
   document.body.dataset.result = "passed";
 }

@@ -281,6 +281,32 @@ test("Problem Pipeline keeps temporary _contentOnly HTML from causing permanent 
   fx.pipeline.dispose();
 });
 
+test("Problem Pipeline reads the requested difficulty from Lentille in academic mode", async () => {
+  const anchors = ["P1", "P2"].map((pid) => ({ pid, href: `/problem/${pid}` }));
+  const paths = [];
+  const fx = fixture({
+    anchors,
+    text: async (path) => {
+      paths.push(path);
+      const pid = path.includes("P1") ? "P1" : "P2";
+      return JSON.stringify({
+        user: { learningMode: 1 },
+        data: {
+          problem: { pid, difficulty: pid === "P1" ? 5 : null },
+          recommendations: [{ pid: "P3", difficulty: 7 }],
+        },
+      });
+    },
+  });
+
+  fx.pipeline.mount();
+  await flushMicrotasks();
+  assert.deepEqual(paths, ["/problem/P1?_contentOnly=1", "/problem/P2?_contentOnly=1"]);
+  assert.equal(anchors[0].color, "color-5");
+  assert.equal(anchors[1].color, undefined);
+  fx.pipeline.dispose();
+});
+
 test("Problem Pipeline harvests injected lists once without mutating page data", async () => {
   const source = Object.freeze([
     Object.freeze({ pid: "P1", difficulty: 1 }),

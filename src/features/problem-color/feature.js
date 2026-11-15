@@ -1,6 +1,6 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
 import { createGetRequestScheduler } from "../../core/get-request-scheduler.js";
-import { DIFFICULTY_COLORS } from "../../core/luogu-difficulty.js";
+import { DIFFICULTY_COLORS, DIFFICULTY_COLOR_NAMES } from "../../core/luogu-difficulty.js";
 import { createProblemIdentityResolver } from "./identity.js";
 import { createNativeDifficultySource } from "./native-difficulty-source.js";
 import { createProblemPipeline } from "./pipeline.js";
@@ -22,7 +22,9 @@ export function createProblemColorFeature({ storage }) {
   // ============================================================
   // 單佇列 FIFO：300ms 發起間隔、最多 3 並行、15s 超時。
   const limiter = createGetRequestScheduler({
-    fetch: (url, init) => fetch(url, init),
+    fetch: (url, init) => fetch(url, url.endsWith("?_contentOnly=1")
+      ? { ...init, headers: { "x-lentille-request": "content-only" } }
+      : init),
     clock: {
       now: () => Date.now(),
       setTimeout: (fn, ms) => setTimeout(fn, ms),
@@ -39,6 +41,7 @@ export function createProblemColorFeature({ storage }) {
     'a[href*="?forum="]',
     SELECTORS.voidAnchor,
     SELECTORS.standalonePid,
+    "[data-luogusp-pid]",
   ].join(",");
 
   const problemIdentity = createProblemIdentityResolver({
@@ -50,52 +53,62 @@ export function createProblemColorFeature({ storage }) {
     isProblemAnchorColorable(anchor, location.pathname);
   const shouldProcessProblemAnchor = (anchor) =>
     shouldColorProblemAnchor(anchor) || Boolean(anchor?.dataset?.luoguspPid);
+  const appliedProblemColors = new WeakMap();
+  const nativeColorClasses = DIFFICULTY_COLOR_NAMES.map((name) => `lcolor--${name}`);
   const problemAnchorIdentity = Object.freeze({
-    resolve: (anchor) =>
-      shouldColorProblemAnchor(anchor)
-        ? problemIdentity.resolve(anchor)
-        : null,
+    resolve: (anchor) => {
+      if (!shouldColorProblemAnchor(anchor)) return null;
+      const identity = problemIdentity.resolve(anchor);
+      if (!identity) return null;
+      return hasNativeColor(anchor, identity.pid) ? null : identity;
+    },
   });
 
-  // 把子樹中第一處 pid 文字包成 <b>（純 DOM，避免 innerHTML.replace 誤傷屬性內同名子串、
-  // 重建整個錨點子樹、抖掉已綁定的監聽）。回傳建立的包裹節點，未找到則回傳 null。
-  function wrapPidText(root, pid, color) {
+  function findPidText(root, pid) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      const idx = node.nodeValue.indexOf(pid);
-      if (idx === -1) continue;
-      const mid = node.splitText(idx); // mid 以 pid 開頭
-      mid.splitText(pid.length); // 把 pid 之後的部分切走，mid 現在正好等於 pid
-      const b = document.createElement("b");
-      b.style.color = color;
-      b.textContent = pid;
-      mid.parentNode.replaceChild(b, mid);
-      return b;
+      if (node.nodeValue.includes(pid)) return node;
     }
     return null;
   }
 
-  const appliedProblemColors = new WeakMap();
-  const captureInlineProperty = (element, property) =>
-    Object.freeze({
-      value: element.style.getPropertyValue(property),
-      priority: element.style.getPropertyPriority(property),
-    });
-  const restoreInlineProperty = (element, property, original) => {
-    if (original.value)
-      element.style.setProperty(property, original.value, original.priority);
-    else element.style.removeProperty(property);
-  };
+  const hasAppliedColor = (state, node) =>
+    state?.node === node && node.style.color === state.paintColor &&
+    !node.style.getPropertyPriority("color");
+
+  function hasNativeColor(anchor, pid) {
+    const state = appliedProblemColors.get(anchor);
+    for (let node = findPidText(anchor, pid)?.parentElement; node; node = node.parentElement) {
+      if ((node.style?.color && !hasAppliedColor(state, node)) ||
+          nativeColorClasses.some((className) => node.classList.contains(className)))
+        return true;
+      if (node === anchor) break;
+    }
+    return false;
+  }
+
+  // Wrap only the PID text and keep the original element and event listeners.
+  function wrapPidText(root, pid) {
+    const node = findPidText(root, pid);
+    if (!node) return null;
+    const text = node.splitText(node.nodeValue.indexOf(pid));
+    text.splitText(pid.length);
+    const wrapper = document.createElement("span");
+    wrapper.textContent = pid;
+    text.replaceWith(wrapper);
+    return wrapper;
+  }
+
   const clearProblemColor = (anchor) => {
     const state = appliedProblemColors.get(anchor);
-    if (state && state.node && anchor.contains(state.node)) {
-      if (state.kind === "span" || state.kind === "standalone") {
-        restoreInlineProperty(state.node, "color", state.color);
-        restoreInlineProperty(state.node, "font-weight", state.fontWeight);
-      } else if (state.kind === "wrapper") {
+    if (!state) return;
+    if (anchor.contains(state.node)) {
+      if (state.wrapped) {
         state.node.replaceWith(document.createTextNode(state.node.textContent || ""));
         anchor.normalize();
+      } else if (hasAppliedColor(state, state.node)) {
+        state.node.style.removeProperty("color");
       }
     }
     appliedProblemColors.delete(anchor);
@@ -121,7 +134,7 @@ export function createProblemColorFeature({ storage }) {
     difficultySource: {
       text: (path, options) => limiter.text(path, options),
       // 練習頁只收“嘗試過的題目”；“已通過”已按難度分組，既不著色也不入快取。
-      // 評測記錄列表的題號洛谷已經上色，practice-policy.js 會整頁跳過。
+      // 評測記錄的題號由洛谷上色，practice-policy.js 會整頁跳過。
       // 列表 payload 裡的難度仍收進快取，離開該頁後的題號不用逐題再請求。
       // 首屏 JSON + 洛谷自身導覽請求的回應，不額外請求頁面資料。
       harvest: () => nativeDifficulty.harvest(),
@@ -163,6 +176,8 @@ export function createProblemColorFeature({ storage }) {
             if (anchor && shouldProcessProblemAnchor(anchor))
               anchors.add(anchor);
           };
+          const addContainingAnchor = (target) =>
+            addAnchor(target?.closest?.(PROBLEM_ANCHOR_SELECTOR));
           const addDescendants = (root) => {
             if (!root || !root.querySelectorAll) return;
             if (root.matches && root.matches(PROBLEM_ANCHOR_SELECTOR))
@@ -182,26 +197,14 @@ export function createProblemColorFeature({ storage }) {
                 if (node.nodeType !== Node.ELEMENT_NODE) continue;
                 addDescendants(node);
               }
+              addContainingAnchor(mutation.target);
               reconsiderPracticeCard(mutation.target);
             } else if (mutation.type === "characterData") {
               const element = mutation.target.parentElement;
               reconsiderPracticeCard(element);
-              if (
-                element &&
-                element.matches &&
-                element.matches(SELECTORS.standalonePid)
-              ) {
-                addAnchor(element);
-                continue;
-              }
-              const anchor =
-                element &&
-                element.matches &&
-                element.matches("span.pid") &&
-                element.closest("a[href]");
-              addAnchor(anchor);
+              addContainingAnchor(element);
             } else if (mutation.type === "attributes") {
-              addAnchor(mutation.target);
+              addContainingAnchor(mutation.target);
               if (
                 mutation.attributeName === "href" &&
                 mutation.target.parentElement
@@ -211,20 +214,20 @@ export function createProblemColorFeature({ storage }) {
                   .forEach(addAnchor);
             }
           }
-          accept(anchors);
+          if (anchors.size) accept(anchors);
         });
         observer.observe(document, {
           childList: true,
           subtree: true,
           characterData: true,
           attributes: true,
-          attributeFilter: ["href", "title"],
+          attributeFilter: ["href", "title", "style", "class"],
         });
         return () => observer.disconnect();
       },
       appliedPid: (anchor) => {
         const state = appliedProblemColors.get(anchor);
-        return state && anchor.contains(state.node) && state.node.style.color === state.paintColor
+        return state && anchor.contains(state.node) && hasAppliedColor(state, state.node)
           ? anchor.dataset.luoguspPid : null;
       },
       isConnected: (anchor) => anchor.isConnected,
@@ -232,49 +235,15 @@ export function createProblemColorFeature({ storage }) {
       applyColor: (a, pid, color) => {
         // 虛擬列表可能在請求期間重複使用錨點；Problem Pipeline 已複核身分後才會到這裡。
         clearProblemColor(a);
-        if (
-          a.matches(SELECTORS.standalonePid) &&
-          (a.getAttribute("title") || "").trim() === pid &&
-          (a.innerText || a.textContent || "").trim() === pid
-        ) {
-          appliedProblemColors.set(a, {
-            kind: "standalone",
-            node: a,
-            color: captureInlineProperty(a, "color"),
-            fontWeight: captureInlineProperty(a, "font-weight"),
-          });
-          a.style.color = color;
-          a.style.fontWeight = "bold";
-          appliedProblemColors.get(a).paintColor = a.style.color;
-          a.dataset.luoguspPid = pid;
-          return;
-        }
         const span = a.children[0];
-        if (
-          span &&
-          span.matches("span.pid") &&
-          (span.innerText || span.textContent || "").trim() === pid
-        ) {
-          appliedProblemColors.set(a, {
-            kind: "span",
-            node: span,
-            color: captureInlineProperty(span, "color"),
-            fontWeight: captureInlineProperty(span, "font-weight"),
-          });
-          span.style.color = color;
-          span.style.fontWeight = "bold";
-          appliedProblemColors.get(a).paintColor = span.style.color;
-          a.dataset.luoguspPid = pid;
-        } else {
-          const wrapper = wrapPidText(a, pid, color);
-          if (!wrapper) return;
-          appliedProblemColors.set(a, {
-            kind: "wrapper",
-            node: wrapper,
-            paintColor: wrapper.style.color,
-          });
-          a.dataset.luoguspPid = pid;
-        }
+        const pidElement = a.matches(SELECTORS.standalonePid) ? a :
+          span?.matches("span.pid") && (span.innerText || span.textContent || "").trim() === pid
+            ? span : null;
+        const node = pidElement || wrapPidText(a, pid);
+        if (!node) return;
+        node.style.color = color;
+        appliedProblemColors.set(a, { node, wrapped: !pidElement, paintColor: node.style.color });
+        a.dataset.luoguspPid = pid;
       },
     },
   });

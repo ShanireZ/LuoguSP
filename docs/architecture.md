@@ -23,6 +23,11 @@ Settings consume shared feature descriptors rather than a second registry.
 Keys, storage keys, defaults and cleanup are executable contracts in
 test/release-contract.test.mjs. Reproduce before changing them.
 
+Problem ID coloring keeps the page's existing font weight and yields to native
+colors. Luogu controls difficulty visibility on record lists and record details.
+On supported pages, the LuoguSP setting can fill in uncolored IDs in Academic
+Mode when Luogu still supplies a valid difficulty for the problem.
+
 package.json and pnpm-lock.yaml own tooling and dependency resolution.
 pnpm build:check rebuilds and compares the loader without replacing the candidate.
 pnpm quality:check applies config/quality-budget.json; pnpm test exercises source
