@@ -165,6 +165,7 @@ export function createHoverCardFeature(config) {
       };
       let displayed;
       let relationNotice;
+      let pendingAction;
       const display = (model, busy) => {
         if (!isCurrent() || displayed === model) return;
         if (target.kind === "user" && currentViewer() !== viewer) return;
@@ -185,7 +186,7 @@ export function createHoverCardFeature(config) {
             origin: location.origin, href: target.href, onResize: position, tagsExpanded,
           }), fadeField);
         } else {
-          updateUserCard(card,
+          pendingAction = updateUserCard(card,
             renderUserCard(model, {
               origin: location.origin,
               viewerUid: viewer,
@@ -199,6 +200,7 @@ export function createHoverCardFeature(config) {
               previous.relation === model.relation && previous.reverseRelation === model.reverseRelation &&
               previous.followerCount === model.followerCount,
             fadeField,
+            pendingAction,
           );
         }
         finalizeCard(card);
@@ -251,6 +253,7 @@ export function createHoverCardFeature(config) {
         draw(target);
       },
       onClose: () => {
+        const anchor = shown?.anchor;
         openController?.abort();
         openController = null;
         shown = null;
@@ -258,6 +261,8 @@ export function createHoverCardFeature(config) {
         updateShownUser = null;
         loading = false;
         openSide = null;
+        if (anchor?.isConnected && card.contains(document.activeElement))
+          anchor.focus({ preventScroll: true });
         card.hidden = true;
         card.textContent = "";
       },
@@ -329,11 +334,13 @@ export function createHoverCardFeature(config) {
     const onKey = (event) => {
       if (event.defaultPrevented) return;
       if (isPreviewShortcut(event) && enterWithKeyboard(event.target)) event.preventDefault();
-      if (event.key === "Escape") {
-        const anchor = shown?.anchor;
-        const restore = card.contains(document.activeElement);
-        intent.dismiss();
-        if (restore && anchor?.isConnected) anchor.focus({ preventScroll: true });
+      if (event.key === "Escape") intent.dismiss();
+      if (event.key === "Tab" && card.contains(event.target)) {
+        const controls = [...card.querySelectorAll("a[href], button:not(:disabled)")]
+          .filter(node => node.tabIndex >= 0 && node.getClientRects().length);
+        const edge = event.shiftKey ? controls[0] : controls.at(-1);
+        // Let the browser continue Tab from the restored trigger's place in the page.
+        if (!edge || event.target === edge || (event.shiftKey && event.target === card)) intent.dismiss();
       }
     };
     const onFocusOut = (event) => {

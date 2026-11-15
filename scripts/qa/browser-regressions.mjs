@@ -1392,11 +1392,12 @@ test("user preview falls back to one GET when the native page has no lookup", as
 
 async function userRelationFixture(t, {
   firstWrite, replyWrite, countFor = (account) => account === viewer.uid ? 5 : 77,
+  beforeLink = "", afterLink = "",
 } = {}) {
   let account = viewer.uid;
   const submitted = [];
   const { page } = await fixture(t, {
-    html: fixtureHtml('<a id="user" href="/user/123">User</a>')
+    html: fixtureHtml(`${beforeLink}<a id="user" href="/user/123">User</a>${afterLink}`)
       .replace("</head>", '<meta name="csrf-token" content="fixture-only"></head>'),
     initScript: `{
       window.relationRequests = 0;
@@ -1449,6 +1450,122 @@ async function userRelationFixture(t, {
   }), uid);
   return { page, preview, open, switchViewer, submitted };
 }
+
+test("user preview focuses block confirmation, restores block on cancel and returns to the trigger on Escape", async (t) => {
+  const { page, preview, open, submitted } = await userRelationFixture(t);
+  const trigger = page.locator("#user");
+  const block = preview.getByRole("button", { name: "屏蔽", exact: true });
+  const cancel = preview.getByRole("button", { name: "取消", exact: true });
+  const confirm = preview.getByRole("button", { name: "确定", exact: true });
+  await open();
+  await block.press("Enter");
+  assert.ok(await focused(cancel));
+  await page.keyboard.press("Shift+Tab");
+  assert.ok(await focused(confirm));
+  await page.keyboard.press("Tab");
+  assert.ok(await focused(cancel));
+  await page.keyboard.press("Enter");
+  assert.ok(await focused(block));
+
+  await page.keyboard.press("Enter");
+  assert.ok(await focused(cancel));
+  await page.keyboard.press("Escape");
+  await preview.waitFor({ state: "hidden" });
+  assert.ok(await focused(trigger));
+  assert.deepEqual(submitted, []);
+});
+
+for (const [action, label, successLabel] of [["follow", "关注", "已关注"], ["block", "屏蔽", "取消屏蔽"]]) {
+  for (const success of [true, false]) {
+    test(`user preview restores keyboard focus after ${action} ${success ? "success" : "failure"}`, async (t) => {
+      const write = responseGate(t);
+      const { page, preview, open } = await userRelationFixture(t, {
+        firstWrite: write,
+        replyWrite: route => route.fulfill({ json: success ? { _empty: true } : { status: 403 } }),
+      });
+      await open();
+      await preview.getByRole("button", { name: label, exact: true }).press("Enter");
+      if (action === "block") await preview.getByRole("button", { name: "确定", exact: true }).press("Enter");
+      const pending = preview.getByRole("button", { name: successLabel, exact: true });
+      assert.ok(await pending.isDisabled());
+      const held = await focused(preview);
+      write.release();
+      const result = preview.getByRole("button", { name: success ? successLabel : label, exact: true });
+      await result.and(preview.locator("button:enabled")).waitFor();
+      assert.ok(await focused(result), "the settled control should receive focus");
+      assert.ok(held, "the preview should hold focus while the action is pending");
+      if (!success) assert.ok(await preview.getByRole("status").filter({ hasText: `${label}未获确认` }).isVisible());
+      await page.keyboard.press("Escape");
+      assert.ok(await focused(page.locator("#user")));
+    });
+  }
+}
+
+test("a late follow response keeps focus on a different preview control", async (t) => {
+  const write = responseGate(t);
+  const { preview, open } = await userRelationFixture(t, { firstWrite: write });
+  await open();
+  await preview.getByRole("button", { name: "关注", exact: true }).press("Enter");
+  const chat = preview.getByRole("link", { name: "私信", exact: true });
+  await chat.focus();
+  write.release();
+  await preview.getByRole("button", { name: "已关注", exact: true }).and(preview.locator("button:enabled")).waitFor();
+  assert.ok(await focused(chat));
+});
+
+test("a relation response keeps focus on the page after the preview loses it", async (t) => {
+  const write = responseGate(t);
+  const { page, preview, open } = await userRelationFixture(t, {
+    firstWrite: write, afterLink: '<button id="outside">Outside the preview</button>',
+  });
+  await open();
+  await preview.getByRole("button", { name: "关注", exact: true }).press("Enter");
+  const outside = page.locator("#outside");
+  await outside.focus();
+  await preview.waitFor({ state: "hidden" });
+  write.release();
+  await page.waitForFunction(() => window.relationReplies === 1);
+  assert.ok(await focused(outside));
+  assert.equal(await preview.isVisible(), false);
+});
+
+for (const [key, edge, next] of [["Tab", "last", "#after"], ["Shift+Tab", "first", "#before"]]) {
+  test(`user preview closes at the ${edge} control and ${key} continues from the trigger`, async (t) => {
+    const { page, preview, open } = await userRelationFixture(t, {
+      beforeLink: '<button id="before">Previous control</button>',
+      afterLink: '<button id="after">Next control</button>',
+    });
+    await open();
+    await page.keyboard.press("Tab");
+    const name = preview.getByRole("link", { name: "Target user" });
+    assert.ok(await focused(name));
+    if (edge === "last") await preview.getByRole("button", { name: "屏蔽", exact: true }).focus();
+    await page.keyboard.press(key);
+    assert.ok(await focused(page.locator(next)));
+    await preview.waitFor({ state: "hidden" });
+  });
+}
+
+test("pointer exit restores focus to the trigger when a hovered user preview closes", async (t) => {
+  const { page, preview } = await userRelationFixture(t);
+  const trigger = page.locator("#user");
+  await trigger.hover();
+  await preview.getByRole("button", { name: "屏蔽", exact: true }).focus();
+  await page.mouse.move(700, 500);
+  await preview.waitFor({ state: "hidden" });
+  assert.ok(await focused(trigger));
+});
+
+test("page scroll restores preview focus without scrolling back to the trigger", async (t) => {
+  const { page, preview, open } = await userRelationFixture(t, { afterLink: '<div style="height:1800px"></div>' });
+  const trigger = page.locator("#user");
+  await open();
+  await preview.getByRole("button", { name: "关注", exact: true }).focus();
+  await page.evaluate(() => window.scrollTo(0, 300));
+  await preview.waitFor({ state: "hidden" });
+  assert.ok(await focused(trigger));
+  assert.equal(await page.evaluate(() => window.scrollY), 300);
+});
 
 for (const [action, initial, optimistic, relationship] of [
   ["follow", "关注", "已关注", 1],

@@ -50,7 +50,10 @@ navigation controls appear immediately. Reduced motion stops the preview's
 loading indicator and skips the field fade. The main settings dialog uses
 a 160 ms opacity entrance only when reduced motion is off.
 A focused eligible link opens its preview with Alt+Down Arrow. Escape closes
-the preview and returns focus to the link. Pointer and keyboard activation resolve links against
+the preview and returns focus to the link when the preview holds focus. Tab at
+either end closes the preview and continues from the link's place in the page.
+Pointer or scroll dismissal also restores focus if it was still in the preview.
+Pointer and keyboard activation resolve links against
 the document base and verify the destination against the current origin and
 supported routes before loading the preview. Problem card navigation retains
 the source link's contest and language. Problem discussion links with a single
@@ -65,6 +68,9 @@ The relation write requires a same-origin JSON 200 response from its exact
 endpoint with Luogu's `_empty: true` acknowledgement. An unconfirmed write
 restores the card state and reports the failure in that preview. Follower
 counts stay hidden until available and change optimistically only when known.
+Block confirmation focuses Cancel first. Cancelling restores the block button.
+While a focused relation action is pending, the card holds its focus. Success
+and failure restore the corresponding button if focus is still held there.
 An inline compile failure supplies the CE verdict and diagnostics directly from
 the matching same-origin submit response. For output-based verdicts, IDE batch
 runs observe native output mutations after acknowledgement, until the result,

@@ -251,7 +251,8 @@ export function updateProblemCard(card, content, fadeField) {
   }));
 }
 
-export function updateUserCard(card, content, preserveActions, fadeField) {
+export function updateUserCard(card, content, preserveActions, fadeField, pendingAction) {
+  const active = card.contains(document.activeElement) ? document.activeElement : null;
   updateSections(card, content, (existing, section) => {
     if (!existing.classList.contains("luogusp-hc-userbody")) return false;
     updateSections(existing, section, (old, next) => {
@@ -276,6 +277,17 @@ export function updateUserCard(card, content, preserveActions, fadeField) {
     );
     return true;
   });
+  if (!active || (active === document.activeElement && !(active === card && pendingAction))) return null;
+
+  const action = active === card ? pendingAction :
+    active.dataset.luoguspAction || (active.closest(".luogusp-hc-confirm") ? "block" : null);
+  const replacement = action
+    ? [...card.querySelectorAll("[data-luogusp-action]")].find(node => node.dataset.luoguspAction === action)
+    : active.matches("a[href]") && [...card.querySelectorAll("a[href]")].find(link => link.href === active.href);
+  // A disabled relation button cannot hold focus. The card holds it until
+  // settlement, unless the user has moved to another control in the meantime.
+  (replacement && !replacement.disabled ? replacement : card).focus({ preventScroll: true });
+  return replacement?.disabled ? action : null;
 }
 
 export function renderUserCard(card, options = {}) {
@@ -402,6 +414,7 @@ export function renderUserCard(card, options = {}) {
             : "关注",
       );
       follow.type = "button";
+      follow.dataset.luoguspAction = "follow";
       if (followBusy || blacklisted) follow.disabled = true;
       follow.addEventListener("click", (event) => {
         event.preventDefault();
@@ -433,6 +446,7 @@ export function renderUserCard(card, options = {}) {
       const undo = card.relation === "blacklisted";
       const block = el("button", "luogusp-hc-btn is-ghost is-danger", undo ? "取消屏蔽" : "屏蔽");
       block.type = "button";
+      block.dataset.luoguspAction = "block";
       if (followBusy) block.disabled = true;
       block.addEventListener("click", (event) => {
         event.preventDefault();
@@ -447,11 +461,15 @@ export function renderUserCard(card, options = {}) {
         );
         const yes = el("button", "luogusp-hc-btn is-danger", "确定");
         yes.type = "button";
+        const restoreActions = () => {
+          ask.replaceWith(actions);
+          options.onResize?.();
+          block.focus({ preventScroll: true });
+        };
         yes.addEventListener("click", (accept) => {
           accept.preventDefault();
           accept.stopPropagation();
-          ask.replaceWith(actions);
-          if (typeof options.onResize === "function") options.onResize();
+          restoreActions();
           onBlock(card);
         });
         const no = el("button", "luogusp-hc-btn is-ghost", "取消");
@@ -459,13 +477,13 @@ export function renderUserCard(card, options = {}) {
         no.addEventListener("click", (cancel) => {
           cancel.preventDefault();
           cancel.stopPropagation();
-          ask.replaceWith(actions);
-          if (typeof options.onResize === "function") options.onResize();
+          restoreActions();
         });
         ask.append(yes, no);
         actions.replaceWith(ask);
         // 換了一行內容，高度可能變 —— 就地重定位，免得頂出視口。
         if (typeof options.onResize === "function") options.onResize();
+        no.focus({ preventScroll: true });
       });
       actions.appendChild(block);
     }
