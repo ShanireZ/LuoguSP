@@ -26,7 +26,11 @@ establish the current account's privileges or personal state.
 - The rebuilt article disables the reply form because the scaffold carries
   no current-account permission for that article.
 - Live public counts may update counters without changing personal state.
-  Unknown and confirmed states remain distinguishable.
+  Unknown and confirmed states remain distinguishable. Vote and favorite
+  cache entries have independent confirmation times and expiry. Each count
+  compares only its own confirmation time with the Saver snapshot. Existing
+  records with one shared time keep that original time for both actions until
+  each action is confirmed again.
 - Votes, favorites and replies use Luogu same-origin write contracts.
   Observe XMLHttpRequest and fetch without changing the native response.
   Save votes only when the final Luogu response confirms the requested vote

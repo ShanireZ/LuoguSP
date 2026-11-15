@@ -1,3 +1,5 @@
+import { readInteractionTimes } from "./article-interaction-store.js";
+
 // 受限文章的互動狀態合併：把四個來源合成官方 lentille `data` 的形狀。
 //
 // 個人狀態（voted / favored）優先級（高→低）
@@ -9,7 +11,7 @@
 //                   （見 article-live-counts.js）。它天然已經包含此前所有已確認的寫入，
 //                   所以無條件壓過 confirmed，不需要比新鮮度。
 //   2. confirmed —— 已確認寫回應裡的計數；
-//   3. archived  —— 保存站快照，僅當比 confirmed 更新時才允許覆蓋。
+//   3. archived  —— 保存站快照，依按讚及收藏各自的確認時間決定是否覆蓋。
 //
 // ★ live **只**參與公共計數。作者專欄列表不含 voted / favored，
 //   一個位元組的個人狀態都不許從那裡來 —— 否則又走回「用 false 偽造未收藏」的老路。
@@ -35,18 +37,17 @@ export function completeRestrictedArticleInteraction(config) {
   const voted = confirmedVote(record?.voted);
   const favored = confirmedBoolean(record?.favored);
   const archiveTime = numberOrNull(archivedAt);
-  const recordTime = record ? numberOrNull(record.at) : null;
-  const countsWin =
-    record !== null &&
-    (archiveTime === null || recordTime === null || archiveTime <= recordTime);
+  const { voteAt, favorAt } = readInteractionTimes(record);
+  const confirmedCount = (value, at) =>
+    at !== null && (archiveTime === null || archiveTime <= at) ? numberOrNull(value) : null;
   // live 唯讀三個計數鍵，不解構整個物件 —— 免得哪天列表 API 多回傳一個
   // favored/voted 就被順手帶進個人狀態。
   const liveUpvote = live ? numberOrNull(live.upvote) : null;
   const liveFavorCount = live ? numberOrNull(live.favorCount) : null;
   const upvote =
-    liveUpvote ?? (countsWin ? numberOrNull(record.upvote) : null);
+    liveUpvote ?? confirmedCount(record?.upvote, voteAt);
   const favorCount =
-    liveFavorCount ?? (countsWin ? numberOrNull(record.favorCount) : null);
+    liveFavorCount ?? confirmedCount(record?.favorCount, favorAt);
   // 評論數只有 live 一個可信來源；拿不到就沿用呼叫方傳進來的已載入評論條數。
   const replyCount = live ? numberOrNull(live.replyCount) : null;
   // ★ 發表時間同理，而且更要緊：保存站只有入檔時間，兩者能差幾個月，

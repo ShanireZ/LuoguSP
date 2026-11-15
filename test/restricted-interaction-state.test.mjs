@@ -639,6 +639,29 @@ test("a confirmed write that cannot be persisted reports instead of failing sile
   assert.equal(reports.length, 2);
 });
 
+test("a vote does not extend the lifetime of a legacy favorite", () => {
+  const clock = fixedClock();
+  const storage = memoryStorage({
+    "luogusp.article-interaction.v2": JSON.stringify({
+      "7:abc": { voted: 0, upvote: 5, favored: true, favorCount: 2, at: clock.ms },
+    }),
+  });
+  const interaction = { uid: 7, lid: LID };
+  const store = createArticleInteractionStore({ storage, now: clock.now, ttlMs: 1_000 });
+  assert.equal(store.read(interaction).favored, true);
+  clock.ms += 700;
+  store.save({ ...interaction, voted: 1, upvote: 6 });
+
+  clock.ms += 301;
+  const refreshed = completeRestrictedArticleInteraction({
+    article: { lid: LID, upvote: 5, favorCount: 8 },
+    archivedAt: clock.ms - 500,
+    confirmed: store.read(interaction),
+  });
+  assert.deepEqual([refreshed.voted, refreshed.article.upvote], [1, 6]);
+  assert.deepEqual([refreshed.favored, refreshed.article.favorCount], [null, 8]);
+});
+
 test("the interaction store expires, caps and survives corrupt payloads", () => {
   const clock = fixedClock();
   const storage = memoryStorage();

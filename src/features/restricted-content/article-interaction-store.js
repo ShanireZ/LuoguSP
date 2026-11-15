@@ -18,20 +18,37 @@ const validUid = (uid) => Number.isSafeInteger(uid) && uid > 0;
 const validLid = (lid) => typeof lid === "string" && /^[A-Za-z0-9]+$/.test(lid);
 const entryKey = (uid, lid) => `${uid}:${lid}`;
 
-function normalizeRecord(value) {
+export function readInteractionTimes(record) {
+  if (record && (Object.hasOwn(record, "voteAt") || Object.hasOwn(record, "favorAt"))) {
+    return { voteAt: countOrNull(record.voteAt), favorAt: countOrNull(record.favorAt) };
+  }
+  // Legacy v2 records only stored an aggregate time. Import it without
+  // advancing either clock, and never apply it to an already split record.
+  const legacyAt = countOrNull(record?.at);
+  return { voteAt: legacyAt, favorAt: legacyAt };
+}
+
+function normalizeRecord(value, cutoff) {
   if (!value || typeof value !== "object") return null;
-  const at = Number(value.at);
-  if (!Number.isFinite(at)) return null;
+  const { voteAt, favorAt } = readInteractionTimes(value);
   const voted = value.voted === 1 || value.voted === -1 || value.voted === 0
     ? value.voted
     : null;
   const favored = typeof value.favored === "boolean" ? value.favored : null;
+  const upvote = countOrNull(value.upvote);
+  const favorCount = countOrNull(value.favorCount);
+  const keepVote = voteAt !== null && voteAt >= cutoff && (voted !== null || upvote !== null);
+  const keepFavor = favorAt !== null && favorAt >= cutoff && (favored !== null || favorCount !== null);
+  if (!keepVote && !keepFavor) return null;
   return {
-    voted,
-    favored,
-    upvote: countOrNull(value.upvote),
-    favorCount: countOrNull(value.favorCount),
-    at,
+    voted: keepVote ? voted : null,
+    favored: keepFavor ? favored : null,
+    upvote: keepVote ? upvote : null,
+    favorCount: keepFavor ? favorCount : null,
+    voteAt: keepVote ? voteAt : null,
+    favorAt: keepFavor ? favorAt : null,
+    // Keep the aggregate for eviction ordering and older v2 readers.
+    at: Math.max(keepVote ? voteAt : -Infinity, keepFavor ? favorAt : -Infinity),
   };
 }
 
@@ -48,7 +65,7 @@ export function createArticleInteractionStore(config) {
     typeof storage.getItem === "function" &&
     typeof storage.setItem === "function";
 
-  const load = () => {
+  const load = (at = now()) => {
     if (!usable) return new Map();
     let raw = null;
     try {
@@ -65,8 +82,8 @@ export function createArticleInteractionStore(config) {
     const entries = new Map();
     if (parsed && typeof parsed === "object")
       for (const [entry, value] of Object.entries(parsed)) {
-        const record = normalizeRecord(value);
-        if (record && now() - record.at <= ttlMs) entries.set(entry, record);
+        const record = normalizeRecord(value, at - ttlMs);
+        if (record) entries.set(entry, record);
       }
     return entries;
   };
@@ -91,21 +108,19 @@ export function createArticleInteractionStore(config) {
 
   const save = ({ uid, lid, ...patch } = {}) => {
     if (!usable || !validUid(uid) || !validLid(lid)) return null;
-    const entries = load();
+    const at = now();
+    const entries = load(at);
     if (!entries) return null;
     const entry = entryKey(uid, lid);
+    const previous = entries.get(entry);
     const merged = {
-      ...(entries.get(entry) || {
-        voted: null,
-        favored: null,
-        upvote: null,
-        favorCount: null,
-      }),
-      at: now(),
+      ...previous,
+      voteAt: patch.voted !== undefined || patch.upvote !== undefined ? at : previous?.voteAt,
+      favorAt: patch.favored !== undefined || patch.favorCount !== undefined ? at : previous?.favorAt,
     };
     for (const field of FIELDS)
       if (patch[field] !== undefined) merged[field] = patch[field];
-    const record = normalizeRecord(merged);
+    const record = normalizeRecord(merged, at - ttlMs);
     if (!record) return null;
     entries.set(entry, record);
     return persist(entries) ? Object.freeze({ ...record }) : null;

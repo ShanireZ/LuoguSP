@@ -318,6 +318,59 @@ const nativeArticle = `
 const readArticleInteraction = (page) =>
   page.evaluate(() => JSON.parse(localStorage.getItem("luogusp.article-interaction.v2") ?? "{}")["42:123"]);
 
+for (const first of ["vote", "favor"]) {
+  const second = first === "vote" ? "favor" : "vote";
+  test(`restricted article keeps count freshness separate for ${first} then ${second}`, async (t) => {
+    const now = Date.now();
+    const initialCache = { voted: 0, favored: false, upvote: 5, favorCount: 7, at: now - 60_000 };
+    const legacyStorage = JSON.stringify({ "42:123": initialCache });
+    const archive = {
+      ...archiveArticle, upvote: 10, favorCount: 20, updatedAt: new Date(now - 30_000).toISOString(),
+    };
+    const { page } = await restrictedFixture(t, "article", "123", archive, {
+      nativeScript: nativeArticle,
+      initScript: `
+        if (localStorage.getItem("luogusp.article-interaction.v2") === null)
+          localStorage.setItem("luogusp.article-interaction.v2", ${JSON.stringify(legacyStorage)});
+      `,
+      reply(route, url) {
+        if (url.origin !== origin || route.request().method() !== "POST") return;
+        if (url.pathname === "/article/123/vote" && url.search === "?vote=1")
+          return route.fulfill({ json: { upvotes: archive.upvote + 1, voted: 1 } });
+        if (url.pathname === "/article/123/favor" && !url.search)
+          return route.fulfill({ status: 204 });
+      },
+    });
+    const rendered = async () => {
+      await page.getByRole("button", { name: "Native action" }).waitFor();
+      const { data } = JSON.parse(await page.locator("#lentille-context").textContent());
+      return [data.article.upvote, data.article.favorCount, data.voted, data.favored];
+    };
+    const confirm = async (action) => {
+      const path = action === "vote" ? "/article/123/vote?vote=1" : "/article/123/favor";
+      assert.ok(await page.evaluate(async path => (await fetch(path, { method: "POST" })).ok, path));
+      await page.waitForFunction((action) => {
+        const record = JSON.parse(localStorage.getItem("luogusp.article-interaction.v2"))["42:123"];
+        return action === "vote" ? record?.voted === 1 : record?.favored === true;
+      }, action);
+    };
+
+    assert.deepEqual(await rendered(), [10, 20, 0, false]);
+    await page.clock.setFixedTime(now);
+    await confirm(first);
+    await page.reload();
+    assert.deepEqual(await rendered(), first === "vote" ? [11, 20, 1, false] : [10, 21, 0, true]);
+
+    Object.assign(archive, { upvote: 13, favorCount: 23, updatedAt: new Date(now + 2_000).toISOString() });
+    await page.clock.setFixedTime(now + 4_000);
+    await page.reload();
+    assert.deepEqual(await rendered(), first === "vote" ? [13, 23, 1, false] : [13, 23, 0, true]);
+    await confirm(second);
+    await page.reload();
+    assert.deepEqual(await rendered(), second === "vote" ? [14, 23, 1, true] : [13, 24, 1, true]);
+  });
+}
+
 for (const transport of ["fetch", "xhr"]) {
   test(`restricted article ${transport} persists only confirmed votes and favorites`, async (t) => {
     // Playwright routes only the first request of a redirect chain.
@@ -396,8 +449,9 @@ for (const transport of ["fetch", "xhr"]) {
       const entry = JSON.parse(localStorage.getItem("luogusp.article-interaction.v2") ?? "{}")["42:123"];
       return entry?.favored === false && entry.voted === 0;
     });
-    const { at, ...state } = await readArticleInteraction(page);
-    assert.ok(Number.isFinite(at));
+    const { at, voteAt, favorAt, ...state } = await readArticleInteraction(page);
+    assert.ok(Number.isFinite(voteAt) && Number.isFinite(favorAt));
+    assert.equal(at, Math.max(voteAt, favorAt));
     assert.deepEqual(state, { voted: 0, favored: false, upvote: 10, favorCount: 2 });
     assert.equal(await unconfirmed.count(), 0);
   });
