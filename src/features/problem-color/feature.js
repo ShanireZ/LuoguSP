@@ -149,7 +149,7 @@ export function createProblemColorFeature({
       // 評測記錄在學術模式補色時直接讀當頁資料，不使用通用題目快取。
       // 列表裡可重用的難度仍收進快取，供其他頁面的題號使用。
       // 首屏 JSON + 洛谷自身導覽請求的回應，不額外請求頁面資料。
-      harvest: () => nativeDifficulty.harvest(),
+      harvest: nativeDifficulty.harvest,
       subscribe: (accept, refresh) => {
         const stopNative = nativeDifficulty.subscribe(accept);
         const stopDetail = problemResources.data.subscribeDifficulty(refresh);

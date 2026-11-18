@@ -29,7 +29,7 @@
             "id": "lists-and-table",
             "source": "- one\n- [x] task\n  - nested\n\n1. first\n2. second\n\n| Left | Right |\n| :--- | ---: |\n| A | B |",
             "expectContains": [
-                "<ul><li>one</li><li>[x] task</li><li>nested</li></ul>",
+                "<ul><li>one</li><li>[x] task<ul><li>nested</li></ul></li></ul>",
                 "<ol><li>first</li><li>second</li></ol>",
                 "<table><thead><tr><th>Left</th><th>Right</th></tr></thead><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
             ]

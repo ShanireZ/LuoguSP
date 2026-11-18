@@ -247,22 +247,33 @@ test("CDN staging rejects a junction at a pinned artifact's parent", async (t) =
 
 async function publishFixture(t, { committed = true, additionalReleases = [], localReleases = [] } = {}) {
   const fixture = await stageFixture(t);
-  const { repo, scratch, manifest, source, file, body, pin } = fixture;
+  const { repo, scratch, manifest, source, body, pin } = fixture;
   const deploy = path.join(repo, "deploy", "cloudflare");
   const configPath = path.join(repo, "config", "cdn.json");
   const wranglerPath = path.join(deploy, "wrangler.jsonc");
   const recorder = path.join(scratch, "record.mjs");
   const recording = path.join(scratch, "deploy-record.jsonl");
-  async function addRelease(release) {
-    const filename = `releases/${release}/pinned.js`;
-    await mkdir(path.join(source, "releases", release));
-    await writeFile(path.join(source, filename), body);
-    await pin({ ...manifest, release, files: {
-      [filename]: { ...manifest.files[file], path: filename },
-    } }, { select: false });
+  function publishManifest(release, runtimeBody) {
+    const record = (name, contents) => ({
+      path: `releases/${release}/${name}`, bytes: Buffer.byteLength(contents), sha256: digest(contents),
+    });
+    const earlyGate = record("early-gate.js", "// Early gate fixture\n");
+    const runtime = record("pinned.js", runtimeBody);
+    return { ...manifest, release, compat: { earlyGate, runtime },
+      files: { [earlyGate.path]: earlyGate, [runtime.path]: runtime } };
   }
+  async function writeRelease(release, runtimeBody, select) {
+    const document = publishManifest(release, runtimeBody);
+    await mkdir(path.join(source, "releases", release), { recursive: true });
+    await writeFile(path.join(source, document.compat.earlyGate.path), "// Early gate fixture\n");
+    await writeFile(path.join(source, document.compat.runtime.path), runtimeBody);
+    await pin(document, { select });
+  }
+  await writeRelease(manifest.release, body, true);
+  Object.assign(manifest, publishManifest(manifest.release, body));
   await mkdir(deploy, { recursive: true });
   await mkdir(path.join(repo, "reports"));
+  await copyFile(path.join(root, "config/quality-budget.json"), path.join(repo, "config/quality-budget.json"));
   await writeFile(configPath, JSON.stringify({
     origins: { primary: origin },
     projects: { cloudflare: "test-stage" },
@@ -385,9 +396,9 @@ async function publishFixture(t, { committed = true, additionalReleases = [], lo
     git("-c", "user.name=Test", "-c", "user.email=fixture@example.invalid",
       "commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "Pinned release fixture");
   };
-  for (const release of additionalReleases) await addRelease(release);
+  for (const release of additionalReleases) await writeRelease(release, body, false);
   recordCommit({ includeCdn: committed });
-  for (const release of localReleases) await addRelease(release);
+  for (const release of localReleases) await writeRelease(release, body, false);
   fixture.publish = async (args, { tamper = false, remote = "resume", secondChannel = "", wrongVerificationUrl = false } = {}) => {
     const result = spawnSync(
       process.execPath, ["--import", pathToFileURL(recorder).href, "scripts/cdn/publish.mjs", ...args],
@@ -405,7 +416,8 @@ async function publishFixture(t, { committed = true, additionalReleases = [], lo
     const commands = recorded.trim().split("\n").filter(Boolean).map(JSON.parse);
     return { ...result, commands };
   };
-  return { ...fixture, recordCommit, wranglerPath };
+  return { ...fixture, recordCommit, wranglerPath,
+    rewriteRuntime: (runtimeBody) => writeRelease(manifest.release, runtimeBody, true) };
 }
 
 test("low-level publish validates an origin override before any build or provider command", async (t) => {
@@ -442,12 +454,8 @@ for (const change of [
 }
 
 test("low-level publish rejects a locally rewritten committed version", async (t) => {
-  const { publish, manifest, pin, source, file } = await publishFixture(t);
-  const body = "// Rewritten material under the existing release ID\n";
-  await writeFile(path.join(source, file), body);
-  await pin({ ...manifest, files: {
-    [file]: { path: file, bytes: Buffer.byteLength(body), sha256: digest(body) },
-  } });
+  const { publish, manifest, rewriteRuntime } = await publishFixture(t);
+  await rewriteRuntime("// Rewritten material under the existing release ID\n");
   const result = await publish(["--version", manifest.release, "--skip-build"]);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /committed immutable CDN release/i);
@@ -455,12 +463,8 @@ test("low-level publish rejects a locally rewritten committed version", async (t
 });
 
 test("low-level publish refuses changed immutable bytes even when rewritten assets are committed", async (t) => {
-  const { publish, manifest, pin, source, file, recordCommit } = await publishFixture(t);
-  const body = "// Locally committed replacement for an already published asset\n";
-  await writeFile(path.join(source, file), body);
-  await pin({ ...manifest, files: {
-    [file]: { path: file, bytes: Buffer.byteLength(body), sha256: digest(body) },
-  } });
+  const { publish, manifest, rewriteRuntime, recordCommit } = await publishFixture(t);
+  await rewriteRuntime("// Locally committed replacement for an already published asset\n");
   recordCommit();
 
   const result = await publish(["--version", manifest.release, "--skip-build"], { remote: "published" });

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -64,6 +65,7 @@ const withoutCodeComments = (source) => {
     }
     if (current === "/" && next === "*") {
       const commentEnd = source.indexOf("*/", index + 2);
+      output += " ";
       index = commentEnd === -1 ? source.length : commentEnd + 2;
       continue;
     }
@@ -116,6 +118,15 @@ const invocation = (words) => {
   return args;
 };
 
+// Use the running Node's option definitions without loading a script or NODE_OPTIONS.
+const nodeHelp = execFileSync(process.execPath, ["--help"], { encoding: "utf8", env: {}, timeout: 10_000 });
+const nodeValueFlags = new Set(
+  Array.from(nodeHelp.matchAll(/^ {2}((?:--?[\w-]+, )*--?[\w-]+)=[^\s]+/gm),
+    ([, flags]) => flags.split(", ")).flat(),
+);
+// Node lists this no-value switch alongside the options accepting a config path.
+nodeValueFlags.delete("--experimental-default-config-file");
+
 const nodeOptions = (args) => {
   const conditions = new Set(["node"]);
   const preloads = [];
@@ -133,13 +144,14 @@ const nodeOptions = (args) => {
       entry = arg;
       break;
     }
-    const option = arg.match(/^(--import|--require|-r|--conditions|-C)(?:=(.*))?$/u);
-    if (option) {
-      const [, flag, inline] = option;
-      const value = inline ?? args[++index];
+    const equals = arg.indexOf("=");
+    const flag = equals === -1 ? arg : arg.slice(0, equals);
+    if (nodeValueFlags.has(flag)) {
+      const value = equals === -1 ? args[++index] : arg.slice(equals + 1);
       if (!value) continue;
       if (flag === "--conditions" || flag === "-C") conditions.add(value);
-      else preloads.push([flag === "--import" ? "import" : "require", value]);
+      if (flag === "--import") preloads.push(["import", value]);
+      if (flag === "--require" || flag === "-r") preloads.push(["require", value]);
     }
     if (arg === "--no-addons") addons = false;
     if (arg === "--no-require-module" || arg === "--no-experimental-require-module")
@@ -170,6 +182,75 @@ const existingFile = async (path) => {
   }
 };
 
+const identifier = String.raw`[A-Za-z_$][\w$]*`;
+const stringToken = String.raw`\x01(\d+)\x02`;
+const localPath = (value) => isAbsolute(value) || /^\.\.?[/\\]/u.test(value);
+
+function literalValue(quoted) {
+  const body = quoted.slice(1, -1);
+  if (quoted[0] === "`" && body.includes("${")) return null;
+  try {
+    if (quoted[0] === '"') return JSON.parse(quoted);
+    // Decode ordinary path literals and their escaped backslashes and quotes.
+    return body.replace(/\\([\\'"\x60])/gu, "$1");
+  } catch {
+    return null;
+  }
+}
+
+function localCreateRequirePaths(path, source) {
+  if (!source.includes("createRequire")) return [];
+  // Match the binding and literal call without treating examples in source strings as code.
+  const literals = [];
+  const code = withoutCodeComments(source).replace(
+    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/gu,
+    (literal) => `\x01${literals.push(literalValue(literal)) - 1}\x02`,
+  );
+  const isModuleName = (index) => ["node:module", "module"].includes(literals[index]);
+  const factories = new Set();
+  const namedFactories = (specifierList, separator) => {
+    for (const specifier of specifierList.split(",")) {
+      const match = specifier.trim().match(new RegExp(`^createRequire(?:\\s*${separator}\\s*(${identifier}))?$`, "u"));
+      if (match) factories.add(RegExp.escape(match[1] ?? "createRequire"));
+    }
+  };
+  for (const [, bindings, specifier] of code.matchAll(new RegExp(`\\bimport\\s*\\{([^}]+)\\}\\s*from\\s*${stringToken}`, "gu"))) {
+    if (isModuleName(specifier)) namedFactories(bindings, "as");
+  }
+  for (const [, bindings, specifier] of code.matchAll(new RegExp(`\\bconst\\s*\\{([^}]+)\\}\\s*=\\s*require\\s*\\(\\s*${stringToken}\\s*\\)`, "gu"))) {
+    if (isModuleName(specifier)) namedFactories(bindings, ":");
+  }
+  for (const declarations of [
+    `\\bimport\\s*(?:\\*\\s*as\\s*)?(${identifier})\\s+from\\s*${stringToken}`,
+    `\\bconst\\s+(${identifier})\\s*=\\s*require\\s*\\(\\s*${stringToken}\\s*\\)`,
+  ]) {
+    for (const [, name, specifier] of code.matchAll(new RegExp(declarations, "gu"))) {
+      if (isModuleName(specifier)) factories.add(`${RegExp.escape(name)}\\s*\\.\\s*createRequire`);
+    }
+  }
+  if (!factories.size) return [];
+
+  const factory = `(?:${[...factories].join("|")})\\s*\\(\\s*(?:import\\s*\\.\\s*meta\\s*\\.\\s*url|__filename)\\s*\\)`;
+  const loaders = new Set([factory]);
+  for (const [, binding] of code.matchAll(new RegExp(`\\bconst\\s+(${identifier})\\s*=\\s*${factory}`, "gu"))) {
+    loaders.add(RegExp.escape(binding));
+  }
+  const files = new Set();
+  const requireHere = createRequire(path);
+  const calls = new RegExp(`(?<![.\\w$])(?:${[...loaders].join("|")})\\s*\\(\\s*${stringToken}\\s*\\)`, "gu");
+  for (const [, literal] of code.matchAll(calls)) {
+    const specifier = literals[literal];
+    if (!specifier || !localPath(specifier)) continue;
+    try {
+      const file = requireHere.resolve(specifier);
+      if (withinRoot(file) && isModule(file)) files.add(file);
+    } catch (error) {
+      if (error.code !== "MODULE_NOT_FOUND") throw error;
+    }
+  }
+  return [...files];
+}
+
 const packageModuleGraphs = async (scripts) => {
   const graphs = new Map();
   for (const [name, command] of Object.entries(scripts)) {
@@ -193,7 +274,7 @@ const packageModuleGraphs = async (scripts) => {
           graph.aliases.add(mode === "import" ? `import ${literal};` : `require(${literal});`);
         } else if (mode === "import" && specifier.startsWith("file:")) {
           add(await existingFile(fileURLToPath(specifier)));
-        } else if (isAbsolute(specifier) || /^\.\.?[/\\]/u.test(specifier)) {
+        } else if (localPath(specifier)) {
           add(mode === "require" ? nodeEntry(specifier) :
             await existingFile(fileURLToPath(new URL(specifier, pathToFileURL(`${root}/`)))));
         }
@@ -212,32 +293,48 @@ const packageModuleGraphs = async (scripts) => {
 const importedModuleFiles = async ({ entries, aliases, conditions }) => {
   if (entries.size === 0 && aliases.size === 0) return [];
   const inputs = new Set();
-  // Use esbuild's input graph to inspect declared entry points without running them.
-  await buildBrowser({
-    absWorkingDir: root,
-    // Different source extensions can otherwise map to the same output path.
-    entryPoints: [...entries].map((path, index) => ({ in: path, out: `entry-${index}` })),
-    ...(aliases.size ? { stdin: { contents: [...aliases].join("\n"), resolveDir: root } } : {}),
-    bundle: true,
-    format: "esm",
-    platform: "node",
-    // Explicit Node conditions omit esbuild's bundler-only implicit "module" branch.
-    conditions,
-    loader: { "": "js" },
-    packages: "external",
-    outdir: "node_modules/.cache/baseline-inputs",
-    write: false,
-    plugins: [{
-      name: "baseline-inputs",
-      setup(graph) {
-        // File loads expose the physical path separately from any import suffix.
-        graph.onLoad({ filter: /.*/, namespace: "file" }, ({ path }) => {
-          inputs.add(path);
-        });
-      },
-    }],
-  });
-  return [...inputs].filter((path) => withinRoot(path) && isModule(path));
+  let pending = [...entries];
+  let pendingAliases = [...aliases];
+  // Inspect each graph without executing it. A createRequire call can reveal a new graph root.
+  do {
+    const previousInputs = new Set(inputs);
+    await buildBrowser({
+      absWorkingDir: root,
+      // Different source extensions can otherwise map to the same output path.
+      entryPoints: pending.map((path, index) => ({ in: path, out: `entry-${index}` })),
+      ...(pendingAliases.length ? { stdin: { contents: pendingAliases.join("\n"), resolveDir: root } } : {}),
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      // Explicit Node conditions omit esbuild's bundler-only implicit "module" branch.
+      conditions,
+      loader: { "": "js" },
+      packages: "external",
+      outdir: "node_modules/.cache/baseline-inputs",
+      write: false,
+      plugins: [{
+        name: "baseline-inputs",
+        setup(graph) {
+          graph.onResolve({ filter: /^file:/i }, ({ path: specifier, importer, kind }) => {
+            if (kind !== "import-statement" && kind !== "dynamic-import") return;
+            const url = new URL(specifier, pathToFileURL(importer));
+            const path = fileURLToPath(url);
+            if (withinRoot(path) && isModule(path))
+              return { path, suffix: url.search + url.hash };
+          });
+          // File loads expose the physical path separately from any import suffix.
+          graph.onLoad({ filter: /.*/, namespace: "file" }, ({ path }) => {
+            if (withinRoot(path) && isModule(path)) inputs.add(path);
+          });
+        },
+      }],
+    });
+    pendingAliases = [];
+    const inspected = await Promise.all([...inputs].filter((path) => !previousInputs.has(path)).map(async (path) =>
+      localCreateRequirePaths(path, await readFile(path, "utf8"))));
+    pending = [...new Set(inspected.flat())].filter((path) => !inputs.has(path));
+  } while (pending.length);
+  return [...inputs];
 };
 
 const versionParts = (value) =>

@@ -93,10 +93,10 @@ export function createHoverCardFeature(config) {
     //   兩層提示就會打架。摘掉 title，並記下原值，dispose 時還回去。
     const strippedTitles = new Map();
     const stripNativeTitle = (anchor) => {
-      for (const node of [anchor, ...anchor.querySelectorAll?.("[title]") ?? []]) {
-        if (!node || strippedTitles.has(node)) continue;
-        const title = node.getAttribute && node.getAttribute("title");
-        if (title === null || title === undefined) continue;
+      for (const node of [anchor, ...anchor.querySelectorAll("[title]")]) {
+        if (strippedTitles.has(node)) continue;
+        const title = node.getAttribute("title");
+        if (title === null) continue;
         strippedTitles.set(node, title);
         node.removeAttribute("title");
       }
@@ -112,7 +112,7 @@ export function createHoverCardFeature(config) {
     let pointer = null;
     // 從錨點的多個 client rect 裡挑包含指針縱座標的那一行；挑不到就退回整體盒子。
     const rectForPointer = (anchor) => {
-      const rects = anchor.getClientRects ? [...anchor.getClientRects()] : [];
+      const rects = [...anchor.getClientRects()];
       if (pointer && rects.length > 1) {
         const hit = rects.find(
           (r) => pointer.y >= r.top - 2 && pointer.y <= r.bottom + 2,
@@ -139,10 +139,9 @@ export function createHoverCardFeature(config) {
       }
     };
 
-    const position = () => {
-      if (!shown || card.hidden) return;
-      const anchor = shown.anchor;
-      if (!anchor || !anchor.getBoundingClientRect) return;
+    const position = (revealFocus) => {
+      const anchor = shown?.anchor;
+      if (!anchor || card.hidden) return;
       const placement = placeCard(
         card,
         rectForPointer(anchor),
@@ -160,7 +159,8 @@ export function createHoverCardFeature(config) {
       );
       // 載入態記住這一邊；內容一完成實作就交還自由。
       openSide = loading ? placement.below : null;
-      card.querySelector(".luogusp-hc-expand:focus")?.scrollIntoView({ block: "nearest", behavior: "instant" });
+      card.querySelector(revealFocus === true ? ":focus" : ".luogusp-hc-expand:focus")
+        ?.scrollIntoView({ block: "nearest", behavior: "instant" });
     };
 
     const signatureObserver = typeof window.ResizeObserver === "function"
@@ -198,6 +198,7 @@ export function createHoverCardFeature(config) {
         const fadeField = previous && busy === undefined && allowMotion?.matches ? fadeLateField : undefined;
         const tagsExpanded = !!card.querySelector(".luogusp-hc-taglist:not([hidden])");
         const scrollTop = card.scrollTop;
+        const active = document.activeElement;
         if (!model) {
           card.replaceChildren(
             Object.assign(document.createElement("div"), {
@@ -231,7 +232,7 @@ export function createHoverCardFeature(config) {
         }
         watchSignature();
         card.scrollTop = scrollTop;
-        position();
+        position(model?.kind === "problem" && active !== document.activeElement);
       };
       if (target.kind === "problem") {
         const model = await sources.problem(target.pid, viewer, signal, {

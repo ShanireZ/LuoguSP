@@ -56,14 +56,17 @@ details by viewer, contest and language. Each observed field expires on its own
 and a partial response refreshes only the fields it contains. Shared detail
 responses use the start time of the successful transport attempt. Problem ID
 coloring compares the selected difficulty's observation time with the local
-native observation. A preview or IDE detail can refresh eligible IDs for the
-same problem and scope. Newer summary fields stay visible when a subsequent detail
-omits them. A caller can retry for fields it still needs. An explicit empty
-sample list is cached as a result.
+native observation. A native response, preview or IDE detail can refresh
+eligible IDs for the same problem and scope. A viewer change discards the
+previous viewer's harvested and queried colors. IDs without current data lose
+the old LuoguSP paint and use the existing fallback. Newer summary fields stay
+visible when a subsequent detail omits them. A caller can retry for fields it
+still needs. An explicit empty sample list is cached as a result.
 A problem card displays
 available fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. If a detail removes a
-focused tag disclosure, focus moves to the problem link. Temporary lookup
+focused tag disclosure, focus moves to the problem link and scrolls it into
+view within the card. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
 failures. A successful empty record list uses the normal cache lifetime.
 New or updated data fields can fade in over 125 ms. The initial preview and
@@ -142,7 +145,8 @@ layout.
 The IDE test tabs switch with Left and Right Arrow, Home, and End. Sample
 buttons report their expanded state and toggle details with Enter or Space.
 Preparation hints announce the outcome and keep the toolbar control focusable
-while activation is temporarily unavailable.
+while activation is temporarily unavailable. A replacement toolbar keeps the
+current hint through its original deadline.
 Starting a batch moves focus from its disabled controls to Stop. If Stop still
 owns focus when it becomes disabled, focus moves to the Samples tab. Completion
 restores the initiating control or another available batch control only while
@@ -177,10 +181,11 @@ and provide a separate image link. The lightweight renderer uses the shared
 inline link grammar for destinations and titles, including balanced parentheses,
 path-relative destinations, fragments and document reference definitions.
 Definitions in quotes and lists can supply destinations without appearing in
-the output. Lite retains surviving list items and preserves the literal text
-of code spans and fenced code within quotes. It reads escaped attributes once
-and applies its HTTP(S) URL policy to Markdown links and supported raw HTML
-anchors. In both modes, line
+the output. Lite preserves continued and loose list items, ordered-list start
+numbers, and nested list and quote structure. It parses inline content within
+each block and keeps the literal text of code spans and fenced code. It reads
+escaped attributes once and applies its HTTP(S) URL policy to Markdown links
+and supported raw HTML anchors. In both modes, line
 breaks in a supported closing anchor tag leave following text outside the
 link. Code, titles and image alternative text keep literal tag-shaped characters.
 Even same-origin URLs and Luogu's CDN can
@@ -205,8 +210,17 @@ CDN deployment and released-byte browser QA.
 Before replacing a staging directory, the CDN preparer resolves its existing
 parent and destination, including Windows junctions. It rejects paths that
 overlap the release source tree. Staging accepts only the verified release and
-channel files. The low-level publisher checks the configured origin, candidate
-version and staged files before deploying. It gives Wrangler a private asset
+channel files. On fresh and resumed releases, the high-level publisher checks
+the staged startup pin count and the raw and gzip sizes of the verified startup
+files and every declared optional bundle against config/quality-budget.json.
+The low-level publisher applies the same budgets to its selected snapshot before
+any origin request or Wrangler command. The budget applies to the selected
+candidate. Retained releases still follow the historical integrity checks.
+If a candidate exceeds a budget, review the measured size and the approved
+limit before retrying. A fresh high-level attempt follows pre-deployment rollback.
+A resumed attempt keeps its checkpoint and any earlier confirmed outcome.
+The low-level publisher checks the configured origin, candidate version and
+staged files before deploying. It gives Wrangler a private asset
 snapshot and retains that snapshot through provider execution and verification.
 Post-deployment verification uses the snapshot's channel and manifest bytes.
 The publisher checks each eligible release's public manifest before invoking

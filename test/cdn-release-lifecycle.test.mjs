@@ -56,6 +56,7 @@ async function fixture(t) {
     await writeFile(destination, body);
   };
   const files = ["baseline-targets.mjs", "scripts/publish.mjs", "scripts/publish-lib.mjs",
+    "config/quality-budget.json",
     ...(await readdir(join(root, "scripts/cdn"))).map((name) => `scripts/cdn/${name}`)];
   for (const file of files) {
     const destination = join(cwd, file);
@@ -139,6 +140,7 @@ async function fixture(t) {
     }
     let deployed;
     globalThis.fetch = async (url, options) => {
+      appendFileSync("provider-calls.jsonl", JSON.stringify(["fetch", url.href]) + "\n");
       if (url.origin !== "https://stage.example" || url.search || url.hash)
         throw new Error("Unexpected provider fixture URL: " + url.href);
       const name = url.pathname.slice(1);
@@ -170,6 +172,7 @@ async function fixture(t) {
       if (executable === "git") return spawn(executable, args, options);
       const [program, operation, flag, configPath] = process.platform === "win32" ? args.slice(3) : [executable, ...args];
       if (program !== "wrangler") throw new Error("Unexpected provider fixture command");
+      appendFileSync("provider-calls.jsonl", JSON.stringify([program, operation]) + "\n");
       if (operation === "--version") return { status: 0, stdout: "4.107.0\n" };
       if (operation !== "deploy" || flag !== "--config") throw new Error("Unexpected provider operation");
       const config = JSON.parse(readFileSync(configPath));
@@ -309,6 +312,83 @@ test("publication refuses shared-file drift before any provider call", async (t)
   assert.match(result.stderr, /Production file changed/);
   assert.match(await readFile(join(f.cwd, "README.zh-TW.md"), "utf8"), /PEER EDIT/);
   assert.doesNotMatch(await readFile(join(f.cwd, "commands.jsonl"), "utf8"), /scripts\/cdn\/publish.mjs/);
+});
+
+for (const [key, metric, description] of [
+  ["startupRequires", "count", "startup @require count"],
+  ["startupRequires", "maxTotalBytes", "startup @require bytes"],
+  ["startupRequires", "maxTotalGzipBytes", "startup @require gzip bytes"],
+  ["optionalRenderer", "maxBytes", "optional renderer bytes"],
+  ["optionalRenderer", "maxGzipBytes", "optional renderer gzip bytes"],
+  ["optionalRestrictedContent", "maxBytes", "optional restricted content bytes"],
+  ["optionalRestrictedContent", "maxGzipBytes", "optional restricted content gzip bytes"],
+  ["optionalHoverCard", "maxBytes", "optional hover card bytes"],
+  ["optionalHoverCard", "maxGzipBytes", "optional hover card gzip bytes"],
+]) {
+  test(`a fresh publication rejects over-budget ${description} before provider calls`, async (t) => {
+    const { cwd, publish, previousChannel, channelPath, snapshot } = await fixture(t);
+    const budgetPath = join(cwd, "config/quality-budget.json");
+    const budget = JSON.parse(await readFile(budgetPath));
+    budget[key][metric] = 1;
+    await writeFile(budgetPath, JSON.stringify(budget));
+
+    const result = publish("provider-success");
+    assert.doesNotMatch(await readFile(join(cwd, "commands.jsonl"), "utf8"), /scripts\/cdn\/publish.mjs/);
+    await assert.rejects(readFile(join(cwd, "provider-calls.jsonl")), { code: "ENOENT" });
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, new RegExp(description));
+    const receipt = JSON.parse(await readFile(join(cwd, "reports/publish.json"), "utf8"));
+    assert.equal(receipt.deploymentAttempt, "not-attempted");
+    assert.equal(receipt.resumeAllowed, false);
+    assert.equal(await readFile(channelPath, "utf8"), previousChannel);
+    await assert.rejects(snapshot(), /missing/);
+  });
+}
+
+test("a resumed publication rechecks the captured candidate before another provider call", async (t) => {
+  const { cwd, publish, snapshot } = await fixture(t);
+  assert.notEqual(publish("provider-post-gate").status, 0);
+  const callsPath = join(cwd, "provider-calls.jsonl");
+  const previousCalls = await readFile(callsPath, "utf8");
+  assert.match(previousCalls, /wrangler.*deploy/);
+  const budgetPath = join(cwd, "config/quality-budget.json");
+  const original = await readFile(budgetPath, "utf8");
+  const budget = JSON.parse(original);
+  budget.optionalHoverCard.maxGzipBytes = 1;
+  await writeFile(budgetPath, JSON.stringify(budget));
+
+  const result = publish("provider-success");
+  assert.equal(await readFile(callsPath, "utf8"), previousCalls);
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.match(result.stderr, /optional hover card gzip bytes/);
+  const receipt = JSON.parse(await readFile(join(cwd, "reports/publish.json"), "utf8"));
+  assert.equal(receipt.deploymentStatus, "confirmed");
+  assert.equal(receipt.deploymentAttempt, "not-attempted");
+  assert.equal(receipt.resumeAllowed, true);
+  assert.equal((await snapshot()).manifest.release, version);
+
+  await writeFile(budgetPath, original);
+  const retry = publish("provider-success");
+  assert.equal(retry.status, 0, retry.stderr);
+  assert.equal((await readFile(callsPath, "utf8")).match(/wrangler.*deploy/g).length, 2);
+});
+
+test("the standalone publisher checks the selected snapshot before provider calls", async (t) => {
+  const { cwd, build, providerArgs, snapshot } = await fixture(t);
+  assert.equal(build().status, 0);
+  const candidate = await snapshot();
+  const budgetPath = join(cwd, "config/quality-budget.json");
+  const budget = JSON.parse(await readFile(budgetPath));
+  budget.optionalHoverCard.maxBytes = candidate.manifest.optionalBundles.hoverCard.bytes - 1;
+  await writeFile(budgetPath, JSON.stringify(budget));
+
+  const result = spawnSync(process.execPath, [...providerArgs, "--version", version, "--skip-build"], {
+    cwd, encoding: "utf8", windowsHide: true,
+  });
+  await assert.rejects(readFile(join(cwd, "provider-calls.jsonl")), { code: "ENOENT" });
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.match(result.stderr, /optional hover card bytes/);
+  assert.equal((await snapshot()).sha256, candidate.sha256);
 });
 
 for (const file of ["src/userscript.meta.js", "LuoguSP.user.js", "package.json",

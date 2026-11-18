@@ -10,7 +10,12 @@ import { behaviourHashOf } from "./artifact-behaviour-hash.mjs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
-import { gzipSync } from "node:zlib";
+import {
+  measureSize,
+  optionalBundleBudgetFailures,
+  startupBudgetFailures,
+  startupRequireSizes,
+} from "./cdn/size-budget.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const check = process.argv.includes("--check");
@@ -161,8 +166,7 @@ const localResource = async (file, { integrityFragment = true } = {}) => {
     url: integrityFragment
       ? `${url}#sha256=${file.sha256}`
       : url,
-    bytes: body.length,
-    gzipBytes: gzipSync(body, { level: 9 }).length,
+    ...measureSize(body),
     sha256,
   };
 };
@@ -343,8 +347,7 @@ if (fetchRequires) {
       const body = await fetchResource(url);
       return {
         url,
-        bytes: body.length,
-        gzipBytes: gzipSync(body, { level: 9 }).length,
+        ...measureSize(body),
         sha256: createHash("sha256").update(body).digest("hex"),
       };
     }),
@@ -354,8 +357,7 @@ if (fetchRequires) {
   );
   optionalRenderer = {
     ...expectedOptionalRenderer,
-    bytes: rendererBody.length,
-    gzipBytes: gzipSync(rendererBody, { level: 9 }).length,
+    ...measureSize(rendererBody),
     sha256: createHash("sha256")
       .update(rendererBody)
       .digest("hex"),
@@ -367,8 +369,7 @@ const report = {
   artifact: {
     sha256: artifactSha256,
     behaviorSha256,
-    bytes: artifact.length,
-    gzipBytes: gzipSync(artifact, { level: 9 }).length,
+    ...measureSize(artifact),
     lines: artifactText.split(/\r?\n/).length,
     parseMedianMs: median(parseSamples),
   },
@@ -388,15 +389,7 @@ const report = {
       : [],
   },
   startupRequires: {
-    count: requireUrls.length,
-    totalBytes: startupResources.reduce(
-      (total, resource) => total + resource.bytes,
-      0,
-    ),
-    totalGzipBytes: startupResources.reduce(
-      (total, resource) => total + resource.gzipBytes,
-      0,
-    ),
+    ...startupRequireSizes(startupResources, requireUrls.length),
     resources: startupResources,
     measuredOnline: fetchRequires,
   },
@@ -512,95 +505,14 @@ if (check) {
     failures.push(
       "@require URLs differ from the pinned production manifest",
     );
-  if (
-    report.startupRequires.count !==
-    budget.startupRequires.count
-  )
-    failures.push(
-      `startup @require count ${report.startupRequires.count} != ${budget.startupRequires.count}`,
-    );
-  if (
-    report.startupRequires.totalBytes >
-    budget.startupRequires.maxTotalBytes
-  )
-    failures.push(
-      `startup @require bytes ${report.startupRequires.totalBytes} > ${budget.startupRequires.maxTotalBytes}`,
-    );
-  if (
-    report.startupRequires.totalGzipBytes >
-    budget.startupRequires.maxTotalGzipBytes
-  )
-    failures.push(
-      `startup @require gzip bytes ${report.startupRequires.totalGzipBytes} > ${budget.startupRequires.maxTotalGzipBytes}`,
-    );
-  if (
-    report.optionalRenderer.bytes >
-    budget.optionalRenderer.maxBytes
-  )
-    failures.push(
-      `optional renderer bytes ${report.optionalRenderer.bytes} > ${budget.optionalRenderer.maxBytes}`,
-    );
-  if (
-    report.optionalRenderer.gzipBytes >
-    budget.optionalRenderer.maxGzipBytes
-  )
-    failures.push(
-      `optional renderer gzip bytes ${report.optionalRenderer.gzipBytes} > ${budget.optionalRenderer.maxGzipBytes}`,
-    );
-  if (report.optionalRestrictedContent) {
-    if (
-      report.optionalRestrictedContent.bytes >
-      budget.optionalRestrictedContent.maxBytes
-    )
-      failures.push(
-        `optional restricted content bytes ${report.optionalRestrictedContent.bytes} > ${budget.optionalRestrictedContent.maxBytes}`,
-      );
-    if (
-      report.optionalRestrictedContent.gzipBytes >
-      budget.optionalRestrictedContent.maxGzipBytes
-    )
-      failures.push(
-        `optional restricted content gzip bytes ${report.optionalRestrictedContent.gzipBytes} > ${budget.optionalRestrictedContent.maxGzipBytes}`,
-      );
-  }
-  if (report.optionalHoverCard) {
-    if (report.optionalHoverCard.bytes > budget.optionalHoverCard.maxBytes)
-      failures.push(
-        `optional hover card bytes ${report.optionalHoverCard.bytes} > ${budget.optionalHoverCard.maxBytes}`,
-      );
-    if (
-      report.optionalHoverCard.gzipBytes > budget.optionalHoverCard.maxGzipBytes
-    )
-      failures.push(
-        `optional hover card gzip bytes ${report.optionalHoverCard.gzipBytes} > ${budget.optionalHoverCard.maxGzipBytes}`,
-      );
-  }
-  // canary 的可選塊走同一套預算。名字→預算鍵的映射寫死，映射不到的塊**要報出來**，
-  // 否則新增一個塊又會變成「沒人量」。
-  if (report.canaryOptionalBundles) {
-    const budgetKeys = {
-      markdownRenderer: "optionalRenderer",
-      restrictedContent: "optionalRestrictedContent",
-      hoverCard: "optionalHoverCard",
-    };
-    for (const [name, measured] of Object.entries(
-      report.canaryOptionalBundles.bundles,
-    )) {
-      const key = budgetKeys[name];
-      if (!key || !budget[key]) {
-        failures.push(`canary bundle ${name} has no budget entry`);
-        continue;
-      }
-      if (measured.bytes > budget[key].maxBytes)
-        failures.push(
-          `canary ${name} bytes ${measured.bytes} > ${budget[key].maxBytes}`,
-        );
-      if (measured.gzipBytes > budget[key].maxGzipBytes)
-        failures.push(
-          `canary ${name} gzip bytes ${measured.gzipBytes} > ${budget[key].maxGzipBytes}`,
-        );
-    }
-  }
+  failures.push(...startupBudgetFailures(report.startupRequires, budget));
+  failures.push(...optionalBundleBudgetFailures({
+    markdownRenderer: report.optionalRenderer,
+    restrictedContent: report.optionalRestrictedContent,
+    hoverCard: report.optionalHoverCard,
+  }, budget));
+  if (report.canaryOptionalBundles)
+    failures.push(...optionalBundleBudgetFailures(report.canaryOptionalBundles.bundles, budget, true));
   if (fetchRequires) {
     for (const actual of startupResources) {
       const expected = expectedStartupResources.find(

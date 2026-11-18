@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { createNativeUserInfo } from "../src/browser/luogu-user-info.js";
 import { createNativeDifficultySource } from "../src/features/problem-color/native-difficulty-source.js";
+import { createProblemData } from "../src/features/problem-color/problem-data.js";
 
 function fixture({
   path = "/problem/P1001",
@@ -33,15 +34,18 @@ function fixture({
     }
   }
   let now = 1;
+  const origin = "https://www.luogu.com.cn";
+  const data = createProblemData({ origin, now: () => now });
   const source = createNativeDifficultySource({ document: dom.window.document,
-    XMLHttpRequest: XHR, origin: "https://www.luogu.com.cn", now: () => now, prepareOtherGet });
+    XMLHttpRequest: XHR, origin, now: () => now, onPage: data.rememberPage, prepareOtherGet });
   const seen = [];
   const originalOpen = XHR.prototype.open;
-  const stop = source.subscribe(() => seen.push(source.harvest().at(-1)));
+  const harvest = () => source.harvest().batches;
+  const stop = source.subscribe(() => seen.push(harvest().at(-1)));
   const request = (url, method = "GET") => {
     const xhr = new XHR(); xhr.open(method, url); xhr.send(); return xhr;
   };
-  return { source, seen, stop, request, document: dom.window.document,
+  return { source, seen, stop, harvest, request, document: dom.window.document,
     XHR, originalOpen, tick: () => now++ };
 }
 
@@ -52,8 +56,8 @@ test("native page data is available during load before Luogu consumes loadend", 
   xhr.addEventListener("loadend", () => { valueAtNativeRender = fx.seen[0]?.problems; });
   xhr.reply({ data: { problems: { result: [{ pid: "P1050", difficulty: 3, privateField: "ignored" }] } } });
   assert.deepEqual(valueAtNativeRender, [{ pid: "P1050", difficulty: 3 }]);
-  assert.equal(fx.source.harvest()[0].problems[0].pid, "P1001");
-  assert.equal(fx.source.harvest().at(-1), fx.seen[0]);
+  assert.equal(fx.harvest()[0].problems[0].pid, "P1001");
+  assert.equal(fx.harvest().at(-1), fx.seen[0]);
   fx.stop();
   assert.equal(fx.XHR.prototype.open, fx.originalOpen);
 });
@@ -167,6 +171,26 @@ test("native navigation reuses problem recommendations with valid difficulty fie
     { pid: "P1421", difficulty: 1 },
     { pid: "P1425", difficulty: 2 },
   ]);
+  fx.stop();
+});
+
+test("an observed viewer change retires embedded and native batches even without a replacement", () => {
+  const user = { uid: 42 };
+  const page = (user, pid) => ({ user, data: { problems: pid ? [{ pid, difficulty: 2 }] : [] } });
+  const fx = fixture({ path: "/problem/list", page: page(user, "P1001") });
+  assert.equal(fx.harvest()[0].problems[0].pid, "P1001");
+  fx.tick();
+  fx.request("/problem/list").reply(page(user, "P1002"));
+  assert.deepEqual(fx.harvest().map((batch) => batch.problems[0].pid), ["P1001", "P1002"]);
+  fx.tick();
+  const late = fx.request("/problem/list");
+  const unlabeled = fx.request("/problem/list");
+  fx.request("/problem/list").reply(page({ uid: 43 }));
+  assert.equal(fx.seen.length, 2, "a viewer change alone requests a rescan");
+  assert.deepEqual(fx.harvest(), []);
+  late.reply(page(user, "P1003"));
+  unlabeled.reply(page(undefined, "P1004"));
+  assert.deepEqual(fx.harvest(), [], "a stale reply cannot revive the previous viewer's batch");
   fx.stop();
 });
 

@@ -14,6 +14,7 @@ import {
   deploymentEvidence, readPublishReport, writePublishReport,
 } from "./publish-receipt.mjs";
 import { RELEASE_VERSION, digest, readRegularFile, releaseManifestPath, requireRegularDirectory } from "./release-integrity.mjs";
+import { assertCandidateSizeBudget } from "./size-budget.mjs";
 import { verifyDeployment } from "./verify-deployment.mjs";
 
 const MAX_CONCURRENT_MANIFEST_CHECKS = 4;
@@ -160,6 +161,8 @@ try {
     capturedChannel,
     async selectReleases(snapshots, candidates) {
       const committed = assertCommittedReleases(root, snapshots);
+      const budget = JSON.parse(await readFile(resolve(root, "config/quality-budget.json"), "utf8"));
+      assertCandidateSizeBudget(snapshots.get(version), budget);
       const staged = new Map();
       const releases = [...candidates];
       for (let start = 0; start < releases.length; start += MAX_CONCURRENT_MANIFEST_CHECKS) {

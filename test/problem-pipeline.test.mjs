@@ -68,7 +68,7 @@ function fixture({
         const result = await problems.load(pid, { href, signal });
         return result && { difficulty: result.data.problem.difficulty, at: result.difficultyAt };
       },
-      harvest,
+      harvest: () => ({ batches: harvest() }),
       subscribe: (accept, refresh) => {
         const stop = subscribe?.(accept);
         const stopDifficulty = problems.subscribeDifficulty(refresh);
@@ -111,7 +111,7 @@ test("native colors apply synchronously; unknown problems wait 300ms and recheck
   let source = [{ pid: "P1", difficulty: 1 }];
   const requests = [];
   const fx = fixture({ anchors, clock: clock.adapter(), requestDelayMs: 300,
-    harvest: () => [{ source, problems: source }],
+    harvest: () => [{ problems: source }],
     text: async (url) => { requests.push(url); return '{"currentData":{"problem":{"difficulty":4}}}'; },
   });
   fx.pipeline.mount();
@@ -140,7 +140,7 @@ test("new native data repaints the same pid and wins over an older in-flight que
   fx.pipeline.mount();
   await clock.advance(1);
   const first = [{ pid: "P1", difficulty: 3 }];
-  batches = [{ source: first, problems: first, at: 1 }];
+  batches = [{ problems: first, at: 1 }];
   changed();
   assert.equal(anchor.color, "color-3");
   response.resolve('{"currentData":{"problem":{"difficulty":1}}}');
@@ -148,7 +148,7 @@ test("new native data repaints the same pid and wins over an older in-flight que
   assert.equal(anchor.color, "color-3", "an older request must not overwrite new native data");
   await clock.advance(1);
   const second = [{ pid: "P1", difficulty: 4 }];
-  batches = [{ source: second, problems: second, at: 2 }];
+  batches = [{ problems: second, at: 2 }];
   changed();
   assert.equal(anchor.color, "color-4", "same DOM node and same pid can change difficulty");
   fx.pipeline.dispose();
@@ -183,7 +183,7 @@ for (const queued of [true, false]) {
     assert.deepEqual(starts, queued ? [] : [300]);
 
     const native = [{ pid: anchor.pid, difficulty: 2 }];
-    batches = [{ source: native, problems: native, at: clock.nowMs }];
+    batches = [{ problems: native, at: clock.nowMs }];
     fx.problems.rememberPage({ data: { training: { problems: native } } },
       new URL("https://www.luogu.com.cn/training/100"), clock.nowMs);
     fx.emit([anchor]);
@@ -238,6 +238,42 @@ test("a shared detail refresh targets its difficulty scope and current route", a
   assert.deepEqual(requests, ["/problem/P1?contestId=123&lang=zh&_contentOnly=1", "/problem/P1?_contentOnly=1"]);
 });
 
+test("a scoped native detail refreshes only matching anchors on the active route", async (t) => {
+  const clock = new FakeClock();
+  const pid = "P1";
+  const href = "/problem/P1?contestId=123&lang=en";
+  const anchors = [
+    { pid, href, scoped: true },
+    { pid, href: "/problem/P1?contestId=123&lang=zh", scoped: true },
+  ];
+  const requests = [];
+  const fx = fixture({
+    anchors, clock: clock.adapter(),
+    text: async (path) => {
+      requests.push(path);
+      return JSON.stringify({ data: { problem: { pid, difficulty: 2 } } });
+    },
+  });
+  const observe = (href, difficulty, at = clock.nowMs) => fx.problems.rememberPage(
+    { data: { problem: { pid, difficulty } } }, new URL(href, "https://www.luogu.com.cn"), at,
+  );
+  fx.pipeline.mount();
+  t.after(fx.pipeline.dispose);
+  await new Promise(setImmediate);
+  const colors = () => anchors.map((anchor) => anchor.color);
+  assert.deepEqual(colors(), ["color-2", "color-2"]);
+  await clock.advance(1);
+  observe(href, 4);
+  assert.deepEqual(colors(), ["color-4", "color-2"]);
+  observe(href, 5, 0);
+  assert.deepEqual(colors(), ["color-4", "color-2"], "an older native reply does not override the newer detail");
+  fx.setRoute("/training/200");
+  await clock.advance(1);
+  observe(href, 6);
+  assert.deepEqual(colors(), ["color-4", "color-2"], "the old route's anchors are not painted");
+  assert.equal(requests.length, 2);
+});
+
 test("a locally cached query color stays with its observed viewer", async (t) => {
   const clock = new FakeClock();
   const anchor = { pid: "P1", href: "/problem/P1" };
@@ -288,7 +324,7 @@ test("a visibility rescan repairs local colors without launching cache misses", 
   const fx = fixture({
     anchors,
     clock: clock.adapter(),
-    harvest: () => [{ source: problems, problems }],
+    harvest: () => [{ problems }],
     text: async (path) => { requests.push(path); return ""; },
   });
   fx.pipeline.mount();
@@ -309,7 +345,7 @@ test("query and harvested caches expire after five minutes without renewing on r
   const source = [{ pid: "P1", difficulty: 1 }];
   let calls = 0;
   const fx = fixture({ anchors: [native, queried], clock: clock.adapter(),
-    harvest: () => [{ source, problems: source, at: 0 }],
+    harvest: () => [{ problems: source, at: 0 }],
     text: async () => { calls++; return '{"currentData":{"problem":{"difficulty":4}}}'; },
   });
   fx.pipeline.mount();
@@ -339,7 +375,7 @@ test("newer native data replaces a cached query and receives its own five-minute
   fx.pipeline.mount(); await flushMicrotasks();
   await clock.advance(200000);
   const source = [{ pid: "P1", difficulty: 3 }];
-  batches = [{ source, problems: source, at: clock.nowMs }];
+  batches = [{ problems: source, at: clock.nowMs }];
   fx.emit([anchor]);
   assert.equal(anchor.color, "color-3");
   await clock.advance(299999);
@@ -372,12 +408,10 @@ test("Problem Pipeline fetches all four ambiguous record tiers by pid", async ()
     },
     harvest: () => [
       {
-        source: records,
-        problems: () =>
-          records.map(({ pid, difficulty }) => ({
-            pid,
-            difficulty: recordDifficultyForHarvest(difficulty),
-          })),
+        problems: records.map(({ pid, difficulty }) => ({
+          pid,
+          difficulty: recordDifficultyForHarvest(difficulty),
+        })),
       },
     ],
   });
@@ -479,7 +513,7 @@ test("Problem Pipeline harvests injected lists once without mutating page data",
     },
     harvest: () => {
       harvests++;
-      return [{ source, problems: source }];
+      return [{ problems: source }];
     },
   });
 
@@ -518,7 +552,7 @@ test("Problem Pipeline keeps a whole harvested page even when it exceeds the fet
       fetched.push(path);
       throw new Error("a harvested pid must never be fetched");
     },
-    harvest: () => [{ source, problems: source }],
+    harvest: () => [{ problems: source }],
   });
 
   fx.pipeline.mount();
@@ -550,7 +584,7 @@ test("Problem Pipeline prefers a freshly fetched difficulty over the harvested o
       return JSON.stringify({ currentData: { problem: { difficulty: 7 } } });
     },
     harvest: () =>
-      exposeHarvest ? [{ source, problems: source, at: 0 }] : [],
+      exposeHarvest ? [{ problems: source, at: 0 }] : [],
   });
 
   fx.pipeline.mount();

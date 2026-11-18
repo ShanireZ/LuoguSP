@@ -371,10 +371,16 @@ export function createIdeBatchFeature({ storage, problemData }) {
       (b) => (b.textContent || "").trim() === "自测",
     );
     if (!selfTest) return;
-    const restoreFocus = IDE_VIEW.button && ownedFocus.current() === IDE_VIEW.button;
-    IDE_VIEW.button?.remove();
+    const previous = IDE_VIEW.button;
+    const restoreFocus = previous && ownedFocus.current() === previous;
+    previous?.remove();
     const btn = createIdeButton(selfTest, IDE_BATCH_LABEL, "luogusp-ide-batch-btn", controls.start);
     btn.disabled = controls.isRunning();
+    // The existing hint timer clears the replacement at the original deadline.
+    if (previous?.getAttribute("aria-disabled") === "true") {
+      btn.textContent = previous.textContent;
+      btn.setAttribute("aria-disabled", "true");
+    }
     actions.insertBefore(btn, selfTest);
     IDE_VIEW.button = btn;
     if (restoreFocus && document.activeElement === document.body)

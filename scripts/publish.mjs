@@ -23,7 +23,8 @@ import {
 import { assertOwnedReleaseDirectory, rollbackRelease } from "./cdn/release-transaction.mjs";
 import { LocalLockBusyError, withLocalLock } from "./cdn/local-lock.mjs";
 import { DEPLOYMENT_PHASE, PARENT_PUBLISH_LOCK, deploymentEvidence, readPublishReport, writePublishReport } from "./cdn/publish-receipt.mjs";
-import { digest, parseCanaryChannel, readRegularFile } from "./cdn/release-integrity.mjs";
+import { parseCanaryChannel, readRegularFile, snapshotRelease } from "./cdn/release-integrity.mjs";
+import { assertCandidateSizeBudget } from "./cdn/size-budget.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 async function publish(lockOwner) {
@@ -120,6 +121,7 @@ const steps = [
     : "build immutable CDN release",
   "run renderer contract tests",
   "stage pinned userscript",
+  "check immutable candidate size budgets",
   "run pre-deployment tests",
   "deploy Cloudflare Workers",
   "verify the configured Cloudflare custom origin",
@@ -328,15 +330,15 @@ try {
     root,
     `dist/staged/LuoguSP.${version}.user.js`,
   );
-  const [stagedArtifact, manifestBody, configText] =
+  const [stagedArtifact, candidate, configText] =
     await Promise.all([
       readFile(stagedPath, "utf8"),
-      readRegularFile(resolve(releaseDirectory, "manifest.json")),
+      snapshotRelease(releasesRoot, version),
       readFile(resolve(root, "config/cdn.json"), "utf8"),
     ]);
-  if (digest(manifestBody) !== releaseChannel.manifestSha256)
+  if (candidate.sha256 !== releaseChannel.manifestSha256)
     throw new Error("Staged manifest differs from the publication receipt");
-  const manifest = JSON.parse(manifestBody);
+  const { manifest } = candidate;
   const config = JSON.parse(configText);
   const activation = verifyStagedActivation({
     artifact: stagedArtifact,
@@ -344,6 +346,9 @@ try {
     manifest,
     config,
   });
+
+  beginPhase("candidate size budget");
+  assertCandidateSizeBudget(candidate, JSON.parse(await readFile(resolve(root, "config/quality-budget.json"), "utf8")));
 
   beginPhase("pre-deployment tests");
   const preDeploymentTests = (

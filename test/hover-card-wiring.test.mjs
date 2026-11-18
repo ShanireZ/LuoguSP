@@ -13,6 +13,7 @@ import {
   resolveHoverTarget,
 } from "../src/features/hover-card/anchors.js";
 import { placeCard } from "../src/features/hover-card/card-view.js";
+import { optionalBundleBudgetFailures } from "../scripts/cdn/size-budget.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relative) => readFileSync(resolve(root, relative), "utf8");
@@ -556,9 +557,14 @@ test("质量门必须把 canary 频道的可选块也量进来", () => {
   const quality = read("scripts/quality.mjs");
   assert.match(quality, /cdn\/channels\/canary\.json/, "不读 canary 频道就等于没量 canary");
   assert.match(quality, /canaryOptionalBundles/);
-  assert.match(quality, /`canary \$\{name\} bytes/, "超预算必须点名是哪个块");
-  // 新增一個塊卻忘了配預算，必須報出來而不是靜默跳過。
-  assert.match(quality, /has no budget entry/);
+  assert.match(quality, /optionalBundleBudgetFailures\(report\.canaryOptionalBundles\.bundles/);
+  const budget = { optionalHoverCard: { maxBytes: 199, maxGzipBytes: 89 } };
+  const bundle = { bytes: 200, gzipBytes: 90 };
+  assert.deepEqual(optionalBundleBudgetFailures({ hoverCard: bundle, other: bundle }, budget, true), [
+    "canary hoverCard bytes 200 > 199",
+    "canary hoverCard gzip bytes 90 > 89",
+    "canary bundle other has no budget entry",
+  ]);
 });
 
 test("预算、质量门与发布校验都认识这个新块", () => {

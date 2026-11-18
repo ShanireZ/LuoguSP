@@ -41,6 +41,7 @@ export function createProblemPipeline(config) {
   const harvested = new Map();
   const harvestedLists = new WeakSet();
   const painted = new WeakMap();
+  let harvestViewer;
   let coloringAnchors = new WeakMap();
   let mounted = false;
   let generation = 0;
@@ -55,6 +56,8 @@ export function createProblemPipeline(config) {
     routeAdapter && typeof routeAdapter.token === "function"
       ? routeAdapter.token()
       : "";
+  const current = () => mounted && routeToken() === currentRoute;
+  const isConnected = (anchor) => documentAdapter.isConnected?.(anchor) ?? true;
   const rememberColor = (key, color, at) => {
     if (!color || colors.get(key)?.at > at) return;
     colors.delete(key);
@@ -84,30 +87,20 @@ export function createProblemPipeline(config) {
       ? colorForDifficulty(shared.difficulty) : local?.color;
   };
   const harvest = () => {
-    if (typeof difficultySource.harvest !== "function") return;
-    const batches = difficultySource.harvest() || [];
+    const { viewer, batches = [] } = difficultySource.harvest?.() ?? {};
+    if (viewer !== harvestViewer) {
+      harvestViewer = viewer;
+      harvested.clear();
+      colors.clear();
+    }
     for (const batch of batches) {
-      if (
-        !batch ||
-        !batch.source ||
-        (typeof batch.source !== "object" &&
-          typeof batch.source !== "function") ||
-        harvestedLists.has(batch.source)
-      )
-        continue;
-      const problems =
-        typeof batch.problems === "function"
-          ? batch.problems()
-          : batch.problems;
+      if (harvestedLists.has(batch.problems)) continue;
+      harvestedLists.add(batch.problems);
       const at = batch.at ?? clock.now();
+      if (clock.now() - at >= cacheTtlMs) continue;
       for (const pid of harvested.keys()) fresh(harvested, pid);
-      if (clock.now() - at >= cacheTtlMs) {
-        harvestedLists.add(batch.source);
-        continue;
-      }
-      for (const problem of problems || [])
-        rememberDifficulty(problem && problem.pid, problem && problem.difficulty, at);
-      harvestedLists.add(batch.source);
+      for (const { pid, difficulty } of batch.problems)
+        rememberDifficulty(pid, difficulty, at);
     }
   };
   const getColor = async (identity, signal, key) => {
@@ -127,24 +120,25 @@ export function createProblemPipeline(config) {
     if (!controller) return;
     const taskGeneration = generation;
     const taskRoute = routeToken();
-    if (typeof documentAdapter.isConnected === "function" && !documentAdapter.isConnected(anchor)) return;
+    if (!isConnected(anchor)) return;
     const taskIdentity = identity.resolve(anchor);
     const shared = taskIdentity && !taskIdentity.recordColor ? difficultySource.peek?.(taskIdentity) : null;
     if (changedKey !== undefined && shared?.key !== changedKey) return;
+    const key = taskIdentity && `${taskIdentity.key}:${shared?.key ?? ""}`;
     // A recycled anchor can keep its PID while changing destination or scope.
     // Clear the previous paint before any lookup for the new identity.
     const previous = painted.get(anchor);
-    if (!taskIdentity || (previous && previous.key !== taskIdentity.key)) {
+    if (!taskIdentity || (previous && previous.key !== key)) {
       documentAdapter.clearColor?.(anchor, documentAdapter.appliedPid?.(anchor));
       painted.delete(anchor);
     }
     if (!taskIdentity) return;
     const apply = (color) => {
       const previous = painted.get(anchor);
-      if (previous?.key === taskIdentity.key && previous.color === color &&
+      if (previous?.key === key && previous.color === color &&
           documentAdapter.appliedPid?.(anchor) === taskIdentity.pid) return;
       documentAdapter.applyColor(anchor, taskIdentity.pid, color, taskIdentity);
-      painted.set(anchor, { key: taskIdentity.key, color });
+      painted.set(anchor, { key, color });
     };
     if (taskIdentity.recordColor) {
       apply(taskIdentity.recordColor);
@@ -159,8 +153,8 @@ export function createProblemPipeline(config) {
     }
     if (!requestsReady || !allowQueries) return;
     const routeQueries = coloringAnchors;
-    if (routeQueries.get(anchor) === taskIdentity.key) return;
-    routeQueries.set(anchor, taskIdentity.key);
+    if (routeQueries.get(anchor) === key) return;
+    routeQueries.set(anchor, key);
     try {
       const color = await getColor(taskIdentity, controller.signal, shared?.key);
       const currentIdentity = identity.resolve(anchor);
@@ -169,8 +163,7 @@ export function createProblemPipeline(config) {
         generation !== taskGeneration ||
         routeToken() !== taskRoute ||
         !color ||
-        (typeof documentAdapter.isConnected === "function" &&
-          !documentAdapter.isConnected(anchor)) ||
+        !isConnected(anchor) ||
         !currentIdentity ||
         currentIdentity.key !== taskIdentity.key
       )
@@ -180,7 +173,7 @@ export function createProblemPipeline(config) {
       if (currentShared?.key === shared?.key)
         apply(knownColor(currentIdentity, currentShared) || color);
     } finally {
-      if (routeQueries.get(anchor) === taskIdentity.key)
+      if (routeQueries.get(anchor) === key)
         routeQueries.delete(anchor);
     }
   };
@@ -189,10 +182,11 @@ export function createProblemPipeline(config) {
     for (const anchor of anchors || []) colorAnchor(anchor, allowQueries);
   };
   const rescan = (options) => {
-    if (mounted) acceptAnchors(documentAdapter.anchors(documentAdapter.root), options);
+    if (current())
+      acceptAnchors(documentAdapter.anchors(documentAdapter.root), options);
   };
   const refreshDifficulty = (pid, key) => {
-    if (mounted && routeToken() === currentRoute) {
+    if (current()) {
       for (const anchor of documentAdapter.problemAnchors(pid)) colorAnchor(anchor, false, key);
     }
   };

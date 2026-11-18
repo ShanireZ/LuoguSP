@@ -312,17 +312,84 @@ test("Lite preserves fenced and inline code inside quotes", () => {
   dom.window.close();
 });
 
-for (const [context, wrap] of [
-  ["a div", (anchor) => `<div>\n${anchor}\n</div>`],
-  ["a standalone anchor", (anchor) => anchor],
+for (const [kind, quote, links] of [
+  ["Markdown link titles", '> [![Map](./cover.png\n> "Cover title")](./gallery\n> "Gallery title")',
+    [["Map", "./gallery", "Gallery title"], ["打开图片：Map", "https://www.luogu.com.cn/cover.png", "Cover title"]]],
+  ["a split raw anchor end", '> <a href="./gallery" title="Gallery title">Map</a\n> >\n> Outside the link.',
+    [["Map", "./gallery", "Gallery title"]]],
+]) {
+  test(`Lite resolves ${kind} within its quote`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown(quote, { forceFullFailure: true }).html;
+    assert.deepEqual([...root.querySelectorAll("blockquote a")].map((link) =>
+      [link.textContent, link.getAttribute("href"), link.title]), links);
+    assert.doesNotMatch(root.textContent, /[>]|@@LGB|\]\(/);
+    assert.equal(root.querySelector("img, a a"), null);
+  });
+}
+
+test("Lite keeps a quoted fence between paragraphs with unmatched backticks", (t) => {
+  const { dom, renderer } = createRenderer();
+  t.after(() => dom.window.close());
+  const root = dom.window.document.createElement("div");
+  const code = '<img src="./cover.png" alt="Literal">';
+  root.innerHTML = renderer.renderMarkdown([
+    "Before `", `> ~~~html\n> ${code}\n> ~~~`, "After `",
+  ].join("\n\n"), { forceFullFailure: true }).html;
+  assert.equal(root.querySelector("blockquote pre code")?.textContent, code);
+  assert.deepEqual([...root.querySelectorAll(":scope > p")].map((p) => p.textContent), ["Before `", "After `"]);
+  assert.equal(root.querySelector("img, a"), null);
+  assert.doesNotMatch(root.textContent, /@@LGB/);
+});
+
+test("Lite preserves continued and loose lists with a hidden final definition", (t) => {
+  const { dom, renderer } = createRenderer();
+  t.after(() => dom.window.close());
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown([
+    "[Book][go]", '- First step\n  Continued detail.\n- [local]: ./other "Other"',
+    '3. First numbered step\n\n4. Second numbered step\n\n5. [go]: ./album "Title"',
+  ].join("\n\n"), { forceFullFailure: true }).html;
+  assert.equal(root.querySelector("ul > li")?.innerHTML, "First step<br>Continued detail.");
+  assert.deepEqual([...root.querySelectorAll("ol")].map((list) => list.start), [3]);
+  assert.deepEqual([...root.querySelectorAll("ol > li > p")].map((item) => item.textContent),
+    ["First numbered step", "Second numbered step"]);
+  const link = root.querySelector("a");
+  assert.equal(link.getAttribute("href"), "./album");
+  assert.equal(link.title, "Title");
+  assert.doesNotMatch(root.textContent, /\[(?:go|local)\]:|\.\/(?:album|other)/);
+});
+
+test("Lite preserves a list with a fence and a nested quote inside a quote", (t) => {
+  const { dom, renderer } = createRenderer();
+  t.after(() => dom.window.close());
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown(
+    "> - Item\n>   ~~~html\n>   <b>Literal</b>\n>   ~~~\n>\n> > Nested quote.",
+    { forceFullFailure: true },
+  ).html;
+  assert.equal(root.querySelector("blockquote > ul > li > pre > code")?.textContent, "<b>Literal</b>");
+  assert.equal(root.querySelector("blockquote > blockquote")?.textContent, "Nested quote.");
+  assert.equal(root.querySelector("b"), null);
+});
+
+for (const [context, wrap, title, alt, end] of [
+  ["a div", (anchor) => `<div>\n${anchor}\n</div>`, "Gallery </a >", "Map </a >", "</a\n\n>"],
+  ["a standalone anchor", (anchor) => anchor, "Gallery </a >", "Map </a >", "</a\n\n>"],
+  ["a div with a multiline title", (anchor) => `<div>\n${anchor}\n</div>`,
+    "Example </a\n\n> in title", "Map </a\n\n> in alt", "</a\n\n>"],
+  ["a paragraph with a blank line before the end tag", (anchor) => `Before ${anchor}`,
+    "Gallery </a >", "Map </a >", "\n\n</a\n\n>"],
 ]) {
   test(`Full closes a split raw HTML image anchor in ${context}`, (t) => {
     const { dom, renderer } = createRenderer();
     t.after(() => dom.window.close());
     const root = dom.window.document.createElement("div");
     const result = renderer.renderMarkdown([
-      wrap('<a href="./gallery" title="Gallery </a >">\n' +
-        '<img src="./cover.png" alt="Map </a >" title="Cover </a >"></a\n\n>'),
+      wrap(`<a href="./gallery" title="${title}">\n` +
+        `<img src="./cover.png" alt="${alt}" title="Cover </a >">${end}`),
       "Expected separate paragraph.",
       'Example: `</a >`. [Link](./text "Literal </a >")',
       "~~~html\n</a\n\n>\n~~~",
@@ -331,8 +398,8 @@ for (const [context, wrap] of [
     root.innerHTML = result.html;
     assert.deepEqual([...root.querySelectorAll("a[href]")].map((link) =>
       [link.textContent.trim(), link.getAttribute("href"), link.title]), [
-      ["Map </a >", "./gallery", "Gallery </a >"],
-      ["打开图片：Map </a >", "https://www.luogu.com.cn/cover.png", "Cover </a >"],
+      [alt, "./gallery", title],
+      [`打开图片：${alt}`, "https://www.luogu.com.cn/cover.png", "Cover </a >"],
       ["Link", "./text", "Literal </a >"],
     ]);
     assert.ok([...root.querySelectorAll("p")].some((node) =>

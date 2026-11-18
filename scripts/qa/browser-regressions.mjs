@@ -377,14 +377,18 @@ for (const mode of ["full", "lite"]) {
   });
 }
 
-for (const [context, wrap] of [
-  ["a div", (anchor) => `<div>\n${anchor}\n</div>`],
-  ["a standalone anchor", (anchor) => anchor],
+for (const [context, wrap, title, alt, end] of [
+  ["a div", (anchor) => `<div>\n${anchor}\n</div>`, "Gallery </a >", "Map </a >", "</a\n\n>"],
+  ["a standalone anchor", (anchor) => anchor, "Gallery </a >", "Map </a >", "</a\n\n>"],
+  ["a div with a multiline title", (anchor) => `<div>\n${anchor}\n</div>`,
+    "Example </a\n\n> in title", "Map </a\n\n> in alt", "</a\n\n>"],
+  ["a paragraph with a blank line before the end tag", (anchor) => `Before ${anchor}`,
+    "Gallery </a >", "Map </a >", "\n\n</a\n\n>"],
 ]) {
   test(`Full profile introduction confines a split raw HTML image anchor in ${context}`, async (t) => {
     const introduction = [
-      wrap('<a href="./gallery" title="Gallery </a >">\n' +
-        '<img src="../intro-images/cover.png" alt="Map </a >" title="Cover </a >"></a\n\n>'),
+      wrap(`<a href="./gallery" title="${title}">\n` +
+        `<img src="../intro-images/cover.png" alt="${alt}" title="Cover </a >">${end}`),
       "Expected separate paragraph.",
     ].join("\n\n");
     const { page, requests } = await fixture(t, {
@@ -394,12 +398,12 @@ for (const [context, wrap] of [
     });
     const intro = page.locator(".luogusp-intro-card .lfe-marked");
     const paragraph = intro.getByText("Expected separate paragraph.", { exact: true });
-    await paragraph.waitFor();
+    await intro.waitFor();
     const links = intro.locator("a[href]");
     assert.deepEqual(await links.evaluateAll((nodes) => nodes.map((node) =>
       [node.textContent.trim(), node.getAttribute("href"), node.title, node.tabIndex])), [
-      ["Map </a >", "./gallery", "Gallery </a >", 0],
-      ["打开图片：Map </a >", origin + "/intro-images/cover.png", "Cover </a >", 0],
+      [alt, "./gallery", title, 0],
+      [`打开图片：${alt}`, origin + "/intro-images/cover.png", "Cover </a >", 0],
     ]);
     assert.equal(await paragraph.evaluate((node) => node.closest("a[href]") === null && node.tabIndex === -1), true);
     await links.first().focus();
@@ -407,6 +411,7 @@ for (const [context, wrap] of [
     assert.equal(await links.last().evaluate((node) => node === document.activeElement), true);
     await page.keyboard.press("Tab");
     assert.equal(await intro.evaluate((node) => node.contains(document.activeElement)), false);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await intro.locator("img").count(), 0);
     assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
   });
@@ -560,6 +565,73 @@ test("Lite profile introduction preserves quoted fences and multiline inline cod
   assert.equal(await intro.locator("blockquote b, img, a[href*='quoted-example.png']").count(), 0);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
+});
+
+for (const [kind, introduction, links, code] of [
+  ["multiline linked image titles in a quote",
+    '> [![Map](../intro-images/cover.png\n> "Cover title")](./gallery\n> "Gallery title")',
+    [["Map", "./gallery", "Gallery title"], ["打开图片：Map", origin + "/intro-images/cover.png", "Cover title"]]],
+  ["a split raw anchor end in a quote",
+    '> <a href="./gallery" title="Gallery title">Map</a\n> >\n> Outside the link.',
+    [["Map", "./gallery", "Gallery title"]]],
+  ["a quoted fence between unmatched backticks",
+    'Before `\n\n> ~~~html\n> <img src="../intro-images/fence.png" alt="Literal">\n> ~~~\n\nAfter `',
+    [], '<img src="../intro-images/fence.png" alt="Literal">'],
+]) {
+  test(`Lite profile introduction preserves ${kind}`, async (t) => {
+    const { page, requests } = await fixture(t, {
+      path: "/user/42?luogusp-qa=fallback-lite",
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.waitFor();
+    assert.deepEqual(await intro.locator("blockquote a").evaluateAll((nodes) =>
+      nodes.map((node) => [node.textContent, node.getAttribute("href"), node.title])), links);
+    assert.deepEqual(await intro.locator("blockquote pre code").allTextContents(), code ? [code] : []);
+    if (code) assert.deepEqual(await intro.locator(":scope > p").allTextContents(), ["Before `", "After `"]);
+    else assert.doesNotMatch(await intro.textContent(), /[>]|\]\(/);
+    assert.doesNotMatch(await intro.textContent(), /@@LGB/);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await intro.locator("img, a a").count(), 0);
+    assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
+  });
+}
+
+test("Lite profile introduction keeps continued and loose numbered lists", async (t) => {
+  const introduction = [
+    "[Book][go]", '- First step\n  Continued detail.\n- [local]: ./other "Other"',
+    '3. First numbered step\n\n4. Second numbered step\n\n5. [go]: ./album "Title"',
+  ].join("\n\n");
+  const { page } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  const link = intro.getByRole("link", { name: "Book", exact: true });
+  await link.waitFor();
+  assert.equal(await link.getAttribute("href"), "./album");
+  assert.equal(await link.getAttribute("title"), "Title");
+  assert.deepEqual(await intro.locator("ul > li").allTextContents(), ["First stepContinued detail."]);
+  assert.deepEqual(await intro.locator("ol").evaluateAll((lists) => lists.map((list) => list.start)), [3]);
+  assert.deepEqual(await intro.locator("ol > li > p").allTextContents(), ["First numbered step", "Second numbered step"]);
+  assert.doesNotMatch(await intro.textContent(), /\[(?:go|local)\]:|\.\/(?:album|other)/);
+});
+
+test("Lite profile introduction keeps a list with a fence and a nested quote inside a quote", async (t) => {
+  const introduction = "> - Item\n>   ~~~html\n>   <b>Literal</b>\n>   ~~~\n>\n> > Nested quote.";
+  const { page } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  await intro.waitFor();
+  assert.deepEqual(await intro.locator("blockquote > ul > li > .code-container > pre > code").allTextContents(),
+    ["<b>Literal</b>"]);
+  assert.deepEqual(await intro.locator("blockquote > blockquote").allTextContents(), ["Nested quote."]);
+  assert.equal(await intro.locator("blockquote b").count(), 0);
 });
 
 test("profile introduction preserves a Bash fence before display math", async (t) => {
@@ -2403,20 +2475,29 @@ test("problem preview renders native fields first and patches late records in pl
     label && duration === 125 && properties.join() === "opacity"));
 });
 
-for (const focusTags of [true, false]) {
+for (const [focusTags, height] of [[true, 175], [true, 480], [false, 480]]) {
   test(`problem preview ${focusTags ? "restores focus when late detail removes its focused tags" :
-    "retains another focused action when late detail removes tags"}`, async (t) => {
+    "retains another focused action when late detail removes tags"} at ${height}px`, async (t) => {
     const detail = responseGate(t);
     const warmup = { ...problem, pid: "P1001" };
-    const initial = { ...problem, bestRecord: { id: 77, status: 12, score: 100 } };
+    const initial = {
+      ...problem,
+      name: "A problem title long enough to wrap inside the narrow preview",
+      submitted: true,
+      accepted: true,
+      bestRecord: { id: 77, status: 12, score: 100 },
+    };
     const { page } = await fixture(t, {
+      viewport: { width: 320, height },
       html: fixtureHtml('<a id="warmup" href="/problem/P1001">Warmup</a> ' +
         '<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [warmup, initial] }),
       reply(route, url) {
         if (url.pathname === "/problem/P1001")
           return route.fulfill({ json: { user: viewer, data: { problem: warmup } } });
         if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({
-          json: { user: viewer, data: { problem: { ...initial, tags: [] } } },
+          json: { user: viewer, data: { bookmarked: true, problem: {
+            ...initial, tags: [], limits: { time: [1000], memory: [65536] },
+          } } },
         }));
         if (url.pathname === "/_lfe/tags")
           return route.fulfill({ json: { tags: [{ id: 1, name: "Fixture tag" }] } });
@@ -2440,11 +2521,25 @@ for (const focusTags of [true, false]) {
       await page.keyboard.press("Tab");
       assert.ok(await focused(best));
     }
+    const documentScroll = await page.evaluate(() => [scrollX, scrollY]);
+    const scrollTop = await preview.evaluate(node => node.scrollTop);
     detail.release();
     await tags.waitFor({ state: "detached" });
     await preview.waitFor();
     const current = focusTags ? jump : best;
     assert.ok(await focused(current));
+    if (focusTags) {
+      const fullyVisible = await current.evaluate(link => {
+        const scrollport = link.closest("#luogusp-hover-card");
+        const top = scrollport.getBoundingClientRect().top + scrollport.clientTop;
+        const rect = link.getBoundingClientRect();
+        return rect.top >= top - 1 && rect.bottom <= top + scrollport.clientHeight + 1;
+      });
+      assert.equal(fullyVisible, true);
+    } else {
+      assert.equal(await preview.evaluate(node => node.scrollTop), scrollTop);
+    }
+    assert.deepEqual(await page.evaluate(() => [scrollX, scrollY]), documentScroll);
   });
 }
 
@@ -3696,11 +3791,12 @@ for (const action of ["follow", "block confirmation"]) {
 const ideFixtureSamples = [["first", "a\nb\nc\nd"], ["second", "ok"]];
 
 async function ideFixture(t, submitReply = (route, index) =>
-  route.fulfill({ json: { status: 200, data: { rid: index } } }), { inlineAtDone = false, detailReply } = {}) {
+  route.fulfill({ json: { status: 200, data: { rid: index } } }), { inlineAtDone = false, detailReply, useClock } = {}) {
   const submit = Promise.withResolvers();
   const submitted = [];
   const toolbar = (title, actions = "") => `<div class="ide-toolbar"><div class="title"><span class="text">${title}</span></div><div class="actions">${actions}</div></div>`;
   const { page, requests } = await fixture(t, {
+    useClock,
     path: "/problem/P1000#ide",
     html: fixtureHtml(`
       ${toolbar("代码", `
@@ -4114,6 +4210,42 @@ test("same-route IDE toolbar replacement restores focus to the batch button", as
   await batch.waitFor();
   assert.ok(await focused(batch));
   await assertIdeFocusVisible(batch);
+});
+
+test("same-route IDE toolbar replacement keeps the hint through its original deadline", async (t) => {
+  const { page, submitted, firstSubmit } = await ideFixture(t, undefined, { useClock: true });
+  const batch = page.locator(".luogusp-ide-batch-btn");
+  const editor = page.locator(".cm-content");
+  const status = page.locator(".luogusp-ide-remount-status");
+  await editor.fill("");
+  await batch.press("Enter");
+  assert.equal(await batch.textContent(), "代码为空");
+  await page.clock.runFor(32);
+  await editor.fill("corrected source");
+  await batch.focus();
+  await batch.evaluate(button => {
+    const actions = button.parentElement;
+    const replacement = actions.cloneNode(true);
+    replacement.querySelector(".luogusp-ide-batch-btn").remove();
+    actions.replaceWith(replacement);
+  });
+  await page.clock.runFor(32);
+  await batch.waitFor();
+  assert.ok(await focused(batch));
+  assert.equal(await batch.textContent(), "代码为空");
+  assert.equal(await batch.getAttribute("aria-disabled"), "true");
+  assert.equal(await status.textContent(), "代码为空");
+  await batch.press("Enter");
+  await page.clock.runFor(1435);
+  assert.equal(submitted.length, 0);
+  assert.equal(await batch.getAttribute("aria-disabled"), "true");
+  await page.clock.runFor(1);
+  assert.equal(await batch.textContent(), "一键测试");
+  assert.ok(await batch.isEnabled());
+  assert.ok(await focused(batch));
+  await batch.press("Enter");
+  await firstSubmit;
+  assert.equal(submitted[0].code, "corrected source");
 });
 
 test("leaving IDE restores native panels and waits for an outstanding submission to be rejected", async (t) => {
@@ -4577,6 +4709,78 @@ test("preview-only detail refresh recolors existing and new problem links", asyn
   });
   assert.deepEqual(await colors(), [green, "", green, green]);
   assert.equal(problemRequests().length, 1, "the preview is the only problem detail request");
+});
+
+test("scoped native difficulty refreshes matching IDs without another detail lookup", async (t) => {
+  const href = "/problem/P1000?contestId=123&lang=en";
+  const link = `<a id="scoped" href="${href}"><span class="pid">P1000</span></a>`;
+  const title = "Scoped native detail";
+  const { page, requests } = await fixture(t, {
+    html: fixtureHtml(link + `<a href="${href}"><span class="pid lcolor--pink-3">P1000</span></a>` +
+      '<a href="/problem/P1000"><span class="pid">P1000</span></a>', { recommendations: [problem] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return route.fulfill({ json: { user: viewer, data: { problem:
+        url.searchParams.has("_contentOnly") ? problem : { ...problem, name: title, difficulty: 4 },
+      } } });
+    },
+  });
+  const colors = () => page.locator("main .pid").evaluateAll(nodes => nodes.map(node => node.style.color));
+  const orange = "rgb(243, 156, 17)";
+  const green = "rgb(82, 196, 26)";
+  await page.waitForFunction(() => document.querySelector("#scoped .pid").style.color !== "");
+  assert.deepEqual(await colors(), [orange, "", orange]);
+  await page.evaluate((path) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", path);
+    xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+    xhr.send();
+  }), href);
+  const existing = await colors();
+  await page.locator("main").evaluate((node, link) => node.insertAdjacentHTML("beforeend", link.replace(' id="scoped"', "")), link);
+  await page.locator("#scoped").press("Alt+ArrowDown");
+  const preview = card(page);
+  await preview.getByText(`P1000 ${title}`, { exact: true }).waitFor();
+  assert.equal(await preview.locator(".luogusp-hc-title span").evaluate(node => node.style.color), green);
+  assert.deepEqual(existing, [green, "", orange]);
+  assert.deepEqual(await colors(), [green, "", orange, green]);
+  assert.deepEqual(requests.filter(({ path }) => path === "/problem/P1000").map(({ query, type }) => [query, type]), [
+    ["?contestId=123&lang=en&_contentOnly=1", "fetch"], ["?contestId=123&lang=en", "xhr"],
+  ]);
+});
+
+test("problem coloring resolves missing IDs after an observed viewer switch", async (t) => {
+  const detail = responseGate(t);
+  const link = '<a href="/problem/P1000"><span class="pid">P1000</span></a>';
+  const next = { uid: 43 };
+  const { page, requests } = await fixture(t, {
+    html: fixtureHtml(link, { recommendations: [problem] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/list") return route.fulfill({ json: { user: next, data: {
+        problems: { result: [{ pid: "P1234", difficulty: 1 }] },
+      } } });
+      if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({
+        json: { user: next, data: { problem: { ...problem, difficulty: 4 } } },
+      }));
+    },
+  });
+  const colors = () => page.locator("main .pid").evaluateAll(nodes => nodes.map(node => node.style.color));
+  assert.deepEqual(await colors(), ["rgb(243, 156, 17)"]);
+  assert.equal(requests.filter(({ path }) => path === "/problem/P1000").length, 0);
+  await page.evaluate((link) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/problem/list");
+    xhr.onloadend = () => {
+      if (xhr.status !== 200) return reject(new Error(`HTTP ${xhr.status}`));
+      document.querySelector("main").insertAdjacentHTML("beforeend", link);
+      resolve();
+    };
+    xhr.send();
+  }), link);
+  const whilePending = await colors();
+  detail.release();
+  assert.deepEqual(whilePending, ["", ""], "previous viewer colors do not linger during the new lookup");
+  await page.waitForFunction(() => [...document.querySelectorAll("main .pid")].every(node => node.style.color === "rgb(82, 196, 26)"));
+  assert.deepEqual(requests.filter(({ path }) => path === "/problem/P1000").map(({ query }) => query), ["?_contentOnly=1"]);
 });
 
 test("academic record colors follow late and recycled status links", async (t) => {

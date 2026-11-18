@@ -43,7 +43,7 @@ function snapshot(data, at) {
       validDifficulty(problem.difficulty),
     ).map(({ pid, difficulty }) => ({ pid, difficulty })),
   );
-  return { source: problems, problems, at };
+  return { problems, at };
 }
 
 // Luogu's current Lentille router uses Axios/XHR and consumes the response in
@@ -54,13 +54,16 @@ export function createNativeDifficultySource({
   XMLHttpRequest,
   origin,
   now = () => Date.now(),
-  onPage = () => {},
+  onPage = (page) => page.viewer ?? 0,
   prepareOtherGet,
 }) {
   let initialPage;
   let initial = null;
   let initialRecord = null;
   let latest = null;
+  let viewer = 0;
+  let viewerOrder = 0;
+  let viewerStart = 0;
   const recordPages = new Map();
   let requestOrder = 0;
   const supportedPath = /^\/(?:problem\/(?:list|[A-Za-z0-9_]+)|training\/\d+|user\/\d+\/practice)\/?$/;
@@ -74,15 +77,33 @@ export function createNativeDifficultySource({
   };
   const initialUrl = sameOriginUrl(document.URL, origin);
   const initialAt = now();
+  const acceptPage = (page, url, at, order = 0) => {
+    // Requests can start in the same millisecond. Order a claimed viewer by
+    // its request, and keep unlabeled replies issued before an account switch out.
+    if (order < viewerStart || (page.viewer !== undefined && page.viewer !== viewer && order < viewerOrder))
+      return false;
+    const next = onPage(page, url, at);
+    if (next === undefined) return false;
+    if (page.viewer !== undefined && order > viewerOrder) viewerOrder = order;
+    if (next !== viewer) {
+      viewer = next;
+      viewerStart = order;
+      initial = initialRecord = latest = null;
+      recordPages.clear();
+    }
+    return true;
+  };
   const harvest = () => {
     const page = readLentillePage(document);
     if (page !== initialPage) {
       initialPage = page;
-      initial = page && !isScopedProblemUrl(initialUrl) ? snapshot(page.data, now()) : null;
-      initialRecord = recordSnapshot(page, initialUrl);
-      if (page && initialUrl) onPage(page, initialUrl, initialAt);
+      initial = initialRecord = null;
+      if (page && initialUrl && acceptPage(page, initialUrl, initialAt)) {
+        if (!isScopedProblemUrl(initialUrl)) initial = snapshot(page.data, now());
+        initialRecord = recordSnapshot(page, initialUrl);
+      }
     }
-    return [initial, latest].filter(Boolean);
+    return { viewer, batches: [initial, latest].filter(Boolean) };
   };
   const recordDifficulty = (path, id, pid) => {
     const record = recordPages.get(path) || initialRecord;
@@ -136,11 +157,11 @@ export function createNativeDifficultySource({
           const { url } = request;
           try {
             const page = asLentillePage(readJsonXhr(xhr, url.href));
-            if (!page) return;
-            onPage(page, url, request.at);
+            const previousViewer = viewer;
+            if (!page || !acceptPage(page, url, request.at, request.order)) return;
             const batch = isScopedProblemUrl(url) ? null : snapshot(page.data, request.at);
             const record = recordSnapshot(page, url);
-            let updated = false;
+            let updated = previousViewer !== viewer;
             if (batch?.problems.length && (!latest || request.order > latest.order)) {
               latest = { ...batch, order: request.order };
               updated = true;

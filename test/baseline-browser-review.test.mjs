@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { buildBrowser, ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";
 
@@ -250,6 +251,10 @@ for (const [name, command, args, builder, directory = "browser builds"] of [
   ["directory entry", 'node --no-warnings "./browser builds"', ["--no-warnings", "./browser builds"], "index.js"],
   ["omitted extension", 'node "./browser builds/bundle"', ["./browser builds/bundle"], "bundle.js"],
   ["extensionless file", 'node "./browser builds/bundle"', ["./browser builds/bundle"], "bundle"],
+  ["extensionless file after a boolean option", 'node --no-warnings "./browser builds/bundle"', ["--no-warnings", "./browser builds/bundle"], "bundle"],
+  ["extensionless file after a separate warning option value", 'node --disable-warning DEP0005 "./browser builds/bundle"', ["--disable-warning", "DEP0005", "./browser builds/bundle"], "bundle"],
+  ["extensionless file after an inline warning option value", 'node --disable-warning=DEP0005 "./browser builds/bundle"', ["--disable-warning=DEP0005", "./browser builds/bundle"], "bundle"],
+  ["extensionless file after two separate option values", 'node --title baseline --disable-warning DEP0005 "./browser builds/bundle"', ["--title", "baseline", "--disable-warning", "DEP0005", "./browser builds/bundle"], "bundle"],
   ["ESM preload", "node --import=./browser/preload.mjs ./main.mjs", ["--import=./browser/preload.mjs", "./main.mjs"], "preload.mjs", "browser"],
   ["quoted ESM preload", 'node --import="./browser builds/preload.mjs" ./main.mjs', ["--import=./browser builds/preload.mjs", "./main.mjs"], "preload.mjs"],
   ["CommonJS preload", 'node -r "./browser builds" ./main.mjs', ["-r", "./browser builds", "./main.mjs"], "index.js"],
@@ -270,6 +275,48 @@ for (const [name, command, args, builder, directory = "browser builds"] of [
     assert.doesNotMatch(direct.stdout, /fixture\(\)/u);
 
     writeFileSync(path, sharedBuild);
+    const shared = run();
+    assert.equal(shared.status, 0, shared.stderr);
+    assert.match(shared.stdout, /2 个构建脚本/u);
+    assert.doesNotMatch(shared.stdout, /fixture\(\)/u);
+    assert.equal(existsSync(join(fixture, "node_modules")), false);
+  });
+}
+
+for (const [form, entrySource, extension = "mjs"] of [
+  ["static file URL", (helper) => `import ${JSON.stringify(pathToFileURL(helper).href)};`],
+  ["dynamic file URL with a query and fragment", (helper) => `await import(${JSON.stringify(pathToFileURL(helper).href + "?mode=browser#fixture")});`],
+  ["Node createRequire with a local path", () => [
+    'import { createRequire as requireFrom } from "node:module";',
+    'const load = requireFrom(import.meta.url);',
+    'load("./builder.mjs");',
+  ].join("\n")],
+  ["Node createRequire from a CommonJS namespace", () => [
+    'const nodeModule = require("node:module");',
+    'const load = nodeModule.createRequire(__filename);',
+    'const example = \'load("./unreachable.mjs");\';',
+    'load("./builder.mjs");',
+  ].join("\n"), "cjs"],
+]) {
+  test(`the actual guard checks a helper reached through a ${form}`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    declareFixtureBuild(fixture, `node "./browser builds/entry.${extension}" --fixture-build`);
+    mkdirSync(join(fixture, "browser builds"));
+    const entry = join(fixture, `browser builds/entry.${extension}`);
+    const helper = join(fixture, "browser builds/builder.mjs");
+    writeFileSync(entry, [
+      'if (!process.argv.includes("--fixture-build")) throw new Error("Unexpected build execution");',
+      entrySource(helper),
+    ].join("\n"));
+    writeFileSync(join(fixture, "browser builds/unreachable.mjs"), directBuild);
+    writeFileSync(helper, directBuild);
+    runFixtureBuild(fixture, [entry, "--fixture-build"]);
+    const direct = run();
+    assert.equal(direct.status, 1, direct.stderr || direct.stdout);
+    assert.match(direct.stderr, /browser builds\/builder\.mjs.*无法核验的 esbuild 导入/u);
+    assert.doesNotMatch(direct.stdout, /fixture\(\)/u);
+
+    writeFileSync(helper, sharedBuild);
     const shared = run();
     assert.equal(shared.status, 0, shared.stderr);
     assert.match(shared.stdout, /2 个构建脚本/u);

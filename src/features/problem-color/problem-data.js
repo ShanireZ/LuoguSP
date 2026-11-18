@@ -1,4 +1,4 @@
-import { PID_PATTERN } from "./identity.js";
+import { isScopedProblemUrl, PID_PATTERN } from "./identity.js";
 import { collectDifficultyBatches } from "./lentille-harvest.js";
 import { DIFFICULTY_TIERS } from "../../core/luogu-difficulty.js";
 
@@ -127,9 +127,10 @@ export function createProblemData({
     map.delete(key);
     return null;
   };
-  const rememberFields = (map, key, values, at, limit) => {
+  const rememberFields = (map, key, values, at, limit, pid) => {
     const currentTime = now();
     if (!isFresh(at, currentTime)) return;
+    const before = pid && selectedDifficulty(key);
     const fields = readFields(map, key, currentTime) ?? new Map();
     let changed = false;
     // An older response can fill an omission without renewing other fields.
@@ -138,14 +139,20 @@ export function createProblemData({
       fields.set(field, { value, at });
       changed = true;
     }
-    if (changed) remember(map, key, fields, limit);
+    if (changed) {
+      remember(map, key, fields, limit);
+      const after = pid && selectedDifficulty(key);
+      if (after && (after.at !== before?.at || after.value !== before?.value)) {
+        for (const listener of difficultyListeners) listener(pid, key);
+      }
+    }
   };
-  const rememberDetail = (data, pid, context, at) => {
+  const rememberDetail = (data, pid, context, at, notify) => {
     if (!data.problem || typeof data.problem !== "object" || Array.isArray(data.problem)) return;
     const values = project(data.problem);
     if (!Object.keys(values).length) return;
     if (typeof data.bookmarked === "boolean") values.bookmarked = data.bookmarked;
-    rememberFields(details, keyOf(pid, context), values, at, 120);
+    rememberFields(details, keyOf(pid, context), values, at, 120, notify && pid);
   };
   const rememberPage = (page, url, at) => {
     if (page.viewer !== undefined && at >= viewerAt) {
@@ -176,6 +183,7 @@ export function createProblemData({
           remember(recordLists, key, { at, records }, 30);
       }
     }
+    const scoped = isScopedProblemUrl(url);
     const detail = page.data.problem;
     const hasDetail = detail?.pid && url.pathname.replace(/\/$/, "") === `/problem/${detail.pid}` &&
         PID_PATTERN.test(detail.pid);
@@ -183,10 +191,11 @@ export function createProblemData({
       for (const problem of batch.problems()) {
         if (hasDetail && problem === detail) continue;
         if (typeof problem?.pid !== "string" || !PID_PATTERN.test(problem.pid)) continue;
-        rememberFields(summaries, keyOf(problem.pid, context), project(problem), at, 4000);
+        rememberFields(summaries, keyOf(problem.pid, context), project(problem), at, 4000, scoped && problem.pid);
       }
     }
-    if (hasDetail) rememberDetail(page.data, detail.pid, context, at);
+    if (hasDetail) rememberDetail(page.data, detail.pid, context, at, scoped);
+    return context.viewer;
   };
   const payload = (pid, key, currentTime = now(), detail = readFields(details, key, currentTime)) => {
     const summary = readFields(summaries, key, currentTime);
@@ -238,14 +247,8 @@ export function createProblemData({
       if (page?.user?.uid != null && Number(page.user.uid) !== context.viewer) return null;
       const data = page?.data ?? page?.currentData;
       const problem = data?.problem;
-      if (problem && (problem.pid === undefined || problem.pid === pid)) {
-        const before = selectedDifficulty(key);
-        rememberDetail(data, pid, context, at);
-        const after = selectedDifficulty(key);
-        if (after && (after.at !== before?.at || after.value !== before?.value)) {
-          for (const listener of difficultyListeners) listener(pid, key);
-        }
-      }
+      if (problem && (problem.pid === undefined || problem.pid === pid))
+        rememberDetail(data, pid, context, at, true);
       return payload(pid, key);
     } catch (error) {
       if (signal?.aborted || [401, 403, 404].includes(error?.status)) return null;
