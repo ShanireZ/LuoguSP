@@ -124,7 +124,7 @@ export function createNativeDifficultySource({
         const url = sameOriginUrl(rawUrl, document.baseURI || origin);
         if (url) {
           if (supportedPath.test(url.pathname) || RECORD_PATH.test(url.pathname))
-            requests.set(this, { url, at: now(), order: ++requestOrder });
+            requests.set(this, { url });
           else {
             const prepare = prepareOtherGet?.(url);
             if (prepare) requests.set(this, { prepare });
@@ -137,6 +137,10 @@ export function createNativeDifficultySource({
       const request = active && requests.get(this);
       if (request && !request.clean) {
         const xhr = this;
+        if (request.url) {
+          request.at = now();
+          request.order = ++requestOrder;
+        }
         // Lentille needs to be read in load, before Luogu renders in loadend.
         let finish = request.prepare?.();
         const event = finish ? "loadend" : "load";

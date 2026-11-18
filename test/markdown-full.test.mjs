@@ -680,6 +680,68 @@ for (const forceFullFailure of [false, true]) {
     assert.match(root.textContent, /Ordinary paragraph\./);
   });
 
+  test(`tight lists preserve inline code and titles alongside real formulas in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const literal = "line\n$$\nx\n$$\nafter";
+    const indented = literal.replaceAll("\n", "\n  ");
+    root.innerHTML = renderer.renderMarkdown([
+      `- Code: \`${indented}\`.`,
+      `- [Markdown notes](./markdown "${indented}").`,
+      `- <a href="./notes" title="${indented}">Raw notes</a>.`,
+      "- Prose.\n  $$\n  - y\n  $$\n  After math.\n  - Nested item.",
+      "- Incomplete `code.\n  $$\n  - z\n  $$",
+      "- Next.",
+    ].join("\n"), { forceFullFailure }).html;
+    assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map(node => node.textContent),
+      ["−y", "−z"]);
+    assert.equal(root.querySelector("ul > li > code")?.textContent, literal.replaceAll("\n", " "));
+    assert.deepEqual([...root.querySelectorAll("ul > li > a")].map(link => [link.getAttribute("href"), link.title]),
+      [["./markdown", literal], ["./notes", literal]]);
+    assert.equal(root.querySelector("ul ul li")?.textContent.trim(), "Nested item.");
+    assert.equal(root.querySelector(":scope > ul > li:last-child")?.textContent.trim(), "Next.");
+  });
+
+  test(`consecutive tentative formula blocks preserve complete literals and adjacent prose in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const first = "first\n$$\n- x\n$$\nafter";
+    const second = "second\n$$\n- y\n$$\nend";
+    const together = first + "\n" + second;
+    root.innerHTML = renderer.renderMarkdown([
+      `Code: \`${together}\`.`,
+      `First \`${first}\` and \`${second}\`.\nContinued prose.\n$$\n- z\n$$`,
+      `Before [Notes](./notes "${together}").`,
+      `Before <a href="./raw" title="${first}\n\n${second}">Raw notes</a>.`,
+    ].join("\n\n"), { forceFullFailure }).html;
+    assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map(node => node.textContent), ["−z"]);
+    const code = [...root.querySelectorAll("p > code")];
+    assert.deepEqual(code.map(node => node.textContent), [together, first, second].map(text => text.replaceAll("\n", " ")));
+    assert.equal(code[1].parentElement, code[2].parentElement);
+    assert.match(code[1].parentElement.textContent, /Continued prose\.$/);
+    assert.deepEqual([...root.querySelectorAll("a")].map(link => [link.getAttribute("href"), link.title]),
+      [["./notes", together], ["./raw", first + "\n\n" + second]]);
+  });
+
+  test(`quoted reference definitions leave no empty list rows in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown([
+      '7. First\n8. > [go]: ./notes "Notes"\n9. Next [go].',
+      '10. > > [go]: ./duplicate\n11. > Visible quote.\n12.',
+    ].join("\n"), { forceFullFailure }).html;
+    const items = [...root.querySelectorAll("ol > li")];
+    assert.deepEqual(items.map(item => [item.textContent.trim(), item.getAttribute("value")]),
+      [["First", null], ["Next go.", "9"], ["Visible quote.", "11"], ["", null]]);
+    const link = items[1].querySelector("a");
+    assert.equal(link?.getAttribute("href"), "./notes");
+    assert.equal(link?.title, "Notes");
+    assert.equal(items[2].querySelector("blockquote")?.textContent.trim(), "Visible quote.");
+  });
+
   test("math past the size and count limits stays as text in " + mode + " rendering", () => {
     const { dom, renderer } = createRenderer();
     const oversized = "$" + "x".repeat(4097) + "$";

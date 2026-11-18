@@ -36,6 +36,11 @@ function tokenizeInlineMath(source) {
 }
 
 class IntroRenderer extends Renderer {
+  blockquote({ tokens, text }) {
+    const body = this.parser.parse(tokens);
+    return body || !text.trim() ? `<blockquote>\n${body}</blockquote>\n` : "";
+  }
+
   list({ items, ordered, start }) {
     let body = "";
     let nextIndex = 0;

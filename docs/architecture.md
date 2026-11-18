@@ -56,9 +56,9 @@ details by viewer, contest and language. Each observed field expires on its own
 and a partial response refreshes only the fields it contains. Shared detail
 responses use the start time of the successful transport attempt. Coloring
 compares observations per problem and scope. Native observations with the same
-timestamp use request order and take precedence over supplemental lookups
-started in that tick. Native record lists also use request order to resolve
-timestamp ties. A late native batch can still refresh a problem absent
+timestamp use send order and take precedence over supplemental lookups started
+in that tick. Native Lentille GETs, including record lists, take their timestamp
+and sequence at `send()`. A late native batch can still refresh a problem absent
 from a newer batch. A native response, preview or IDE detail can refresh
 eligible IDs. Each observed change of effective viewer discards harvested
 and queried colors and invalidates pending details from the previous viewer
@@ -193,8 +193,10 @@ items and later ordered-list positions. Lite preserves continued and loose items
 and nested list and quote structure. The sanitizer permits explicit item
 values on list items. Full and Lite recognize complete display math blocks after
 prose, including within quotes, and use the same math-rendering callback and
-sanitization. Complete inline code and link titles can cross the tentative
-paragraph boundary without becoming formulas. Lite parses inline content within
+sanitization. Complete inline code and link titles stay literal within tight
+list items and across consecutive tentative formula blocks. The tokenizer
+bounds its lookahead and keeps ordinary prose together up to a real block
+boundary. Lite parses inline content within
 each block and keeps the literal text of code spans and fenced code. It reads
 escaped attributes once and applies its HTTP(S) URL policy to Markdown links
 and supported raw HTML anchors. In both modes, line

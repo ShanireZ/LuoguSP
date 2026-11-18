@@ -776,6 +776,48 @@ for (const query of ["", "?luogusp-qa=fallback-lite"]) {
     assert.match(await intro.textContent(), /Incomplete\.\s*\$\$\s*z\s*$/);
   });
 
+  test(`profile introduction preserves list literals, repeated regions, and quoted definitions in ${query ? "lite" : "full"} mode`, async (t) => {
+    const single = "line\n$$\nx\n$$\nafter";
+    const first = "first\n$$\n- x\n$$\nafter";
+    const second = "second\n$$\n- y\n$$\nend";
+    const repeated = first + "\n" + second;
+    const indented = single.replaceAll("\n", "\n  ");
+    const introduction = [
+      [
+        `- Code: \`${indented}\`.`,
+        `- [List Markdown](./list-md "${indented}").`,
+        `- <a href="./list-raw" title="${indented}">List raw</a>.`,
+        "- Actual formula.\n  $$\n  w\n  $$\n  - Nested item.",
+        "- Sibling.",
+      ].join("\n"),
+      `Code: \`${repeated}\`.`,
+      `First \`${first}\` and \`${second}\`.\nContinued prose.\n$$\n- z\n$$`,
+      `Before [Repeated Markdown](./repeated-md "${repeated}").`,
+      `Before <a href="./repeated-raw" title="${first}\n\n${second}">Repeated raw</a>.`,
+      '7. First\n8. > [go]: ./notes "Notes"\n9. Next [go].\n10.',
+    ].join("\n\n");
+    const { page } = await fixture(t, {
+      path: "/user/42" + query,
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.waitFor();
+    assert.deepEqual(await intro.locator(".katex-display .katex-html").allTextContents(), ["w", "−z"]);
+    assert.deepEqual(await intro.locator("code").allTextContents(),
+      [single, repeated, first, second].map(text => text.replaceAll("\n", " ")));
+    assert.equal(await intro.locator("p").filter({ hasText: "Continued prose." }).locator("code").count(), 2);
+    assert.equal(await intro.locator("ul ul li").textContent(), "Nested item.");
+    assert.equal((await intro.locator(":scope > ul > li:last-child").textContent()).trim(), "Sibling.");
+    assert.deepEqual(await intro.locator("a").evaluateAll((links) => links.map(link =>
+      [link.getAttribute("href"), link.title])), [
+      ["./list-md", single], ["./list-raw", single], ["./repeated-md", repeated],
+      ["./repeated-raw", first + "\n\n" + second], ["./notes", "Notes"],
+    ]);
+    assert.deepEqual(await intro.locator("ol > li").evaluateAll((items) => items.map(item =>
+      [item.textContent.trim(), item.getAttribute("value")])), [["First", null], ["Next go.", "9"], ["", null]]);
+  });
+
   test(`profile introduction contains wide math in ${query ? "lite" : "full"} rendering`, async (t) => {
     const introduction = String.raw`$$\rule{1000000em}{1000000em}$$
 
@@ -2790,7 +2832,9 @@ for (const [focusTags, height, lateRecord] of [
   });
 }
 
-test("problem preview keeps the later native record query within one millisecond", async (t) => {
+for (const reverseOpen of [false, true]) test(
+  `problem preview keeps the later native record send within one millisecond (reverse open: ${reverseOpen})`,
+  async (t) => {
   const firstStarted = responseGate(t);
   const firstResponse = responseGate(t);
   const query = `/record/list?user=${viewer.uid}&pid=${problem.pid}`;
@@ -2814,15 +2858,21 @@ test("problem preview keeps the later native record query within one millisecond
       if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
     },
   });
-  const native = (path) => new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("GET", path);
+  const send = (xhr) => new Promise((resolve, reject) => {
     xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
     xhr.send();
   });
-  const older = page.evaluate(native, query);
+  const open = (path) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", path);
+    return xhr;
+  };
+  let newerRequest = reverseOpen ? await page.evaluateHandle(open, query) : null;
+  const olderRequest = await page.evaluateHandle(open, query);
+  const older = page.evaluate(send, olderRequest);
   await firstStarted.promise;
-  await page.evaluate(native, query);
+  newerRequest ??= await page.evaluateHandle(open, query);
+  await page.evaluate(send, newerRequest);
   firstResponse.release();
   await older;
   await page.locator("#problem").press("Alt+ArrowDown");

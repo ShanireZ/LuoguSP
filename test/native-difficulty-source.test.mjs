@@ -175,6 +175,31 @@ test("same-millisecond native details keep newer fields and accept older omissio
   fx.stop();
 });
 
+test("native record observations use send order even when XHRs were opened in reverse", (t) => {
+  const user = { uid: 42 };
+  const problem = { pid: "P1001" };
+  const path = "/record/list?user=42&pid=P1001";
+  const fx = fixture({ page: { user, data: { problem } } });
+  t.after(fx.stop);
+  fx.harvest();
+  const reply = (scores) => ({
+    user, template: "record.list",
+    data: { records: { result: scores.map((score) => ({ score, user, problem })) } },
+  });
+  const scores = () => fx.data.records(problem.pid)?.map((row) => row.score);
+  const check = (newerScores) => {
+    const newer = new fx.XHR();
+    newer.open("GET", path);
+    const older = fx.request(path);
+    newer.send();
+    newer.reply(reply(newerScores));
+    older.reply(reply([25]));
+    assert.deepEqual(scores(), newerScores);
+  };
+  check([50]);
+  check([]);
+});
+
 test("a late native detail remains available after a list for another PID", () => {
   const fx = fixture();
   fx.harvest();
