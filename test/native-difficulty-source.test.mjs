@@ -200,6 +200,28 @@ test("native record observations use send order even when XHRs were opened in re
   check([]);
 });
 
+test("a rejected native XHR reopen preserves the record observation", (t) => {
+  const user = { uid: 42 };
+  const problem = { pid: "P1001" };
+  const path = "/record/list?user=42&pid=P1001";
+  const fx = fixture({ page: { user, data: { problem } } });
+  t.after(fx.stop);
+  fx.harvest();
+  const reply = (score) => ({
+    user, template: "record.list",
+    data: { records: { result: [{ score, user, problem }] } },
+  });
+  const scores = () => fx.data.records(problem.pid)?.map((record) => record.score);
+  const xhr = fx.request(path);
+  assert.throws(() => xhr.open("GET", "http://["), TypeError);
+  xhr.reply(reply(50));
+  assert.deepEqual(scores(), [50]);
+  xhr.open("GET", path);
+  xhr.send();
+  xhr.reply(reply(60));
+  assert.deepEqual(scores(), [60]);
+});
+
 test("a late native detail remains available after a list for another PID", () => {
   const fx = fixture();
   fx.harvest();

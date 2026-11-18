@@ -86,6 +86,23 @@ const FENCE_START = /^ {0,3}(?:\x60{3}|~~~)/;
 const MAX_LITERAL_LOOKAHEAD = 32_768;
 const MAX_FORMULA_REGIONS = 8;
 
+function tightTextEnd(source, masked, end, lexRanges) {
+  // Unlike a paragraph, tight list text can be followed immediately by an
+  // ordered sublist starting at any number.
+  const starts = masked.slice(0, end).matchAll(/(?<=\n) {0,3}\d{1,9}[.)](?=[ \t\n]|$)/g);
+  let ranges;
+  let literal;
+  for (const { index } of starts) {
+    if (!ranges) {
+      ranges = lexRanges(source.slice(0, end));
+      literal = ranges.next().value;
+    }
+    while (literal && literal[1] <= index) literal = ranges.next().value;
+    if (!literal || index < literal[0]) return index - 1;
+  }
+  return end;
+}
+
 function nextFormulaEnd(source, from, paragraph) {
   for (const line of paragraph.matchAll(DISPLAY_MATH_LINE)) {
     const index = from + line.index;
@@ -129,26 +146,26 @@ function continueLiteral(source, paragraph, start, formula, lexRanges, paragraph
     if (nextEnd === undefined) break;
     end = nextEnd;
   }
-  const close = formulaEnd - Number(formula.raw.endsWith("\n"));
   for (const range of lexRanges(probe.slice(0, end))) {
     const [from, to, linkMarkup] = range;
     if (from > start || from >= paragraph.length) break;
-    if (to >= close && (to <= firstBlank || linkMarkup)) return range;
+    // An inline literal can close before a tentative formula's other delimiter.
+    if (to > start && (to <= firstBlank || linkMarkup)) return range;
   }
 }
 
-function displayMathBoundary(source, paragraph, options, paragraphRule, tight) {
+function displayMathBoundary(source, masked, paragraph, options, paragraphRule, tight) {
   const hasInlineOpener = INLINE_OPENER.test(paragraph);
   const lexRanges = (input) => literalInlineRanges(Lexer.lexInline(input, {
     ...options, tokenizer: undefined, extensions: undefined,
   }));
-  let masked = source;
   let end = paragraph.length;
   let joined = false;
 
   // Mask only line breaks inside verified inline tokens when asking Marked
   // where the surrounding prose ends. The emitted token retains the original.
   for (let recovered = 0; recovered <= MAX_FORMULA_REGIONS; recovered++) {
+    if (tight) end = tightTextEnd(source, masked, end, lexRanges);
     const acrossBlank = hasInlineOpener
       ? /^\n(?:[ \t]*\n)+ {0,3}\$\$[ \t]*(?=\n|$)/.exec(masked.slice(end))
       : null;
@@ -177,7 +194,7 @@ function displayMathBoundary(source, paragraph, options, paragraphRule, tight) {
       if (index < end && (!tight || joined)) return { end: index - 1, beforeFormula: true };
       if (index < end) return;
     }
-    if (!continued) return joined ? { end } : undefined;
+    if (!continued) return joined ? { end, masked } : undefined;
     const [start, finish] = continued;
     masked = masked.slice(0, start) + masked.slice(start, finish).replaceAll("\n", " ") + masked.slice(finish);
     end = paragraphRule.exec(masked)?.[1].replace(/\n$/, "").length ?? finish;
@@ -205,22 +222,27 @@ export class IntroTokenizer extends Tokenizer {
   }
 
   inlineBlock(source, type) {
-    const token = this.joinAnchorEnd(source, type);
+    let { token, input } = this.joinAnchorEnd(source, type);
     const tight = type === "text";
     if (!token || (tight && !INLINE_OPENER.test(token.text))) return token;
     const paragraphRule = this.rules.block.paragraph;
     // Marked reads tight list text one line at a time. Inspect the whole
     // tentative paragraph before the block extension takes the next line.
-    const paragraph = tight ? paragraphRule.exec(source)?.[1].replace(/\n$/, "") ?? token.text : token.text;
-    const boundary = displayMathBoundary(source, paragraph, this.options, paragraphRule, tight);
-    if (!boundary) return token;
+    while (token) {
+      const paragraph = tight ? paragraphRule.exec(input)?.[1].replace(/\n$/, "") ?? token.text : token.text;
+      const boundary = displayMathBoundary(source, input, paragraph, this.options, paragraphRule, tight);
+      if (!boundary) return token;
 
-    const { end, beforeFormula } = boundary;
-    token.raw = source.slice(0, end + Number(!!beforeFormula));
-    token.text = this.lexer.inlineQueue.at(-1).src = source.slice(0, end);
-    if (beforeFormula) return token;
-    const joined = token.raw.replaceAll("\n", " ") + source.slice(end);
-    return this.joinAnchorEnd(source, type, token, joined);
+      const { end, beforeFormula, masked } = boundary;
+      token.raw = source.slice(0, end + Number(!!beforeFormula));
+      token.text = this.lexer.inlineQueue.at(-1).src = source.slice(0, end);
+      if (beforeFormula) return token;
+      const view = tight ? masked.slice(0, end).replaceAll("\n", " ") + masked.slice(end) : masked;
+      // A recovered literal can expose a split end tag. Carry the same view
+      // through that join and recheck the resulting block for real formulas.
+      ({ token, input } = this.joinAnchorEnd(source, type, token, view));
+      if (input === view) return token;
+    }
   }
 
   joinAnchorEnd(source, type, token = super[type](source), input = source) {
@@ -243,7 +265,7 @@ export class IntroTokenizer extends Tokenizer {
       token.raw = source.slice(0, token.raw.length);
       token.text = this.lexer.inlineQueue.at(-1).src = source.slice(0, token.text.length);
     }
-    return token;
+    return { token, input };
   }
 
   tag(source) {

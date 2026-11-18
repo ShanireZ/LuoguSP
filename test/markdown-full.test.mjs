@@ -742,6 +742,58 @@ for (const forceFullFailure of [false, true]) {
     assert.equal(items[2].querySelector("blockquote")?.textContent.trim(), "Visible quote.");
   });
 
+  test(`a recovered tight-list literal keeps a non-one ordered sublist in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown(
+      "- Code: `line\n  $$\n  x\n  $$\n  after`.\n  2. Nested ordered.\n  3. Next nested.\n- Sibling.",
+      { forceFullFailure },
+    ).html;
+    assert.equal(root.querySelector("li > code")?.textContent, "line $$ x $$ after");
+    assert.equal(root.querySelector(".katex-display"), null);
+    const nested = root.querySelector("li > ol");
+    assert.equal(nested?.start, 2);
+    assert.deepEqual([...nested.children].map(li => li.textContent.trim()), ["Nested ordered.", "Next nested."]);
+    assert.equal(root.querySelector(":scope > ul > li:last-child")?.textContent.trim(), "Sibling.");
+  });
+
+  test(`a split anchor ending before or after a recovered literal keeps its boundaries in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const title = "First\n$$\n- x\n$$\nThen\n$$\n- y\n$$\nEnd";
+    root.innerHTML = renderer.renderMarkdown([
+      "Before <a href='./first'>anchor</a\n> then `first\n$$\n- x\n$$\nend`\n- Next",
+      `Before <a href="./raw" title="${title}">Notes</a\n\n> Outside.\n$$\n- z\n$$\nAfter formula.`,
+    ].join("\n\n"), { forceFullFailure }).html;
+    assert.deepEqual([...root.querySelectorAll("li")].map(li => li.textContent.trim()), ["Next"]);
+    assert.equal(root.querySelector("p > code")?.textContent, "first $$ - x $$ end");
+    assert.deepEqual([...root.querySelectorAll("a")].map(link => [link.getAttribute("href"), link.title, link.textContent]),
+      [["./first", "", "anchor"], ["./raw", title, "Notes"]]);
+    assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map(math => math.textContent), ["−z"]);
+    assert.equal(root.querySelector('a[href="./raw"]').parentElement.textContent.trim(), "Before Notes Outside.");
+  });
+
+  test(`a lone delimiter inside a closed literal keeps the following formula in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const literal = "First\n$$\n- x\nEnd";
+    const suffix = "\n$$\ny\n$$";
+    for (const markup of [
+      `Before \`${literal}\`.`,
+      `Before [Notes](./md "${literal}").`,
+      `Before <a href="./raw" title="${literal}">Notes</a>.`,
+    ]) {
+      root.innerHTML = renderer.renderMarkdown(markup + suffix, { forceFullFailure }).html;
+      assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map(math => math.textContent), ["y"]);
+      const inline = root.querySelector("p > code, p > a");
+      assert.equal(inline?.localName === "code" ? inline.textContent : inline?.title,
+        inline?.localName === "code" ? literal.replaceAll("\n", " ") : literal);
+    }
+  });
+
   test("math past the size and count limits stays as text in " + mode + " rendering", () => {
     const { dom, renderer } = createRenderer();
     const oversized = "$" + "x".repeat(4097) + "$";

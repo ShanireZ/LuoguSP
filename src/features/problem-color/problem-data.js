@@ -66,6 +66,7 @@ export function createProblemData({
   const details = new Map();
   const recordLists = new Map();
   const difficultyListeners = new Set();
+  const recordListeners = new Set();
   let observedViewer;
   let viewerGeneration = 0;
   let viewerAt = -Infinity;
@@ -111,12 +112,6 @@ export function createProblemData({
   const subscribeDifficulty = (listener) => {
     difficultyListeners.add(listener);
     return () => difficultyListeners.delete(listener);
-  };
-  const readRecords = (key) => {
-    const entry = recordLists.get(key);
-    if (entry && isFresh(entry.at, now())) return entry;
-    recordLists.delete(key);
-    return null;
   };
   const remember = (map, key, entry, limit) => {
     map.delete(key);
@@ -189,6 +184,7 @@ export function createProblemData({
               id, submitTime, score, status, time, memory,
             }));
           remember(recordLists, key, { ...stamp, records }, 30);
+          for (const listener of recordListeners) listener(key, records);
         }
       }
     }
@@ -269,9 +265,21 @@ export function createProblemData({
     refresh();
     return viewer();
   };
-  const records = (pid, { href } = {}) => {
+  const recordKey = (pid, href) => {
     const context = contextFor(pid, href);
-    return context ? readRecords(keyOf(pid, context))?.records : undefined;
+    return context && keyOf(pid, context);
   };
-  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, records });
+  const records = (pid, options) => {
+    const key = recordKey(pid, options?.href);
+    const entry = recordLists.get(key);
+    if (entry && isFresh(entry.at, now())) return entry.records;
+    recordLists.delete(key);
+  };
+  const subscribeRecords = (pid, href, onRecords) => {
+    const key = recordKey(pid, href);
+    const listener = (changed, rows) => changed === key && onRecords(rows);
+    recordListeners.add(listener);
+    return () => recordListeners.delete(listener);
+  };
+  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, records, subscribeRecords });
 }

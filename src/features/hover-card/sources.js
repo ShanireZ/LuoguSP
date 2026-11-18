@@ -120,31 +120,27 @@ export function createHoverCardSources(config) {
     }, signal);
 
   // 上次嘗試：匿名訪客沒有提交記錄，不必發這個請求。
-  const lastAttempt = (pid, viewerUid, signal, href) => {
+  const loadAttempt = async (pid, viewerUid, signal, href) => {
     const uid = Number(viewerUid);
-    if (!Number.isSafeInteger(uid) || uid <= 0) return Promise.resolve(null);
-    const existing = problemData?.records?.(pid, { href });
-    if (existing) return Promise.resolve(pickLastAttempt(existing));
-    const query = new URLSearchParams({ user: String(uid), pid });
-    if (href) {
-      const params = new URLSearchParams(href.split("?")[1]?.split("#")[0]);
-      for (const field of ["contestId", "lang"]) {
-        const value = params.get(field);
-        if (value) query.set(field, value);
-      }
+    if (!Number.isSafeInteger(uid) || uid <= 0) return null;
+    const query = new URLSearchParams({ user: uid, pid });
+    const params = new URLSearchParams(href?.split("?")[1]?.split("#")[0]);
+    for (const field of ["contestId", "lang"]) {
+      const value = params.get(field);
+      if (value) query.set(field, value);
     }
-    return load(`record:${query}`, async () => {
-      const payload = await readJson(
-        `/record/list?${query}`,
-        signal,
-      );
+    const url = new URL(`/record/list?${query}`, origin);
+    return load(url.href, async () => {
+      const at = now();
+      const payload = await readJson(url, signal);
       if (payload === null || payload === RETRYABLE_READ) return payload;
       if (payload?.template !== "record.list" || Number(payload.user?.uid) !== uid)
         return RETRYABLE_READ;
-      const rows = payload.data?.records?.result;
-      return Array.isArray(rows) ? pickLastAttempt(rows.filter((row) =>
-        row?.problem?.pid === pid && Number(row.user?.uid) === uid,
-      )) : RETRYABLE_READ;
+      const records = payload.data?.records;
+      if (!Array.isArray(records?.result)) return RETRYABLE_READ;
+      // The cache scopes these rows to the viewer already in effect.
+      if (!signal?.aborted) problemData?.rememberPage({ template: payload.template, data: { records } }, url, at);
+      return pickLastAttempt(records.result.filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid));
     }, signal);
   };
 
@@ -180,12 +176,19 @@ export function createHoverCardSources(config) {
         dictionary = value;
         publish();
       }));
-    if (viewerUid)
-      supplements.push(lastAttempt(pid, viewerUid, signal, href).then((value) => {
-        if (!value) return;
-        attempt = value;
+    if (viewerUid) {
+      const records = () => problemData?.records(pid, { href });
+      const updateAttempt = (rows, fallback) => {
+        if (!rows && !fallback) return;
+        attempt = rows ? pickLastAttempt(rows) : fallback;
         publish();
-      }));
+      };
+      if (problemData && onUpdate)
+        signal?.addEventListener("abort", problemData.subscribeRecords(pid, href, updateAttempt), { once: true });
+      const existing = records();
+      if (existing) updateAttempt(existing);
+      else supplements.push(loadAttempt(pid, viewerUid, signal, href).then((value) => updateAttempt(records(), value)));
+    }
     await Promise.all(supplements);
     return model;
   };

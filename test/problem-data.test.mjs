@@ -510,6 +510,53 @@ const jsonReply = (requestedUrl, payload) => ({
 const recordReply = (result) => jsonReply(recordUrl,
   { template: "record.list", user: { uid: 42 }, data: { records: { result } } });
 
+for (const [nativeDelay, nativeScores, expected] of [
+  [0, [50], 50],
+  [1, [], null],
+  [-1, [50], 25],
+]) test(`an open hover preview orders an overlapping native record and fallback (${nativeDelay}, ${nativeScores})`, async () => {
+  const { pid } = problem;
+  const user = { uid: 42 };
+  const row = (score) => ({ id: score, user, problem, submitTime: score, score });
+  const request = deferred();
+  const started = deferred();
+  const controller = new AbortController();
+  const data = createProblemData({ origin, now: () => 10, text: () => assert.fail("unexpected detail lookup") });
+  data.rememberPage({ viewer: 42, data: { problem } }, url(`/problem/${pid}`), 10);
+  let requests = 0;
+  const sources = createHoverCardSources({ origin, problemData: data, clock: { now: () => 10 },
+    fetchPage(path) {
+      assert.equal(path, recordUrl);
+      requests++;
+      started.resolve();
+      return request.promise;
+    },
+  });
+  const updates = [];
+  const score = (card) => card.mine.lastAttempt?.score ?? null;
+  const shown = sources.problem(pid, 42, controller.signal, { onUpdate: (card) => updates.push(score(card)) });
+  await started.promise;
+  const native = (path, at, order, scores) => data.rememberPage({
+    viewer: 42, template: "record.list", data: { records: { result: scores.map(row) } },
+  }, url(path), at, order);
+  const beforeOtherScope = [...updates];
+  native(recordUrl + "&contestId=1", 10, 1, [90]);
+  assert.deepEqual(updates, beforeOtherScope);
+  native(recordUrl, 10 + nativeDelay, 2, nativeScores);
+  const early = updates.at(-1);
+  request.resolve(recordReply([row(25)]));
+  assert.equal(score(await shown), expected);
+  assert.equal(updates.at(-1), expected);
+  if (nativeScores.length) assert.equal(early, 50, "native result should publish while the fallback is pending");
+  native(recordUrl, 11, 3, []);
+  assert.equal(updates.at(-1), null);
+  controller.abort();
+  native(recordUrl, 11, 4, [60]);
+  assert.equal(updates.at(-1), null, "closed preview should stop receiving records");
+  assert.equal(score(await sources.problem(pid, 42)), 60);
+  assert.equal(requests, 1);
+});
+
 for (const [endpoint, overrides] of [
   ["/problem/P1001", { status: 202 }],
   ["/_lfe/tags", { headers: new Headers({ "content-type": "text/html" }) }],

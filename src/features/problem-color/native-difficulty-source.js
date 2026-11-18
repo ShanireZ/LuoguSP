@@ -118,20 +118,31 @@ export function createNativeDifficultySource({
     const pending = new Set();
     let active = true;
     const open = function (method, rawUrl) {
-      requests.get(this)?.clean?.();
-      requests.delete(this);
+      const previous = requests.get(this);
+      let request;
       if (active && String(method).toUpperCase() === "GET") {
         const url = sameOriginUrl(rawUrl, document.baseURI || origin);
         if (url) {
           if (supportedPath.test(url.pathname) || RECORD_PATH.test(url.pathname))
-            requests.set(this, { url });
+            request = { url };
           else {
             const prepare = prepareOtherGet?.(url);
-            if (prepare) requests.set(this, { prepare });
+            if (prepare) request = { prepare };
           }
         }
       }
-      return rawOpen.apply(this, arguments);
+      // OPENED handlers can send synchronously. Keep the previous observation
+      // alive until the native call succeeds, and restore it if open is rejected.
+      requests.set(this, request);
+      let result;
+      try {
+        result = rawOpen.apply(this, arguments);
+      } catch (error) {
+        if (requests.get(this) === request) requests.set(this, previous);
+        throw error;
+      }
+      previous?.clean?.();
+      return result;
     };
     const send = function () {
       const request = active && requests.get(this);

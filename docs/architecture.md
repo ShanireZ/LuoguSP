@@ -50,7 +50,7 @@ leave the already available preview fields in place.
 Passive native XHR observations require HTTP 200, JSON media and the original
 same-origin request URL, including its query. They compare against the URL
 resolved from the document base with the fragment removed and leave native
-events intact.
+events intact. A rejected reopening leaves the current request observed.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. Each observed field expires on its own
 and a partial response refreshes only the fields it contains. Shared detail
@@ -70,7 +70,10 @@ can retry for fields it still needs. An explicit empty sample list is cached as 
 result.
 A problem card displays
 available fields first and fills in details and the viewer's latest record as they
-arrive, retaining focused controls and scroll position. If a detail removes a
+arrive, retaining focused controls and scroll position. Native observations
+and fallback reads are compared by send time in the open preview. Native
+observations take precedence at equal times, including confirmed empty lists.
+If a detail removes a
 focused tag disclosure, focus moves to the problem link. When a data update or
 viewport change clips a focused action or the tags control, the card scrolls
 just enough to reveal it, while document scroll stays in place. Temporary lookup
@@ -196,7 +199,9 @@ prose, including within quotes, and use the same math-rendering callback and
 sanitization. Complete inline code and link titles stay literal within tight
 list items and across consecutive tentative formula blocks. The tokenizer
 bounds its lookahead and keeps ordinary prose together up to a real block
-boundary. Lite parses inline content within
+boundary. Recovered literals preserve nested ordered sublists and compose with
+split closing anchor tags. A literal delimiter stays inside its inline token
+even when the next delimiter starts a real formula. Lite parses inline content within
 each block and keeps the literal text of code spans and fenced code. It reads
 escaped attributes once and applies its HTTP(S) URL policy to Markdown links
 and supported raw HTML anchors. In both modes, line
