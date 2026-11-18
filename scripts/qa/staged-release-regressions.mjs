@@ -204,8 +204,8 @@ test("staged stable install chain", { timeout: 30_000 }, async (t) => {
   });
 
   await t.test("runtime rejects altered renderer bytes and retries with the pinned asset", async (t) => {
-    const { intro, rendererRequests } = await openProfile(t, browser, release, { corruptFirstResponse: true });
-    const retry = intro.locator(".luogusp-intro-retry");
+    const { page, intro, rendererRequests } = await openProfile(t, browser, release, { corruptFirstResponse: true });
+    const retry = page.locator(".luogusp-intro-card .luogusp-intro-retry");
     await retry.waitFor();
     assert.deepEqual(rendererRequests, ["GET"]);
     assert.equal(await intro.getByRole("heading", { name: heading }).count(), 0);

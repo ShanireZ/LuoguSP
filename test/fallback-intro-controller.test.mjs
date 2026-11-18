@@ -5,6 +5,31 @@ import {
   createFallbackIntroController,
 } from "../src/features/hidden-intro/fallback-intro-controller.js";
 
+for (const fault of ["external", "wrong-path", "redirect", "html", "partial", "missing-url", "failed-status", "valid"]) {
+  test(`introduction lookup validates ${fault} before decoding`, async () => {
+    const dom = new JSDOM("<!doctype html>", { url: "https://www.luogu.com.cn/user/123" });
+    let decoded = 0;
+    const expected = "https://www.luogu.com.cn/user/123";
+    const controller = createFallbackIntroController({ document: dom.window.document, rendererClient: {},
+      fetchImpl: async (url, init) => {
+        if (fault === "valid") {
+          assert.equal(url, expected);
+          assert.equal(init.mode, "same-origin");
+          assert.equal(init.credentials, "same-origin");
+          assert.equal(init.redirect, "error");
+        }
+        return { status: fault === "partial" ? 206 : fault === "failed-status" ? 503 : 200,
+          url: fault === "external" ? "https://outside.test/user/123" : fault === "wrong-path" ? expected + "/article" : fault === "missing-url" ? undefined : expected,
+          redirected: fault === "redirect", headers: new Headers({ "content-type": fault === "html" ? "text/html" : "application/json; charset=utf-8" }),
+          json: async () => { decoded++; return { data: { user: { uid: 123, introduction: "Trusted text" } } }; } };
+      },
+    });
+    assert.equal(await controller.getIntroduction(123), fault === "valid" ? "Trusted text" : null);
+    assert.equal(decoded, fault === "valid" ? 1 : 0);
+    dom.window.close();
+  });
+}
+
 async function waitFor(predicate, message) {
   const deadline = Date.now() + 500;
   while (Date.now() < deadline) {

@@ -117,6 +117,17 @@ KaTeX fragments into text nodes. Author CSS and page-scoped identifiers are
 discarded, while generated KaTeX styles are retained. Math parsing preserves
 code fences, inline code, and link attributes. Each introduction has bounded
 formula rendering, and wide output scrolls within the fallback card.
+Each render uses a fixed-length cryptographic nonce to isolate placeholders
+from author text, including characters decoded by Markdown or HTML. Marker
+selection does not rescan author input or enlarge the rendering expressions.
+Without secure random values, custom rendering fails closed through its retry UI.
+Fallback introduction fetches require exact same-origin JSON HTTP 200 responses
+and reject redirects before following or decoding them. Embedded introductions
+and native attachment retain their existing identity checks.
+The retry control stays focusable while rendering and ignores duplicate activation.
+A live status announces loading, failure and completion. Successful retry moves
+focus to the introduction heading only when the retry still holds focus; focus
+on another control and route cancellation take precedence.
 Both fallback modes convert author images with HTTP(S) sources into ordinary
 links that open in a new tab without sending a referrer. Relative sources are
 resolved against the page base. Even same-origin URLs and Luogu's CDN can
@@ -155,6 +166,15 @@ rollback share a short exclusive file lock and atomic replacement. Rollback
 restores the channel captured at the build's own update only if its current
 bytes still match and the previous target remains valid. Changed output or an
 unavailable previous target causes the complete release to be retained.
+The high-level publisher holds an exclusive local lock from before reading
+production snapshots until reporting and cleanup finish. It rejects production
+file drift before deployment and again before promotion. Each promotion uses
+atomic replacement after an unchanged-byte check; rollback restores only files
+whose current bytes still match this transaction's promoted bytes. Concurrent
+changes are retained and listed in the local report as a partial restoration.
+Quality writes to a transaction-specific temporary report before promotion.
+The lock serializes cooperating publishers; other editors must still avoid
+writing during the final filesystem compare-and-replace operation.
 
 Generated publishing, origin and deployment receipts remain local and ignored.
 Only the de-identified browser-QA and quality summaries required by the current

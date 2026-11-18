@@ -110,6 +110,7 @@ async function fixture(t) {
       appendFileSync("commands.jsonl", JSON.stringify(args) + "\n");
       const entry = args[0];
       if (entry === "scripts/check-baseline.mjs") {
+        if (mode === "production-peer-before") appendFileSync("README.zh-TW.md", "\nPEER EDIT\n");
         if (mode === "baseline-race") { concurrent("2.0.0"); return failure; }
         if (mode === "channel-before-build") concurrent("3.0.0");
         return success;
@@ -126,7 +127,7 @@ async function fixture(t) {
           renameSync("cdn/releases/2.0.0", "superseded-own-version");
           concurrent("2.0.0");
         }
-        return ["success", "deploy-failure"].includes(mode) ? success : failure;
+        return ["success", "deploy-failure", "production-peer-before", "production-peer-after", "promotion-failure"].includes(mode) ? success : failure;
       }
       if (entry === "scripts/cdn/stage-userscript.mjs") {
         const manifest = JSON.parse(readFileSync("cdn/releases/2.0.0/manifest.json"));
@@ -139,20 +140,78 @@ async function fixture(t) {
         return success;
       }
       if (entry === "scripts/cdn/publish.mjs") return mode === "deploy-failure" ? failure : success;
+      if (entry === "scripts/quality.mjs") {
+        if (mode === "production-peer-after") {
+          appendFileSync(process.env.LUOGUSP_TEST_PEER_PATH, "\nPEER EDIT\n");
+          return failure;
+        }
+        if (mode === "promotion-failure") return failure;
+        const outputIndex = args.indexOf("--report-output");
+        if (outputIndex !== -1) writeFileSync(args[outputIndex + 1], '{"fixture":true}\n');
+      }
       if (["scripts/cdn/verify-production.mjs", "scripts/build.mjs", "scripts/quality.mjs"].includes(entry))
         return success;
       throw new Error("Unexpected mock command " + JSON.stringify(args));
     };
     syncBuiltinESMExports();
   `);
-  const publish = (mode = "renderer-failure") => spawnSync(process.execPath,
+  const publish = (mode = "renderer-failure", env = {}) => spawnSync(process.execPath,
     ["--import", pathToFileURL(hook).href, "scripts/publish.mjs", "--version", version], {
       cwd, encoding: "utf8", windowsHide: true,
-      env: { ...process.env, LUOGUSP_TEST_PUBLISH_MODE: mode },
+      env: { ...process.env, ...env, LUOGUSP_TEST_PUBLISH_MODE: mode },
     });
   const snapshot = (release = version) => snapshotRelease(join(cwd, "cdn/releases"), release);
   return { cwd, write, build, publish, snapshot, channelPath, previousChannel };
 }
+
+test("publication refuses shared-file drift before any provider call", async (t) => {
+  const f = await fixture(t);
+  const result = f.publish("production-peer-before");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Production file changed/);
+  assert.match(await readFile(join(f.cwd, "README.zh-TW.md"), "utf8"), /PEER EDIT/);
+  assert.doesNotMatch(await readFile(join(f.cwd, "commands.jsonl"), "utf8"), /scripts\/cdn\/publish.mjs/);
+});
+
+for (const file of ["src/userscript.meta.js", "LuoguSP.user.js", "package.json",
+  "README.md", "README.zh-CN.md", "README.zh-TW.md", "README.ja.md", "reports/quality-report.json"]) {
+  test(`publication rollback preserves a concurrent edit to ${file}`, async (t) => {
+    const f = await fixture(t);
+    const initialMetadata = await readFile(join(f.cwd, "src/userscript.meta.js"), "utf8");
+    const result = f.publish("production-peer-after", { LUOGUSP_TEST_PEER_PATH: file });
+    assert.notEqual(result.status, 0);
+    assert.match(await readFile(join(f.cwd, file), "utf8"), /PEER EDIT/);
+    const report = JSON.parse(await readFile(join(f.cwd, "reports/publish.json")));
+    assert.equal(report.productionRestored, false);
+    assert.deepEqual(report.productionRetained, [file]);
+    if (file !== "src/userscript.meta.js")
+      assert.equal(await readFile(join(f.cwd, "src/userscript.meta.js"), "utf8"), initialMetadata);
+    assert.equal((await f.snapshot()).manifest.release, version);
+  });
+}
+
+test("a busy publication lock prevents all child commands and survives rejection", async (t) => {
+  const f = await fixture(t);
+  const lock = join(f.cwd, "reports/publish.lock");
+  await writeFile(lock, "peer publication");
+  assert.notEqual(f.publish("success").status, 0);
+  assert.equal(await readFile(lock, "utf8"), "peer publication");
+  await assert.rejects(readFile(join(f.cwd, "commands.jsonl")), { code: "ENOENT" });
+  await rm(lock);
+  assert.equal(f.publish("success").status, 0);
+  await assert.rejects(readFile(lock), { code: "ENOENT" });
+});
+
+test("publication restores owned production bytes after a promotion failure and releases its lock", async (t) => {
+  const f = await fixture(t);
+  const initial = await readFile(join(f.cwd, "README.zh-TW.md"), "utf8");
+  assert.notEqual(f.publish("promotion-failure").status, 0);
+  assert.equal(await readFile(join(f.cwd, "README.zh-TW.md"), "utf8"), initial);
+  const report = JSON.parse(await readFile(join(f.cwd, "reports/publish.json")));
+  assert.equal(report.productionRestored, true);
+  await assert.rejects(readFile(join(f.cwd, "reports/publish.lock")), { code: "ENOENT" });
+  assert.equal(f.publish("success").status, 0);
+});
 
 for (const failure of ["renderer", "late"]) {
   test(`standalone CDN ${failure} failure leaves no version and permits an exact retry`, async (t) => {

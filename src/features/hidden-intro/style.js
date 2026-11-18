@@ -1,4 +1,5 @@
 export const HIDDEN_INTRO_STYLE = `
+  .luogusp-intro-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
   .luogusp-intro-card .lfe-marked{contain:inline-size;overflow-x:auto;}
   .luogusp-intro-card .katex-display,.luogusp-intro-card .katex:not(.katex-display .katex){max-inline-size:100%;max-block-size:75vh;overflow:auto;}
   .luogusp-intro-card .katex-display{display:block;}

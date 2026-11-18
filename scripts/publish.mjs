@@ -1,11 +1,15 @@
 import { spawnSync } from "node:child_process";
 import {
   mkdir,
+  open,
   readdir,
   readFile,
+  rename,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -19,6 +23,7 @@ import {
 import { rollbackRelease } from "./cdn/release-transaction.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+async function publish() {
 const planOnly = process.argv.includes("--plan");
 const argument = (name) => {
   const index = process.argv.indexOf(name);
@@ -145,7 +150,7 @@ if (planOnly) {
       2,
     ),
   );
-  process.exit(0);
+  return;
 }
 if (releaseExists && !resumeMode)
   {
@@ -191,14 +196,59 @@ let deploymentStarted = false;
 let productionModified = false;
 let rendererReport = null;
 let buildTransaction = null;
+const initialProduction = new Map([
+  [metadataPath, initialMetadata], [artifactPath, initialArtifact], [packagePath, initialPackage],
+  ...README_EDITIONS.map((name) => [resolve(root, name), initialReadmes[name]]),
+  [qualityReportPath, initialQualityReport],
+]);
+const ownedProduction = new Map();
+const productionName = (path) => path.slice(root.length + 1).split(sep).join("/");
+const currentProduction = (path) => readFile(path, "utf8").catch((error) => {
+  if (error.code === "ENOENT") return null;
+  throw error;
+});
+const assertProductionUnchanged = async () => {
+  for (const [path, initial] of initialProduction)
+    if (await currentProduction(path) !== initial)
+      throw new Error(`Production file changed: ${productionName(path)}`);
+};
+const replaceProduction = async (path, expected, body) => {
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  let created = false;
+  try {
+    const file = await open(temporary, "wx");
+    created = true;
+    try { await file.writeFile(body, "utf8"); }
+    finally { await file.close(); }
+    if (await currentProduction(path) !== expected)
+      throw new Error(`Production file changed: ${productionName(path)}`);
+    await rename(temporary, path);
+  } finally {
+    if (created) await rm(temporary, { force: true });
+  }
+};
+const promoteProduction = async (path, body) => {
+  await replaceProduction(path, initialProduction.get(path), body);
+  ownedProduction.set(path, body);
+};
+const qualityStagePath = resolve(npmCache, `luogusp-publish-${new Date().toISOString().slice(0, 10)}-${randomUUID()}.json`);
 const restoreProduction = async () => {
-  await Promise.all([
-    writeFile(metadataPath, initialMetadata, "utf8"),
-    writeFile(artifactPath, initialArtifact, "utf8"),
-    writeFile(packagePath, initialPackage, "utf8"),
-    ...README_EDITIONS.map((name) => writeFile(resolve(root, name), initialReadmes[name], "utf8")),
-    writeFile(qualityReportPath, initialQualityReport, "utf8"),
-  ]);
+  const retained = [];
+  for (const [path, initial] of initialProduction) {
+    const expected = ownedProduction.get(path) ?? initial;
+    if (await currentProduction(path) !== expected) {
+      retained.push(productionName(path));
+      continue;
+    }
+    if (ownedProduction.has(path)) {
+      try { await replaceProduction(path, expected, initial); }
+      catch (error) {
+        retained.push(productionName(path));
+        console.error(`[publish] production rollback retained ${productionName(path)}: ${error.message}`);
+      }
+    }
+  }
+  return retained;
 };
 const writeReport = async (report) => {
   await mkdir(dirname(reportPath), { recursive: true });
@@ -286,6 +336,7 @@ try {
   run(["--test", ...preDeploymentTests]);
 
   beginPhase("Cloudflare Workers deployment");
+  await assertProductionUnchanged();
   deploymentStarted = true;
   run([
     "scripts/cdn/publish.mjs",
@@ -301,17 +352,12 @@ try {
   ]);
 
   beginPhase("local production promotion");
+  await assertProductionUnchanged();
   productionModified = true;
-  await Promise.all([
-    writeFile(metadataPath, activation.metadata, "utf8"),
-    writeFile(artifactPath, stagedArtifact, "utf8"),
-    writeFile(
-      packagePath,
-      packageTextWithVersion(initialPackage, version),
-      "utf8",
-    ),
-    ...README_EDITIONS.map((name) => writeFile(resolve(root, name), nextReadmes[name], "utf8")),
-  ]);
+  await promoteProduction(metadataPath, activation.metadata);
+  await promoteProduction(artifactPath, stagedArtifact);
+  await promoteProduction(packagePath, packageTextWithVersion(initialPackage, version));
+  for (const name of README_EDITIONS) await promoteProduction(resolve(root, name), nextReadmes[name]);
 
   beginPhase("activation verification");
   run(["scripts/build.mjs", "--check"]);
@@ -329,8 +375,10 @@ try {
     "--check",
     "--fetch-requires",
     "--write-report",
+    "--report-output", qualityStagePath,
     "--skip-browser-qa",
   ]);
+  await promoteProduction(qualityReportPath, await readFile(qualityStagePath, "utf8"));
   run(["--test"]);
 
   await writeReport({
@@ -371,7 +419,7 @@ try {
       rendererReport = null;
     }
   }
-  if (productionModified) await restoreProduction();
+  const productionRetained = productionModified ? await restoreProduction() : [];
   let releaseRollback = null;
   let rollbackError = null;
   if (buildTransaction && !deploymentStarted) {
@@ -397,7 +445,8 @@ try {
     deployedOrigins: deploymentStarted || resumeMode
       ? [initialConfig.origins.primary]
       : [],
-    productionRestored: productionModified,
+    productionRestored: productionModified && productionRetained.length === 0,
+    productionRetained,
     releaseRollback,
     rollbackError,
     deploymentStarted: deploymentStarted || resumeMode,
@@ -413,8 +462,23 @@ try {
     console.error(`[publish] exit code: ${error.exitCode}`);
   console.error(`[publish] error: ${error.message}`);
   console.error(
-    `[publish] production restored: ${productionModified ? "yes" : "not modified"}`,
+    `[publish] production restored: ${!productionModified ? "not modified" : productionRetained.length ? "partial; concurrent changes retained" : "yes"}`,
   );
   console.error("[publish] report: reports/publish.json");
   throw error;
+} finally {
+  await rm(qualityStagePath, { force: true });
+}
+}
+
+if (process.argv.includes("--plan")) await publish();
+else {
+  const lockPath = resolve(root, "reports/publish.lock");
+  await mkdir(dirname(lockPath), { recursive: true });
+  const lock = await open(lockPath, "wx");
+  try { await publish(); }
+  finally {
+    try { await lock.close(); }
+    finally { await rm(lockPath); }
+  }
 }

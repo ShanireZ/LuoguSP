@@ -92,6 +92,145 @@ function responseGate(t) {
 const focused = (locator) => locator.evaluate(node => node === document.activeElement);
 const card = (page) => page.locator("#luogusp-hover-card");
 
+for (const fault of ["redirect", "html", "partial", "wrong-url"]) {
+  test(`introduction fallback rejects ${fault} before decoding and recovers after reload`, async (t) => {
+    const gate = responseGate(t);
+    const hits = [];
+    const external = createServer((req, res) => {
+      hits.push(req.method);
+      res.writeHead(200, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "x-lentille-request",
+        "Access-Control-Allow-Private-Network": "true", "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: { user: { uid: 123, introduction: "## Untrusted text" } } }));
+    });
+    external.listen(0, "127.0.0.1");
+    await once(external, "listening");
+    t.after(() => external.close());
+    let attempts = 0;
+    const { page } = await fixture(t, {
+      path: "/user/123", html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>'),
+      initScript: `
+        const rawIntroFetch = window.fetch.bind(window);
+        window.introDecoded = 0; window.introSettled = false;
+        window.fetch = async (input, init) => {
+          if (new URL(input, location.href).pathname !== '/user/123') return rawIntroFetch(input, init);
+          try {
+            const response = await rawIntroFetch(input, init);
+            if (${JSON.stringify(fault)} === 'wrong-url' && response.headers.get('x-audit-fault')) Object.defineProperty(response, 'url', {value: location.origin + '/user/999'});
+            const json = response.json.bind(response);
+            response.json = () => { introDecoded++; return json(); };
+            return response;
+          } finally { window.introSettled = true; }
+        };`,
+      expectedConsoleError: fault === "redirect" ? /^LuoguSP intro fetch:/ : undefined,
+      reply(route, url) {
+        if (url.pathname !== "/user/123") return;
+        if (++attempts === 1) return gate.promise.then(() => fault === "redirect"
+          ? route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:${external.address().port}/untrusted` } })
+          : route.fulfill({ status: fault === "partial" ? 206 : 200, headers: { "x-audit-fault": "true" }, contentType: fault === "html" ? "text/html" : "application/json",
+            body: JSON.stringify({ data: { user: { uid: 123, introduction: "## Untrusted text" } } }) }));
+        return route.fulfill({ json: { data: { user: { uid: 123, introduction: "## Trusted text" } } } });
+      },
+    });
+    await page.context().grantPermissions(["local-network-access"], { origin });
+    gate.release();
+    await page.waitForFunction(() => introSettled);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.evaluate(() => introDecoded), 0);
+    assert.equal(await page.locator(".luogusp-intro-card").count(), 0);
+    assert.deepEqual(hits, []);
+    await page.reload();
+    await page.locator(".luogusp-intro-card").getByRole("heading", { name: "Trusted text" }).waitFor();
+  });
+}
+
+for (const key of ["Enter", "Space"]) {
+  test(`introduction retry preserves keyboard focus with ${key}`, async (t) => {
+    const { page } = await fixture(t, {
+      path: "/user/123", html: fixtureHtml('<button id="outside-intro">Outside</button><div class="sidebar-container"><div class="main"></div></div>',
+        { user: { uid: 123, introduction: "## Recovered introduction" } }),
+      initScript: `const introBlob = URL.createObjectURL; let introFailures = 2;
+        URL.createObjectURL = function(...args) { if (introFailures-- > 0) throw new Error('Synthetic renderer failure'); return introBlob.apply(this,args); };`,
+    });
+    const retry = page.locator(".luogusp-intro-retry");
+    await retry.waitFor(); await retry.focus(); await page.keyboard.press(key);
+    await page.waitForFunction(() => document.querySelector('.luogusp-intro-retry')?.getAttribute('aria-disabled') === 'false');
+    assert.ok(await focused(retry));
+    await page.keyboard.press(key);
+    await page.locator(".luogusp-intro-card h2").waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), "个人介绍");
+    assert.equal(await page.locator('.luogusp-intro-status[role="status"]').textContent(), "个人介绍已加载。");
+    assert.equal(await retry.isVisible(), false);
+  });
+}
+
+for (const ending of ["focus moved", "navigation"]) {
+  test(`introduction retry does not steal focus after ${ending}`, async (t) => {
+    const { page } = await fixture(t, {
+      path: "/user/123", html: fixtureHtml('<button id="outside-intro">Outside</button><div class="sidebar-container"><div class="main"></div></div>',
+        { user: { uid: 123, introduction: "## Late introduction" } }),
+      initScript: `const introBlob = URL.createObjectURL; let failIntroBlob = true;
+        URL.createObjectURL = function(...args) { if (failIntroBlob) { failIntroBlob = false; throw new Error('Synthetic first load failure'); } return introBlob.apply(this,args); };
+        const introDigest = crypto.subtle.digest.bind(crypto.subtle); let introDigestCalls = 0;
+        crypto.subtle.digest = async (...args) => { if (++introDigestCalls > 1) await new Promise(resolve => window.releaseIntroDigest = resolve); return introDigest(...args); };`,
+    });
+    await page.locator(".luogusp-intro-retry").press("Enter");
+    await page.waitForFunction(() => typeof releaseIntroDigest === "function");
+    await page.locator("#outside-intro").focus();
+    if (ending === "navigation") await page.evaluate(() => history.pushState({}, "", "/problem/P1000"));
+    await page.evaluate(() => releaseIntroDigest());
+    if (ending === "focus moved") await page.locator(".luogusp-intro-card h2").waitFor();
+    else {
+      await page.waitForFunction(() => !document.querySelector(".luogusp-intro-card"));
+      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 100)));
+      assert.equal(await page.locator(".luogusp-intro-card").count(), 0);
+    }
+    assert.ok(await focused(page.locator("#outside-intro")));
+  });
+}
+
+test("introduction rendering fails closed when secure marker generation is unavailable", async (t) => {
+  const { page } = await fixture(t, {
+    path: "/user/123", html: fixtureHtml('<button id="native-control">Native control</button><div class="sidebar-container"><div class="main"></div></div>',
+      { user: { uid: 123, introduction: "## Author text" } }),
+    initScript: 'Object.defineProperty(crypto, "getRandomValues", {value: undefined});',
+  });
+  await page.locator(".luogusp-intro-retry").waitFor();
+  assert.equal(await page.locator(".luogusp-intro-card h2").count(), 0);
+  await page.locator("#native-control").click();
+});
+
+test("introduction normalization preserves marker-like literals and link attributes", async (t) => {
+  const introduction = '%%LGMATH0&#58;0%%\n\n%%LGMATH0\\:0%%\n\n%%LGMATH&#48;:0%%\n\n[literal](https://example.test/%%LGMATH0&#58;0%%)\n\n$x$';
+  const { page } = await fixture(t, {
+    path: "/user/123", html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>', { user: { uid: 123, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  await intro.locator(".katex").waitFor();
+  assert.equal(await intro.locator(".katex").count(), 1);
+  assert.equal(await intro.getByText("%%LGMATH0:0%%", { exact: true }).count(), 3);
+  assert.equal(await intro.getByRole("link").getAttribute("href"), "https://example.test/%%LGMATH0:0%%");
+});
+
+for (const mode of ["full", "lite"]) {
+  test(`introduction marker input keeps ${mode} rendering responsive`, async (t) => {
+    for (const marker of [false, true]) {
+      const stem = mode === "full" ? "%%LGMATH" : "@@LGB";
+      const introduction = (marker ? stem : "Ordinary ") + "X".repeat(100000);
+      const { page } = await fixture(t, {
+        path: "/user/123" + (mode === "lite" ? "?luogusp-qa=fallback-lite" : ""),
+        html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>', { user: { uid: 123, introduction } }),
+        initScript: `window.introLongTasks = []; new PerformanceObserver(list => introLongTasks.push(...list.getEntries().map(entry=>entry.duration))).observe({type:'longtask', buffered:true});`,
+      });
+      await page.waitForFunction(() => document.querySelector(".luogusp-intro-card .lfe-marked")?.textContent.length > 100000);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const maxTask = await page.evaluate(() => Math.max(0, ...introLongTasks));
+      console.log(`Introduction ${mode} ${marker ? "marker" : "ordinary"}: longest task ${Math.round(maxTask)}ms`);
+      assert.ok(maxTask < 750, `${mode} blocked the main thread for ${maxTask}ms`);
+      await page.close();
+    }
+  });
+}
+
 test("profile introduction renders math and removes author CSS before page insertion", async (t) => {
   const introduction = [
     "## Safe introduction",
@@ -1674,7 +1813,7 @@ test("intro copy clears the previous success while another clipboard write is pe
   });
   const intro = page.locator(".luogusp-intro-card");
   const button = intro.getByRole("button", { name: "复制代码" });
-  const status = intro.getByRole("status");
+  const status = intro.locator('.luogusp-copy-status[role="status"]');
   await button.waitFor();
   await page.clock.install({ time: 0 });
   await page.clock.pauseAt(1000);
@@ -1736,10 +1875,10 @@ test("intro copy announces failed and successful fallback without losing focus o
   assert.equal(await button.getAttribute("title"), "复制失败");
   assert.ok(await focused(button));
   assert.equal(await button.evaluate(node => getComputedStyle(node).transitionDuration), "0s");
-  assert.equal(await intro.getByRole("status").textContent(), "复制失败");
+  assert.equal(await intro.locator('.luogusp-copy-status[role="status"]').textContent(), "复制失败");
   await page.evaluate(() => { window.copyWorks = true; });
   await button.press("Enter");
-  assert.equal(await intro.getByRole("status").textContent(), "已复制");
+  assert.equal(await intro.locator('.luogusp-copy-status[role="status"]').textContent(), "已复制");
   assert.ok(await focused(button));
 });
 

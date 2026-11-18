@@ -1,5 +1,6 @@
 import { IMAGE_UNAVAILABLE, resolveIntroImageUrl } from "./intro-image.js";
 import { renderMarkdownLite } from "./markdown-lite.js";
+import { createMarkerPrefix } from "./marker-prefix.js";
 
 const AUTHOR_MARKUP = {
   ALLOWED_TAGS: [
@@ -169,8 +170,7 @@ export function createMarkdownFullRenderer(dependencies) {
     renderMarkdown(source, options = {}) {
       const markdown = String(source ?? "");
       const math = [];
-      let mathPrefix = "%%LGMATH";
-      while (markdown.includes(mathPrefix)) mathPrefix += "X";
+      const mathPrefix = createMarkerPrefix("%%LGMATH");
       const marker = new RegExp(`${mathPrefix}(\\d+)%%`, "g");
       const hold = (raw, text, displayMode) =>
         `${mathPrefix}${math.push({ raw, text: displayMode ? text.trim() : text, displayMode }) - 1}%%`;

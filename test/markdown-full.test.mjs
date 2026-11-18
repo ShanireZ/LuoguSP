@@ -91,8 +91,56 @@ test("full markdown renderer exposes a deterministic QA failure injection", () =
   );
 });
 
+for (const literal of ["%%LGMATH0&#58;0%%", "%%LGMATH0\\:0%%", "%%LGMATH&#48;:0%%"]) {
+  test(`HTML and Markdown normalization cannot forge a math marker: ${literal}`, () => {
+    const { dom, renderer } = createRenderer();
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown(literal + "\n\n$x$").html;
+    assert.equal(root.firstElementChild.textContent, "%%LGMATH0:0%%");
+    assert.equal(root.querySelectorAll(".katex").length, 1);
+    dom.window.close();
+  });
+}
+test("normalized author link attributes are not substituted as math", () => {
+  const { dom, renderer } = createRenderer();
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown('[literal](https://example.test/%%LGMATH0&#58;0%% "$literal$")\n\n$x$').html;
+  assert.equal(root.querySelector("a").getAttribute("href"), "https://example.test/%%LGMATH0:0%%");
+  assert.equal(root.querySelector("a").getAttribute("title"), "$literal$");
+  assert.equal(root.querySelectorAll(".katex").length, 1);
+  dom.window.close();
+});
+
 for (const forceFullFailure of [false, true]) {
   const mode = forceFullFailure ? "lite" : "full";
+  for (const length of [10000, 100000]) {
+    test(`marker collision work stays bounded and preserves literals in ${mode} at ${length}`, () => {
+      const { dom, renderer } = createRenderer();
+      const stem = forceFullFailure ? "@@LGB" : "%%LGMATH";
+      const run = stem + "X".repeat(length);
+      const source = [run, `${stem}0:0%% ${stem}1:1@@`, "`$literal$`", "[link](https://example.test/$path$)", "$x+1$"].join("\n\n");
+      const includes = String.prototype.includes;
+      let work = 0;
+      String.prototype.includes = function (search, ...args) {
+        if (String(search).startsWith(stem)) {
+          work += this.length + String(search).length;
+          if (work > source.length * 8) throw new Error("Marker search exceeded linear scan budget");
+        }
+        return includes.call(this, search, ...args);
+      };
+      let result;
+      try { result = renderer.renderMarkdown(source, { forceFullFailure }); }
+      finally { String.prototype.includes = includes; }
+      const root = dom.window.document.createElement("div");
+      root.innerHTML = result.html;
+      assert.ok(root.textContent.includes(run));
+      assert.ok(root.textContent.includes(`${stem}0:0%% ${stem}1:1@@`));
+      assert.equal(root.querySelector("code").textContent, "$literal$");
+      assert.equal(root.querySelector("a").getAttribute("href"), "https://example.test/$path$");
+      assert.equal(root.querySelectorAll(".katex").length, 1);
+      dom.window.close();
+    });
+  }
   test("literal dollar delimiters in code and link attributes survive " + mode + " rendering", () => {
     const { dom, renderer } = createRenderer();
     const source = [

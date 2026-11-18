@@ -424,9 +424,12 @@ const report = {
 };
 
 if (writeReport) {
-  await mkdir(resolve(root, "reports"), { recursive: true });
+  const outputIndex = process.argv.indexOf("--report-output");
+  if (outputIndex !== -1 && !process.argv[outputIndex + 1]) throw new Error("Missing --report-output path");
+  const reportPath = outputIndex === -1 ? resolve(root, "reports/quality-report.json") : resolve(root, process.argv[outputIndex + 1]);
+  await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(
-    resolve(root, "reports/quality-report.json"),
+    reportPath,
     `${JSON.stringify(report, null, 2)}\n`,
     "utf8",
   );

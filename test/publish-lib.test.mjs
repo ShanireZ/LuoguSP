@@ -16,6 +16,20 @@ import {
 import * as publishHelpers from "../scripts/publish-lib.mjs";
 
 const sha = "a".repeat(64);
+test("quality report can be staged without changing the shared production report", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const shared = path.join(root, "reports/quality-report.json");
+  const before = readFileSync(shared);
+  const directory = mkdtempSync(path.join(tmpdir(), "luogusp-quality-stage-20261115-"));
+  try {
+    const output = path.join(directory, "quality-report.json");
+    const result = spawnSync(process.execPath, ["scripts/quality.mjs", "--check", "--write-report",
+      "--report-output", output, "--skip-browser-qa"], { cwd: root, encoding: "utf8", windowsHide: true });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(JSON.parse(readFileSync(output, "utf8")).artifact.bytes > 0);
+    assert.deepEqual(readFileSync(shared), before);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
 test("real release preflight rejects a stale or missing translated edition", () => {
   const base = tmpdir();
   const root = mkdtempSync(path.join(base, "luogusp-readme-publication-20261029-"));

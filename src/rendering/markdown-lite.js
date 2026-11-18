@@ -1,4 +1,5 @@
 import { IMAGE_UNAVAILABLE, resolveIntroImageUrl } from "./intro-image.js";
+import { createMarkerPrefix } from "./marker-prefix.js";
 
 export function renderMarkdownLite(md, options = {}) {
   const { document } = options;
@@ -29,8 +30,7 @@ export function renderMarkdownLite(md, options = {}) {
     }
   };
   const spans = [];
-  let spanPrefix = "@@LGB";
-  while (md.includes(spanPrefix)) spanPrefix += "X";
+  const spanPrefix = createMarkerPrefix("@@LGB");
   const stash = (html) => `${spanPrefix}${spans.push(html) - 1}@@`;
   const spanMarker = new RegExp(`${spanPrefix}(\\d+)@@`, "g");
   const restore = (source) => source.replace(spanMarker, (_, index) => spans[index]);

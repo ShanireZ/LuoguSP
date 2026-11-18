@@ -20,6 +20,7 @@ Thumbs.db
 
 # Generated operator receipts; required de-identified QA/quality inputs stay tracked.
 /reports/publish.json
+/reports/publish.lock
 /reports/cdn-publish.json
 /reports/cdn-deployment.json
 /reports/cdn-origin-preflight.json

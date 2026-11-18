@@ -54,10 +54,14 @@ export function createFallbackIntroController(options = {}) {
       }
     }
     try {
-      const response = await fetchImpl(`/user/${uid}`, {
+      const expectedUrl = new URL(`/user/${uid}`, document.URL).href;
+      const response = await fetchImpl(expectedUrl, {
         headers: { "x-lentille-request": "content-only" },
+        mode: "same-origin", credentials: "same-origin", redirect: "error",
         signal,
       });
+      if (response.status !== 200 || response.redirected !== false || response.url !== expectedUrl ||
+          !/^application\/json(?:\s*;|$)/i.test(response.headers?.get("content-type")?.trim())) return null;
       const introduction = digIntroduction(await response.json(), uid);
       if (introduction != null) return introduction;
     } catch (error) {
@@ -92,7 +96,8 @@ export function createFallbackIntroController(options = {}) {
     content.className = "lfe-marked";
     body.appendChild(content);
     card.append(header, body);
-    return { card, content };
+    title.tabIndex = -1;
+    return { card, content, title, body };
   }
 
   function enhanceCopyButtons(root) {
@@ -111,7 +116,17 @@ export function createFallbackIntroController(options = {}) {
   function mount({ column, introduction, signal, isCurrent = () => true }) {
     if (!column || typeof introduction !== "string")
       throw new TypeError("Fallback intro mount request is invalid");
-    const { card, content } = createCard();
+    const { card, content, title, body } = createCard();
+    const announcement = document.createElement("span");
+    announcement.className = "luogusp-intro-status";
+    announcement.setAttribute("role", "status");
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "luogusp-intro-retry";
+    retry.textContent = "重试渲染";
+    retry.hidden = true;
+    body.append(announcement, retry);
+    let rendering = false;
     column.appendChild(card);
     const removeIfOwned = () => {
       if (card.isConnected) card.remove();
@@ -120,6 +135,11 @@ export function createFallbackIntroController(options = {}) {
       signal.addEventListener("abort", removeIfOwned, { once: true });
 
     const render = async () => {
+      if (rendering) return;
+      rendering = true;
+      content.setAttribute("aria-busy", "true");
+      retry.setAttribute("aria-disabled", "true");
+      announcement.textContent = "正在加载个人介绍…";
       content.textContent = "正在加载个人介绍渲染组件…";
       try {
         const result = await rendererClient.renderInto(
@@ -132,6 +152,9 @@ export function createFallbackIntroController(options = {}) {
           return Object.freeze({ status: "cancelled" });
         }
         enhanceCopyButtons(content);
+        if (document.activeElement === retry) title.focus({ preventScroll: true });
+        retry.hidden = true;
+        announcement.textContent = "个人介绍已加载。";
         const status =
           result.mode === "lite" ? "fallback-lite" : "fallback-rendered";
         diagnostics?.set(status, result.warnings.join(",") || null);
@@ -144,17 +167,9 @@ export function createFallbackIntroController(options = {}) {
         content.replaceChildren();
         const message = document.createElement("p");
         message.textContent = "个人介绍渲染组件暂不可用。";
-        const retry = document.createElement("button");
-        retry.type = "button";
-        retry.className = "luogusp-intro-retry";
-        retry.textContent = "重试渲染";
-        retry.addEventListener("click", () => {
-          retry.disabled = true;
-          render().catch((retryError) =>
-            console.error("LuoguSP intro retry:", retryError),
-          );
-        });
-        content.append(message, retry);
+        content.append(message);
+        retry.hidden = false;
+        announcement.textContent = "个人介绍加载失败，可重试。";
         diagnostics?.set(
           "fallback-unavailable",
           error?.kind || error?.message || "renderer-unavailable",
@@ -163,8 +178,15 @@ export function createFallbackIntroController(options = {}) {
           status: "fallback-unavailable",
           error,
         });
+      } finally {
+        rendering = false;
+        content.setAttribute("aria-busy", "false");
+        retry.setAttribute("aria-disabled", "false");
       }
     };
+    retry.addEventListener("click", () => {
+      render().catch((error) => console.error("LuoguSP intro retry:", error));
+    });
 
     return Object.freeze({
       card,
