@@ -392,9 +392,8 @@ test("称号覆盖作弊者与管理员，优先级照原生", () => {
   assert.equal(badgeOf({}), null, "什么都没有就不画");
 });
 
-// ★ owner：超兩行時第二行末尾出現展開按鈕，展開到 6 行封頂。
-//   按鈕**只在真的溢出時**才露 —— 露不露由 finalizeCard 量完實際高度決定。
-test("签名溢出才给展开按钮，展开后限 6 行", () => {
+// 按鈕只在 finalizeCard 量出實際溢出時顯示。
+test("签名溢出才给展开按钮，按钮可切换展开状态", () => {
   const dom = new JSDOM("<!doctype html><body></body>", { url: "https://www.luogu.com.cn/" });
   const saved = { document: globalThis.document, window: globalThis.window };
   globalThis.document = dom.window.document;

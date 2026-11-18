@@ -8,7 +8,7 @@ export const LENTILLE_INIT = Object.freeze({
 
 function project(problem, pid) {
   const result = { pid };
-  if (typeof problem.name === "string") result.name = problem.name;
+  if (typeof problem.name === "string" && problem.name.trim()) result.name = problem.name;
   if (Number.isInteger(problem.difficulty) && problem.difficulty >= 0 &&
       problem.difficulty < DIFFICULTY_TIERS)
     result.difficulty = problem.difficulty;
@@ -93,9 +93,15 @@ export function createProblemData({
     if (map.size > limit) map.delete(map.keys().next().value);
   };
   const rememberDetail = (data, pid, context, at) => {
+    if (!data.problem || typeof data.problem !== "object" || Array.isArray(data.problem)) return;
+    const problem = project(data.problem, pid);
+    // The lookup supplies the PID even when the server returned no usable detail.
+    const { pid: _pid, tags, limits, samples, ...fields } = problem;
+    if (!Object.keys(fields).length && !tags?.length && !samples?.length &&
+        !limits?.time?.length && !limits?.memory?.length) return;
     const entry = {
       at,
-      problem: project(data.problem, pid),
+      problem,
       bookmarked: typeof data.bookmarked === "boolean" ? data.bookmarked : undefined,
     };
     remember(details, keyOf(pid, context), entry, 120);
@@ -147,8 +153,10 @@ export function createProblemData({
     if (!detail && !summary) return null;
     return {
       data: {
-        problem: detail && summary && summary.at >= detail.at
-          ? { ...detail.problem, ...summary.problem }
+        problem: detail && summary
+          ? (summary.at >= detail.at
+            ? { ...detail.problem, ...summary.problem }
+            : { ...summary.problem, ...detail.problem })
           : detail?.problem ?? summary.problem,
         bookmarked: detail?.bookmarked,
       },

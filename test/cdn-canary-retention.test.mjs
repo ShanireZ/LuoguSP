@@ -245,7 +245,7 @@ test("CDN staging rejects a junction at a pinned artifact's parent", async (t) =
   assert.match(result.stderr, /not a regular directory/i, result.stderr);
 });
 
-async function publishFixture(t, { committed = true, additionalReleases = [] } = {}) {
+async function publishFixture(t, { committed = true, additionalReleases = [], localReleases = [] } = {}) {
   const fixture = await stageFixture(t);
   const { repo, scratch, manifest, source, file, body, pin } = fixture;
   const deploy = path.join(repo, "deploy", "cloudflare");
@@ -253,7 +253,7 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
   const wranglerPath = path.join(deploy, "wrangler.jsonc");
   const recorder = path.join(scratch, "record.mjs");
   const recording = path.join(scratch, "deploy-record.jsonl");
-  for (const release of additionalReleases) {
+  async function addRelease(release) {
     const filename = `releases/${release}/pinned.js`;
     await mkdir(path.join(source, "releases", release));
     await writeFile(path.join(source, filename), body);
@@ -285,14 +285,21 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
     const spawn = cp.spawnSync;
     const record = (entry) => appendFileSync(${JSON.stringify(recording)}, JSON.stringify(entry) + "\\n");
     let deployed;
+    const wrongVerificationUrl = process.env.CDN_TEST_WRONG_VERIFY_URL === "1";
+    if (wrongVerificationUrl) {
+      const setTimeout = globalThis.setTimeout;
+      globalThis.setTimeout = (callback, _delay, ...args) => setTimeout(callback, 0, ...args);
+    }
     globalThis.fetch = async (url, options) => {
       if (deployed) {
         record(["verify", url.pathname]);
-        return new Response(deployed.get(url.pathname.slice(1)), { headers: {
+        const response = new Response(deployed.get(url.pathname.slice(1)), { headers: {
           "Content-Type": url.pathname.endsWith(".json") ? "application/json" : "application/javascript",
           "Cache-Control": url.pathname.startsWith("/channels/") ? "no-cache" : "immutable",
           "Access-Control-Allow-Origin": "*",
         } });
+        const finalUrl = wrongVerificationUrl ? new URL(url.pathname, "https://other.example").href : url.href;
+        return Object.defineProperty(response, "url", { value: finalUrl });
       }
       record(["fetch", url.href, {
         credentials: options.credentials,
@@ -353,6 +360,7 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
             return [file.slice(stage.length + 1).split(sep).join("/"), readFileSync(file)];
           }));
         const initial = inventory();
+        record(["inventory", ...initial.keys()]);
         if (process.env.CDN_TEST_SECOND_CHANNEL) {
           writeFileSync("cdn/channels/canary.json", process.env.CDN_TEST_SECOND_CHANNEL);
           const prep = spawn(process.execPath, ["scripts/cdn/prepare.mjs"], options);
@@ -377,13 +385,16 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
     git("-c", "user.name=Test", "-c", "user.email=fixture@example.invalid",
       "commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "Pinned release fixture");
   };
+  for (const release of additionalReleases) await addRelease(release);
   recordCommit({ includeCdn: committed });
-  fixture.publish = async (args, { tamper = false, remote = "resume", secondChannel = "" } = {}) => {
+  for (const release of localReleases) await addRelease(release);
+  fixture.publish = async (args, { tamper = false, remote = "resume", secondChannel = "", wrongVerificationUrl = false } = {}) => {
     const result = spawnSync(
       process.execPath, ["--import", pathToFileURL(recorder).href, "scripts/cdn/publish.mjs", ...args],
       { cwd: repo, encoding: "utf8", env: {
         ...process.env, CDN_TEST_TAMPER: tamper ? "1" : "", CDN_TEST_REMOTE: JSON.stringify(remote),
         CDN_TEST_SECOND_CHANNEL: secondChannel,
+        CDN_TEST_WRONG_VERIFY_URL: wrongVerificationUrl ? "1" : "0",
       } },
     );
     assert.ifError(result.error);
@@ -487,6 +498,48 @@ test("low-level publish checks that Wrangler targets the configured origin and s
   assert.deepEqual(result.commands, []);
 });
 
+test("a captured deployment retains published stable history and excludes an unrelated fresh stable build", async (t) => {
+  const older = "1.2.2";
+  const publishedOutsideGit = "1.2.1";
+  const fresh = "3.0.0";
+  const { publish, manifest, source, channels, repo } = await publishFixture(t, {
+    additionalReleases: [older],
+    localReleases: [publishedOutsideGit, fresh],
+  });
+  const channelPath = path.join(channels, "canary.json");
+  const candidateChannel = await readFile(channelPath);
+  await writeFile(path.join(repo, "captured-channel.json"), candidateChannel);
+  const freshManifestPath = path.join(source, "releases", fresh, "manifest.json");
+  const freshManifest = await readFile(freshManifestPath);
+  const freshChannel = JSON.stringify({
+    ...JSON.parse(candidateChannel),
+    release: fresh,
+    manifestPath: `releases/${fresh}/manifest.${digest(freshManifest).slice(0, 16)}.json`,
+    manifestSha256: digest(freshManifest),
+  });
+  await writeFile(channelPath, freshChannel);
+  const result = await publish(["--version", manifest.release, "--skip-build", "--channel-file", "captured-channel.json"], {
+    remote: { [manifest.release]: "new", [older]: "resume", [publishedOutsideGit]: "resume", [fresh]: "new" },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const inventory = result.commands.find(([kind]) => kind === "inventory").slice(1);
+  assert.deepEqual(new Set(inventory.flatMap((name) => /^releases\/([^/]+)\//.exec(name)?.[1] ?? [])),
+    new Set([manifest.release, older, publishedOutsideGit]));
+  assert.deepEqual(await readFile(freshManifestPath), freshManifest);
+  assert.equal(await readFile(channelPath, "utf8"), freshChannel);
+});
+
+test("a committed version missing its public manifest blocks deployment", async (t) => {
+  const older = "1.2.2";
+  const { publish, manifest } = await publishFixture(t, { additionalReleases: [older] });
+  const result = await publish(["--version", manifest.release, "--skip-build"], {
+    remote: { [manifest.release]: "new", [older]: "new" },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /committed release has no published manifest/);
+  assert.equal(result.commands.some(([program]) => program === "wrangler"), false);
+});
+
 test("low-level publish rejects staged bytes changed during the CLI check", async (t) => {
   const { publish, manifest } = await publishFixture(t);
   const result = await publish(["--version", manifest.release, "--skip-build"], { tamper: true });
@@ -537,7 +590,7 @@ test("a deployment retains its exact snapshot and verification pins during anoth
   const selected = JSON.parse(await readFile(path.join(channels, "canary.json")));
   const result = await publish(["--version", manifest.release, "--skip-build", "--origin", origin], { secondChannel });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(result.commands, [
+  assert.deepEqual(result.commands.filter(([kind]) => kind !== "inventory"), [
     ["fetch", `${origin}/releases/${manifest.release}/manifest.json`, {
       credentials: "omit", redirect: "error", cache: "no-store", cacheControl: "no-cache", timeout: true,
     }],
@@ -557,6 +610,18 @@ test("a deployment retains its exact snapshot and verification pins during anoth
   assert.equal(await readFile(path.join(channels, "canary.json"), "utf8"), secondChannel);
   assert.notEqual(path.resolve(repo, result.commands[2][3]), path.join(repo, "deploy", "cloudflare", "wrangler.jsonc"));
   await assert.rejects(lstat(path.resolve(repo, result.commands[2][3])), { code: "ENOENT" });
+});
+
+test("a deployment reports blocked verification when matching bytes come from another URL", async (t) => {
+  const { publish, repo, manifest } = await publishFixture(t);
+  const result = await publish(["--version", manifest.release, "--skip-build"], { wrongVerificationUrl: true });
+  assert.notEqual(result.status, 0);
+  const report = JSON.parse(await readFile(path.join(repo, "reports", "cdn-deployment.json"), "utf8"));
+  assert.equal(report.release, manifest.release);
+  assert.equal(report.status, "blocked");
+  assert.equal(report.failure.lastResult.status, 200);
+  assert.equal(report.failure.lastResult.bytes, 0);
+  assert.match(report.failure.lastResult.error, /exact URL/);
 });
 
 async function stubBuildImports(repo) {

@@ -337,7 +337,7 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
     );
 });
 
-test("an accepted vote leaves the last confirmed state and its time intact", () => {
+test("unsupported completion statuses leave both actions' confirmed state and times intact", () => {
   const clock = fixedClock();
   const uid = 52918;
   const store = createArticleInteractionStore({ storage: memoryStorage(), now: clock.now });
@@ -358,12 +358,20 @@ test("an accepted vote leaves the last confirmed state and its time intact", () 
     contentType: "application/json",
     responseText: JSON.stringify({ upvotes: 11, voted: 1 }),
   };
+  const favorUrl = `/article/${LID}/favor?remove=1`;
+  const favorReply = {
+    ...reply, url: favorUrl, responseUrl: ORIGIN + favorUrl,
+    responseText: JSON.stringify({ favored: false, favorCount: 2 }),
+  };
 
-  clock.ms += 1_000;
-  assert.equal(tracker.observeWrite({ ...reply, status: 202 }), null);
-  assert.deepEqual(tracker.snapshot(), state);
-  assert.deepEqual(store.read(interaction), original);
-  assert.deepEqual(notices, ["vote"]);
+  for (const status of [202, 203, 206, 207]) {
+    clock.ms += 1_000;
+    assert.equal(tracker.observeWrite({ ...reply, status }), null);
+    assert.equal(tracker.observeWrite({ ...favorReply, status }), null);
+    assert.deepEqual(tracker.snapshot(), state);
+    assert.deepEqual(store.read(interaction), original);
+    assert.deepEqual(notices.splice(0), ["vote", "favor"]);
+  }
 
   clock.ms += 1_000;
   assert.deepEqual(tracker.observeWrite({ ...reply, status: 200 }), {
@@ -372,7 +380,13 @@ test("an accepted vote leaves the last confirmed state and its time intact", () 
   const saved = store.read(interaction);
   assert.equal(saved.voteAt, clock.ms);
   assert.equal(saved.favorAt, original.favorAt);
-  assert.deepEqual(notices, ["vote", "confirmed vote"]);
+  clock.ms += 1_000;
+  assert.deepEqual(tracker.observeWrite({ ...favorReply, status: 201 }), {
+    kind: "favor", favored: false, favorCount: 2,
+  });
+  assert.equal(store.read(interaction).voteAt, saved.voteAt);
+  assert.equal(store.read(interaction).favorAt, clock.ms);
+  assert.deepEqual(notices, ["confirmed vote", "confirmed favor"]);
 });
 
 test("the reply XHR adapter reports official writes without touching them", async () => {

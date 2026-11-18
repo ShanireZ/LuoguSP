@@ -22,10 +22,11 @@ import {
 } from "./publish-lib.mjs";
 import { rollbackRelease } from "./cdn/release-transaction.mjs";
 import { withLocalLock } from "./cdn/local-lock.mjs";
+import { DEPLOYMENT_PHASE, PARENT_PUBLISH_LOCK, deploymentEvidence, readPublishReport, writePublishReport } from "./cdn/publish-receipt.mjs";
 import { digest, parseCanaryChannel, readRegularFile } from "./cdn/release-integrity.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-async function publish() {
+async function publish(lockOwner) {
 const planOnly = process.argv.includes("--plan");
 const argument = (name) => {
   const index = process.argv.indexOf(name);
@@ -38,14 +39,6 @@ const packagePath = resolve(root, "package.json");
 const qualityReportPath = resolve(root, "reports/quality-report.json");
 const channelPath = resolve(root, "cdn/channels/canary.json");
 const reportPath = resolve(root, "reports/publish.json");
-const readJsonIfPresent = async (path) => {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-};
 const [
   initialMetadata,
   initialArtifact,
@@ -60,7 +53,7 @@ const [
   readFile(packagePath, "utf8"),
   Promise.all(README_EDITIONS.map(async (name) => [name, await readFile(resolve(root, name), "utf8")])).then(Object.fromEntries),
   readFile(qualityReportPath, "utf8"),
-  readJsonIfPresent(reportPath),
+  readPublishReport(reportPath),
   readFile(resolve(root, "config/cdn.json"), "utf8"),
 ]);
 const currentVersion = userscriptVersion(initialArtifact);
@@ -115,8 +108,10 @@ try {
   if (error.code === "ENOENT") releaseExists = false;
   else throw error;
 }
-const resumeMode =
-  releaseExists && isResumablePublish(previousReport, version);
+const matchingCheckpoint = isResumablePublish(previousReport, version);
+const resumeMode = releaseExists && matchingCheckpoint;
+const pendingRelease = previousReport?.release !== version &&
+  isResumablePublish(previousReport, previousReport?.release) ? previousReport.release : null;
 
 const steps = [
   "run Web Platform Baseline contract guard",
@@ -142,7 +137,8 @@ if (planOnly) {
         sourceMetadataVersion,
         releaseExists,
         mode: resumeMode ? "resume" : "new",
-        wouldPublish: !releaseExists || resumeMode,
+        wouldPublish: !pendingRelease && (matchingCheckpoint ? resumeMode : !releaseExists),
+        ...(pendingRelease ? { pendingRelease } : {}),
         steps,
         commit: false,
         push: false,
@@ -154,6 +150,10 @@ if (planOnly) {
   );
   return;
 }
+if (pendingRelease)
+  throw new Error(`Resolve pending release ${pendingRelease} before publishing ${version}; its checkpoint is preserved`);
+if (matchingCheckpoint && !releaseExists)
+  throw new Error(`Pending release ${version} is missing its local immutable files; restore them before retrying`);
 if (releaseExists && !resumeMode)
   {
     const message =
@@ -169,10 +169,10 @@ const environment = {
   npm_config_cache: npmCache,
   WRANGLER_LOG_PATH: resolve(npmCache, "wrangler.log"),
 };
-const run = (args) => {
+const run = (args, extraEnvironment) => {
   const result = spawnSync(process.execPath, args, {
     cwd: root,
-    env: environment,
+    env: extraEnvironment ? { ...environment, ...extraEnvironment } : environment,
     encoding: "utf8",
     shell: false,
     maxBuffer: 20 * 1024 * 1024,
@@ -194,7 +194,12 @@ const run = (args) => {
 };
 const startedAt = new Date().toISOString();
 let phase = "preflight";
-let deploymentStarted = resumeMode && previousReport.deploymentStarted === true;
+const origin = initialConfig.origins.primary;
+let deploymentStatus = "not-attempted";
+if (resumeMode && previousReport.deploymentStarted === true)
+  deploymentStatus = previousReport.deploymentStatus === "confirmed" && previousReport.deployedOrigins?.includes(origin)
+    ? "confirmed" : "outcome-unknown";
+let deploymentAttempt = "not-attempted";
 let productionModified = false;
 let rendererReport = null;
 let buildTransaction = null;
@@ -251,19 +256,11 @@ const restoreProduction = async () => {
   }
   return retained;
 };
-const writeReport = async (report) => {
-  await mkdir(dirname(reportPath), { recursive: true });
-  const temporary = `${reportPath}.${randomUUID()}.tmp`;
-  const handle = await open(temporary, "wx");
-  try {
-    try { await handle.writeFile(`${JSON.stringify(report, null, 2)}\n`); }
-    finally { await handle.close(); }
-    await rename(temporary, reportPath);
-  } finally { await rm(temporary, { force: true }); }
-};
+const writeReport = (report) => writePublishReport(reportPath, report);
 const writeCheckpoint = () => writeReport({
   startedAt, status: "in-progress", release: version, phase,
-  channel: capturedChannel, deploymentStarted, resumeAllowed, resumed: resumeMode,
+  channel: capturedChannel, resumeAllowed, resumed: resumeMode,
+  ...deploymentEvidence(deploymentStatus, deploymentAttempt, origin),
 });
 const beginPhase = (value) => {
   phase = value;
@@ -355,18 +352,37 @@ try {
     .map((name) => `test/${name}`);
   run(["--test", ...preDeploymentTests]);
 
-  beginPhase("Cloudflare Workers deployment");
+  beginPhase(DEPLOYMENT_PHASE);
   await assertProductionUnchanged();
-  deploymentStarted = true;
   await writeCheckpoint();
-  run([
-    "scripts/cdn/publish.mjs",
-    "--version",
-    version,
-    "--skip-build",
-    "--channel-file",
-    capturedChannelPath,
-  ]);
+  let deploymentError;
+  try {
+    run([
+      "scripts/cdn/publish.mjs",
+      "--version",
+      version,
+      "--skip-build",
+      "--channel-file",
+      capturedChannelPath,
+    ], { [PARENT_PUBLISH_LOCK]: lockOwner.token });
+  } catch (error) {
+    deploymentError = error;
+  }
+  try {
+    const evidence = await readPublishReport(reportPath);
+    if (evidence?.startedAt !== startedAt || evidence.release !== version || evidence.phase !== DEPLOYMENT_PHASE ||
+        !["not-attempted", "outcome-unknown", "confirmed"].includes(evidence.deploymentStatus) ||
+        !["not-attempted", "outcome-unknown", "confirmed"].includes(evidence.deploymentAttempt))
+      throw new Error("Cannot establish the current provider outcome from the publication checkpoint");
+    deploymentStatus = evidence.deploymentStatus;
+    deploymentAttempt = evidence.deploymentAttempt;
+  } catch (error) {
+    deploymentAttempt = "outcome-unknown";
+    if (deploymentStatus !== "confirmed") deploymentStatus = deploymentAttempt;
+    throw error;
+  }
+  if (deploymentError) throw deploymentError;
+  if (deploymentAttempt !== "confirmed") throw new Error("Provider did not confirm deployment");
   beginPhase("production CDN gate");
   run([
     "scripts/cdn/verify-production.mjs",
@@ -420,7 +436,7 @@ try {
     },
     renderer: rendererReport,
     customOrigin: config.origins.primary,
-    deployedOrigins: [config.origins.primary],
+    ...deploymentEvidence(deploymentStatus, deploymentAttempt, origin),
     platformDefaultDomainsUsed: false,
     productionModified: true,
     commitPerformed: false,
@@ -448,7 +464,7 @@ try {
   const productionRetained = productionModified ? await restoreProduction() : [];
   let releaseRollback = null;
   let rollbackError = null;
-  if (buildTransaction && !deploymentStarted) {
+  if (buildTransaction && deploymentStatus === "not-attempted") {
     try {
       releaseRollback = await rollbackRelease({
         releasesRoot, version, channelPath, transaction: buildTransaction,
@@ -469,16 +485,13 @@ try {
     exitCode: error.exitCode ?? null,
     renderer: rendererReport,
     channel: capturedChannel,
-    deployedOrigins: deploymentStarted
-      ? [initialConfig.origins.primary]
-      : [],
+    ...deploymentEvidence(deploymentStatus, deploymentAttempt, origin),
     productionRestored: productionModified && productionRetained.length === 0,
     productionRetained,
     releaseRollback,
     rollbackError,
-    deploymentStarted,
     resumed: resumeMode,
-    resumeAllowed: deploymentStarted || resumeMode,
+    resumeAllowed: deploymentStatus !== "not-attempted" || resumeMode,
     commitPerformed: false,
     pushPerformed: false,
   });

@@ -278,11 +278,12 @@ test("the embedded renderer can safely render the lightweight fallback without G
 for (const mode of ["full", "lite"]) {
   test(`profile introduction opens images only on request in ${mode} rendering`, async (t) => {
     const imageOrigin = "https://images.example.test";
-    const photo = imageOrigin + "/intro-images/markdown.png";
+    const photo = imageOrigin + "/intro-images/markdown(800).png";
     const redirect = origin + "/intro-images/redirect.png";
     const introduction = [
       "## Image privacy",
       `![Markdown photo](${photo} "Photo title")`,
+      '[![Project screenshot](../intro-images/project(2).png "Screenshot title")](/article/fixture "Article title")',
       '<picture><source srcset="https://images.example.test/intro-images/source.png"><img src="//images.example.test/intro-images/raw.png" srcset="https://images.example.test/intro-images/srcset.png" alt="Raw &amp; safe"></picture>',
       '<a href="https://example.test/gallery"><img src="https://images.example.test/intro-images/badge.png" alt="Badge"></a>',
       "![Luogu photo](/intro-images/redirect.png)",
@@ -313,7 +314,14 @@ for (const mode of ["full", "lite"]) {
     const intro = page.locator(".luogusp-intro-card .lfe-marked");
     assert.equal(await intro.locator("img, picture, source, iframe, link, [src], [srcset]").count(), 0);
     const photoLink = intro.getByRole("link", { name: "Markdown photo", exact: true });
+    assert.equal(await photoLink.getAttribute("href"), photo);
     assert.equal(await photoLink.getAttribute("title"), "Photo title");
+    const linkedScreenshot = intro.getByRole("link", { name: "Project screenshot", exact: true });
+    assert.equal(await linkedScreenshot.getAttribute("href"), "/article/fixture");
+    assert.equal(await linkedScreenshot.getAttribute("title"), "Article title");
+    const screenshotImage = intro.getByRole("link", { name: "打开图片：Project screenshot", exact: true });
+    assert.equal(await screenshotImage.getAttribute("href"), origin + "/intro-images/project(2).png");
+    assert.equal(await screenshotImage.getAttribute("title"), "Screenshot title");
     assert.equal(await intro.getByRole("link", { name: "Raw & safe", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/raw.png");
     assert.equal(await intro.getByRole("link", { name: "Badge", exact: true }).getAttribute("href"), "https://example.test/gallery");
     assert.equal(await intro.getByRole("link", { name: "打开图片：Badge", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/badge.png");
@@ -326,7 +334,7 @@ for (const mode of ["full", "lite"]) {
     }
 
     let navigation;
-    await page.context().route(photo, async (route) => {
+    await page.context().route((url) => url.href === photo, async (route) => {
       navigation = { isNavigation: route.request().isNavigationRequest(), referer: await route.request().headerValue("referer") };
       await route.fulfill({ contentType: "text/html", body: "<title>Photo fixture</title>" });
     });
@@ -851,12 +859,13 @@ async function reorderedArticleWrites(t, responses) {
 }
 
 for (const transport of ["fetch", "xhr"]) {
-  test(`restricted article ${transport} treats accepted favorites as pending until a completed acknowledgement`, async (t) => {
+  test(`restricted article ${transport} leaves accepted and partial favorites unconfirmed until completion`, async (t) => {
     const { page, start, finish } = await reorderedArticleWrites(t, {
       pending: () => ({ status: 202, body: "", contentType: "text/plain" }),
       "pending-json": () => ({ status: 202, json: { _empty: true } }),
       "pending-state": () => ({ status: 202, json: { favored: true, favorCount: 4 } }),
       partial: () => ({ status: 206, body: "", contentType: "text/plain" }),
+      "partial-state": () => ({ status: 206, json: { favored: true, favorCount: 4 } }),
       complete: () => ({ status: 204 }),
       reset: () => ({ status: 205 }),
       "empty-ok": () => ({ status: 200, body: "", contentType: "text/plain" }),
@@ -865,7 +874,8 @@ for (const transport of ["fetch", "xhr"]) {
     });
     const initial = await readArticleInteraction(page);
     const notice = page.locator("#luogusp-rst-write-favor-unconfirmed");
-    for (const slot of ["pending", "pending-json", "pending-state", "partial"]) {
+    assert.equal(await notice.count(), 0);
+    for (const slot of ["partial-state", "pending", "pending-json", "pending-state", "partial"]) {
       await start(slot, transport, "/article/123/favor");
       await finish(slot);
       assert.deepEqual(await readArticleInteraction(page), initial);
@@ -886,12 +896,12 @@ for (const transport of ["fetch", "xhr"]) {
   });
 }
 
-for (const transport of ["fetch", "xhr"]) {
-  test(`restricted article ${transport} keeps an accepted vote unconfirmed until completion`, async (t) => {
+for (const [transport, status] of [["fetch", 202], ["xhr", 202], ["fetch", 206], ["xhr", 206]]) {
+  test(`restricted article ${transport} leaves a vote with HTTP ${status} unconfirmed until completion`, async (t) => {
     const completed = { upvotes: 11, voted: 1 };
     const { page, start, finish } = await reorderedArticleWrites(t, {
       "favor-pending": () => ({ status: 202, json: { favored: true, favorCount: 4 } }),
-      pending: () => ({ status: 202, json: completed }),
+      pending: () => ({ status, json: completed }),
       complete: completed,
     });
     const initial = await readArticleInteraction(page);
@@ -1645,6 +1655,39 @@ test("settings traps focus and Enter chooses the focused refresh action", async 
   assert.equal(requests.filter(r => r.type === "document").length, 2);
 });
 
+for (const phase of ["focused entry", "dialog", "confirmation", "delayed navigation", "focus moved"]) {
+  test(`settings navigation replacement restores only owned focus during ${phase}`, async (t) => {
+    const { page } = await fixture(t, { html: fixtureHtml('<button id="elsewhere">Elsewhere</button>') });
+    const entry = page.locator(".luogusp-setting-entry");
+    const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+    const confirmation = page.getByRole("alertdialog");
+    const elsewhere = page.locator("#elsewhere");
+    if (phase === "focused entry") await entry.focus();
+    else await entry.press("Enter");
+    if (phase === "confirmation") await modal.getByRole("button", { name: "保存" }).press("Enter");
+    if (phase === "focus moved") await elsewhere.focus();
+
+    await entry.evaluate((node, delayed) => {
+      const nav = node.closest("nav");
+      const replacement = nav.cloneNode(true);
+      const clonedEntry = replacement.querySelector(".luogusp-setting-entry");
+      (clonedEntry.closest("li") || clonedEntry).remove();
+      if (delayed) {
+        const host = nav.parentElement;
+        nav.remove();
+        window.restoreNavigation = () => host.appendChild(replacement);
+      } else nav.replaceWith(replacement);
+    }, phase === "delayed navigation");
+    if (phase !== "focused entry") {
+      await page.keyboard.press("Escape");
+      await (phase === "confirmation" ? confirmation : modal).waitFor({ state: "detached" });
+    }
+    if (phase === "delayed navigation") await page.evaluate(() => window.restoreNavigation());
+    await entry.waitFor();
+    assert.ok(await focused(phase === "focus moved" ? elsewhere : entry));
+  });
+}
+
 test("settings Save, refresh confirmation and hint meet normal text contrast", async (t) => {
   const { page } = await fixture(t, { html: FIXTURE_HTML, reducedMotion: "reduce" });
   const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
@@ -1687,6 +1730,41 @@ test("settings Save, refresh confirmation and hint meet normal text contrast", a
   const ratios = [hint, ...[saveStates, refreshStates].flatMap(({ resting, focus, hover, active }) =>
     [resting, focus, hover, active])];
   assert.ok(ratios.every(value => value >= 4.5), JSON.stringify({ hint, saveStates, refreshStates }));
+});
+
+test("settings text keeps 4.5:1 contrast throughout its entrance", async (t) => {
+  const { page } = await fixture(t, { html: FIXTURE_HTML, reducedMotion: "no-preference" });
+  await page.addStyleTag({ content: `
+    html, body { background: white; }
+    #luogusp-settings .luogusp-panel[role=dialog] { animation-play-state: paused !important; }
+  ` });
+  await page.locator(".luogusp-setting-entry").press("Enter");
+  const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+  const ratios = await modal.evaluate(panel => {
+    const color = value => value.match(/[\d.]+/g).map(Number);
+    const mix = (front, back, alpha) => back.map((value, i) => front[i] * alpha + value * (1 - alpha));
+    const luminance = rgb => rgb.reduce((sum, value, i) => {
+      const srgb = value / 255;
+      const linear = srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+      return sum + [0.2126, 0.7152, 0.0722][i] * linear;
+    }, 0);
+    const mask = color(getComputedStyle(panel.previousElementSibling).backgroundColor);
+    const backdrop = mix(mask, [255, 255, 255], mask[3]);
+    const [entrance] = panel.getAnimations();
+    const duration = entrance.effect.getComputedTiming().duration;
+    return [0, 0.25, 0.5, 0.75, 1].map(progress => {
+      entrance.currentTime = duration * progress;
+      const opacity = Number(getComputedStyle(panel).opacity);
+      return [...panel.querySelectorAll("[data-act=save], .luogusp-hint")].map(node => {
+        const text = color(getComputedStyle(node).color);
+        const fill = color(getComputedStyle(node.matches("button") ? node : panel).backgroundColor);
+        const levels = [text, fill].map(rgb => luminance(mix(rgb, backdrop, opacity)));
+        return (Math.max(...levels) + 0.05) / (Math.min(...levels) + 0.05);
+      });
+    });
+  });
+  assert.ok(ratios.flat().every(ratio => ratio >= 4.5), JSON.stringify(ratios));
+  assert.ok(await focused(modal.getByRole("checkbox").first()));
 });
 
 test("settings fit small viewports and stay clickable above user previews", async (t) => {
@@ -2069,6 +2147,71 @@ test("problem preview loading and late fields stay static with reduced motion", 
   assert.deepEqual(await page.evaluate(() => window.previewMotion), []);
 });
 
+test("problem preview retries an empty detail on reopening and caches the usable detail", async (t) => {
+  let detailReads = 0;
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>'),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return route.fulfill({ json: {
+        user: viewer,
+        data: { problem: ++detailReads === 1 ? {} : { ...problem, name: "Recovered title", tags: [] } },
+      } });
+      if (url.pathname === "/record/list") return route.fulfill({
+        json: { template: "record.list", user: viewer, data: { records: { result: [] } } },
+      });
+    },
+  });
+  const trigger = page.locator("#problem");
+  const preview = card(page);
+  const recovered = preview.getByText("P1000 Recovered title", { exact: true });
+  await trigger.press("Alt+ArrowDown");
+  await preview.getByText("拿不到这条数据。").waitFor();
+  assert.equal(detailReads, 1);
+  await page.keyboard.press("Escape");
+  await trigger.press("Alt+ArrowDown");
+  await recovered.waitFor();
+  assert.equal(detailReads, 2);
+  await page.keyboard.press("Escape");
+  await trigger.press("Alt+ArrowDown");
+  await recovered.waitFor();
+  assert.equal(detailReads, 2);
+});
+
+test("problem preview leaves unsupported native XHR media to the direct lookup", async (t) => {
+  const detail = responseGate(t);
+  const { page, requests } = await fixture(t, {
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>'),
+    reply(route, url) {
+      if (url.pathname === "/training/100") return route.fulfill({
+        contentType: "text/plain",
+        body: JSON.stringify({ user: viewer, data: { training: { problems: [problem] } } }),
+      });
+      if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({ json: {
+        user: viewer, data: { problem: { ...problem, name: "Direct problem detail", tags: [] } },
+      } }));
+      if (url.pathname === "/record/list") return route.fulfill({
+        json: { template: "record.list", user: viewer, data: { records: { result: [] } } },
+      });
+    },
+  });
+  assert.equal(await page.evaluate(() => new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/training/100");
+    xhr.onloadend = () => resolve(xhr.status);
+    xhr.send();
+  })), 200);
+  const direct = page.waitForRequest(request => new URL(request.url()).pathname === "/problem/P1000");
+  await page.locator("#problem").press("Alt+ArrowDown");
+  await direct;
+  const preview = card(page);
+  await preview.getByRole("status").getByText("正在加载预览…").waitFor();
+  assert.equal(await preview.getByText("P1000 Native preview", { exact: true }).count(), 0);
+  detail.release();
+  await preview.getByText("P1000 Direct problem detail", { exact: true }).waitFor();
+  assert.deepEqual(requests.filter(r => ["/training/100", "/problem/P1000"].includes(r.path)).map(r => r.type),
+    ["xhr", "fetch"]);
+});
+
 test("problem preview retries a failed record lookup on reopening and caches the recovery", async (t) => {
   const recovery = responseGate(t);
   const summary = { ...problem, tags: [] };
@@ -2411,6 +2554,36 @@ test("user preview loads verified Luogu images without referrers, credentials, o
   assert.deepEqual(unwanted, []);
 });
 
+test("user preview leaves unsupported native XHR media to the direct lookup", async (t) => {
+  const { page, requests } = await fixture(t, {
+    html: fixtureHtml('<a id="user" href="/user/123">User</a>'),
+    reply(route, url) {
+      if (url.pathname === "/api/user/info/123") {
+        if (route.request().resourceType() === "xhr") return route.fulfill({
+          contentType: "text/plain",
+          body: JSON.stringify({ user: { uid: 123, name: "Native text fixture" } }),
+        });
+        return route.fulfill({ json: { user: { uid: 123, name: "Direct user info" } } });
+      }
+      if (url.pathname === "/user/123") return route.fulfill({ status: 403, json: {} });
+    },
+  });
+  const events = await page.evaluate(() => new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    const seen = [];
+    xhr.open("GET", "/api/user/info/123");
+    xhr.onload = () => seen.push(["load", xhr.status, JSON.parse(xhr.responseText).user.name]);
+    xhr.onloadend = () => resolve([...seen, ["loadend", xhr.status]]);
+    xhr.send();
+  }));
+  assert.deepEqual(events, [["load", 200, "Native text fixture"], ["loadend", 200]]);
+  await page.locator("#user").press("Alt+ArrowDown");
+  const preview = card(page);
+  await preview.getByRole("link", { name: "Direct user info" }).waitFor();
+  assert.equal(await preview.getByText("Native text fixture", { exact: true }).count(), 0);
+  assert.deepEqual(requests.filter(r => r.path === "/api/user/info/123").map(r => r.type), ["xhr", "fetch"]);
+});
+
 test("user preview joins a native XHR and shows basic fields ahead of the profile", async (t) => {
   const basic = responseGate(t);
   const profile = responseGate(t);
@@ -2505,6 +2678,45 @@ for (const [updated, expanded, focusToggle] of [["long", true, true], ["long", f
     assert.ok(await focused(trigger));
   });
 }
+
+test("user signature wraps an unbroken URL and reveals its full text on expansion", async (t) => {
+  const slogan = `https://www.luogu.com.cn/${"profile".repeat(65)}/end`;
+  const user = { uid: 123, name: "URL fixture", slogan };
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="url-user" href="/user/123">User</a>'),
+    viewport: { width: 420, height: 700 },
+    reply(route, url) {
+      if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user } });
+      if (url.pathname === "/user/123") return route.fulfill({ status: 404, json: {} });
+    },
+  });
+  const trigger = page.locator("#url-user");
+  const preview = card(page);
+  await trigger.press("Alt+ArrowDown");
+  await preview.getByRole("link", { name: user.name }).waitFor();
+  const text = preview.locator(".luogusp-hc-clamp");
+  const toggle = preview.locator(".luogusp-hc-expand");
+  const overflow = () => text.evaluate(node => ({
+    horizontal: node.scrollWidth - node.clientWidth,
+    vertical: node.scrollHeight - node.clientHeight,
+  }));
+  const collapsed = await overflow();
+  assert.ok(collapsed.horizontal <= 1 && collapsed.vertical > 1, JSON.stringify(collapsed));
+  await toggle.press("Enter");
+  await page.setViewportSize({ width: 240, height: 500 });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const expanded = await overflow();
+  assert.ok(expanded.horizontal <= 1 && expanded.vertical <= 1, JSON.stringify(expanded));
+  assert.equal(await text.textContent(), slogan);
+  assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+  assert.ok(await focused(toggle));
+  const control = await toggle.boundingBox();
+  const viewport = await preview.boundingBox();
+  assert.ok(control.y >= viewport.y && control.y + control.height <= viewport.y + viewport.height,
+    JSON.stringify({ control, viewport }));
+  await page.keyboard.press("Escape");
+  assert.ok(await focused(trigger));
+});
 
 for (const sizeChange of ["viewport resizing", "pinch zoom", "card-only resizing"]) {
   test(`open user signature reconciles disclosure through ${sizeChange}`, async (t) => {
@@ -3255,6 +3467,72 @@ test("IDE reduced motion removes disclosure and copy transitions", async (t) => 
   assert.equal(await chevron.evaluate((element) => getComputedStyle(element).transform), "none");
 });
 
+for (const focusMoved of [false, true]) {
+  test(`same-route IDE replacement announces cancellation with focus ${focusMoved ? "in the editor" : "on Stop"}`, async (t) => {
+    const response = responseGate(t);
+    const { page, firstSubmit, submitted } = await ideFixture(t, async (route, index) => {
+      await response.promise;
+      return route.fulfill({ json: { status: 200, data: { rid: index } } });
+    });
+    const batch = page.locator(".luogusp-ide-batch-btn");
+    const samples = page.getByRole("tab", { name: "样例测试", exact: true });
+    const custom = page.getByRole("tab", { name: "自定义测试", exact: true });
+    const editor = page.locator(".cm-content");
+    await batch.press("Enter");
+    await firstSubmit;
+    assert.ok(await focused(page.getByRole("button", { name: "停止", exact: true })));
+    if (focusMoved) await custom.press("Enter");
+    await page.locator("#native-io").evaluate((node, delayed) => {
+      const replacement = node.cloneNode(true);
+      replacement.style.display = "flex";
+      replacement.setAttribute("role", "group");
+      replacement.setAttribute("tabindex", "-1");
+      replacement.removeAttribute("aria-labelledby");
+      if (delayed) {
+        const host = node.parentElement;
+        node.remove();
+        window.restoreNativeIo = () => host.appendChild(replacement);
+      } else node.replaceWith(replacement);
+    }, focusMoved);
+    const status = page.getByRole("status").and(page.locator(".luogusp-ide-remount-status"))
+      .filter({ hasText: "IDE 面板已更新，样例测试已停止" });
+    await status.waitFor({ state: "visible" });
+    if (focusMoved) {
+      await editor.focus();
+      await page.evaluate(() => window.restoreNativeIo());
+    }
+    await samples.waitFor();
+    assert.ok(await focused(focusMoved ? editor : samples));
+    assert.equal(await (focusMoved ? custom : samples).getAttribute("aria-selected"), "true");
+    assert.equal(await page.locator(".luogusp-ide-row").count(), 0);
+    assert.equal(await page.getByRole("button", { name: "停止", exact: true }).count(), 0);
+
+    response.release();
+    await page.waitForFunction(() => window.ideAcknowledged === 1);
+    await page.evaluate(() => window.finishSample("AC"));
+    await batch.press("Enter");
+    await page.getByRole("button", { name: "上次运行结果未确认，请刷新页面后重试", exact: true }).waitFor();
+    assert.equal(submitted.length, 1);
+    assert.equal(await page.locator(".luogusp-ide-row").count(), 0);
+    assert.ok(await status.isVisible());
+  });
+}
+
+test("same-route IDE toolbar replacement restores focus to the batch button", async (t) => {
+  const { page } = await ideFixture(t);
+  const batch = page.locator(".luogusp-ide-batch-btn");
+  await batch.focus();
+  await batch.evaluate(button => {
+    const actions = button.parentElement;
+    const replacement = actions.cloneNode(true);
+    replacement.querySelector(".luogusp-ide-batch-btn").remove();
+    actions.replaceWith(replacement);
+  });
+  await batch.waitFor();
+  assert.ok(await focused(batch));
+  await assertIdeFocusVisible(batch);
+});
+
 test("leaving IDE restores native panels and waits for an outstanding submission to be rejected", async (t) => {
   const first = responseGate(t);
   const second = responseGate(t);
@@ -3274,7 +3552,7 @@ test("leaving IDE restores native panels and waits for an outstanding submission
 
   await page.evaluate(() => history.pushState({}, "", "/problem/P1000"));
   await batch.waitFor({ state: "detached" });
-  assert.equal(await page.locator(".luogusp-ide-tabbar, .luogusp-ide-panel, #luogusp-ide-style").count(), 0);
+  assert.equal(await page.locator(".luogusp-ide-tabbar, .luogusp-ide-panel, .luogusp-ide-remount-status, #luogusp-ide-style").count(), 0);
   assert.equal(await nativeInput.evaluate((element) => element.style.display), "flex");
   assert.equal(await selfTest.isEnabled(), true);
 

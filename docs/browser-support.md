@@ -11,6 +11,10 @@ status: stable
 baseline.config.json owns runtime classification, feature policy, approved
 minimums, downstream browsers, fallbacks and tool snapshots. baseline-targets.mjs
 supplies explicit frozen targets to every esbuild browser build.
+The guard requires a frozen target for Chrome, Edge, Firefox, Safari and iOS
+Safari. Build scripts use a named esbuild `build` import so the guard can
+verify use of the shared targets. Unrecognized esbuild import forms fail the
+guard.
 
 The Baseline guard resolves the moving policy query and a dated query for the
 last day of the snapshot's calendar quarter. Both must fit the approved

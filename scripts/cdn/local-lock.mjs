@@ -24,7 +24,7 @@ export async function withLocalLock(path, action) {
     throw error;
   }
   try {
-    return await action();
+    return await action(owner);
   } finally {
     // Cleanup only the pathname owned by this process.
     const current = await readFile(path, "utf8").catch((error) => {
@@ -32,6 +32,13 @@ export async function withLocalLock(path, action) {
     });
     if (current === body) await rm(path);
   }
+}
+
+export async function assertParentLocalLock(path, token) {
+  const owner = JSON.parse(await readFile(path, "utf8"));
+  if (!/^[0-9a-f-]{36}$/.test(token) || owner?.token !== token ||
+      owner?.host !== hostname() || owner?.pid !== process.ppid)
+    throw new Error(`Local lock ${path} does not belong to this publisher's parent`);
 }
 
 export async function recoverLocalLock(path) {

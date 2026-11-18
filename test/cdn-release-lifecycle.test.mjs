@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { snapshotRelease } from "../scripts/cdn/release-integrity.mjs";
 import { rollbackRelease } from "../scripts/cdn/release-transaction.mjs";
@@ -88,7 +89,14 @@ async function fixture(t) {
       }
     `,
     "src/rendering/renderer-dependencies.js": "export const MARKDOWN_RENDERER_API_VERSION = 1; export const rendererStackDependencies = {};",
-    "config/cdn.json": '{"origins":{"primary":"https://stage.example","bootstrap":"https://stage.example"}}',
+    "config/cdn.json": JSON.stringify({
+      origins: { primary: "https://stage.example", bootstrap: "https://stage.example" },
+      projects: { cloudflare: "fixture" }, cli: { wrangler: { minimum: "4.107.0" } },
+    }),
+    "deploy/cloudflare/wrangler.jsonc": JSON.stringify({
+      name: "fixture", main: "worker.js", workers_dev: false, preview_urls: false,
+      routes: [{ pattern: "stage.example", custom_domain: true }], assets: { directory: "../../dist/cdn" },
+    }),
     "src/userscript.meta.js": "// ==UserScript==\n// @version      1.0.0\n// ==/UserScript==\n",
     "LuoguSP.user.js": "// ==UserScript==\n// @version      1.0.0\n// ==/UserScript==\n(()=>{})();\n",
     "reports/quality-report.json": "{}\n",
@@ -115,10 +123,52 @@ async function fixture(t) {
   assert.equal(previous.status, 0, previous.stderr);
   const channelPath = join(cwd, "cdn/channels/canary.json");
   const previousChannel = await readFile(channelPath, "utf8");
+  const providerHook = join(cwd, "mock-provider.mjs");
+  await writeFile(providerHook, String.raw`
+    import cp from "node:child_process";
+    import { syncBuiltinESMExports } from "node:module";
+    import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+    import { dirname, join, resolve } from "node:path";
+    const spawn = cp.spawnSync;
+    const mode = process.env.LUOGUSP_TEST_PUBLISH_MODE;
+    let deployed;
+    globalThis.fetch = async (url, options) => {
+      const name = url.pathname.slice(1);
+      if (deployed && process.env.LUOGUSP_TEST_PAUSE_VERIFICATION === "1") {
+        writeFileSync("verification.ready", "");
+        const deadline = Date.now() + 8000;
+        while (!existsSync("verification.continue") && Date.now() < deadline)
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        if (!existsSync("verification.continue")) throw new Error("Verification fixture was not released");
+      }
+      const published = deployed ? join(deployed, name) : name === "releases/1.0.0/manifest.json" ? join("cdn", name) : null;
+      const status = mode === "provider-preflight" ? 503 : published ? 200 : 404;
+      const response = new Response(published ? readFileSync(published) : "", { status, headers: {
+        "Content-Type": name.endsWith(".json") ? "application/json" : "application/javascript",
+        "Cache-Control": name.startsWith("channels/") ? "no-cache" : "immutable",
+        "Access-Control-Allow-Origin": "*",
+      } });
+      return Object.defineProperty(response, "url", { value: url.href });
+    };
+    cp.spawnSync = (executable, args, options) => {
+      if (executable === "git") return spawn(executable, args, options);
+      const [program, operation, flag, configPath] = process.platform === "win32" ? args.slice(3) : [executable, ...args];
+      if (program !== "wrangler") throw new Error("Unexpected provider fixture command");
+      if (operation === "--version") return { status: 0, stdout: "4.107.0\n" };
+      if (operation !== "deploy" || flag !== "--config") throw new Error("Unexpected provider operation");
+      const config = JSON.parse(readFileSync(configPath));
+      deployed = resolve(dirname(configPath), config.assets.directory);
+      const channel = JSON.parse(readFileSync(join(deployed, "channels/canary.json")));
+      appendFileSync("provider.jsonl", JSON.stringify({ channel: channel.release, releases: readdirSync(join(deployed, "releases")) }) + "\n");
+      return { status: mode === "provider-error" ? 1 : 0 };
+    };
+    syncBuiltinESMExports();
+  `);
   const hook = join(cwd, "mock-publish.mjs");
   await writeFile(hook, String.raw`
     import cp from "node:child_process";
     import { syncBuiltinESMExports } from "node:module";
+    import { pathToFileURL } from "node:url";
     import { cpSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync, writeSync } from "node:fs";
     const spawn = cp.spawnSync;
     const mode = process.env.LUOGUSP_TEST_PUBLISH_MODE;
@@ -161,7 +211,7 @@ async function fixture(t) {
           concurrent("2.0.0");
         }
         return ["success", "deploy-failure", "production-peer-before", "production-peer-after",
-          "production-unreadable", "promotion-failure", "deployment-interruption"].includes(mode) ? success : failure;
+          "production-unreadable", "promotion-failure", "deployment-interruption"].includes(mode) || mode.startsWith("provider-") ? success : failure;
       }
       if (entry === "scripts/cdn/stage-userscript.mjs") {
         const manifest = JSON.parse(readFileSync("cdn/releases/2.0.0/manifest.json"));
@@ -174,11 +224,19 @@ async function fixture(t) {
         return success;
       }
       if (entry === "scripts/cdn/publish.mjs") {
-        if (mode === "deployment-interruption") pause();
+        if (mode.startsWith("provider-"))
+          return spawn(executable, ["--import", pathToFileURL("mock-provider.mjs").href, ...args], options);
         if (args.includes("--channel-file")) {
           const channel = JSON.parse(readFileSync(args[args.indexOf("--channel-file") + 1], "utf8"));
           if (channel.release !== "2.0.0") throw new Error("Provider received a different channel");
         }
+        const receiptPath = "reports/publish.json";
+        const receipt = JSON.parse(readFileSync(receiptPath));
+        const succeeded = !["deploy-failure", "deployment-interruption"].includes(mode);
+        const outcome = succeeded ? "confirmed" : "outcome-unknown";
+        writeFileSync(receiptPath, JSON.stringify({ ...receipt, deploymentStatus: outcome, deploymentAttempt: outcome,
+          deploymentStarted: true, deployedOrigins: succeeded ? ["https://stage.example"] : [] }));
+        if (mode === "deployment-interruption") pause();
         return mode === "deploy-failure" ? failure : success;
       }
       if (entry === "scripts/quality.mjs") {
@@ -195,6 +253,7 @@ async function fixture(t) {
         const outputIndex = args.indexOf("--report-output");
         if (outputIndex !== -1) writeFileSync(args[outputIndex + 1], '{"fixture":true}\n');
       }
+      if (entry === "scripts/cdn/verify-production.mjs" && mode === "provider-post-gate") return failure;
       if (["scripts/cdn/verify-production.mjs", "scripts/build.mjs", "scripts/quality.mjs"].includes(entry))
         return success;
       throw new Error("Unexpected mock command " + JSON.stringify(args));
@@ -210,7 +269,8 @@ async function fixture(t) {
   const recover = (lock) => spawnSync(process.execPath, ["scripts/cdn/recover-lock.mjs", lock], {
     cwd, encoding: "utf8", windowsHide: true,
   });
-  return { cwd, write, build, publish, publishArgs, recover, snapshot, channelPath, previousChannel };
+  const providerArgs = ["--import", pathToFileURL(providerHook).href, "scripts/cdn/publish.mjs"];
+  return { cwd, write, build, publish, publishArgs, providerArgs, recover, snapshot, channelPath, previousChannel };
 }
 
 test("publication refuses shared-file drift before any provider call", async (t) => {
@@ -449,7 +509,7 @@ for (const change of ["asset", "extra-file", "same-release-channel"]) {
 
 test("publish retains immutable output after deployment starts and can resume", async (t) => {
   const { cwd, build, publish, snapshot, channelPath } = await fixture(t);
-  assert.notEqual(publish("deploy-failure").status, 0);
+  assert.notEqual(publish("provider-error").status, 0);
   const manifest = (await snapshot()).sha256;
   const channel = await readFile(channelPath);
   const report = JSON.parse(await readFile(join(cwd, "reports/publish.json")));
@@ -458,12 +518,108 @@ test("publish retains immutable output after deployment starts and can resume", 
   const intervening = build("3.0.0");
   assert.equal(intervening.status, 0, intervening.stderr);
   const otherChannel = await readFile(channelPath);
+  const otherManifest = (await snapshot("3.0.0")).sha256;
   assert.notDeepEqual(otherChannel, channel);
-  const resumed = publish("success");
+  const resumed = publish("provider-success");
   assert.equal(resumed.status, 0, resumed.stderr);
   assert.equal((await snapshot()).sha256, manifest);
   assert.deepEqual(await readFile(channelPath), otherChannel);
+  assert.equal((await snapshot("3.0.0")).sha256, otherManifest);
+  const invocations = (await readFile(join(cwd, "provider.jsonl"), "utf8")).trim().split("\n").map(JSON.parse);
+  assert.deepEqual(invocations, [
+    { channel: version, releases: ["1.0.0", version] },
+    { channel: version, releases: ["1.0.0", version] },
+  ]);
   assert.equal(JSON.parse(await readFile(join(cwd, "reports/publish.json"))).channel, channel.toString("utf8"));
+});
+
+test("a different release cannot displace an unresolved publication checkpoint", async (t) => {
+  const { cwd, publish, publishArgs } = await fixture(t);
+  assert.notEqual(publish("provider-error").status, 0);
+  const receiptPath = join(cwd, "reports/publish.json");
+  const checkpoint = await readFile(receiptPath);
+  const args = [...publishArgs.slice(0, -1), "3.0.0"];
+  const plan = spawnSync(process.execPath, [...args, "--plan"], { cwd, encoding: "utf8" });
+  assert.equal(plan.status, 0, plan.stderr);
+  assert.equal(JSON.parse(plan.stdout).wouldPublish, false);
+  assert.equal(JSON.parse(plan.stdout).pendingRelease, version);
+  const result = spawnSync(process.execPath, args, { cwd, encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /pending release 2\.0\.0/i);
+  assert.deepEqual(await readFile(receiptPath), checkpoint);
+  assert.equal(publish("success").status, 0);
+});
+
+for (const [mode, deploymentStatus, resumable] of [
+  ["provider-preflight", "not-attempted", false],
+  ["provider-error", "outcome-unknown", true],
+  ["provider-post-gate", "confirmed", true],
+]) {
+  test(`publication reports ${deploymentStatus} after ${mode}`, async (t) => {
+    const { cwd, publish } = await fixture(t);
+    const result = publish(mode);
+    assert.notEqual(result.status, 0);
+    const report = JSON.parse(await readFile(join(cwd, "reports/publish.json")));
+    assert.equal(report.deploymentStatus, deploymentStatus, JSON.stringify(report));
+    assert.equal(report.deploymentAttempt, deploymentStatus);
+    assert.equal(report.resumeAllowed, resumable);
+    assert.deepEqual(report.deployedOrigins, deploymentStatus === "confirmed" ? ["https://stage.example"] : []);
+    if (resumable) assert.equal((await snapshotRelease(join(cwd, "cdn/releases"), version)).manifest.release, version);
+    else assert.equal(report.releaseRollback.removed, true);
+  });
+}
+
+test("a resumed preflight rejection preserves earlier provider confirmation", async (t) => {
+  const { cwd, publish } = await fixture(t);
+  assert.notEqual(publish("provider-post-gate").status, 0);
+  assert.notEqual(publish("provider-preflight").status, 0);
+  const report = JSON.parse(await readFile(join(cwd, "reports/publish.json")));
+  assert.equal(report.deploymentStatus, "confirmed");
+  assert.equal(report.deploymentAttempt, "not-attempted");
+  assert.equal(report.resumeAllowed, true);
+  assert.deepEqual(report.deployedOrigins, ["https://stage.example"]);
+});
+
+test("a standalone publisher cannot deploy while the high-level publisher verifies the provider result", async (t) => {
+  const { cwd, write, publishArgs, providerArgs, snapshot, build } = await fixture(t);
+  const child = spawn(process.execPath, publishArgs, { cwd, windowsHide: true, env: {
+    ...process.env, LUOGUSP_TEST_PUBLISH_MODE: "provider-success", LUOGUSP_TEST_PAUSE_VERIFICATION: "1",
+  } });
+  const exited = once(child, "exit");
+  let stderr = "";
+  child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+  child.stdout.resume();
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  try {
+    const deadline = Date.now() + 6000;
+    for (;;) {
+      const ready = await readFile(join(cwd, "verification.ready")).catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+        return null;
+      });
+      if (ready) break;
+      assert.ok(Date.now() < deadline && child.exitCode === null, `Provider did not start verification: ${stderr}`);
+      await delay(20);
+    }
+    const other = build("3.0.0");
+    assert.equal(other.status, 0, other.stderr);
+    const channelPath = join(cwd, "cdn/channels/canary.json");
+    const otherChannel = await readFile(channelPath);
+    const olderManifest = (await snapshot()).sha256;
+    const second = spawnSync(process.execPath, [...providerArgs, "--version", "3.0.0", "--skip-build"], {
+      cwd, encoding: "utf8", windowsHide: true,
+    });
+    assert.notEqual(second.status, 0, second.stdout);
+    assert.match(second.stderr, /publish\.lock is busy/);
+    assert.deepEqual(await readFile(channelPath), otherChannel);
+    assert.equal((await snapshot()).sha256, olderManifest);
+    const invocations = (await readFile(join(cwd, "provider.jsonl"), "utf8")).trim().split("\n").map(JSON.parse);
+    assert.deepEqual(invocations, [{ channel: version, releases: ["1.0.0", version] }]);
+  } finally {
+    await write("verification.continue", "");
+    const [exitCode] = await exited;
+    assert.equal(exitCode, 0, stderr);
+  }
 });
 
 for (const mode of ["predeployment-interruption", "deployment-interruption"]) {

@@ -330,9 +330,7 @@ export function renderUserCard(card, options = {}) {
 
   // slogan。原生在空的時候回落到「這個人很懶，什麼也沒有留下。」，我們照做。
   // ★ 過長交給 CSS 截（-webkit-line-clamp 兩行），不在 JS 裡切字串 —— 會劈開 emoji。
-  // ★ owner 2026-08-14 第四輪：超兩行時**在第二行末尾**給一個展開按鈕，展開到最多 6 行
-  //   （再多也截斷，免得卡片頂出視口）。按鈕預設藏著，由 `finalizeCard()` 量完實際高度
-  //   再決定露不露 —— 只有真的溢出才需要它。
+  // `finalizeCard()` 量完才在第二行末尾顯示展開按鈕。展開後交由卡片捲動顯示全文。
   const sloganBox = el("div", "luogusp-hc-slogan");
   const slogan = el(
     "div",

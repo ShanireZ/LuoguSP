@@ -1,3 +1,4 @@
+import { watchOwnedFocus } from "../../browser/owned-focus.js";
 import { SETTINGS_STYLE } from "./style.js";
 
 export function createSettingsFeature({ storage, configurableFeatures }) {
@@ -32,7 +33,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
   //   齒輪從此點了沒反應。所以登記表是**一份**，兩種覆蓋層都進。
   const openOverlays = new Set();
   const closeAllOverlays = () => {
-    for (const close of [...openOverlays]) close();
+    for (const close of [...openOverlays]) close(false);
   };
   function mountOverlay(overlay, trigger, initialFocus) {
     const viewport = window.visualViewport;
@@ -46,12 +47,15 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
         active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     };
     const close = (restoreFocus = true) => {
+      const active = document.activeElement;
+      const returnToTrigger = restoreFocus && (active === document.body || overlay.contains(active));
       viewport?.removeEventListener("resize", updateViewport);
       viewport?.removeEventListener("scroll", updateViewport);
       overlay.remove();
       document.removeEventListener("keydown", onKey, true);
       openOverlays.delete(close);
-      if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
+      if (returnToTrigger)
+        (trigger.isConnected ? trigger : addSettingButton())?.focus({ preventScroll: true });
     };
     function onKey(event) {
       if (event.key === "Escape") {
@@ -207,7 +211,8 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       }
     }
     if (!nav) return; // 該頁無可識別導覽，跳過
-    if (nav.querySelector(".luogusp-setting-entry")) return; // 已存在
+    const existing = nav.querySelector(".luogusp-setting-entry");
+    if (existing) return existing;
 
     // 選一個既有圖標又有文字的原生條目當範本（取靠後的，落在工具/雜項區），克隆繼承洛谷當前樣式與間距。
     const cands = [...nav.querySelectorAll("a")].filter(
@@ -267,6 +272,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       link.click();
     });
     unit.parentNode.insertBefore(clone, unit.nextSibling);
+    return link;
   }
 
   // 洛谷是 SPA：首頁頂欄↔內容頁側欄隨路由切換而重掛，入口須在導覽變化時補上（rAF 節流，加了就早退）。
@@ -275,10 +281,14 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
   // 新版側欄（nav.sidebar，columba 文章頁等）=「外掛設定」單行。
   function watchSettingButton() {
     let frame = null;
+    const focus = watchOwnedFocus(document, (node) => node?.closest?.(".luogusp-setting-entry, #luogusp-settings"));
     const tick = () => {
       frame = null;
       try {
-        addSettingButton();
+        const previous = focus.current();
+        const entry = addSettingButton();
+        if (previous && !previous.isConnected && document.activeElement === document.body)
+          entry?.focus({ preventScroll: true });
       } catch (e) {
         console.error("LuoguSP setting entry:", e);
       }
@@ -290,6 +300,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     addSettingButton();
     return () => {
       observer.disconnect();
+      focus.dispose();
       if (frame !== null) cancelAnimationFrame(frame);
       document
         .querySelectorAll(".luogusp-setting-entry")

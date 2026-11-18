@@ -6,8 +6,10 @@ import { parseArgs } from "node:util";
 import { commandInvocation } from "./command-invocation.mjs";
 import { assertCliBaseline } from "./cli-baseline.mjs";
 import { assertCommittedReleases } from "./committed-releases.mjs";
+import { assertParentLocalLock, withLocalLock } from "./local-lock.mjs";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 import { prepareCdn } from "./prepare-lib.mjs";
+import { DEPLOYMENT_PHASE, PARENT_PUBLISH_LOCK, deploymentEvidence, readPublishReport, writePublishReport } from "./publish-receipt.mjs";
 import { RELEASE_VERSION, digest, readRegularFile, requireRegularDirectory } from "./release-integrity.mjs";
 import { verifyDeployment } from "./verify-deployment.mjs";
 
@@ -27,6 +29,13 @@ if (!version || !RELEASE_VERSION.test(version))
   throw new Error("Pass --version to publish an immutable CDN release");
 if (channelFile !== undefined && (!channelFile || !skipBuild))
   throw new Error("Pass --channel-file with --skip-build to deploy a captured channel");
+
+const reportDirectory = resolve(root, "reports");
+const lockPath = resolve(reportDirectory, "publish.lock");
+const checkpointPath = resolve(reportDirectory, "publish.json");
+const parentLock = process.env[PARENT_PUBLISH_LOCK];
+
+async function publish(checkpoint) {
 const config = JSON.parse(await readFile(resolve(root, "config/cdn.json"), "utf8"));
 const origin = resolveConfiguredOrigin({ config, originOverride });
 const wranglerPath = "deploy/cloudflare/wrangler.jsonc";
@@ -52,6 +61,7 @@ const environment = {
   npm_config_cache: npmCache,
   WRANGLER_LOG_PATH: resolve(npmCache, "wrangler.log"),
 };
+delete environment[PARENT_PUBLISH_LOCK];
 const invoke = (command, args) => {
   const [executable, invocationArgs] = commandInvocation(command, args);
   const result = spawnSync(executable, invocationArgs, {
@@ -96,7 +106,7 @@ async function matchesManifestBody(response, expected) {
   return offset === expected.length;
 }
 
-async function requireUnusedOrIdenticalVersion(release, { files }) {
+async function isPublishedVersion(release, { files }, { requirePublished }) {
   const name = `releases/${release}/manifest.json`;
   const url = new URL(`/${name}`, origin);
   try {
@@ -111,7 +121,8 @@ async function requireUnusedOrIdenticalVersion(release, { files }) {
       throw new Error("manifest response did not come from its exact URL");
     if (response.status === 404) {
       await response.body?.cancel();
-      return;
+      if (requirePublished) throw new Error("committed release has no published manifest");
+      return false;
     }
     if (response.status !== 200) {
       await response.body?.cancel();
@@ -119,6 +130,7 @@ async function requireUnusedOrIdenticalVersion(release, { files }) {
     }
     if (!(await matchesManifestBody(response, files.get(name))))
       throw new Error("published immutable manifest differs from the prepared manifest");
+    return true;
   } catch (error) {
     throw new Error(`Refusing deployment of CDN release ${release}: ${error.message}`, { cause: error });
   }
@@ -131,6 +143,8 @@ if (channelFile) {
   const output = run("node", ["scripts/cdn/build.mjs", "--version", version]);
   capturedChannel = Buffer.from(JSON.parse(output).transaction.channel);
 }
+if (checkpoint && !capturedChannel.equals(Buffer.from(checkpoint.channel)))
+  throw new Error("Captured channel does not match the active publication checkpoint");
 await mkdir(npmCache, { recursive: true });
 await requireRegularDirectory(npmCache);
 const snapshot = await mkdtemp(resolve(npmCache, `luogusp-cdn-deploy-${new Date().toISOString().slice(0, 10)}-`));
@@ -141,14 +155,18 @@ try {
     origin,
     version,
     capturedChannel,
-    async checkReleases(snapshots, staged) {
-      assertCommittedReleases(root, snapshots);
-      const releases = [...staged];
+    async selectReleases(snapshots, candidates) {
+      const committed = assertCommittedReleases(root, snapshots);
+      const staged = new Map();
+      const releases = [...candidates];
       for (let start = 0; start < releases.length; start += MAX_CONCURRENT_MANIFEST_CHECKS) {
         const batch = releases.slice(start, start + MAX_CONCURRENT_MANIFEST_CHECKS);
-        await Promise.all(batch.map(([release, item]) =>
-          requireUnusedOrIdenticalVersion(release, item)));
+        const published = await Promise.all(batch.map(([release, item]) =>
+          isPublishedVersion(release, item, { requirePublished: release !== version && committed.has(release) })));
+        for (const [index, [release, item]] of batch.entries())
+          if (release === version || published[index]) staged.set(release, item);
       }
+      return staged;
     },
   });
   // Use the global Wrangler CLI and enforce the configured minimum before deployment.
@@ -171,7 +189,14 @@ try {
     snapshotConfig.main = relative(snapshot, resolve(root, dirname(wranglerPath), wrangler.main));
   await writeFile(snapshotConfigPath, `${JSON.stringify(snapshotConfig, null, 2)}\n`, { flag: "wx" });
   await prepared.verifyStaged();
+  const recordAttempt = async (attempt) => {
+    if (!checkpoint) return;
+    const status = checkpoint.deploymentStatus === "confirmed" ? "confirmed" : attempt;
+    await writePublishReport(checkpointPath, { ...checkpoint, ...deploymentEvidence(status, attempt, origin) });
+  };
+  await recordAttempt("outcome-unknown");
   run("wrangler", ["deploy", "--config", relative(root, snapshotConfigPath)]);
+  await recordAttempt("confirmed");
 
   const report = {
     publishedAt: new Date().toISOString(),
@@ -182,6 +207,7 @@ try {
     target: "cloudflare-workers",
     project: config.projects.cloudflare,
     origin,
+    deploymentStatus: "confirmed",
     platformDefaultDomainsUsed: false,
   };
   await writeFile(
@@ -193,4 +219,18 @@ try {
   console.log(`Published ${version} to Cloudflare Workers at ${origin}`);
 } finally {
   await rm(snapshot, { recursive: true, force: true });
+}
+}
+
+if (parentLock !== undefined) {
+  await assertParentLocalLock(lockPath, parentLock);
+  const checkpoint = await readPublishReport(checkpointPath);
+  if (!channelFile || checkpoint?.status !== "in-progress" || checkpoint.release !== version ||
+      checkpoint.phase !== DEPLOYMENT_PHASE || typeof checkpoint.channel !== "string" ||
+      checkpoint.deploymentAttempt !== "not-attempted")
+    throw new Error("Low-level publisher requires the active parent's deployment checkpoint");
+  await publish(checkpoint);
+} else {
+  await mkdir(reportDirectory, { recursive: true });
+  await withLocalLock(lockPath, () => publish(null));
 }

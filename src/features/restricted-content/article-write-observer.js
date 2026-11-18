@@ -53,21 +53,21 @@ function parseBody(text) {
 export function interpretArticleWrite(config = {}) {
   const request = articleWriteRequestUrl(config);
   if (!request || !responseMatches(request, config)) return null;
-  // HTTP 202 cannot confirm either action, even with a provisional JSON body.
-  if (config.status === 202) return null;
+  const permitsBody = config.status === 200 || config.status === 201;
+  if (!permitsBody && config.status !== 204 && config.status !== 205) return null;
   const body = parseBody(config.responseText);
   if (!body) return null;
 
   if (request.pathname.endsWith("/vote")) {
     const votes = request.searchParams.getAll("vote");
     const upvote = body.upvotes ?? body.upvote;
-    if (votes.length !== 1 || !VOTE_VALUES.has(votes[0]) ||
+    if (!permitsBody || votes.length !== 1 || !VOTE_VALUES.has(votes[0]) ||
       body.voted !== Number(votes[0]) || !Number.isSafeInteger(upvote)) return null;
     return { kind: "vote", voted: body.voted, upvote };
   }
 
   const emptyAcknowledgement = Object.keys(body).every((key) => key === "_empty");
-  if (emptyAcknowledgement && ![200, 204, 205].includes(config.status)) return null;
+  if (emptyAcknowledgement ? config.status === 201 : !permitsBody) return null;
   const removals = request.searchParams.getAll("remove");
   if (removals.length && (removals.length !== 1 || removals[0] !== "1")) return null;
   const favored = removals.length === 0;

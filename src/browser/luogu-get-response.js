@@ -9,5 +9,14 @@ export function matchesGetUrl(response, expectedUrl) {
 }
 
 export function getMediaType(response) {
-  return response.headers?.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+  return mediaType(response.headers?.get("content-type"));
+}
+
+const mediaType = (value) => value?.split(";", 1)[0].trim().toLowerCase();
+
+export function readJsonXhr(xhr, expectedUrl) {
+  if (xhr.status !== 200 || xhr.responseURL !== expectedUrl ||
+      mediaType(xhr.getResponseHeader("content-type")) !== "application/json") return null;
+  if (xhr.responseType === "json") return xhr.response;
+  return !xhr.responseType || xhr.responseType === "text" ? JSON.parse(xhr.responseText) : null;
 }

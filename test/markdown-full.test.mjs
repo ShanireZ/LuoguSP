@@ -91,6 +91,32 @@ test("full markdown renderer exposes a deterministic QA failure injection", () =
   );
 });
 
+for (const forceFullFailure of [false, true]) {
+  test(`profile Markdown retains balanced image destinations and linked images in ${forceFullFailure ? "lite" : "full"} mode`, () => {
+    const { dom, renderer } = createRenderer();
+    const result = renderer.renderMarkdown([
+      '![Cover](https://example.test/front(800).png "Cover title")',
+      '[![Project screenshot](../screen(2).png "Screenshot title")](/article/fixture "Article title")',
+      '**[Labeled `$code$` and $x$](/problem/P1000)**',
+    ].join("\n\n"), { forceFullFailure });
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = result.html;
+    const links = [...root.querySelectorAll("a")];
+    assert.deepEqual(links.map((link) => [link.getAttribute("href"), link.getAttribute("title")]), [
+      ["https://example.test/front(800).png", "Cover title"],
+      ["/article/fixture", "Article title"],
+      ["https://www.luogu.com.cn/screen(2).png", "Screenshot title"],
+      ["/problem/P1000", null],
+    ]);
+    assert.equal(links[1].textContent, "Project screenshot");
+    assert.equal(links[2].textContent, "打开图片：Project screenshot");
+    assert.ok(links.every((link) => link.target === "_blank" && link.rel === "noopener noreferrer"));
+    assert.equal(root.querySelector("img, a a"), null);
+    assert.equal(root.querySelector("strong > a > code")?.textContent, "$code$");
+    assert.ok(root.querySelector("strong > a .katex"));
+  });
+}
+
 for (const literal of ["%%LGMATH0&#58;0%%", "%%LGMATH0\\:0%%", "%%LGMATH&#48;:0%%"]) {
   test(`HTML and Markdown normalization cannot forge a math marker: ${literal}`, () => {
     const { dom, renderer } = createRenderer();

@@ -1,4 +1,5 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
+import { watchOwnedFocus } from "../../browser/owned-focus.js";
 import { IDE_BATCH_LABEL, createBatchButtonHint } from "./batch-hint.js";
 import {
   diffIdeLines,
@@ -114,6 +115,10 @@ export function createIdeBatchFeature({ storage, problemData }) {
 
   const IDE_RESULT_UNCONFIRMED = "上次运行结果未确认，请刷新页面后重试";
   const IDE_CONFIGURATION_STALE = "代码或编译设置已更改 · 结果已过期";
+  const IDE_LAYOUT_INTERRUPTED = "IDE 面板已更新，样例测试已停止";
+  let ownedFocus = null;
+  let pendingTabFocus = null;
+  let remountStatus = null;
   // The native run can outlive the userscript's route and its HTTP waiter.
   let pendingNativeAttempt = null;
   let ideSubmitWaiter = null;
@@ -356,10 +361,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     };
   }
 
-  // 克隆原生控件時，範本身上的浮泡/讀屏名字會一起被抄走 —— 換了文字也換不掉它。
-  // 側欄「外掛設定」就是這麼把「文章廣場」的浮泡帶出來的（2026-08-20 owner 報的）。
-  // ★ 這裡是同形防禦：IDE 頁要登入，我沒法量「自測」按鈕到底帶不帶 title，
-  //   所以按最壞情況剝淨；真站上若本來就沒有，這兩行等於空轉。data-v-* 是作用域 CSS，絕不能碰。
+  // Cloning native buttons also copies tooltip and accessible names.
   function dropInheritedNames(el) {
     for (const node of [el, ...el.querySelectorAll("*")])
       for (const name of ["title", "aria-label", "aria-labelledby"])
@@ -375,13 +377,14 @@ export function createIdeBatchFeature({ storage, problemData }) {
       (b) => (b.textContent || "").trim() === "自测",
     );
     if (!selfTest) return;
+    const restoreFocus = IDE_VIEW.button && ownedFocus.current() === IDE_VIEW.button;
     IDE_VIEW.button?.remove();
     // 克隆原生「自測」按鈕繼承洛谷樣式（含 data-v 作用域），只換文字
     const btn = selfTest.cloneNode(true);
     btn.textContent = IDE_BATCH_LABEL;
     dropInheritedNames(btn);
     btn.classList.add("luogusp-ide-batch-btn");
-    btn.disabled = false;
+    btn.disabled = controls.isRunning();
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -389,24 +392,30 @@ export function createIdeBatchFeature({ storage, problemData }) {
     });
     actions.insertBefore(btn, selfTest);
     IDE_VIEW.button = btn;
+    if (restoreFocus && document.activeElement === document.body)
+      btn.focus({ preventScroll: true });
+  }
+
+  function replaceIdeTabs(controls) {
+    const focus = ownedFocus.current();
+    if (focus && focus !== IDE_VIEW.button) pendingTabFocus = focus;
+    if (controls.invalidate()) remountStatus.textContent = IDE_LAYOUT_INTERRUPTED;
+    unmountIdeTabs();
   }
 
   function mountIdeTabs(controls) {
     const inputTb = ideToolbarByTitle("输入");
-    if (!inputTb) return;
-    const ioLayout = inputTb.closest(".panel-layout"); // 底部 輸入|輸出 水平分欄
-    const host = ioLayout && ioLayout.parentElement;
-    if (!host) return;
+    const ioLayout = inputTb?.closest(".panel-layout"); // 底部 輸入|輸出 水平分欄
+    const host = ioLayout?.parentElement;
     if (
+      host &&
       IDE_VIEW.ioLayout === ioLayout &&
       IDE_VIEW.tabBar?.parentElement === host &&
       IDE_VIEW.panel?.parentElement === host
     )
       return;
-    if (IDE_VIEW.ioLayout) {
-      controls.invalidate();
-      unmountIdeTabs();
-    }
+    if (IDE_VIEW.ioLayout) replaceIdeTabs(controls);
+    if (!host) return;
     const { tabBar, panel, restoreInputAttributes } = createIdeTabControls(ioLayout, switchIdeTab);
     IDE_VIEW.restoreInputAttributes = restoreInputAttributes;
     panel.innerHTML =
@@ -443,14 +452,18 @@ export function createIdeBatchFeature({ storage, problemData }) {
     IDE_VIEW.stopBtn = mkBtn("停止", "luogusp-ide-stop", controls.stop);
     IDE_VIEW.stopBtn.style.display = "none";
     IDE_VIEW.rerunBtn = mkBtn("重新测试", "luogusp-ide-rerun", controls.start);
+    IDE_VIEW.rowsEl = panel.querySelector(".luogusp-ide-rows");
+    IDE_VIEW.summaryEl = panel.querySelector(".luogusp-ide-summary");
+    if (remountStatus.textContent) IDE_VIEW.summaryEl.textContent = remountStatus.textContent;
     host.insertBefore(tabBar, ioLayout);
     host.appendChild(panel);
     IDE_VIEW.tabBar = tabBar;
     IDE_VIEW.panel = panel;
     IDE_VIEW.ioLayout = ioLayout;
-    IDE_VIEW.rowsEl = panel.querySelector(".luogusp-ide-rows");
-    IDE_VIEW.summaryEl = panel.querySelector(".luogusp-ide-summary");
     syncIdeTabVisibility();
+    if (pendingTabFocus && ownedFocus.current() === pendingTabFocus && document.activeElement === document.body)
+      tabBar.querySelector(`[data-tab="${IDE_VIEW.activeTab}"]`)?.focus({ preventScroll: true });
+    pendingTabFocus = null;
   }
   function switchIdeTab(tab) {
     IDE_VIEW.activeTab = tab;
@@ -545,14 +558,14 @@ export function createIdeBatchFeature({ storage, problemData }) {
   }
 
   function ensureIdeBatchUI(controls) {
-    if (!ideModeActive()) {
+    if (location.hash !== "#ide") {
       controls.invalidate();
       unmountIdeBatchUI();
       return;
     }
     injectStyle();
-    mountIdeButton(controls);
     mountIdeTabs(controls);
+    mountIdeButton(controls);
     syncIdeTabVisibility();
   }
 
@@ -564,7 +577,6 @@ export function createIdeBatchFeature({ storage, problemData }) {
     IDE_VIEW.restoreInputAttributes = null;
     IDE_VIEW.tabBar?.remove();
     IDE_VIEW.panel?.remove();
-    IDE_VIEW.activeTab = "custom";
     IDE_VIEW.tabBar = IDE_VIEW.panel = IDE_VIEW.ioLayout = null;
     IDE_VIEW.rowsEl = IDE_VIEW.summaryEl = IDE_VIEW.stopBtn = IDE_VIEW.rerunBtn = null;
   }
@@ -572,6 +584,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
   function unmountIdeBatchUI() {
     ideHint.cancel();
     unmountIdeTabs();
+    IDE_VIEW.activeTab = "custom";
+    pendingTabFocus = null;
     IDE_VIEW.button?.remove();
     IDE_VIEW.style?.remove();
     IDE_VIEW.button = IDE_VIEW.style = null;
@@ -662,6 +676,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
         runId,
         pid,
         routeToken,
+        ioLayout: IDE_VIEW.ioLayout,
         configuration,
         matchSubmission: createIdeSubmissionMatcher(configuration),
         samples,
@@ -674,6 +689,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
     },
     isCurrent: (context) =>
       ideModeActive() &&
+      context.ioLayout === IDE_VIEW.ioLayout &&
+      (!context.ioLayout || context.ioLayout.isConnected) &&
       currentPid() === context.pid &&
       `${location.pathname}${location.search}${location.hash}` ===
         context.routeToken,
@@ -682,6 +699,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
       sameIdeCompilerSettings(configuration, readIdeCompilerSettings(codeActions())),
     hint: (message) => ideHint.show(message),
     begin: (context) => {
+      remountStatus.textContent = "";
       stopWatchingCompiler?.();
       stopWatchingCompiler = watchIdeCompilerSettings(
         codeActions, context.configuration, ideBrowserDriver.controls.markStale,
@@ -759,6 +777,14 @@ export function createIdeBatchFeature({ storage, problemData }) {
     markStale: showIdeStale,
     mount: (controls) => {
       ideBrowserDriver.controls = controls;
+      ownedFocus = watchOwnedFocus(document, (node) => node && (
+        node === IDE_VIEW.button || node === IDE_VIEW.ioLayout ||
+        IDE_VIEW.tabBar?.contains(node) || IDE_VIEW.panel?.contains(node)
+      ));
+      remountStatus = document.createElement("div");
+      remountStatus.className = "luogusp-ide-remount-status";
+      remountStatus.setAttribute("role", "status");
+      document.body.appendChild(remountStatus);
       const unpatchSubmit = installIdeSubmitObserver({
         currentWaiter: () => ideSubmitWaiter?.attempt === pendingNativeAttempt ? ideSubmitWaiter : null,
         finish: finishIdeSubmit,
@@ -777,17 +803,20 @@ export function createIdeBatchFeature({ storage, problemData }) {
         if (frame === null) frame = requestAnimationFrame(tick);
       };
       const observer = new MutationObserver(() => {
-        if (
-          location.hash === "#ide" ||
-          IDE_VIEW.tabBar ||
-          controls.isRunning()
-        )
-          queue();
+        const onIde = location.hash === "#ide";
+        if (onIde && IDE_VIEW.ioLayout &&
+            (!IDE_VIEW.ioLayout.isConnected || !IDE_VIEW.tabBar.isConnected || !IDE_VIEW.panel.isConnected))
+          replaceIdeTabs(controls);
+        if (onIde || IDE_VIEW.tabBar || controls.isRunning()) queue();
       });
       observer.observe(document.body, { childList: true, subtree: true });
       ensureIdeBatchUI(controls);
       return () => {
         observer.disconnect();
+        ownedFocus.dispose();
+        ownedFocus = null;
+        remountStatus.remove();
+        remountStatus = null;
         cancelIdeSubmitWaiter();
         unpatchSubmit();
         unhook();

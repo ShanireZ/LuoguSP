@@ -10,6 +10,7 @@ export const IDE_BATCH_STYLE = `
   .luogusp-ide-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
   .luogusp-ide-title{font-weight:500;}
   .luogusp-ide-summary{font-size:12px;color:#666;}
+  .luogusp-ide-remount-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
   .luogusp-ide-headbtns{margin-left:auto;display:flex;gap:6px;}
   .luogusp-ide-row{border:1px solid #e8e8e8;border-radius:6px;margin:0 0 8px;background:#fff;overflow:hidden;}
   .luogusp-ide-rowhead{display:flex;align-items:center;width:100%;gap:10px;padding:8px 12px;text-align:left;cursor:pointer;}

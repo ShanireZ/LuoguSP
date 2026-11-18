@@ -1,39 +1,48 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
+import { createNativeUserInfo } from "../src/browser/luogu-user-info.js";
 import { createNativeDifficultySource } from "../src/features/problem-color/native-difficulty-source.js";
 
 function fixture({
   path = "/problem/P1001",
   page = { data: { problem: { pid: "P1001", difficulty: 1 } } },
+  prepareOtherGet,
 } = {}) {
   const dom = new JSDOM(
     `<script id="lentille-context" type="application/json">${JSON.stringify(page)}</script>`,
     { url: `https://www.luogu.com.cn${path}` },
   );
   class XHR extends EventTarget {
-    open(method, url) { this.url = url; }
+    reads = 0;
+    open(method, url) { this.url = new URL(url, dom.window.document.baseURI).href.split("#")[0]; }
     send() {}
-    reply(data, { status = 200, responseType = "" } = {}) {
+    getResponseHeader(name) { return name === "content-type" ? this.mediaType : null; }
+    get response() { this.reads++; return this.data; }
+    get responseText() { this.reads++; return typeof this.data === "string" ? this.data : JSON.stringify(this.data); }
+    reply(data, {
+      status = 200, responseType = "", mediaType = "application/json", responseUrl = this.url,
+    } = {}) {
       this.status = status;
-      this.responseURL = new URL(this.url, "https://www.luogu.com.cn").href;
+      this.responseURL = responseUrl;
       this.responseType = responseType;
-      this.response = data;
-      this.responseText = typeof data === "string" ? data : JSON.stringify(data);
+      this.mediaType = mediaType;
+      this.data = data;
       this.dispatchEvent(new Event("load"));
       this.dispatchEvent(new Event("loadend"));
     }
   }
   let now = 1;
   const source = createNativeDifficultySource({ document: dom.window.document,
-    XMLHttpRequest: XHR, origin: "https://www.luogu.com.cn", now: () => now });
+    XMLHttpRequest: XHR, origin: "https://www.luogu.com.cn", now: () => now, prepareOtherGet });
   const seen = [];
   const originalOpen = XHR.prototype.open;
   const stop = source.subscribe(() => seen.push(source.harvest().at(-1)));
   const request = (url, method = "GET") => {
     const xhr = new XHR(); xhr.open(method, url); xhr.send(); return xhr;
   };
-  return { source, seen, stop, request, XHR, originalOpen, tick: () => now++ };
+  return { source, seen, stop, request, document: dom.window.document,
+    XHR, originalOpen, tick: () => now++ };
 }
 
 test("native page data is available during load before Luogu consumes loadend", () => {
@@ -64,6 +73,66 @@ test("native observer ignores wrong origins, methods, shapes, tiers, and passed 
     { pid: "P5/evil", difficulty: 1 },
   ] } });
   assert.equal(fx.seen.length, 0);
+  fx.stop();
+});
+
+test("native Lentille data is read only from the original normalized URL with JSON media", () => {
+  const fx = fixture();
+  const data = { data: { problem: { pid: "P1001", difficulty: 2 } } };
+  const base = fx.document.createElement("base");
+  base.href = "https://www.luogu.com.cn/problem/";
+  fx.document.head.append(base);
+  const xhr = fx.request("/problem/P1001?page=1#ide");
+  xhr.reply(data, { responseUrl: "https://www.luogu.com.cn/problem/P1001?page=2" });
+  assert.equal(xhr.reads, 0);
+  assert.deepEqual(fx.seen, []);
+
+  xhr.open("GET", "/problem/P1001?page=1#ide");
+  xhr.send();
+  xhr.reply(data, { mediaType: "text/plain", responseType: "json" });
+  assert.equal(xhr.reads, 0);
+  assert.deepEqual(fx.seen, []);
+
+  xhr.open("GET", "./P1001?page=1#ide");
+  xhr.send();
+  base.href = "https://www.luogu.com.cn/";
+  xhr.reply(data, { mediaType: "Application/JSON; charset=utf-8", responseType: "json" });
+  assert.equal(xhr.reads, 1);
+  assert.deepEqual(fx.seen[0].problems, [{ pid: "P1001", difficulty: 2 }]);
+  fx.stop();
+});
+
+test("native user-info only stores eligible JSON for the original URL and viewer", async () => {
+  let account = 42;
+  const info = createNativeUserInfo({ origin: "https://www.luogu.com.cn", viewer: () => account });
+  const fx = fixture({ path: "/api/user/info/", prepareOtherGet: info.prepare });
+  const data = { user: { uid: 123, name: "Native preview", unrelated: "ignored" } };
+  const xhr = fx.request("/api/user/info/123?locale=en");
+  let joined = info.read(123, account);
+  xhr.reply(data, { responseUrl: "https://www.luogu.com.cn/api/user/info/123?locale=zh" });
+  assert.equal(await joined, null);
+  assert.equal(await info.read(123, account), null);
+  assert.equal(xhr.reads, 0);
+
+  xhr.open("GET", "/api/user/info/123");
+  xhr.send();
+  joined = info.read(123, account);
+  xhr.reply(data, { mediaType: null });
+  assert.equal(await joined, null);
+  assert.equal(await info.read(123, account), null);
+  assert.equal(xhr.reads, 0);
+
+  xhr.open("GET", "./123");
+  xhr.send();
+  joined = info.read(123, account);
+  xhr.open("GET", "./123");
+  xhr.send();
+  xhr.reply(data, { responseType: "json" });
+  assert.equal(await joined, null);
+  assert.equal(xhr.reads, 1);
+  assert.deepEqual(await info.read(123, account), { user: { uid: 123, name: "Native preview" } });
+  account++;
+  assert.equal(await info.read(123, account), null);
   fx.stop();
 });
 

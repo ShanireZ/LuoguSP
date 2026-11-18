@@ -43,23 +43,31 @@ Direct reads reject redirects and require an exact HTTP 200 response at the
 requested URL. The shared detail lookup accepts JSON and native HTML. Hover
 fallbacks and supplemental reads require JSON. Responses with invalid provenance
 leave the already available preview fields in place.
+Passive native XHR observations require HTTP 200, JSON media and the original
+same-origin request URL, including its query. They compare against the URL
+resolved from the document base with the fragment removed and leave native
+events intact.
 The shared cache holds only fields those features consume and scopes
-details by viewer, contest and language. A problem card displays available
-fields first and fills in details and the viewer's latest record as they
+details by viewer, contest and language. Empty or unusable detail payloads leave
+the existing summary available and allow a later retry. A problem card displays
+available fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
 failures. A successful empty record list uses the normal cache lifetime.
 New or updated data fields can fade in over 125 ms. The initial preview and
 navigation controls appear immediately. Reduced motion stops the preview's
-loading indicator and skips the field fade. The main settings dialog uses
-a 160 ms opacity entrance only when reduced motion is off. Its content scrolls
-within the available viewport, and the dialog takes precedence over previews.
+loading indicator and skips the field fade. The main settings dialog fades in its
+shadow over 160 ms only when reduced motion is off. Text and controls stay
+opaque throughout. Its content scrolls within the available viewport, and the
+dialog takes precedence over previews.
 Both settings and refresh confirmation track the visual viewport's size and
 offset during zoom and pan. Resizing keeps the focused control visible through
 immediate scrolling. Closing either overlay removes its viewport listeners.
 Without VisualViewport, the existing fixed layout remains available.
 The enabled primary action labels and the settings save/reload hint use at
 least 4.5:1 text contrast.
+If native navigation replaces its settings entry on the same route, focus may
+return to the replacement when the entry or dialog owned focus.
 A focused eligible link opens its preview with Alt+Down Arrow. Escape closes
 the preview and returns focus to the link when the preview holds focus. Tab at
 either end closes the preview and continues from the link's place in the page.
@@ -79,8 +87,10 @@ redirects. Before decoding, each response must match its requested URL and JSON
 media type. Successful reads require HTTP 200. Invalid provenance retries on
 reopening while available fields from the other branch remain visible.
 Late signature updates retain the existing disclosure button and expansion
-state. The preview remeasures its two-line fit after a width change. The button
-reports its expanded state. When the signature fits within two lines, the
+state. Unbroken text wraps within the preview. Expanded text can scroll within
+the card while the focused disclosure stays in view. The preview remeasures its
+two-line fit after a width change. The button reports its expanded state.
+When the signature fits within two lines, the
 disclosure collapses and hides. Focus held on that button returns to the
 user-name link. Focus on another control stays with that control.
 The preview replaces the native user card after the optional feature has mounted.
@@ -120,6 +130,9 @@ Starting a batch moves focus from its disabled controls to Stop. If Stop still
 owns focus when it becomes disabled, focus moves to the Samples tab. Completion
 restores the initiating control or another available batch control only while
 the batch still owns focus.
+Replacing the native input/output layout on the same route invalidates an
+active batch and announces the interruption. The replacement controls recover
+focus when LuoguSP lost its focused control during the replacement.
 The batch summary announces updates, and copy controls appear on keyboard focus.
 Output highlighting aligns insertions and deletions within a bounded comparison.
 
@@ -141,7 +154,10 @@ focus to the introduction heading only when the retry still holds focus; focus
 on another control and route cancellation take precedence.
 Both fallback modes convert author images with HTTP(S) sources into ordinary
 links that open in a new tab without sending a referrer. Relative sources are
-resolved against the page base. Even same-origin URLs and Luogu's CDN can
+resolved against the page base. Linked Markdown images preserve the outer link
+and provide a separate image link. The lightweight renderer uses the shared
+inline link grammar for destinations and titles, including balanced parentheses.
+Even same-origin URLs and Luogu's CDN can
 redirect, so the fallback makes no automatic image requests. Unsupported or
 credential-bearing sources are represented as alt text or an unavailable label.
 The fallback discards alternate sources such as `srcset`.
@@ -167,10 +183,13 @@ channel files. The low-level publisher checks the configured origin, candidate
 version and staged files before deploying. It gives Wrangler a private asset
 snapshot and retains that snapshot through provider execution and verification.
 Post-deployment verification uses the snapshot's channel and manifest bytes.
-The publisher checks the remote manifest of every staged release, including
-committed ones, before invoking Wrangler. It accepts HTTP 404 for an unused
-manifest URL or an exact byte match for HTTP 200. Published version paths are
-immutable.
+The publisher checks each eligible release's public manifest before invoking
+Wrangler. The requested version may return HTTP 404 or its exact manifest bytes.
+Other versions enter the deployment snapshot only when their public manifest
+matches. A missing committed release manifest or a conflicting response blocks
+deployment. Unpublished local builds keep their own bytes and channel selection.
+Both CDN verification gates reject redirects and require HTTP 200 from the
+requested URL before reading and verifying its bytes.
 The CDN builder finishes compilation before claiming a version directory.
 Handled write failures clean up that build's directory. A successful build
 returns its directory identity, manifest digest and channel transition to the
@@ -180,11 +199,14 @@ rollback share a short exclusive file lock and atomic replacement. Rollback
 restores the channel captured at the build's own update only if its current
 bytes still match and the previous target remains valid. Changed output or an
 unavailable previous target causes the complete release to be retained.
-The high-level publisher holds an exclusive local lock from before reading
-production snapshots until reporting and cleanup finish. It rejects production
-file drift before deployment and again before promotion. Each promotion uses
-atomic replacement after an unchanged-byte check; rollback restores only files
-whose current bytes still match this transaction's promoted bytes. Concurrent
+Both publisher entry points share an exclusive local lock through provider
+execution and final verification. The high-level publisher also holds it during
+production snapshots and local promotion. Its deployment child verifies that
+its parent owns the lock and that the captured channel matches the checkpoint.
+The high-level publisher rejects production file drift before deployment and
+again before promotion. Each promotion uses atomic replacement after an
+unchanged-byte check. Rollback restores only files whose current bytes still
+match this transaction's promoted bytes. Concurrent
 changes are retained and listed in the local report as a partial restoration.
 If one production path cannot be read during rollback, the publisher records
 it as retained and continues restoring the other owned paths.
@@ -197,10 +219,15 @@ file during the final filesystem compare-and-replace operation.
 The high-level publisher saves a local checkpoint with the captured channel
 before it invokes the deployment subprocess. A same-version retry verifies the
 existing release and uses the checkpoint's channel and manifest pin. This keeps
-another build's local channel selection intact. A retry requires version files
-that still agree on the previous stable release. If interruption occurred before
-the first checkpoint or during local promotion, reconcile the release and
-production files against the report and Git before retrying.
+another build's local channel selection intact. An unresolved checkpoint blocks
+the high-level publisher from starting a different release. A retry requires
+version files that still agree on the previous stable release. The deployment
+attempt records `not-attempted` during preflight, `outcome-unknown` before
+invoking Wrangler and `confirmed` after Wrangler returns success. The report
+lists an origin in `deployedOrigins` only after provider confirmation. Origin
+verification has its own results. If interruption occurred before the first
+checkpoint or during local promotion, reconcile the release and production
+files against the report and Git before retrying.
 
 Before recovering a lock, confirm that the interrupted command and its child
 processes, including Wrangler, have exited. For a local owner record, run

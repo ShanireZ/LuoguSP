@@ -54,7 +54,7 @@ async function resolveOutput(root, source, explicitOutput) {
   return output;
 }
 
-export async function prepareCdn({ root, explicitOutput, origin, version, capturedChannel, checkReleases }) {
+export async function prepareCdn({ root, explicitOutput, origin, version, capturedChannel, selectReleases }) {
   const source = resolve(root, "cdn");
   await requireRegularDirectory(source);
   const output = await resolveOutput(root, source, explicitOutput);
@@ -77,13 +77,12 @@ export async function prepareCdn({ root, explicitOutput, origin, version, captur
       `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>LuoguSP CDN</title></head><body><h1>LuoguSP CDN</h1><p>Canary release: ${channel.release}</p></body></html>\n`,
     )],
   ]);
-  const staged = new Map();
-  for (const [release, { files: pinned }] of releases) {
-    if (release.includes("-canary.") && release !== channel.release) continue;
-    staged.set(release, releases.get(release));
+  const candidates = new Map([...releases].filter(([release]) =>
+    !release.includes("-canary.") || release === channel.release));
+  const staged = selectReleases ? await selectReleases(releases, candidates) : candidates;
+  for (const { files: pinned } of staged.values()) {
     for (const [name, body] of pinned) files.set(name, body);
   }
-  await checkReleases?.(releases, staged);
 
   // Only write the exact bytes already verified. Never recursively copy sources.
   await rm(output, { recursive: true, force: true });

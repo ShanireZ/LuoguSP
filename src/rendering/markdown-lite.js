@@ -1,3 +1,4 @@
+import { Lexer } from "marked";
 import { IMAGE_UNAVAILABLE, resolveIntroImageUrl } from "./intro-image.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
 
@@ -61,19 +62,33 @@ export function renderMarkdownLite(md, options = {}) {
     .map((part, index) => index % 2 ? part : mathInText(part))
     .join("");
   const stashCode = (code) => stash(`<code>${esc(code)}</code>`);
-  const inlineLiterals = (source) => source.replace(
-    /`([^`]+)`|(!?)\[([^\]\n]*)\]\(([^)\s]+)([^)\n]*)\)/g,
-    (match, code, image, label, value, suffix) => {
-      if (code !== undefined) return stashCode(code);
-      const title = titleAttribute(suffix.trim().match(/^(['"])(.*)\1$/)?.[2]);
-      if (image) return stash(imageMarkup(value, label, title));
-      const safeUrl = url(value);
-      if (!safeUrl) return stash(esc(match));
-      const labelWithCode = label.replace(/`([^`]+)`/g, (_, code) => stashCode(code));
-      const text = restore(inline(esc(mathInFragments(labelWithCode))));
-      return stash(`<a href="${esc(safeUrl)}"${title} target="_blank" rel="noopener noreferrer">${text}</a>`);
-    },
-  );
+  const rewriteInlineTokens = (tokens) => tokens.map((token) => {
+    if (token.type === "codespan") return stashCode(token.text);
+    if (token.type === "image") return stash(imageMarkup(token.href, token.text, titleAttribute(token.title)));
+    if (token.type === "link" && token.raw.startsWith("[")) {
+      const safeUrl = url(token.href);
+      if (!safeUrl) return stash(esc(token.raw));
+      const label = rewriteInlineTokens(token.tokens);
+      const text = restore(inline(esc(mathInFragments(label))));
+      return stash(`<a href="${esc(safeUrl)}"${titleAttribute(token.title)} target="_blank" rel="noopener noreferrer">${text}</a>`);
+    }
+    if (["strong", "em", "del"].includes(token.type)) {
+      // Preserve the delimiters for Lite's formatting pass.
+      const width = (token.raw.length - token.text.length) / 2;
+      return token.raw.slice(0, width) + rewriteInlineTokens(token.tokens) + token.raw.slice(-width);
+    }
+    return token.raw;
+  }).join("");
+  const inlineLiterals = (source) => {
+    if (!source.includes("[") && !source.includes("`")) return source;
+    // Reuse inline grammar only. The lightweight block renderer and sanitization
+    // still work separately from the full parser and its extensions.
+    try {
+      return rewriteInlineTokens(Lexer.lexInline(source, { gfm: false }));
+    } catch {
+      return source.replace(/`([^`]+)`/g, (_, code) => stashCode(code));
+    }
+  };
   const cells = (row) =>
     row
       .trim()

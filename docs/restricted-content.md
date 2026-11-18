@@ -45,11 +45,11 @@ establish the current account's privileges or personal state.
   write. Observe XMLHttpRequest writes through their native response.
   Save votes only when the final Luogu response confirms the requested vote
   and count. Save favorites only when the final response matches the same
-  write endpoint and its success format. HTTP 202 leaves either action
-  unconfirmed, including a provisional JSON body. Empty favorite acknowledgements
-  require HTTP 200, 204 or 205. A structured completed response must pass the existing
-  field checks. A transport rejection remains a
-  rejection. Each unconfirmed 2xx response has a warning for its action,
+  write endpoint and its success format. Structured acknowledgements for either
+  action require HTTP 200 or 201 and the matching response fields. Empty favorite
+  acknowledgements require HTTP 200, 204 or 205. Accepted or partial responses
+  leave the last confirmed state and its time intact. A transport rejection
+  remains a rejection. Each unconfirmed 2xx response has a warning for its action,
   cleared when Luogu later confirms that action. A confirmed operation that
   cannot be saved has a separate warning until a successful save for that
   action. Confirmations use the rebuilt page's recognized account. Never log

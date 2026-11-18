@@ -79,6 +79,29 @@ test("native detail supplies difficulty, hover fields and IDE samples without a 
   assert.deepEqual((await data.load(problem.pid)).data.problem.samples, problem.samples);
 });
 
+test("empty and unusable detail replies leave native summaries available and retryable", async () => {
+  const incomplete = { pid: problem.pid, name: " ", tags: ["unknown"], limits: { time: [] }, samples: [] };
+  for (const summary of [undefined, { ...problem, totalAccepted: 0, submitted: false }]) {
+    const replies = [{}, incomplete, { pid: problem.pid, name: "Full title" }];
+    const data = createProblemData({ origin, now: () => 3, text: async () => JSON.stringify({
+      data: { problem: replies.shift() },
+    }) });
+    data.rememberPage({ viewer: 42, data: { recommendations: summary ? [summary] : [] } },
+      url("/problem/P2000"), 1);
+
+    assert.deepEqual((await data.load(problem.pid))?.data.problem, summary);
+    data.rememberPage({ viewer: 42, data: { problem: incomplete, bookmarked: false } },
+      url("/problem/P1001"), 2);
+    assert.deepEqual(data.peek(problem.pid)?.data.problem, summary);
+    assert.deepEqual((await data.load(problem.pid))?.data.problem, summary);
+    assert.equal(replies.length, 1);
+    assert.deepEqual((await data.load(problem.pid))?.data.problem,
+      { ...summary, pid: problem.pid, name: "Full title" });
+    assert.equal((await data.load(problem.pid))?.data.problem.name, "Full title");
+    assert.equal(replies.length, 0);
+  }
+});
+
 test("one detail request serves concurrent consumers and survives one aborted route", async () => {
   const clock = new FakeClock();
   const request = deferred();

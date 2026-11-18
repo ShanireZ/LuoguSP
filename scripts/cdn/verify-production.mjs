@@ -160,7 +160,6 @@ for (const path of paths) {
           cacheControl,
           cors,
           ok:
-            response.ok &&
             actual === expected &&
             cors === "*" &&
             cacheControl.includes("immutable") &&

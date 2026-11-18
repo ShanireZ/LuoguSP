@@ -1,6 +1,7 @@
 import { PID_PATTERN, isScopedProblemUrl } from "./identity.js";
 import { DIFFICULTY_TIERS } from "../../core/luogu-difficulty.js";
 import { asLentillePage, collectDifficultyBatches, readLentillePage } from "./lentille-harvest.js";
+import { readJsonXhr } from "../../browser/luogu-get-response.js";
 
 export const validDifficulty = (value) =>
   Number.isInteger(value) && value >= 0 && value < DIFFICULTY_TIERS;
@@ -63,14 +64,15 @@ export function createNativeDifficultySource({
   const recordPages = new Map();
   let requestOrder = 0;
   const supportedPath = /^\/(?:problem\/(?:list|[A-Za-z0-9_]+)|training\/\d+|user\/\d+\/practice)\/?$/;
-  const pageUrl = (raw, initial = false) => {
+  const sameOriginUrl = (raw, base) => {
     try {
-      const url = new URL(raw, origin);
-      return url.origin === origin &&
-        (initial || supportedPath.test(url.pathname) || RECORD_PATH.test(url.pathname)) ? url : null;
+      const url = new URL(raw, base);
+      // XHR resolves relative URLs at open and excludes fragments from responseURL.
+      url.hash = "";
+      return url.origin === origin && !url.username && !url.password ? url : null;
     } catch { return null; }
   };
-  const initialUrl = pageUrl(document.URL, true);
+  const initialUrl = sameOriginUrl(document.URL, origin);
   const initialAt = now();
   const harvest = () => {
     const page = readLentillePage(document);
@@ -94,38 +96,46 @@ export function createNativeDifficultySource({
     const requests = new WeakMap();
     const pending = new Set();
     let active = true;
-    const open = function (method, url) {
+    const open = function (method, rawUrl) {
+      requests.get(this)?.clean?.();
       requests.delete(this);
       if (active && String(method).toUpperCase() === "GET") {
-        if (pageUrl(url)) requests.set(this, { at: now(), order: ++requestOrder });
-        else {
-          const track = prepareOtherGet?.(url);
-          if (track) requests.set(this, { track });
+        const url = sameOriginUrl(rawUrl, document.baseURI || origin);
+        if (url) {
+          if (supportedPath.test(url.pathname) || RECORD_PATH.test(url.pathname))
+            requests.set(this, { url, at: now(), order: ++requestOrder });
+          else {
+            const prepare = prepareOtherGet?.(url);
+            if (prepare) requests.set(this, { prepare });
+          }
         }
       }
       return rawOpen.apply(this, arguments);
     };
     const send = function () {
       const request = active && requests.get(this);
-      if (request?.track) {
-        request.track(this);
-        return rawSend.apply(this, arguments);
-      }
-      if (request) {
+      if (request && !request.clean) {
         const xhr = this;
+        // Lentille needs to be read in load, before Luogu renders in loadend.
+        let finish = request.prepare?.();
+        const event = finish ? "loadend" : "load";
         const clean = () => {
-          xhr.removeEventListener("load", read);
+          xhr.removeEventListener(event, read);
           xhr.removeEventListener("loadend", clean);
           pending.delete(clean);
+          delete request.clean;
+          finish?.(null);
         };
         const read = () => {
-          if (!active || xhr.status !== 200) return;
-          const url = pageUrl(xhr.responseURL);
-          if (!url) return;
+          if (!active || requests.get(xhr) !== request) return;
+          if (finish) {
+            const complete = finish;
+            finish = null;
+            return complete(xhr);
+          }
+          const { url } = request;
           try {
-            const payload = xhr.responseType === "json" ? xhr.response :
-              (!xhr.responseType || xhr.responseType === "text") ? JSON.parse(xhr.responseText) : null;
-            const page = asLentillePage(payload);
+            const page = asLentillePage(readJsonXhr(xhr, url.href));
             if (!page) return;
             onPage(page, url, request.at);
             const batch = isScopedProblemUrl(url) ? null : snapshot(page.data, request.at);
@@ -148,9 +158,16 @@ export function createNativeDifficultySource({
             if (updated) accept();
           } catch { /* Unsupported/HTML/error responses leave the fallback intact. */ }
         };
+        request.clean = clean;
         pending.add(clean);
-        xhr.addEventListener("load", read);
+        xhr.addEventListener(event, read);
         xhr.addEventListener("loadend", clean, { once: true });
+        try {
+          return rawSend.apply(xhr, arguments);
+        } catch (error) {
+          clean();
+          throw error;
+        }
       }
       return rawSend.apply(this, arguments);
     };

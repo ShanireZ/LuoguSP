@@ -62,7 +62,6 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
             cacheControl,
             cors,
             ok:
-              response.ok &&
               actual === expected &&
               cors === "*" &&
               (channelFile

@@ -1,7 +1,7 @@
 // hover 卡樣式。跟著洛谷的觀感走：白底、細邊、圓角 4px、陰影淺。
 // 固定定位避開錨點容器的裁切，placeCard 設定可用高度，內容在卡內捲動。
 // 使用者頁頭用負邊距貼齊卡片邊緣，比例取自原生 1168 × 240 的頁頭。
-// 統計標籤和數值置中，獎項靠右分行。簽名預設兩行，展開後至多六行。
+// 統計標籤和數值置中，獎項靠右分行。簽名預設兩行，完整簽名可在卡片內捲動查看。
 // 明確覆蓋標籤的 display:flex，確保 [hidden] 仍可隱藏。卡內操作可換行，
 // 屏蔽沿用洛谷的危險色，在原本的操作區確認。
 export const HOVER_CARD_STYLE = `
@@ -37,9 +37,10 @@ body.luogusp-hc-owns-user-preview .float-card{display:none !important;}
 .luogusp-hc-val{text-align:right;word-break:break-all;min-width:0;}
 .luogusp-hc-stack{display:flex;flex-direction:column;align-items:flex-end;}
 .luogusp-hc-slogan{position:relative;}
-.luogusp-hc-clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
-.luogusp-hc-slogan.is-open .luogusp-hc-clamp{-webkit-line-clamp:6;}
+.luogusp-hc-clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;}
+.is-open>.luogusp-hc-clamp{display:block;}
 .luogusp-hc-expand{position:absolute;right:0;bottom:0;border:0;padding:0 0 0 10px;background:linear-gradient(90deg,rgba(255,255,255,0) 0,#fff 10px,#fff 100%);color:#3498db;cursor:pointer;font:inherit;font-size:12px;line-height:inherit;}
+.is-open>.luogusp-hc-expand{position:sticky;display:block;margin-left:auto;}
 .luogusp-hc-sep{border-top:1px solid #f0f0f0;margin:8px 0 6px;}
 .luogusp-hc-tags{margin-top:2px;}
 .luogusp-hc-tagbtn{background:none;border:0;padding:0;color:#3498db;cursor:pointer;font:inherit;}

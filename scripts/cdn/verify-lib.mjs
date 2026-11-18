@@ -24,6 +24,7 @@ export async function fetchVerified(options) {
   } = options || {};
   if (!url || typeof check !== "function" || !delaysMs.length)
     throw new Error("fetchVerified requires a URL, check, and retry schedule");
+  const expectedUrl = new URL(url).href;
 
   const history = [];
   for (let index = 0; index < delaysMs.length; index++) {
@@ -32,16 +33,26 @@ export async function fetchVerified(options) {
     const attempt = index + 1;
     let body = Buffer.alloc(0);
     let result;
+    let status = null;
     try {
       const response = await fetchImpl(url, {
         cache: "no-store",
         credentials: "omit",
+        redirect: "error",
         headers: {
           "Cache-Control": "no-cache",
           Pragma: "no-cache",
         },
         signal: AbortSignal.timeout(timeoutMs),
       });
+      status = response.status;
+      const provenanceError = response.redirected ? "unexpected redirect" :
+        response.url !== expectedUrl ? "response did not come from its exact URL" :
+        status !== 200 ? `expected HTTP 200, received ${status}` : null;
+      if (provenanceError) {
+        await response.body?.cancel().catch(() => {});
+        throw new Error(provenanceError);
+      }
       body = Buffer.from(await response.arrayBuffer());
       result = {
         attempt,
@@ -50,10 +61,10 @@ export async function fetchVerified(options) {
     } catch (error) {
       result = {
         attempt,
-        status: null,
+        status,
         bytes: 0,
         ok: false,
-        error: error.message,
+        error: error.cause?.message ?? error.message,
       };
     }
     history.push(result);

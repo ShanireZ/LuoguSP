@@ -61,7 +61,7 @@ export function createIdeBatchRunner(config) {
     }
   };
   const invalidate = () => {
-    if (state === "idle") return;
+    if (state === "idle") return false;
     if (activeController) activeController.abort();
     activeController = null;
     runId++;
@@ -69,6 +69,7 @@ export function createIdeBatchRunner(config) {
     driving = false;
     cancelDelay();
     if (typeof ideDriver.cancel === "function") ideDriver.cancel();
+    return true;
   };
   const stop = () => {
     if (state !== "preparing" && state !== "running") return;
