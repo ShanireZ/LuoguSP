@@ -23,6 +23,8 @@ status: stable
 Settings consume shared feature descriptors rather than a second registry.
 Keys, storage keys, defaults and cleanup are executable contracts in
 test/release-contract.test.mjs. Reproduce before changing them.
+An interrupted save attempts to restore the earlier preferences. The dialog
+shows the values still stored and announces that the save failed.
 Backdrop dismissal during a same-route navigation remount returns focus to the
 replacement settings entry when focus still belongs to the dismissed overlay.
 
@@ -54,12 +56,14 @@ details by viewer, contest and language. Each observed field expires on its own
 and a partial response refreshes only the fields it contains. Shared detail
 responses use the start time of the successful transport attempt. Problem ID
 coloring compares the selected difficulty's observation time with the local
-native observation. Newer summary fields stay visible when a subsequent detail
+native observation. A preview or IDE detail can refresh eligible IDs for the
+same problem and scope. Newer summary fields stay visible when a subsequent detail
 omits them. A caller can retry for fields it still needs. An explicit empty
 sample list is cached as a result.
 A problem card displays
 available fields first and fills in details and the viewer's latest record as they
-arrive, retaining focused controls and scroll position. Temporary lookup
+arrive, retaining focused controls and scroll position. If a detail removes a
+focused tag disclosure, focus moves to the problem link. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
 failures. A successful empty record list uses the normal cache lifetime.
 New or updated data fields can fade in over 125 ms. The initial preview and
@@ -137,6 +141,8 @@ endings. Leaving the IDE removes its batch controls and restores the native inpu
 layout.
 The IDE test tabs switch with Left and Right Arrow, Home, and End. Sample
 buttons report their expanded state and toggle details with Enter or Space.
+Preparation hints announce the outcome and keep the toolbar control focusable
+while activation is temporarily unavailable.
 Starting a batch moves focus from its disabled controls to Stop. If Stop still
 owns focus when it becomes disabled, focus moves to the Samples tab. Completion
 restores the initiating control or another available batch control only while

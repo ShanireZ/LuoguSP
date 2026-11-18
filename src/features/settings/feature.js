@@ -110,7 +110,7 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
             <button data-act="save" class="luogusp-primary">保存</button>
             <button data-act="close">关闭</button>
           </div>
-          <p class="luogusp-hint">保存后需刷新页面生效。</p>
+          <p class="luogusp-hint" role="status">保存后需刷新页面生效。</p>
         </div>
       </div>`;
     const boxes = () => overlay.querySelectorAll('input[type="checkbox"]');
@@ -124,7 +124,30 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
       if (act === "all") boxes().forEach((b) => (b.checked = true));
       if (act === "none") boxes().forEach((b) => (b.checked = false));
       if (act === "save") {
-        boxes().forEach((b) => storage.set(b.dataset.key, b.checked));
+        const written = [];
+        try {
+          for (const { dataset: { key }, checked } of boxes()) {
+            const previous = storage.has(key) ? storage.get(key) : null;
+            if (previous === checked) continue;
+            storage.set(key, checked);
+            written.push({ key, previous, checked });
+          }
+        } catch {
+          for (const { key, previous, checked } of written.reverse()) {
+            try {
+              // Another tab may have changed this key while the save was in progress.
+              if (storage.get(key) !== checked) continue;
+              if (previous === null && storage.remove) storage.remove(key);
+              else storage.set(key, previous === true);
+            } catch {}
+          }
+          // A rollback can also fail. Show what is currently stored before retry.
+          for (const box of boxes()) {
+            try { box.checked = storage.get(box.dataset.key); } catch {}
+          }
+          overlay.querySelector(".luogusp-hint").textContent = "保存失败，请核对当前设置后重试。";
+          return;
+        }
         close(false);
         // owner 要求：提示要在螢幕正中。瀏覽器原生 confirm() 在 Chrome/Edge 一律貼
         // 視口頂部且樣式不可控，所以重複使用設定面板同一套遮罩 + 居中面板。

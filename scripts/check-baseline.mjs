@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import browserslist from "browserslist";
 
@@ -73,6 +74,11 @@ const withoutCodeComments = (source) => {
 };
 
 const moduleExtension = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+const isModule = (path) => !extname(path) || moduleExtension.test(path);
+const withinRoot = (path) => {
+  const location = relative(root, path).replaceAll("\\", "/");
+  return !isAbsolute(location) && location !== ".." && !location.startsWith("../");
+};
 const moduleFiles = async (directory) => {
   const files = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -83,40 +89,141 @@ const moduleFiles = async (directory) => {
   return files;
 };
 
-// Include literal local module paths in package commands, even outside scripts/.
-const packageModuleFiles = async (scripts) => {
-  const candidates = new Set();
-  for (const command of Object.values(scripts)) {
-    for (const [, doubleQuoted, singleQuoted, word] of command.matchAll(/"([^"]+)"|'([^']+)'|([^\s"'&|;()<>]+)/g)) {
-      const token = doubleQuoted ?? singleQuoted ?? word;
-      if (token.startsWith("-") || !moduleExtension.test(token)) continue;
-      const absolute = resolve(root, token);
-      const location = relative(root, absolute).replaceAll("\\", "/");
-      if (!isAbsolute(location) && !location.startsWith("../")) candidates.add(absolute);
+function* commandSegments(command) {
+  let words = [];
+  for (const [, word] of command.matchAll(/((?:[^\s"'&|;()<>]+|"[^"]*"|'[^']*')+)|[&|;()<>]/g)) {
+    if (word !== undefined) {
+      words.push(word.replace(/"([^"]*)"|'([^']*)'/g, (_, double, single) => double ?? single));
+    } else if (words.length) {
+      yield words;
+      words = [];
     }
   }
-  const files = await Promise.all([...candidates].map(async (path) => {
-    try {
-      return (await stat(path)).isFile() ? path : null;
-    } catch (error) {
-      if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
-      return null;
-    }
-  }));
-  return files.filter(Boolean);
+  if (words.length) yield words;
+}
+
+const executableName = (token = "") => token.replaceAll("\\", "/").split("/").at(-1)
+  .replace(/\.(?:bat|cmd|exe|ps1)$/iu, "").toLowerCase();
+const isEsbuild = (command) => /^esbuild(?:@[^/]+)?$/u.test(executableName(command));
+
+const invocation = (words) => {
+  const start = words.findIndex((word) => !/^\w+=/u.test(word));
+  let args = start === -1 ? [] : words.slice(start);
+  if (["npm", "npx", "pnpm", "yarn", "bun", "bunx"].includes(executableName(args[0]))) {
+    args = args.slice(1);
+    while (args[0]?.startsWith("-") || ["exec", "dlx"].includes(args[0])) args = args.slice(1);
+  }
+  return args;
 };
 
-const importedModuleFiles = async (entries) => {
-  if (entries.length === 0) return [];
+const nodeOptions = (args) => {
+  const conditions = new Set(["node"]);
+  const preloads = [];
+  let addons = true;
+  let requireModule = true;
+  let entry;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--") {
+      entry = args[index + 1];
+      break;
+    }
+    if (arg === "-" || /^(?:-e|-p|--eval|--print)(?:=|$)/u.test(arg)) break;
+    if (!arg.startsWith("-")) {
+      entry = arg;
+      break;
+    }
+    const option = arg.match(/^(--import|--require|-r|--conditions|-C)(?:=(.*))?$/u);
+    if (option) {
+      const [, flag, inline] = option;
+      const value = inline ?? args[++index];
+      if (!value) continue;
+      if (flag === "--conditions" || flag === "-C") conditions.add(value);
+      else preloads.push([flag === "--import" ? "import" : "require", value]);
+    }
+    if (arg === "--no-addons") addons = false;
+    if (arg === "--no-require-module" || arg === "--no-experimental-require-module")
+      requireModule = false;
+    if (arg === "--require-module" || arg === "--experimental-require-module") requireModule = true;
+  }
+  if (addons) conditions.add("node-addons");
+  if (requireModule) conditions.add("module-sync");
+  return { entry, preloads, conditions: [...conditions].sort() };
+};
+
+const nodeEntry = (path) => {
+  try {
+    // Node's main entry uses the CommonJS file and directory lookup first.
+    return require.resolve(resolve(root, path));
+  } catch (error) {
+    if (error.code !== "MODULE_NOT_FOUND") throw error;
+    return null;
+  }
+};
+
+const existingFile = async (path) => {
+  try {
+    return (await stat(path)).isFile() ? path : null;
+  } catch (error) {
+    if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+    return null;
+  }
+};
+
+const packageModuleGraphs = async (scripts) => {
+  const graphs = new Map();
+  for (const [name, command] of Object.entries(scripts)) {
+    for (const words of commandSegments(command)) {
+      const [tool, ...args] = invocation(words);
+      const { entry, preloads, conditions } = nodeOptions(executableName(tool) === "node" ? args : []);
+      const directCli = isEsbuild(tool) || (entry &&
+        /(?:^|[/\\])node_modules[/\\](?:\.bin[/\\]|esbuild[/\\]bin[/\\])esbuild(?:\.(?:bat|cmd|exe|ps1))?$/iu.test(entry));
+      assert.ok(!directCli, `package.json 的 ${name} 使用了无法核验的 esbuild 命令。请从 baseline-targets.mjs 导入 buildBrowser。`);
+
+      const key = JSON.stringify(conditions);
+      if (!graphs.has(key)) graphs.set(key, { conditions, entries: new Set(), aliases: new Set() });
+      const graph = graphs.get(key);
+      const add = (path) => {
+        if (path && withinRoot(path) && isModule(path)) graph.entries.add(path);
+      };
+      if (entry) add(nodeEntry(entry));
+      for (const [mode, specifier] of preloads) {
+        if (specifier.startsWith("#")) {
+          const literal = JSON.stringify(specifier);
+          graph.aliases.add(mode === "import" ? `import ${literal};` : `require(${literal});`);
+        } else if (mode === "import" && specifier.startsWith("file:")) {
+          add(await existingFile(fileURLToPath(specifier)));
+        } else if (isAbsolute(specifier) || /^\.\.?[/\\]/u.test(specifier)) {
+          add(mode === "require" ? nodeEntry(specifier) :
+            await existingFile(fileURLToPath(new URL(specifier, pathToFileURL(`${root}/`)))));
+        }
+      }
+      // Keep explicit local file arguments, including additional node --test entries.
+      for (const word of words) {
+        if (word.startsWith("-") || !moduleExtension.test(word)) continue;
+        const path = resolve(root, word);
+        if (withinRoot(path)) add(await existingFile(path));
+      }
+    }
+  }
+  return [...graphs.values()];
+};
+
+const importedModuleFiles = async ({ entries, aliases, conditions }) => {
+  if (entries.size === 0 && aliases.size === 0) return [];
   const inputs = new Set();
   // Use esbuild's input graph to inspect declared entry points without running them.
   await buildBrowser({
     absWorkingDir: root,
     // Different source extensions can otherwise map to the same output path.
-    entryPoints: entries.map((path, index) => ({ in: path, out: `entry-${index}` })),
+    entryPoints: [...entries].map((path, index) => ({ in: path, out: `entry-${index}` })),
+    ...(aliases.size ? { stdin: { contents: [...aliases].join("\n"), resolveDir: root } } : {}),
     bundle: true,
     format: "esm",
     platform: "node",
+    // Explicit Node conditions omit esbuild's bundler-only implicit "module" branch.
+    conditions,
+    loader: { "": "js" },
     packages: "external",
     outdir: "node_modules/.cache/baseline-inputs",
     write: false,
@@ -130,10 +237,7 @@ const importedModuleFiles = async (entries) => {
       },
     }],
   });
-  return [...inputs].filter((path) => {
-    const location = relative(root, path).replaceAll("\\", "/");
-    return !isAbsolute(location) && !location.startsWith("../") && moduleExtension.test(path);
-  });
+  return [...inputs].filter((path) => withinRoot(path) && isModule(path));
 };
 
 const versionParts = (value) =>
@@ -279,12 +383,12 @@ for (const browser of Object.values(targetBrowserNames))
 
 const buildConsumers = [];
 const targetModule = resolve(root, "baseline-targets.mjs");
-const [scripts, declaredModules] = await Promise.all([
+const [scripts, declaredGraphs] = await Promise.all([
   moduleFiles(resolve(root, "scripts")),
-  packageModuleFiles(packageJson.scripts),
+  packageModuleGraphs(packageJson.scripts),
 ]);
-const importedModules = await importedModuleFiles(declaredModules);
-for (const absolute of new Set([...scripts, ...declaredModules, ...importedModules])) {
+const importedModules = (await Promise.all(declaredGraphs.map(importedModuleFiles))).flat();
+for (const absolute of new Set([...scripts, ...importedModules])) {
   if (absolute === targetModule) continue;
   const source = withoutCodeComments(await readFile(absolute, "utf8"));
   const references = source.match(/\b(?:from\s*|(?:import|require)\s*(?:\(\s*)?)["'\x60]esbuild(?:\/[^"'\x60\n]+)?["'\x60]/g);

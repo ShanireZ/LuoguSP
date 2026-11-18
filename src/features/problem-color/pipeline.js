@@ -44,6 +44,7 @@ export function createProblemPipeline(config) {
   let coloringAnchors = new WeakMap();
   let mounted = false;
   let generation = 0;
+  let currentRoute;
   let stopObserving = null;
   let activeController = null;
   let stopSource = null;
@@ -54,10 +55,10 @@ export function createProblemPipeline(config) {
     routeAdapter && typeof routeAdapter.token === "function"
       ? routeAdapter.token()
       : "";
-  const rememberColor = (pid, color, at) => {
-    if (!pid || !color || colors.get(pid)?.at > at) return;
-    colors.delete(pid);
-    colors.set(pid, { color, at });
+  const rememberColor = (key, color, at) => {
+    if (!color || colors.get(key)?.at > at) return;
+    colors.delete(key);
+    colors.set(key, { color, at });
     if (colors.size > cacheLimit) colors.delete(colors.keys().next().value);
   };
   const rememberDifficulty = (pid, difficulty, at) => {
@@ -75,10 +76,12 @@ export function createProblemPipeline(config) {
   };
   // A newly received native value replaces an older query result, and vice versa.
   // Record tiers with ambiguous historical numbering are filtered before this point.
-  const knownColor = (pid) => {
-    const native = fresh(harvested, pid);
-    const fetched = fresh(colors, pid);
-    return native && (!fetched || native.at >= fetched.at) ? native : fetched;
+  const knownColor = ({ pid, scoped }, shared) => {
+    const native = scoped ? null : fresh(harvested, pid);
+    const fetched = !scoped && requestsReady ? fresh(colors, shared?.key ?? pid) : null;
+    const local = native && (!fetched || native.at >= fetched.at) ? native : fetched;
+    return validDifficulty(shared?.difficulty) && (!local || shared.at > local.at)
+      ? colorForDifficulty(shared.difficulty) : local?.color;
   };
   const harvest = () => {
     if (typeof difficultySource.harvest !== "function") return;
@@ -107,29 +110,27 @@ export function createProblemPipeline(config) {
       harvestedLists.add(batch.source);
     }
   };
-  const getColor = async (identity, signal) => {
-    const { pid } = identity;
-    const known = identity.scoped ? null : knownColor(pid);
-    if (known) return known.color;
+  const getColor = async (identity, signal, key) => {
     try {
       const result = await difficultySource.lookup(identity, signal);
       if (signal.aborted || !validDifficulty(result?.difficulty) || !Number.isFinite(result.at)) return null;
       const color = colorForDifficulty(result.difficulty);
-      if (identity.scoped) return color;
-      rememberColor(pid, color, result.at);
-      return knownColor(pid)?.color || null;
+      if (!identity.scoped) rememberColor(key ?? identity.pid, color, result.at);
+      return color;
     } catch (error) {
-      if (!signal.aborted) logError(pid, error);
+      if (!signal.aborted) logError(identity.pid, error);
       return null;
     }
   };
-  const colorAnchor = async (anchor, allowQueries) => {
+  const colorAnchor = async (anchor, allowQueries, changedKey) => {
     const controller = activeController;
     if (!controller) return;
     const taskGeneration = generation;
     const taskRoute = routeToken();
     if (typeof documentAdapter.isConnected === "function" && !documentAdapter.isConnected(anchor)) return;
     const taskIdentity = identity.resolve(anchor);
+    const shared = taskIdentity && !taskIdentity.recordColor ? difficultySource.peek?.(taskIdentity) : null;
+    if (changedKey !== undefined && shared?.key !== changedKey) return;
     // A recycled anchor can keep its PID while changing destination or scope.
     // Clear the previous paint before any lookup for the new identity.
     const previous = painted.get(anchor);
@@ -149,16 +150,11 @@ export function createProblemPipeline(config) {
       apply(taskIdentity.recordColor);
       return;
     }
-    const known = taskIdentity.scoped ? null : knownColor(taskIdentity.pid);
     // No await/timer on the native path: MutationObserver callbacks finish before
     // the next paint, including newly inserted or recycled list rows.
-    if (known && (requestsReady || known === fresh(harvested, taskIdentity.pid))) {
-      apply(known.color);
-      return;
-    }
-    const shared = difficultySource.peek?.(taskIdentity);
-    if (validDifficulty(shared)) {
-      apply(colorForDifficulty(shared));
+    const known = knownColor(taskIdentity, shared);
+    if (known) {
+      apply(known);
       return;
     }
     if (!requestsReady || !allowQueries) return;
@@ -166,7 +162,7 @@ export function createProblemPipeline(config) {
     if (routeQueries.get(anchor) === taskIdentity.key) return;
     routeQueries.set(anchor, taskIdentity.key);
     try {
-      const color = await getColor(taskIdentity, controller.signal);
+      const color = await getColor(taskIdentity, controller.signal, shared?.key);
       const currentIdentity = identity.resolve(anchor);
       if (
         !mounted ||
@@ -179,8 +175,10 @@ export function createProblemPipeline(config) {
         currentIdentity.key !== taskIdentity.key
       )
         return;
-      // A native response may have arrived while this query was in flight.
-      apply((taskIdentity.scoped ? null : knownColor(taskIdentity.pid)?.color) || color);
+      // A newer observation or a viewer change may have arrived during the lookup.
+      const currentShared = difficultySource.peek?.(currentIdentity);
+      if (currentShared?.key === shared?.key)
+        apply(knownColor(currentIdentity, currentShared) || color);
     } finally {
       if (routeQueries.get(anchor) === taskIdentity.key)
         routeQueries.delete(anchor);
@@ -193,6 +191,11 @@ export function createProblemPipeline(config) {
   const rescan = (options) => {
     if (mounted) acceptAnchors(documentAdapter.anchors(documentAdapter.root), options);
   };
+  const refreshDifficulty = (pid, key) => {
+    if (mounted && routeToken() === currentRoute) {
+      for (const anchor of documentAdapter.problemAnchors(pid)) colorAnchor(anchor, false, key);
+    }
+  };
   const cancelRouteQueries = () => {
     activeController?.abort();
     activeController = null;
@@ -203,6 +206,7 @@ export function createProblemPipeline(config) {
   const onRoute = () => {
     if (!mounted) return;
     generation++;
+    currentRoute = routeToken();
     cancelRouteQueries();
     activeController = createAbortController();
     requestsReady = requestDelayMs === 0;
@@ -226,7 +230,7 @@ export function createProblemPipeline(config) {
   const mount = () => {
     if (mounted) return dispose;
     mounted = true;
-    stopSource = difficultySource.subscribe?.(rescan) || null;
+    stopSource = difficultySource.subscribe?.(rescan, refreshDifficulty) || null;
     stopObserving = documentAdapter.observeAnchors(acceptAnchors) || null;
     onRoute();
     return dispose;

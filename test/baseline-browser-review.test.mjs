@@ -227,6 +227,110 @@ test("the actual guard checks both same-stem entries and their local helpers wit
   assert.equal(existsSync(join(fixture, "node_modules")), false);
 });
 
+function declareFixtureBuild(fixture, command, imports) {
+  const path = join(fixture, "package.json");
+  const manifest = JSON.parse(readFileSync(path, "utf8"));
+  manifest.scripts.build = command;
+  if (imports) manifest.imports = imports;
+  writeFileSync(path, JSON.stringify(manifest));
+}
+
+const buildCall = 'build({ stdin: { contents: "fixture()" }, write: false }).then(({ outputFiles }) => process.stdout.write(outputFiles[0].text));';
+const directBuild = `import { build } from "esbuild";\n${buildCall}`;
+const sharedBuild = `import { buildBrowser } from "../baseline-targets.mjs";\n${buildCall.replace("build(", "buildBrowser(")}`;
+
+function runFixtureBuild(fixture, args) {
+  const result = spawnSync(process.execPath, args, { cwd: fixture, encoding: "utf8", timeout: 20_000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /fixture\(\)/u);
+}
+
+for (const [name, command, args, builder, directory = "browser builds"] of [
+  ["directory entry", 'node --no-warnings "./browser builds"', ["--no-warnings", "./browser builds"], "index.js"],
+  ["omitted extension", 'node "./browser builds/bundle"', ["./browser builds/bundle"], "bundle.js"],
+  ["extensionless file", 'node "./browser builds/bundle"', ["./browser builds/bundle"], "bundle"],
+  ["ESM preload", "node --import=./browser/preload.mjs ./main.mjs", ["--import=./browser/preload.mjs", "./main.mjs"], "preload.mjs", "browser"],
+  ["quoted ESM preload", 'node --import="./browser builds/preload.mjs" ./main.mjs', ["--import=./browser builds/preload.mjs", "./main.mjs"], "preload.mjs"],
+  ["CommonJS preload", 'node -r "./browser builds" ./main.mjs', ["-r", "./browser builds", "./main.mjs"], "index.js"],
+]) {
+  test(`the actual guard checks a Node ${name} outside scripts without executing it`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    declareFixtureBuild(fixture, command);
+    mkdirSync(join(fixture, directory));
+    writeFileSync(join(fixture, "main.mjs"), "");
+    const path = join(fixture, directory, builder);
+    writeFileSync(path, directBuild);
+    runFixtureBuild(fixture, args);
+
+    const direct = run();
+    assert.equal(direct.status, 1, direct.stdout);
+    assert.match(direct.stderr, /无法核验的 esbuild 导入/u);
+    assert.ok(direct.stderr.includes(`${directory}/${builder}`));
+    assert.doesNotMatch(direct.stdout, /fixture\(\)/u);
+
+    writeFileSync(path, sharedBuild);
+    const shared = run();
+    assert.equal(shared.status, 0, shared.stderr);
+    assert.match(shared.stdout, /2 个构建脚本/u);
+    assert.doesNotMatch(shared.stdout, /fixture\(\)/u);
+    assert.equal(existsSync(join(fixture, "node_modules")), false);
+  });
+}
+
+test("the actual guard rejects direct esbuild CLI commands", (t) => {
+  const { fixture, run } = fixtureGuard(t);
+  writeFileSync(join(fixture, "input.js"), "fixture()");
+  const args = ["./input.js", "--bundle", "--platform=browser"];
+  runFixtureBuild(fixture, [join(ROOT, "node_modules/esbuild/bin/esbuild"), ...args]);
+  for (const executable of ["esbuild", "pnpm exec esbuild", '"./node_modules/.bin/esbuild.cmd"']) {
+    declareFixtureBuild(fixture, `${executable} ${args.join(" ")}`);
+    const result = run();
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /无法核验的 esbuild 命令/u);
+    assert.doesNotMatch(result.stdout, /fixture\(\)/u);
+  }
+});
+
+for (const [condition, flags, preload = false] of [
+  ["node-addons", []],
+  ["default", ["--no-addons"]],
+  ["default", ["--no-addons", "--no-require-module"]],
+  ["module-sync", []],
+  ["fixture", ["--conditions=fixture"]],
+  ["fixture", ["-C", "fixture"], true],
+]) {
+  const mode = preload ? "from a preload" : flags.length ? `with ${flags.join(" ")}` : "by default";
+  test(`the actual guard checks Node's ${condition} package imports branch ${mode}`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    const args = [...flags, ...(preload ? ["--import=#browser-builder"] : []), "./browser/entry.mjs"];
+    const imports = {
+      module: "./browser/wrapper.mjs",
+      ...(condition === "default" ? { "node-addons": "./browser/wrapper.mjs" } : {}),
+      ...(flags.includes("--no-require-module") ? { "module-sync": "./browser/wrapper.mjs" } : {}),
+      [condition]: "./browser/builder.mjs",
+      ...(condition === "default" ? {} : { default: "./browser/wrapper.mjs" }),
+    };
+    declareFixtureBuild(fixture, `node ${args.join(" ")}`, { "#browser-builder": imports });
+    mkdirSync(join(fixture, "browser"));
+    writeFileSync(join(fixture, "browser/entry.mjs"), preload ? "" : 'import "#browser-builder";');
+    writeFileSync(join(fixture, "browser/wrapper.mjs"), sharedBuild);
+    const path = join(fixture, "browser/builder.mjs");
+    writeFileSync(path, directBuild);
+    runFixtureBuild(fixture, args);
+
+    const direct = run();
+    assert.equal(direct.status, 1, direct.stdout);
+    assert.match(direct.stderr, /browser\/builder\.mjs.*无法核验的 esbuild 导入/u);
+    assert.doesNotMatch(direct.stdout, /fixture\(\)/u);
+
+    writeFileSync(path, sharedBuild);
+    const shared = run();
+    assert.equal(shared.status, 0, shared.stderr);
+    assert.doesNotMatch(shared.stdout, /fixture\(\)/u);
+  });
+}
+
 for (const [browser, staleMinimum] of [
   ["firefox", "124"],
   ["chrome", "123"],

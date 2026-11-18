@@ -5,8 +5,7 @@
 //
 //   舊寫法每次都拿 `btn.textContent` 當「原文案」快照。1500ms 內來第二條提示時，
 //   快照存下來的就是**第一條提示本身**，定時器到點後按鈕永遠停在「本題無樣例」
-//   這類字樣上，再也變不回「一鍵測試」。提示期間被禁用的只有「一鍵測試」那一枚，
-//   而「重新測試」從不禁用 —— 連點兩下就能重現。
+//   這類字樣上，再也變不回「一鍵測試」。提示期間仍可用「重新測試」更新提示。
 //
 //   修法：恢復目標是**固定文案**，不是「上一次的 textContent」。
 export const IDE_BATCH_LABEL = "一键测试";
@@ -32,11 +31,12 @@ export function createBatchButtonHint(config) {
     timer = null;
   };
 
-  const show = (message, running = false) => {
+  const show = (message) => {
     const button = findButton();
     if (!button) return false;
     button.textContent = String(message);
-    button.disabled = true;
+    // Native disabling would drop focus from the keyboard user's button.
+    button.setAttribute("aria-disabled", "true");
     cancel();
     timer = clock.setTimeout(() => {
       timer = null;
@@ -45,10 +45,10 @@ export function createBatchButtonHint(config) {
       const current = findButton();
       if (!current) return;
       current.textContent = label;
-      current.disabled = running;
+      current.removeAttribute("aria-disabled");
     }, holdMs);
     return true;
   };
 
-  return Object.freeze({ show, cancel, isPending: () => timer !== null });
+  return Object.freeze({ show, cancel });
 }

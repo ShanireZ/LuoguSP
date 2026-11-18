@@ -137,8 +137,7 @@ export function createProblemColorFeature({
         `${location.origin}${location.pathname}${location.search}`,
     },
     difficultySource: {
-      peek: ({ pid, href }) =>
-        problemResources.data.peek(pid, { href, refreshPage: false })?.data.problem.difficulty,
+      peek: ({ pid, href, scoped }) => problemResources.data.peekDifficulty(pid, scoped ? href : undefined),
       lookup: async ({ pid, href }, signal) => {
         const { data } = problemResources;
         let result = data.peek(pid, { href });
@@ -151,13 +150,20 @@ export function createProblemColorFeature({
       // 列表裡可重用的難度仍收進快取，供其他頁面的題號使用。
       // 首屏 JSON + 洛谷自身導覽請求的回應，不額外請求頁面資料。
       harvest: () => nativeDifficulty.harvest(),
-      subscribe: (accept) => nativeDifficulty.subscribe(accept),
+      subscribe: (accept, refresh) => {
+        const stopNative = nativeDifficulty.subscribe(accept);
+        const stopDetail = problemResources.data.subscribeDifficulty(refresh);
+        return () => { stopNative(); stopDetail(); };
+      },
     },
     colorForDifficulty: (difficulty) => diffColor(difficulty),
     logError: (pid, error) =>
       console.error("LuoguSP difficulty:", pid, error),
     documentAdapter: {
       root: document,
+      problemAnchors: (pid) => document.querySelectorAll(
+        `[data-luogusp-pid="${pid}"],a[href*="/problem/${pid}"],a[href*="?forum="],.pid[title*="${pid}"],${SELECTORS.voidAnchor}`,
+      ),
       anchors: (root) => {
         if (!root || !root.querySelectorAll) return [];
         const anchors = [];

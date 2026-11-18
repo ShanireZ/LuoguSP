@@ -189,11 +189,16 @@ export function renderProblemCard(card, options = {}) {
 const sectionKey = (section) => section.classList.contains("luogusp-hc-row")
   ? section.firstElementChild.textContent : section.classList[0];
 
-function updateSections(card, content, reuse, onChange) {
+function updateSections(card, content, reuse, onChange, focusFallback) {
   const sections = [...content.children];
   const keys = new Set(sections.map(sectionKey));
   const previous = new Map([...card.children].map(node => [sectionKey(node), node]));
-  for (const [key, old] of previous) if (!keys.has(key)) old.remove();
+  for (const [key, old] of previous) {
+    if (keys.has(key)) continue;
+    // Move focus within the preview before detaching the old control.
+    if (old.matches(":focus-within")) focusFallback?.focus({ preventScroll: true });
+    old.remove();
+  }
   let next = card.firstElementChild;
   for (const section of sections) {
     const existing = previous.get(sectionKey(section));
@@ -230,7 +235,7 @@ export function updateProblemCard(card, content, fadeField) {
     return false;
   }, fadeField && ((node) => {
     if (node.classList.contains("luogusp-hc-row")) fadeField(node);
-  }));
+  }), card.lastElementChild?.firstElementChild);
 }
 
 export function updateUserCard(card, content, preserveActions, fadeField, pendingAction) {

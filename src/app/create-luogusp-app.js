@@ -12,6 +12,7 @@ export function createBrowserStorage() {
   return Object.freeze({
     get: (key) => localStorage.getItem(key) === "true",
     set: (key, value) => localStorage.setItem(key, String(value)),
+    remove: (key) => localStorage.removeItem(key),
     has: (key) => localStorage.getItem(key) !== null,
   });
 }

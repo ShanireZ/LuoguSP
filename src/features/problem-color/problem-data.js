@@ -59,6 +59,7 @@ export function createProblemData({
   const summaries = new Map();
   const details = new Map();
   const recordLists = new Map();
+  const difficultyListeners = new Set();
   let observedViewer;
   let viewerAt = -Infinity;
   const isFresh = (at, currentTime) => currentTime - at < ttlMs;
@@ -72,17 +73,38 @@ export function createProblemData({
     return { viewer, params };
   };
   const viewer = () => observedViewer ?? legacyViewer();
-  const keyOf = (pid, context) => `${context.viewer}:${context.params}:${pid}`;
+  const keyOf = (pid, context) => `${context.viewer}:${context.params ?? ""}:${pid}`;
   const contextFor = (pid, href) => {
+    if (!href) return { viewer: viewer() };
     let url;
-    if (href) {
-      try {
-        url = new URL(href, origin);
-      } catch { return null; }
-      if (url.origin !== origin || url.pathname.replace(/\/$/, "") !== `/problem/${pid}`)
-        return null;
-    }
+    try {
+      url = new URL(href, origin);
+    } catch { return null; }
+    if (url.origin !== origin || url.pathname.replace(/\/$/, "") !== `/problem/${pid}`)
+      return null;
     return scope(url, viewer());
+  };
+  const freshDifficulty = (map, key, currentTime) => {
+    const field = map.get(key)?.get("difficulty");
+    return field && isFresh(field.at, currentTime) ? field : null;
+  };
+  const selectedDifficulty = (key) => {
+    const currentTime = now();
+    const detail = freshDifficulty(details, key, currentTime);
+    const summary = freshDifficulty(summaries, key, currentTime);
+    // As in payload(), a summary wins a tie with a detail.
+    return summary && (!detail || summary.at >= detail.at) ? summary : detail;
+  };
+  const peekDifficulty = (pid, href) => {
+    const context = contextFor(pid, href);
+    if (!context) return null;
+    const key = keyOf(pid, context);
+    const observation = selectedDifficulty(key);
+    return { key, difficulty: observation?.value, at: observation?.at };
+  };
+  const subscribeDifficulty = (listener) => {
+    difficultyListeners.add(listener);
+    return () => difficultyListeners.delete(listener);
   };
   const readRecords = (key) => {
     const entry = recordLists.get(key);
@@ -184,9 +206,9 @@ export function createProblemData({
     if (memory) (problem.limits ??= {}).memory = memory;
     return { data: { problem, bookmarked }, difficultyAt };
   };
-  const peek = (pid, { href, refreshPage = true } = {}) => {
+  const peek = (pid, { href } = {}) => {
     if (typeof pid !== "string" || !PID_PATTERN.test(pid)) return null;
-    if (refreshPage) refresh();
+    refresh();
     const context = contextFor(pid, href);
     return context ? payload(pid, keyOf(pid, context)) : null;
   };
@@ -216,8 +238,14 @@ export function createProblemData({
       if (page?.user?.uid != null && Number(page.user.uid) !== context.viewer) return null;
       const data = page?.data ?? page?.currentData;
       const problem = data?.problem;
-      if (problem && (problem.pid === undefined || problem.pid === pid))
+      if (problem && (problem.pid === undefined || problem.pid === pid)) {
+        const before = selectedDifficulty(key);
         rememberDetail(data, pid, context, at);
+        const after = selectedDifficulty(key);
+        if (after && (after.at !== before?.at || after.value !== before?.value)) {
+          for (const listener of difficultyListeners) listener(pid, key);
+        }
+      }
       return payload(pid, key);
     } catch (error) {
       if (signal?.aborted || [401, 403, 404].includes(error?.status)) return null;
@@ -232,5 +260,5 @@ export function createProblemData({
     const context = contextFor(pid, href);
     return context ? readRecords(keyOf(pid, context))?.records : undefined;
   };
-  return Object.freeze({ peek, load, rememberPage, viewerUid, records });
+  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, records });
 }

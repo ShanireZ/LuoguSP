@@ -217,6 +217,8 @@ test("a pending detail lookup fills omissions without replacing newer native fie
   let time = 1;
   const data = createProblemData({ origin, now: () => time, text: () => reply.promise });
   const { pid } = problem;
+  const notices = [];
+  data.subscribeDifficulty((changedPid) => notices.push(changedPid));
   const ide = data.load(pid, { fields: ["samples"] });
   time++;
   data.rememberPage({ data: { problem: { pid, difficulty: 2 } } }, url(`/problem/${pid}`), time);
@@ -225,6 +227,7 @@ test("a pending detail lookup fills omissions without replacing newer native fie
   const result = await ide;
   assert.deepEqual(result.data.problem, { ...problem, difficulty: 2 });
   assert.equal(result.difficultyAt, 2);
+  assert.deepEqual(notices, [], "an older detail leaves the selected difficulty intact");
 });
 
 test("one detail request serves concurrent consumers and survives one aborted route", async () => {
@@ -236,6 +239,8 @@ test("one detail request serves concurrent consumers and survives one aborted ro
     fetch: (path) => { calls.push(path); return request.promise; },
   });
   const data = createProblemData({ origin, text: scheduler.text, now: clock.adapter().now });
+  const notices = [];
+  data.subscribeDifficulty((pid, key) => notices.push([pid, key]));
   const route = new AbortController();
   const color = data.load(problem.pid, { signal: route.signal, fields: ["difficulty"] });
   const hover = data.load(problem.pid, { fields: ["name", "difficulty"] });
@@ -246,6 +251,7 @@ test("one detail request serves concurrent consumers and survives one aborted ro
   assert.equal((await hover).data.problem.name, "A+B");
   assert.deepEqual((await ide).data.problem.samples, problem.samples);
   assert.deepEqual(calls, ["/problem/P1001?_contentOnly=1"]);
+  assert.deepEqual(notices, [[problem.pid, data.peekDifficulty(problem.pid).key]]);
   scheduler.dispose();
 });
 

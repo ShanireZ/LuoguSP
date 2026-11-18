@@ -16,7 +16,7 @@ import {
 import { IDE_BATCH_STYLE } from "./style.js";
 import { observeIdeOutput } from "./output-observer.js";
 import { installIdeSubmitObserver } from "./submit-observer.js";
-import { createIdeTabControls } from "./tab-controls.js";
+import { createIdeButton, createIdeTabControls } from "./tab-controls.js";
 
 export function createIdeBatchFeature({ storage, problemData }) {
   const SELECTORS = {
@@ -118,7 +118,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
   const IDE_LAYOUT_INTERRUPTED = "IDE 面板已更新，样例测试已停止";
   let ownedFocus = null;
   let pendingTabFocus = null;
-  let remountStatus = null;
+  let ideStatus = null;
+  let layoutInterrupted = false;
   // The native run can outlive the userscript's route and its HTTP waiter.
   let pendingNativeAttempt = null;
   let ideSubmitWaiter = null;
@@ -361,13 +362,6 @@ export function createIdeBatchFeature({ storage, problemData }) {
     };
   }
 
-  // Cloning native buttons also copies tooltip and accessible names.
-  function dropInheritedNames(el) {
-    for (const node of [el, ...el.querySelectorAll("*")])
-      for (const name of ["title", "aria-label", "aria-labelledby"])
-        node.removeAttribute(name);
-  }
-
   function mountIdeButton(controls) {
     const tb = ideToolbarByTitle("代码");
     if (!tb) return;
@@ -379,17 +373,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
     if (!selfTest) return;
     const restoreFocus = IDE_VIEW.button && ownedFocus.current() === IDE_VIEW.button;
     IDE_VIEW.button?.remove();
-    // 克隆原生「自測」按鈕繼承洛谷樣式（含 data-v 作用域），只換文字
-    const btn = selfTest.cloneNode(true);
-    btn.textContent = IDE_BATCH_LABEL;
-    dropInheritedNames(btn);
-    btn.classList.add("luogusp-ide-batch-btn");
+    const btn = createIdeButton(selfTest, IDE_BATCH_LABEL, "luogusp-ide-batch-btn", controls.start);
     btn.disabled = controls.isRunning();
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      controls.start();
-    });
     actions.insertBefore(btn, selfTest);
     IDE_VIEW.button = btn;
     if (restoreFocus && document.activeElement === document.body)
@@ -399,7 +384,10 @@ export function createIdeBatchFeature({ storage, problemData }) {
   function replaceIdeTabs(controls) {
     const focus = ownedFocus.current();
     if (focus && focus !== IDE_VIEW.button) pendingTabFocus = focus;
-    if (controls.invalidate()) remountStatus.textContent = IDE_LAYOUT_INTERRUPTED;
+    if (controls.invalidate()) {
+      layoutInterrupted = true;
+      ideStatus.textContent = IDE_LAYOUT_INTERRUPTED;
+    }
     unmountIdeTabs();
   }
 
@@ -434,27 +422,17 @@ export function createIdeBatchFeature({ storage, problemData }) {
         b.classList.contains("luogusp-ide-batch-btn"),
     );
     const headBtns = panel.querySelector(".luogusp-ide-headbtns");
-    const mkBtn = (text, cls, onClick) => {
-      const b = tpl ? tpl.cloneNode(true) : document.createElement("button");
-      b.textContent = text;
-      dropInheritedNames(b);
-      b.className = (tpl ? tpl.className : "") + " " + cls;
-      b.classList.remove("luogusp-ide-batch-btn");
-      b.disabled = false;
-      b.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onClick();
-      });
-      headBtns.appendChild(b);
-      return b;
+    const appendButton = (label, className, activate) => {
+      const button = createIdeButton(tpl, label, className, activate);
+      headBtns.append(button);
+      return button;
     };
-    IDE_VIEW.stopBtn = mkBtn("停止", "luogusp-ide-stop", controls.stop);
+    IDE_VIEW.stopBtn = appendButton("停止", "luogusp-ide-stop", controls.stop);
     IDE_VIEW.stopBtn.style.display = "none";
-    IDE_VIEW.rerunBtn = mkBtn("重新测试", "luogusp-ide-rerun", controls.start);
+    IDE_VIEW.rerunBtn = appendButton("重新测试", "luogusp-ide-rerun", controls.start);
     IDE_VIEW.rowsEl = panel.querySelector(".luogusp-ide-rows");
     IDE_VIEW.summaryEl = panel.querySelector(".luogusp-ide-summary");
-    if (remountStatus.textContent) IDE_VIEW.summaryEl.textContent = remountStatus.textContent;
+    if (layoutInterrupted) IDE_VIEW.summaryEl.textContent = IDE_LAYOUT_INTERRUPTED;
     host.insertBefore(tabBar, ioLayout);
     host.appendChild(panel);
     IDE_VIEW.tabBar = tabBar;
@@ -586,6 +564,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     unmountIdeTabs();
     IDE_VIEW.activeTab = "custom";
     pendingTabFocus = null;
+    layoutInterrupted = false;
     IDE_VIEW.button?.remove();
     IDE_VIEW.style?.remove();
     IDE_VIEW.button = IDE_VIEW.style = null;
@@ -697,9 +676,13 @@ export function createIdeBatchFeature({ storage, problemData }) {
     configurationMatches: ({ configuration }) =>
       readIdeCode() === configuration.source &&
       sameIdeCompilerSettings(configuration, readIdeCompilerSettings(codeActions())),
-    hint: (message) => ideHint.show(message),
+    hint: (message) => {
+      ideHint.show(message);
+      ideStatus.textContent = message;
+    },
     begin: (context) => {
-      remountStatus.textContent = "";
+      layoutInterrupted = false;
+      ideStatus.textContent = "";
       stopWatchingCompiler?.();
       stopWatchingCompiler = watchIdeCompilerSettings(
         codeActions, context.configuration, ideBrowserDriver.controls.markStale,
@@ -781,10 +764,10 @@ export function createIdeBatchFeature({ storage, problemData }) {
         node === IDE_VIEW.button || node === IDE_VIEW.ioLayout ||
         IDE_VIEW.tabBar?.contains(node) || IDE_VIEW.panel?.contains(node)
       ));
-      remountStatus = document.createElement("div");
-      remountStatus.className = "luogusp-ide-remount-status";
-      remountStatus.setAttribute("role", "status");
-      document.body.appendChild(remountStatus);
+      ideStatus = document.createElement("div");
+      ideStatus.className = "luogusp-ide-remount-status";
+      ideStatus.setAttribute("role", "status");
+      document.body.appendChild(ideStatus);
       const unpatchSubmit = installIdeSubmitObserver({
         currentWaiter: () => ideSubmitWaiter?.attempt === pendingNativeAttempt ? ideSubmitWaiter : null,
         finish: finishIdeSubmit,
@@ -815,8 +798,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
         observer.disconnect();
         ownedFocus.dispose();
         ownedFocus = null;
-        remountStatus.remove();
-        remountStatus = null;
+        ideStatus.remove();
+        ideStatus = null;
         cancelIdeSubmitWaiter();
         unpatchSubmit();
         unhook();

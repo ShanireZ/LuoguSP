@@ -7,13 +7,14 @@ function rewriteBlocks(blocks, { quoteInline, blockCode }, quoted = false) {
     if (block.type === "def") return "";
     if (quoted && block.type === "code") return blockCode(block.lang, block.text) + block.raw.match(/\n*$/)[0];
     if (block.type === "blockquote") {
-      const body = quoteInline(rewriteBlocks(block.tokens, { quoteInline, blockCode }, true));
+      const body = rewriteBlocks(block.tokens, { quoteInline, blockCode }, true);
       if (body === block.text) return block.raw;
       return body.trim()
         ? body.trimEnd().replace(/^/gm, "> ") + block.raw.match(/\n*$/)[0]
         : "";
     }
-    if (block.type !== "list") return block.raw;
+    // These block tokens already exclude quote markers and list continuation indentation.
+    if (block.type !== "list") return quoted ? quoteInline(block.raw) : block.raw;
     const items = block.items.map((item) => {
       const body = rewriteBlocks(item.tokens, { quoteInline, blockCode }, quoted);
       if (body === item.text) return item.raw;
@@ -147,14 +148,12 @@ export function renderMarkdownLite(md, options = {}) {
     return token.raw;
   }).join("");
   const inlineLiterals = (source) => {
-    const quotedCode = /[`~]/.test(source) && /^[ \t]*>/m.test(source);
-    if (!quotedCode && !/[`[<]/.test(source)) return source;
+    const hasQuote = /^[ \t]*>/m.test(source);
+    if (!hasQuote && !/[`[<]/.test(source)) return source;
     try {
       const lexer = new Lexer({ gfm: false });
-      if (quotedCode || source.includes("]:")) {
+      if (hasQuote || source.includes("]:")) {
         const blocks = lexer.blockTokens(source);
-        // Lex quoted code after Marked strips the quote syntax. Keep the same
-        // reference destinations, and feed the rewritten blocks back into Lite.
         source = rewriteBlocks(blocks, {
           blockCode: stashBlockCode,
           quoteInline(body) {
@@ -203,7 +202,7 @@ export function renderMarkdownLite(md, options = {}) {
     .map((block) => {
       const trimmed = block.trim();
       if (new RegExp(`^${spanPrefix}\\d+@@$`).test(trimmed)) return trimmed;
-      const lines = block.split("\n");
+      const lines = block.replace(/\n$/, "").split("\n");
       if (
         lines.length >= 2 &&
         /^\s*\|.*\|\s*$/.test(lines[0]) &&

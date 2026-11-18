@@ -377,6 +377,41 @@ for (const mode of ["full", "lite"]) {
   });
 }
 
+for (const [context, wrap] of [
+  ["a div", (anchor) => `<div>\n${anchor}\n</div>`],
+  ["a standalone anchor", (anchor) => anchor],
+]) {
+  test(`Full profile introduction confines a split raw HTML image anchor in ${context}`, async (t) => {
+    const introduction = [
+      wrap('<a href="./gallery" title="Gallery </a >">\n' +
+        '<img src="../intro-images/cover.png" alt="Map </a >" title="Cover </a >"></a\n\n>'),
+      "Expected separate paragraph.",
+    ].join("\n\n");
+    const { page, requests } = await fixture(t, {
+      path: "/user/42?luogusp-qa=fallback",
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    const paragraph = intro.getByText("Expected separate paragraph.", { exact: true });
+    await paragraph.waitFor();
+    const links = intro.locator("a[href]");
+    assert.deepEqual(await links.evaluateAll((nodes) => nodes.map((node) =>
+      [node.textContent.trim(), node.getAttribute("href"), node.title, node.tabIndex])), [
+      ["Map </a >", "./gallery", "Gallery </a >", 0],
+      ["打开图片：Map </a >", origin + "/intro-images/cover.png", "Cover </a >", 0],
+    ]);
+    assert.equal(await paragraph.evaluate((node) => node.closest("a[href]") === null && node.tabIndex === -1), true);
+    await links.first().focus();
+    await page.keyboard.press("Tab");
+    assert.equal(await links.last().evaluate((node) => node === document.activeElement), true);
+    await page.keyboard.press("Tab");
+    assert.equal(await intro.evaluate((node) => node.contains(document.activeElement)), false);
+    assert.equal(await intro.locator("img").count(), 0);
+    assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
+  });
+}
+
 for (const mode of ["full", "lite"]) {
   test(`profile introduction confines a multiline HTML image anchor in ${mode}`, async (t) => {
     const introduction = [
@@ -447,6 +482,64 @@ test("Lite profile introduction hides an EOF definition and keeps the remaining 
   assert.equal(await link.getAttribute("title"), "Title");
   assert.deepEqual(await intro.getByRole("listitem").allTextContents(), ["First step"]);
   assert.doesNotMatch(await intro.textContent(), /\[go\]:|\.\/album/);
+});
+
+for (const [ending, newline, first, second, listTag] of [
+  ["LF", "\n", "-", "-", "ul"], ["CRLF", "\r\n", "1.", "2.", "ol"],
+]) {
+  test(`Lite profile introduction preserves a list with a hidden definition before a terminal ${ending}`, async (t) => {
+    const introduction = ["[Book][go]", "", `${first} First step`, `${second} [go]: ./album "Title"`, ""].join(newline);
+    const { page } = await fixture(t, {
+      path: "/user/42?luogusp-qa=fallback-lite",
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    const link = intro.getByRole("link", { name: "Book", exact: true });
+    await link.waitFor();
+    assert.equal(await link.getAttribute("href"), "./album");
+    assert.equal(await link.getAttribute("title"), "Title");
+    assert.deepEqual(await intro.locator(`${listTag} > li`).allTextContents(), ["First step"]);
+    assert.doesNotMatch(await intro.textContent(), /\[go\]:|\.\/album/);
+  });
+}
+
+for (const [name, introduction, text, selector] of [
+  ["a quoted fence before terminal LF", '> ~~~html\n> <img src="../intro-images/fence.png" alt="Literal">\n> ~~~\n',
+    '<img src="../intro-images/fence.png" alt="Literal">', "blockquote pre code"],
+  ["a quoted code span before terminal CRLF", "> Show `<b>one\r\n> two</b>`.\r\n",
+    "<b>one two</b>", "blockquote code"],
+  ["quoted indented code without unrelated markers", '>     <b>Example</b>\n>     <img src="../intro-images/indent.png" alt="Literal">',
+    '<b>Example</b>\n<img src="../intro-images/indent.png" alt="Literal">', "blockquote pre code"],
+]) {
+  test(`Lite profile introduction preserves ${name}`, async (t) => {
+    const { page, requests } = await fixture(t, {
+      path: "/user/42?luogusp-qa=fallback-lite",
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.waitFor();
+    assert.deepEqual(await intro.locator(selector).allTextContents(), [text]);
+    assert.equal(await intro.locator("b, img, a[href*='/intro-images/']").count(), 0);
+    assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
+  });
+}
+
+test("Lite profile introduction excludes quoted list indentation from a multiline code span", async (t) => {
+  const introduction = '> - Show `<b>one\n>   two</b>` and [link][go].\n>\n> [go]: ./album "Title"';
+  const { page } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  await intro.waitFor();
+  assert.deepEqual(await intro.locator("blockquote code").allTextContents(), ["<b>one two</b>"]);
+  const link = intro.locator("blockquote a");
+  assert.equal(await link.getAttribute("href"), "./album");
+  assert.equal(await link.getAttribute("title"), "Title");
+  assert.equal(await intro.locator("blockquote b").count(), 0);
 });
 
 test("Lite profile introduction preserves quoted fences and multiline inline code", async (t) => {
@@ -1750,6 +1843,52 @@ test("restricted route change aborts the active Saver query without showing stal
   assert.equal(await page.evaluate(() => restrictedTrace.length), 3);
 });
 
+for (const persistent of [false, true]) {
+  test(`settings reconciles a save interrupted by ${persistent ? "persistent" : "transient"} storage failure`, async (t) => {
+    const { page } = await fixture(t, {
+      html: FIXTURE_HTML,
+      initScript: `
+        const nativeSet = Storage.prototype.setItem;
+        window.settingSaveWrites = 0;
+        Storage.prototype.setItem = function (key, value) {
+          if (this === localStorage && key.startsWith("LuoguSP.") && window.interruptSettingsSave) {
+            const write = ++settingSaveWrites;
+            if (write === 2 || (${persistent} && write > 2))
+              throw new DOMException("Fixture storage quota", "QuotaExceededError");
+          }
+          return nativeSet.call(this, key, value);
+        };
+      `,
+    });
+    const entry = page.locator(".luogusp-setting-entry");
+    await entry.press("Enter");
+    const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+    const checkboxes = modal.getByRole("checkbox");
+    const preferences = () => checkboxes.evaluateAll(nodes =>
+      nodes.map(node => [node.checked, localStorage.getItem(node.dataset.key) === "true"]));
+    const original = await preferences();
+    assert.deepEqual(original, Array.from({ length: 6 }, () => [true, true]));
+
+    const none = modal.getByRole("button", { name: "全不选" });
+    const save = modal.getByRole("button", { name: "保存" });
+    await none.press("Enter");
+    await page.evaluate(() => { window.interruptSettingsSave = true; });
+    await save.press("Enter");
+    assert.deepEqual(await preferences(), persistent ? [[false, false], ...original.slice(1)] : original);
+    assert.match(await modal.getByRole("status").textContent(), /保存失败/);
+    assert.ok(await focused(save));
+    assert.equal(await page.getByRole("alertdialog").count(), 0);
+
+    await page.evaluate(() => { window.interruptSettingsSave = false; });
+    await none.press("Enter");
+    await save.press("Enter");
+    await page.getByRole("alertdialog", { name: "设置已保存" }).getByRole("button", { name: "稍后" }).press("Enter");
+    assert.ok(await focused(entry));
+    await entry.press("Enter");
+    assert.deepEqual(await preferences(), Array.from({ length: 6 }, () => [false, false]));
+  });
+}
+
 test("settings traps focus and Enter chooses the focused refresh action", async (t) => {
   const { page, requests } = await fixture(t, { html: FIXTURE_HTML });
   const entry = page.locator(".luogusp-setting-entry");
@@ -2263,6 +2402,51 @@ test("problem preview renders native fields first and patches late records in pl
   assert.ok(animations.every(({ label, duration, properties }) =>
     label && duration === 125 && properties.join() === "opacity"));
 });
+
+for (const focusTags of [true, false]) {
+  test(`problem preview ${focusTags ? "restores focus when late detail removes its focused tags" :
+    "retains another focused action when late detail removes tags"}`, async (t) => {
+    const detail = responseGate(t);
+    const warmup = { ...problem, pid: "P1001" };
+    const initial = { ...problem, bestRecord: { id: 77, status: 12, score: 100 } };
+    const { page } = await fixture(t, {
+      html: fixtureHtml('<a id="warmup" href="/problem/P1001">Warmup</a> ' +
+        '<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [warmup, initial] }),
+      reply(route, url) {
+        if (url.pathname === "/problem/P1001")
+          return route.fulfill({ json: { user: viewer, data: { problem: warmup } } });
+        if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({
+          json: { user: viewer, data: { problem: { ...initial, tags: [] } } },
+        }));
+        if (url.pathname === "/_lfe/tags")
+          return route.fulfill({ json: { tags: [{ id: 1, name: "Fixture tag" }] } });
+        if (url.pathname === "/record/list")
+          return route.fulfill({ json: { template: "record.list", user: viewer, data: { records: { result: [] } } } });
+      },
+    });
+    const preview = card(page);
+    const tags = preview.getByRole("button", { name: "显示标签" });
+    await page.locator("#warmup").press("Alt+ArrowDown");
+    await tags.waitFor();
+    await page.keyboard.press("Escape");
+    await page.locator("#problem").press("Alt+ArrowDown");
+    await tags.waitFor();
+    const best = preview.getByRole("link", { name: "最佳提交" });
+    const jump = preview.getByRole("link", { name: "跳转题目" });
+    await page.keyboard.press("Tab");
+    assert.ok(await focused(tags));
+    if (!focusTags) {
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Tab");
+      assert.ok(await focused(best));
+    }
+    detail.release();
+    await tags.waitFor({ state: "detached" });
+    await preview.waitFor();
+    const current = focusTags ? jump : best;
+    assert.ok(await focused(current));
+  });
+}
 
 test("problem preview loading and late fields stay static with reduced motion", async (t) => {
   const detail = responseGate(t);
@@ -3587,33 +3771,99 @@ async function ideFixture(t, submitReply = (route, index) =>
 
 for (const omitted of [true, false]) {
   test(`IDE samples ${omitted ? "recover after partial detail" : "reuse a confirmed empty list"}`, async (t) => {
+    const detail = responseGate(t);
+    const firstRead = Promise.withResolvers();
     let reads = 0;
     const { page, submitted } = await ideFixture(t, undefined, {
-      detailReply: (route) => {
+      detailReply: async (route) => {
         const samples = ++reads === 1 ? (omitted ? undefined : []) : ideFixtureSamples;
+        if (reads === 1) {
+          firstRead.resolve();
+          await detail.promise;
+        }
         return route.fulfill({ json: { user: viewer, data: { problem: { ...problem, samples } } } });
       },
     });
     const start = page.locator(".luogusp-ide-batch-btn");
-    const hint = page.getByRole("button", { name: omitted ? "暂时无法获取样例" : "本题无样例", exact: true });
-    await start.click();
+    const ready = page.getByRole("button", { name: "一键测试", exact: true });
+    const message = omitted ? "暂时无法获取样例" : "本题无样例";
+    const hint = page.getByRole("button", { name: message, exact: true });
+    const status = page.getByRole("status").and(page.locator(".luogusp-ide-remount-status"));
+    const editor = page.locator(".cm-content");
+    const expectedFocus = omitted ? editor : start;
+    await start.press("Enter");
+    await firstRead.promise;
+    if (omitted) {
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Tab");
+      assert.ok(await focused(editor));
+    }
+    detail.release();
     await hint.waitFor();
+    const hintState = {
+      focused: await focused(expectedFocus),
+      activeElement: await page.evaluate(() => document.activeElement.tagName),
+      announcement: await status.textContent(),
+      available: await hint.isEnabled(),
+    };
+    await ready.waitFor();
+    assert.deepEqual({ hintState, restoredFocus: await focused(expectedFocus), available: await ready.isEnabled() }, {
+      hintState: { focused: true, activeElement: omitted ? "DIV" : "BUTTON", announcement: message, available: false },
+      restoredFocus: true,
+      available: true,
+    });
+    if (!omitted) await assertIdeFocusVisible(ready);
     assert.equal(reads, 1);
     assert.equal(submitted.length, 0);
     if (omitted) {
       await page.evaluate(() => { window.autoFinishSamples = true; });
-      await start.click();
+      await ready.press("Enter");
       await page.getByText("2/2 通过", { exact: true }).waitFor();
       assert.equal(reads, 2);
       assert.deepEqual(submitted.map(({ input }) => input), ideFixtureSamples.map(([input]) => input));
     } else {
-      await start.click();
+      await ready.press("Enter");
       await hint.waitFor();
       assert.equal(reads, 1);
       assert.equal(submitted.length, 0);
     }
   });
 }
+
+test("IDE rerun announces empty code and keeps the toolbar unavailable through a corrected batch", async (t) => {
+  const submission = responseGate(t);
+  const { page, firstSubmit, submitted } = await ideFixture(t, async (route, index) => {
+    await submission.promise;
+    return route.fulfill({ json: { status: 200, data: { rid: index } } });
+  });
+  const editor = page.locator(".cm-content");
+  const samples = page.getByRole("tab", { name: "样例测试", exact: true });
+  const rerun = page.getByRole("button", { name: "重新测试", exact: true });
+  const hint = page.getByRole("button", { name: "代码为空", exact: true });
+  const ready = page.getByRole("button", { name: "一键测试", exact: true });
+  const status = page.getByRole("status").and(page.locator(".luogusp-ide-remount-status"));
+  await editor.fill("");
+  await samples.press("Enter");
+  await rerun.press("Enter");
+  await hint.waitFor();
+  assert.equal(await status.textContent(), "代码为空");
+  assert.ok(await focused(rerun));
+  assert.equal(submitted.length, 0);
+
+  await editor.fill("code");
+  await hint.press("Enter");
+  assert.ok(await focused(hint));
+  await rerun.press("Enter");
+  await firstSubmit;
+  await ready.waitFor();
+  assert.ok(await ready.isDisabled());
+  assert.equal(await status.textContent(), "");
+  await page.evaluate(() => { window.autoFinishSamples = true; });
+  submission.release();
+  await page.getByText("2/2 通过", { exact: true }).waitFor();
+  assert.ok(await ready.isEnabled());
+  assert.ok(await focused(rerun));
+});
 
 for (const outcome of ["completion", "stop", "focus elsewhere", "return to samples tab", "rerun"]) {
   test(`IDE keyboard batch retains appropriate focus through ${outcome}`, async (t) => {
@@ -3820,9 +4070,9 @@ for (const focusMoved of [false, true]) {
         window.restoreNativeIo = () => host.appendChild(replacement);
       } else node.replaceWith(replacement);
     }, focusMoved);
-    const status = page.getByRole("status").and(page.locator(".luogusp-ide-remount-status"))
-      .filter({ hasText: "IDE 面板已更新，样例测试已停止" });
-    await status.waitFor({ state: "visible" });
+    const status = page.getByRole("status").and(page.locator(".luogusp-ide-remount-status"));
+    const cancellation = "IDE 面板已更新，样例测试已停止";
+    await status.filter({ hasText: cancellation }).waitFor({ state: "visible" });
     if (focusMoved) {
       await editor.focus();
       await page.evaluate(() => window.restoreNativeIo());
@@ -3835,16 +4085,19 @@ for (const focusMoved of [false, true]) {
     await editor.press("End");
     await editor.press("X");
     assert.ok((await editor.textContent()).includes("X"));
-    assert.equal(await page.locator(".luogusp-ide-summary").textContent(), "IDE 面板已更新，样例测试已停止");
+    const summary = page.locator(".luogusp-ide-summary");
+    assert.equal(await summary.textContent(), cancellation);
 
     response.release();
     await page.waitForFunction(() => window.ideAcknowledged === 1);
     await page.evaluate(() => window.finishSample("AC"));
     await batch.press("Enter");
-    await page.getByRole("button", { name: "上次运行结果未确认，请刷新页面后重试", exact: true }).waitFor();
+    const hint = "上次运行结果未确认，请刷新页面后重试";
+    await page.getByRole("button", { name: hint, exact: true }).waitFor();
     assert.equal(submitted.length, 1);
     assert.equal(await page.locator(".luogusp-ide-row").count(), 0);
-    assert.ok(await status.isVisible());
+    assert.equal(await status.textContent(), hint);
+    assert.equal(await summary.textContent(), cancellation);
   });
 }
 
@@ -4288,6 +4541,43 @@ for (const queued of [true, false]) {
     assert.equal(requests.filter(request => request.path === "/problem/P1000").length, 1);
   });
 }
+
+test("preview-only detail refresh recolors existing and new problem links", async (t) => {
+  const detail = responseGate(t);
+  const title = "Preview-only detail";
+  const { page, requests } = await fixture(t, {
+    useClock: true,
+    html: fixtureHtml(`<a id="problem-link" href="/problem/P1000"><span class="pid">P1000</span></a>
+      <a href="/problem/P1000"><span class="pid lcolor--pink-3">P1000</span></a>
+      <div><span class="pid" title=" P1000 ">P1000</span><a href="/problem/P1000">Problem</a></div>`,
+    { recommendations: [{ pid: problem.pid, difficulty: 2 }] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({
+        json: { user: viewer, data: { problem: { pid: problem.pid, difficulty: 4, name: title } } },
+      }));
+    },
+  });
+  const problemRequests = () => requests.filter(({ path }) => path === "/problem/P1000");
+  const colors = () => page.locator("main .pid").evaluateAll(nodes => nodes.map(node => node.style.color));
+  const trigger = page.locator("#problem-link");
+  const orange = "rgb(243, 156, 17)";
+  const green = "rgb(82, 196, 26)";
+  await page.clock.runFor(350);
+  assert.deepEqual(await colors(), [orange, "", orange]);
+  assert.equal(problemRequests().length, 0, "coloring uses embedded data without a request");
+  const requested = page.waitForRequest(request => new URL(request.url()).pathname === "/problem/P1000");
+  await trigger.press("Alt+ArrowDown");
+  await requested;
+  detail.release();
+  const preview = card(page);
+  await preview.getByText(`P1000 ${title}`, { exact: true }).waitFor();
+  assert.equal(await preview.locator(".luogusp-hc-title span").evaluate(node => node.style.color), green);
+  await page.locator("main").evaluate(node => {
+    node.insertAdjacentHTML("beforeend", '<a href="/problem/P1000"><span class="pid">P1000</span></a>');
+  });
+  assert.deepEqual(await colors(), [green, "", green, green]);
+  assert.equal(problemRequests().length, 1, "the preview is the only problem detail request");
+});
 
 test("academic record colors follow late and recycled status links", async (t) => {
   const records = [

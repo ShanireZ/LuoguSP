@@ -1,3 +1,20 @@
+// Preserve the native style and give each cloned control its own name and state.
+export function createIdeButton(template, label, className, activate) {
+  const button = template?.cloneNode(true) ?? document.createElement("button");
+  button.textContent = label;
+  for (const name of ["title", "aria-label", "aria-labelledby", "aria-disabled"])
+    button.removeAttribute(name);
+  button.classList.remove("luogusp-ide-batch-btn");
+  button.classList.add(className);
+  button.disabled = false;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.getAttribute("aria-disabled") !== "true") activate();
+  });
+  return button;
+}
+
 export function createIdeTabControls(ioLayout, selectTab) {
   const tabBar = document.createElement("div");
   tabBar.className = "luogusp-ide-tabbar";

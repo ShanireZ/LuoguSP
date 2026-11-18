@@ -331,60 +331,67 @@ test("IDE diff aligns inserted and deleted lines and keeps separate highlights",
 
 // ★ 一次性提示的恢復目標必須是**固定文案**。舊寫法拿當時的 `textContent` 當快照，
 //   1500ms 內的第二條提示會把第一條提示存成「原文案」，按鈕從此再也變不回「一鍵測試」。
-//   「重新測試」按鈕從不禁用（提示只禁用「一鍵測試」那一枚），連點兩下就能重現。
-test("批测提示连发两条后仍然恢复成「一键测试」", () => {
-  const timers = new Map();
-  let nextId = 1;
-  const clock = {
-    setTimeout: (fn) => {
-      const id = nextId++;
-      timers.set(id, fn);
-      return id;
-    },
-    clearTimeout: (id) => timers.delete(id),
-  };
-  const button = { textContent: IDE_BATCH_LABEL, disabled: false };
-  const hint = createBatchButtonHint({ findButton: () => button, clock });
+//   提示期間停用「一鍵測試」，仍可用「重新測試」更新提示。
+test("批测提示连发两条后仍然恢复成「一键测试」", async () => {
+  const clock = new FakeClock();
+  const { document } = new JSDOM(`<button>${IDE_BATCH_LABEL}</button>`).window;
+  const button = document.querySelector("button");
+  const hint = createBatchButtonHint({ findButton: () => button, clock: clock.adapter() });
 
+  button.focus();
   assert.equal(hint.show("本题无样例"), true);
   assert.equal(button.textContent, "本题无样例");
-  assert.equal(button.disabled, true);
-  // 第一條還沒到點，第二條就來了。
-  assert.equal(hint.show("页面已切换"), true);
-  assert.equal(button.textContent, "页面已切换");
-  // 只剩最後那一個定時器；先前那個必須已被取消，否則它到點會寫回錯的文案。
-  assert.equal(timers.size, 1);
-
-  for (const fire of [...timers.values()]) fire();
-  assert.equal(button.textContent, IDE_BATCH_LABEL);
+  assert.equal(button.getAttribute("aria-disabled"), "true");
   assert.equal(button.disabled, false);
-  assert.equal(hint.isPending(), false);
+  assert.equal(document.activeElement, button);
+  await clock.advance(1000);
+  assert.equal(hint.show("页面已切换"), true);
+  await clock.advance(500);
+  assert.equal(button.textContent, "页面已切换");
+  assert.equal(button.getAttribute("aria-disabled"), "true");
+
+  await clock.advance(1000);
+  assert.equal(button.textContent, IDE_BATCH_LABEL);
+  assert.equal(button.hasAttribute("aria-disabled"), false);
+  assert.equal(button.disabled, false);
+  assert.equal(document.activeElement, button);
 });
 
-test("批测提示到点时重新定位按钮，并尊重仍在运行的状态", () => {
-  const timers = [];
-  const clock = {
-    setTimeout: (fn) => {
-      timers.push(fn);
-      return timers.length;
-    },
-    clearTimeout: () => {},
-  };
-  // Vue 在提示期間把按鈕重種了一枚 —— 恢復必須落在新節點上。
-  let button = { textContent: IDE_BATCH_LABEL, disabled: false };
-  const stale = button;
-  const hint = createBatchButtonHint({ findButton: () => button, clock });
-  hint.show("提交失败 HTTP 429", true);
-  button = { textContent: "一键测试", disabled: false };
-  timers.forEach((fire) => fire());
+test("批测提示到点时重置替换后的按钮，并保留运行时的停用状态", async () => {
+  const clock = new FakeClock();
+  const { document } = new JSDOM(`<button>${IDE_BATCH_LABEL}</button>`).window;
+  const findButton = () => document.querySelector("button");
+  const original = findButton();
+  const hint = createBatchButtonHint({ findButton, clock: clock.adapter() });
+  hint.show("代码为空");
+  const replacement = original.cloneNode(true);
+  replacement.disabled = true;
+  original.replaceWith(replacement);
+  await clock.advance(1500);
 
-  assert.equal(stale.textContent, "提交失败 HTTP 429");
-  assert.equal(button.textContent, IDE_BATCH_LABEL);
-  assert.equal(button.disabled, true, "批测仍在跑时不该把按钮放开");
+  assert.equal(original.textContent, "代码为空");
+  assert.equal(replacement.textContent, IDE_BATCH_LABEL);
+  assert.equal(replacement.hasAttribute("aria-disabled"), false);
+  assert.equal(replacement.disabled, true);
+});
+
+test("批测提示取消后不会重置新挂载的按钮", async () => {
+  const clock = new FakeClock();
+  const { document } = new JSDOM(`<button>${IDE_BATCH_LABEL}</button>`).window;
+  let button = document.querySelector("button");
+  const hint = createBatchButtonHint({ findButton: () => button, clock: clock.adapter() });
+  hint.show("本题无样例");
+  hint.cancel();
+  button = document.createElement("button");
+  button.textContent = "新按钮";
+  await clock.advance(1500);
+
+  assert.equal(button.textContent, "新按钮");
 });
 
 test("批测提示找不到按钮时安然返回 false，不排定时器", () => {
-  const hint = createBatchButtonHint({ findButton: () => null });
+  const clock = new FakeClock();
+  const hint = createBatchButtonHint({ findButton: () => null, clock: clock.adapter() });
   assert.equal(hint.show("本题无样例"), false);
-  assert.equal(hint.isPending(), false);
+  assert.equal(clock.timers.size, 0);
 });

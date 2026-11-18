@@ -22,6 +22,7 @@ function fixture({
 } = {}) {
   const writes = [];
   const clears = [];
+  const difficultyScans = [];
   let observed = null;
   let route = "/problem/list";
   const problems = createProblemData({
@@ -31,12 +32,16 @@ function fixture({
     identity: {
       resolve: (anchor) =>
         anchor.pid
-          ? { pid: anchor.pid, key: `${anchor.href}:${anchor.pid}` }
+          ? { pid: anchor.pid, href: anchor.href, scoped: anchor.scoped, key: `${anchor.href}:${anchor.pid}` }
           : null,
     },
     documentAdapter: {
       root: { anchors },
       anchors: (root) => root.anchors || [],
+      problemAnchors: (pid) => {
+        difficultyScans.push(pid);
+        return anchors.filter((anchor) => anchor.pid === pid);
+      },
       observeAnchors: (accept) => {
         observed = accept;
         return () => {
@@ -58,12 +63,17 @@ function fixture({
     },
     routeAdapter: { token: () => route },
     difficultySource: {
-      lookup: async ({ pid }, signal) => {
-        const result = await problems.load(pid, { signal });
+      peek: ({ pid, href, scoped }) => problems.peekDifficulty(pid, scoped ? href : undefined),
+      lookup: async ({ pid, href }, signal) => {
+        const result = await problems.load(pid, { href, signal });
         return result && { difficulty: result.data.problem.difficulty, at: result.difficultyAt };
       },
       harvest,
-      subscribe,
+      subscribe: (accept, refresh) => {
+        const stop = subscribe?.(accept);
+        const stopDifficulty = problems.subscribeDifficulty(refresh);
+        return () => { stop?.(); stopDifficulty(); };
+      },
     },
     colorForDifficulty: (difficulty) => `color-${difficulty}`,
     logError,
@@ -76,6 +86,7 @@ function fixture({
     problems,
     writes,
     clears,
+    difficultyScans,
     emit: (next) => observed && observed(next),
     setRoute: (next) => {
       route = next;
@@ -189,6 +200,72 @@ for (const queued of [true, false]) {
     assert.equal(anchor.color, `color-${expected}`);
   });
 }
+
+test("a shared detail refresh targets its difficulty scope and current route", async (t) => {
+  const clock = new FakeClock();
+  const pid = "P1";
+  const variants = ["", "?contestId=123&lang=zh", "?contestId=123&lang=en"];
+  const anchors = variants.map((query) => ({ pid, href: `/problem/${pid}${query}`, scoped: Boolean(query) }));
+  const requests = [];
+  const fx = fixture({
+    anchors, clock: clock.adapter(),
+    text: async (path) => {
+      requests.push(path);
+      return JSON.stringify({ data: { problem: { pid, name: "From preview", difficulty: 4 } } });
+    },
+  });
+  for (const [index, query] of variants.entries()) {
+    fx.problems.rememberPage({ data: { training: { problems: [{ pid, difficulty: index + 1 }] } } },
+      new URL(`https://www.luogu.com.cn/training/100${query}`), clock.nowMs);
+  }
+  fx.pipeline.mount();
+  t.after(fx.pipeline.dispose);
+  const colors = () => anchors.map((anchor) => anchor.color);
+  assert.deepEqual(colors(), ["color-1", "color-2", "color-3"]);
+
+  await clock.advance(1);
+  await fx.problems.load(pid, { href: anchors[1].href, fields: ["name", "difficulty"] });
+  assert.deepEqual(colors(), ["color-1", "color-4", "color-3"]);
+  assert.deepEqual(fx.difficultyScans, [pid]);
+
+  fx.setRoute("/training/200");
+  await clock.advance(1);
+  await fx.problems.load(pid, { href: anchors[0].href, fields: ["name", "difficulty"] });
+  assert.deepEqual(colors(), ["color-1", "color-4", "color-3"], "a notification skips the previous route");
+  assert.deepEqual(fx.difficultyScans, [pid]);
+  fx.pipeline.onRoute();
+  assert.deepEqual(colors(), ["color-4", "color-4", "color-3"]);
+  assert.deepEqual(requests, ["/problem/P1?contestId=123&lang=zh&_contentOnly=1", "/problem/P1?_contentOnly=1"]);
+});
+
+test("a locally cached query color stays with its observed viewer", async (t) => {
+  const clock = new FakeClock();
+  const anchor = { pid: "P1", href: "/problem/P1" };
+  const anchors = [anchor];
+  const reply = deferred();
+  let requests = 0;
+  const fx = fixture({
+    anchors, clock: clock.adapter(),
+    text: async () => ++requests === 1 ? '{"data":{"problem":{"difficulty":2}}}' : reply.promise,
+  });
+  const observeViewer = (viewer) => fx.problems.rememberPage({ viewer, data: {} },
+    new URL("https://www.luogu.com.cn/problem/list"), clock.nowMs);
+  observeViewer(42);
+  fx.pipeline.mount();
+  t.after(fx.pipeline.dispose);
+  await new Promise(setImmediate);
+  assert.equal(anchor.color, "color-2");
+
+  observeViewer(43);
+  const inserted = { pid: anchor.pid, href: anchor.href };
+  anchors.push(inserted);
+  fx.emit([inserted]);
+  assert.equal(inserted.color, undefined);
+  assert.equal(requests, 2);
+  reply.resolve('{"data":{"problem":{"difficulty":4}}}');
+  await new Promise(setImmediate);
+  assert.equal(inserted.color, "color-4");
+});
 
 test("disposing before the fallback delay cancels all pending queries", async () => {
   const clock = new FakeClock();
