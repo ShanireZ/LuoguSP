@@ -62,8 +62,9 @@ export function createGetRequestScheduler(config) {
         }
         return;
       }
-      nextAt = clock.now() + launchGap;
       const job = queue.shift();
+      job.startedAt = clock.now();
+      nextAt = job.startedAt + launchGap;
       const controller = createAbortController();
       const timeout = clock.setTimeout(() => controller.abort(), timeoutMs);
       controllers.add(controller);
@@ -149,7 +150,7 @@ export function createGetRequestScheduler(config) {
     const key = options?.key ?? url;
     let job = inflight.get(key);
     if (!job) {
-      job = { url, key, retries: 0, consumers: 0, at: clock.now() };
+      job = { url, key, retries: 0, consumers: 0 };
       job.promise = new Promise((resolve, reject) => {
         job.resolve = resolve;
         job.reject = reject;
@@ -161,9 +162,13 @@ export function createGetRequestScheduler(config) {
     }
     const result = attachSignal(job, signal);
     drain();
-    // Every consumer of a shared response observes it at the original scheduling time.
-    options?.onScheduled?.(job.at);
-    return result;
+    const onResponse = options?.onResponse;
+    if (!onResponse) return result;
+    // All consumers receive the start time of the attempt that returned this body.
+    return result.then((body) => {
+      onResponse(job.startedAt);
+      return body;
+    });
   };
   const dispose = () => {
     if (disposed) return;

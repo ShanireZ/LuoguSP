@@ -14,8 +14,9 @@ function in baseline-targets.mjs applies the frozen targets to every browser
 build, including calls made through a callback.
 The guard requires a frozen target for Chrome, Edge, Firefox, Safari and iOS
 Safari. Build scripts import the shared function. The guard rejects direct
-esbuild imports in `scripts/` and in local module files named by
-`package.json` commands, including files outside `scripts/`.
+esbuild imports in `scripts/`, in local modules named by `package.json`
+commands and in local helpers reached through statically resolvable imports.
+The guard inspects those dependencies without executing the declared commands.
 
 The Baseline guard resolves the moving policy query and a dated query for the
 last day of the snapshot's calendar quarter. Both must fit the approved

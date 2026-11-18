@@ -247,7 +247,41 @@ test("one detail request serves concurrent consumers and survives one aborted ro
   scheduler.dispose();
 });
 
-test("a late subscriber uses the original time of the shared detail request", async (t) => {
+for (const retry of [false, true]) {
+  test(`a ${retry ? "retried" : "queued"} detail uses the successful transport start time`, async (t) => {
+    const { pid } = problem;
+    const clock = new FakeClock();
+    const starts = [];
+    const scheduler = createGetRequestScheduler({
+      clock: clock.adapter(),
+      fetch: (path) => {
+        if (path === "/previous") return textResponse("previous");
+        starts.push(clock.nowMs);
+        if (retry && starts.length === 1) return textResponse("busy", 429, { "retry-after": "1" });
+        return textResponse(JSON.stringify({ data: { problem } }));
+      },
+    });
+    t.after(() => scheduler.dispose());
+    if (!retry) {
+      await scheduler.text("/previous");
+      await clock.advance(20);
+    }
+    const data = createProblemData({ origin, text: scheduler.text, now: clock.adapter().now });
+    const first = data.load(pid, { fields: ["name", "difficulty"] });
+    await flushMicrotasks();
+    await clock.advance(100 - clock.nowMs);
+    data.rememberPage({
+      data: { training: { problems: [{ pid, name: "Older summary", difficulty: 2 }] } },
+    }, url("/training/100"), clock.nowMs);
+    const samples = data.load(pid, { fields: ["samples"] });
+    await clock.advance(retry ? 900 : 200);
+    const results = await Promise.all([first, samples]);
+    assert.deepEqual(starts, retry ? [0, 1000] : [300]);
+    assert.deepEqual(results.map(({ data }) => data.problem), [problem, problem]);
+  });
+}
+
+test("a late subscriber keeps the start time of an already-running detail attempt", async (t) => {
   const { pid } = problem;
   const clock = new FakeClock();
   const pending = deferred();

@@ -139,6 +139,54 @@ test("the actual guard checks package-declared build entries outside scripts", (
   assert.match(shared.stdout, /2 个构建脚本/u);
 });
 
+test("the actual guard checks local helpers reached from declared build entries", (t) => {
+  const { fixture, run } = fixtureGuard(t);
+  const packagePath = join(fixture, "package.json");
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  packageJson.scripts.build = 'node "./browser builds/bundle.mjs" --fixture-build';
+  writeFileSync(packagePath, JSON.stringify(packageJson));
+  const directory = join(fixture, "browser builds");
+  mkdirSync(directory);
+  const entry = join(directory, "bundle.mjs");
+  const helper = join(directory, "helper.mjs");
+  writeFileSync(entry, [
+    'if (!process.argv.includes("--fixture-build")) throw new Error("Unexpected build execution");',
+    'const { bundle } = await import("./bridge.mjs");',
+    'const result = await bundle();',
+    'process.stdout.write(result.outputFiles[0].text);',
+  ].join("\n"));
+  writeFileSync(join(directory, "bridge.mjs"), 'export { bundle } from "./helper.mjs";');
+
+  const options = '{ stdin: { contents: "globalThis.fixture = /[a&&b]/v;" }, write: false }';
+  const runBuild = () => {
+    const result = spawnSync(process.execPath, [entry, "--fixture-build"], {
+      cwd: fixture,
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout;
+  };
+  writeFileSync(helper, [
+    'import { build } from "esbuild";',
+    `export const bundle = () => build(${options});`,
+  ].join("\n"));
+  assert.match(runBuild(), /\/\[a&&b\]\/v/u);
+  const direct = run();
+  assert.equal(direct.status, 1, direct.stdout);
+  assert.match(direct.stderr, /browser builds\/helper\.mjs.*无法核验的 esbuild 导入/u);
+
+  writeFileSync(helper, [
+    'import { buildBrowser } from "../baseline-targets.mjs";',
+    `export const bundle = () => buildBrowser(${options});`,
+  ].join("\n"));
+  const shared = run();
+  assert.equal(shared.status, 0, shared.stderr);
+  assert.match(shared.stdout, /2 个构建脚本/u);
+  assert.doesNotMatch(runBuild(), /\/\[a&&b\]\/v/u);
+});
+
 for (const [browser, staleMinimum] of [
   ["firefox", "124"],
   ["chrome", "123"],

@@ -2,6 +2,30 @@ import { Lexer } from "marked";
 import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
 
+function withoutReferenceDefinitions(blocks) {
+  return blocks.map((block) => {
+    if (block.type === "def") return "";
+    if (block.type === "blockquote") {
+      const body = withoutReferenceDefinitions(block.tokens);
+      if (body === block.text) return block.raw;
+      return body.trim()
+        ? body.trimEnd().replace(/^/gm, "> ") + block.raw.match(/\n*$/)[0]
+        : "";
+    }
+    if (block.type !== "list") return block.raw;
+    const items = block.items.map((item) => {
+      const body = withoutReferenceDefinitions(item.tokens);
+      if (body === item.text) return item.raw;
+      if (!body.trim()) return "";
+      const marker = item.raw.match(/^[ \t]*(?:[-+*]|\d+[.)])[ \t]*/)[0];
+      const indent = " ".repeat(marker.length);
+      return marker + body.trimEnd().replaceAll("\n", "\n" + indent) + item.raw.match(/\n*$/)[0];
+    });
+    return items.every((raw, index) => raw === block.items[index].raw)
+      ? block.raw : items.join("");
+  }).join("");
+}
+
 export function renderMarkdownLite(md, options = {}) {
   const { document } = options;
   const esc = (source) =>
@@ -54,6 +78,29 @@ export function renderMarkdownLite(md, options = {}) {
       ? `<img src="${esc(href)}" alt="${esc(alt)}"${title}>`
       : `<span>${esc(alt.trim() || IMAGE_UNAVAILABLE)}</span>`;
   };
+  const safeInlineTag = /^(b|strong|i|em|u|s|del|ins|mark|sub|sup|br|hr|code|kbd|small)$/;
+  const rewriteHtmlTag = (raw) => {
+    const element = /^<(\/?)([a-z][a-z0-9]*)(?=[ \t\n\f\r/>])/i.exec(raw);
+    if (!element) return raw;
+    const [, closing, name] = element;
+    const tag = name.toLowerCase();
+    if (tag === "img" && !closing) {
+      const image = readInertTag(raw);
+      return image ? stash(imageMarkup(
+        image.getAttribute("src"), image.getAttribute("alt") || "",
+        titleAttribute(image.getAttribute("title")),
+      )) : "";
+    }
+    if (tag === "a") {
+      if (closing) return /^<\/a[ \t\n\f\r]*>$/i.test(raw) ? stash("</a>") : raw;
+      const anchor = readInertTag(raw);
+      const href = anchor?.getAttribute("href");
+      return stash(resolveIntroHttpUrl(href, document.baseURI)
+        ? anchorStart(href, anchor.getAttribute("title"))
+        : "<span>");
+    }
+    return safeInlineTag.test(tag) ? stash(`<${closing}${tag}>`) : raw;
+  };
   const inline = (source) =>
     source
       .replace(/~~([^~]+)~~/g, "<del>$1</del>")
@@ -74,6 +121,7 @@ export function renderMarkdownLite(md, options = {}) {
   const stashCode = (code) => stash(`<code>${esc(code)}</code>`);
   const rewriteInlineTokens = (tokens) => tokens.map((token) => {
     if (token.type === "codespan") return stashCode(token.text);
+    if (token.type === "html") return rewriteHtmlTag(token.raw);
     if (token.type === "image")
       return stash(imageMarkup(decodeAttribute(token.href), decodeAttribute(token.text),
         titleAttribute(decodeAttribute(token.title))));
@@ -92,7 +140,7 @@ export function renderMarkdownLite(md, options = {}) {
     return token.raw;
   }).join("");
   const inlineLiterals = (source) => {
-    if (!source.includes("[") && !source.includes("`")) return source;
+    if (!source.includes("[") && !source.includes("`") && !source.includes("<")) return source;
     // Collect document reference definitions with the same lexer used for links.
     // Keep Lite's block rendering, and omit definition lines from its input.
     try {
@@ -100,7 +148,7 @@ export function renderMarkdownLite(md, options = {}) {
       if (source.includes("]:")) {
         const blocks = lexer.blockTokens(source);
         if (Object.keys(lexer.tokens.links).length)
-          source = blocks.filter(({ type }) => type !== "def").map(({ raw }) => raw).join("");
+          source = withoutReferenceDefinitions(blocks);
       }
       return rewriteInlineTokens(lexer.inlineTokens(source));
     } catch {
@@ -125,8 +173,6 @@ export function renderMarkdownLite(md, options = {}) {
             .join("")}</tr>`,
       )
       .join("")}</tbody></table>`;
-  const safeInlineTag =
-    /^(b|strong|i|em|u|s|del|ins|mark|sub|sup|br|hr|code|kbd|small)$/i;
   let source = md
     .replace(/\r\n?/g, "\n")
     .replace(/^ {0,3}((`|~)\2{2,})([^\n]*)\n([\s\S]*?)(?:^ {0,3}\1\2*[ \t]*(?=\n|$)|(?![\s\S]))/gm,
@@ -135,26 +181,7 @@ export function renderMarkdownLite(md, options = {}) {
         return stash(
           `<pre${className}><code${className}>${esc(code.replace(/\n$/, ""))}</code></pre>`,
         );
-      })
-    .replace(/<img(?=[\s/>])(?:"[^"]*"|'[^']*'|[^"'<>])*>/gi, (tag) => {
-      const image = readInertTag(tag);
-      return image ? stash(imageMarkup(
-        image.getAttribute("src"),
-        image.getAttribute("alt") || "",
-        titleAttribute(image.getAttribute("title")),
-      )) : "";
-    })
-    .replace(/<a(?=[\s/>])(?:"[^"]*"|'[^']*'|[^"'<>])*>/gi, (tag) => {
-      const anchor = readInertTag(tag);
-      const href = anchor?.getAttribute("href");
-      return stash(resolveIntroHttpUrl(href, document.baseURI)
-        ? anchorStart(href, anchor.getAttribute("title"))
-        : "<span>");
-    })
-    .replace(/<\/a>/gi, () => stash("</a>"))
-    .replace(/<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, (tag, slash, name) =>
-      safeInlineTag.test(name) ? stash(`<${slash}${name.toLowerCase()}>`) : tag,
-    );
+      });
   source = mathInFragments(inlineLiterals(source));
   source = esc(source)
     .replace(/^([^\n]+)\n=+[ \t]*$/gm, "# $1")

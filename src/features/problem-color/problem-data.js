@@ -204,7 +204,7 @@ export function createProblemData({
     query.set("_contentOnly", "1");
     try {
       const reply = await text(`${path}?${query}`, {
-        key, signal, onScheduled: (scheduledAt) => { at = scheduledAt; },
+        key, signal, onResponse: (startedAt) => { at = startedAt; },
       });
       if (signal?.aborted || viewer() !== context.viewer) return null;
       const page = parsePage(reply);

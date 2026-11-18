@@ -6,7 +6,7 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import browserslist from "browserslist";
 
-import { ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";
+import { buildBrowser, ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const [policy, packageJson] = await Promise.all([
@@ -104,6 +104,25 @@ const packageModuleFiles = async (scripts) => {
     }
   }));
   return files.filter(Boolean);
+};
+
+const importedModuleFiles = async (entries) => {
+  if (entries.length === 0) return [];
+  // Use esbuild's input graph to inspect declared entry points without running them.
+  const { metafile } = await buildBrowser({
+    absWorkingDir: root,
+    entryPoints: entries,
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    packages: "external",
+    outdir: "node_modules/.cache/baseline-inputs",
+    write: false,
+    metafile: true,
+  });
+  return Object.keys(metafile.inputs)
+    .filter((path) => moduleExtension.test(path) && !isAbsolute(path) && !path.startsWith("../"))
+    .map((path) => resolve(root, path));
 };
 
 const versionParts = (value) =>
@@ -253,7 +272,8 @@ const [scripts, declaredModules] = await Promise.all([
   moduleFiles(resolve(root, "scripts")),
   packageModuleFiles(packageJson.scripts),
 ]);
-for (const absolute of new Set([...scripts, ...declaredModules])) {
+const importedModules = await importedModuleFiles(declaredModules);
+for (const absolute of new Set([...scripts, ...declaredModules, ...importedModules])) {
   if (absolute === targetModule) continue;
   const source = withoutCodeComments(await readFile(absolute, "utf8"));
   const references = source.match(/\b(?:from\s*|(?:import|require)\s*(?:\(\s*)?)["'\x60]esbuild(?:\/[^"'\x60\n]+)?["'\x60]/g);

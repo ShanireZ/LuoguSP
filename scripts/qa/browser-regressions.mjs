@@ -292,6 +292,8 @@ for (const mode of ["full", "lite"]) {
       '<picture><source srcset="https://images.example.test/intro-images/source.png"><img src="//images.example.test/intro-images/raw.png" srcset="https://images.example.test/intro-images/srcset.png" alt="Raw &amp; safe"></picture>',
       '<a href="https://example.test/gallery"><img src="https://images.example.test/intro-images/badge.png" alt="Badge"></a>',
       '<a href="./gallery?mode=raw&amp;page=2" title="HTML &gt; gallery"><img src="../intro-images/html.png" title="HTML image" alt="HTML cover"></a>',
+      '<a href="./end-tag-gallery"><img src="../intro-images/end-tag.png" alt="End tag image"></a > trailing words',
+      'Plain follow-up paragraph',
       "![Luogu photo](/intro-images/redirect.png)",
       "![Relative photo](../intro-images/relative.png)",
       "![](https://images.example.test/intro-images/untitled.png)",
@@ -346,6 +348,11 @@ for (const mode of ["full", "lite"]) {
     assert.equal(await intro.getByRole("link", { name: "Raw & safe", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/raw.png");
     assert.equal(await intro.getByRole("link", { name: "Badge", exact: true }).getAttribute("href"), "https://example.test/gallery");
     assert.equal(await intro.getByRole("link", { name: "打开图片：Badge", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/badge.png");
+    assert.deepEqual(await intro.locator('a[href="./end-tag-gallery"]').allTextContents(), ["End tag image"]);
+    assert.equal(await intro.getByRole("link", { name: "打开图片：End tag image", exact: true }).getAttribute("href"),
+      origin + "/intro-images/end-tag.png");
+    assert.equal(await intro.getByText("Plain follow-up paragraph", { exact: true }).count(), 1);
+    assert.doesNotMatch(await intro.textContent(), /<\/a\s+>/);
     assert.equal(await intro.getByRole("link", { name: "Luogu photo", exact: true }).getAttribute("href"), redirect);
     assert.equal(await intro.getByRole("link", { name: "Relative photo", exact: true }).getAttribute("href"), origin + "/intro-images/relative.png");
     assert.equal(await intro.getByRole("link", { name: "打开图片", exact: true }).getAttribute("href"), imageOrigin + "/intro-images/untitled.png");
@@ -367,6 +374,38 @@ for (const mode of ["full", "lite"]) {
     assert.equal(tab.url(), photo);
     assert.deepEqual(navigation, { isNavigation: true, referer: null });
     assert.equal(await tab.evaluate(() => window.opener), null);
+  });
+}
+
+for (const mode of ["full", "lite"]) {
+  test(`profile introduction keeps nested definitions and tag-shaped literals out of HTML processing in ${mode}`, async (t) => {
+    const introduction = [
+      "[![<b>Diagram</b>][picture]][gallery]",
+      '> Quoted text\n>\n> [gallery]: ./gallery "Album <b>title</b>"',
+      '- List text\n- [picture]: ../intro-images/nested.png "Image <b>title</b>"',
+      'Literal `<img src="../intro-images/example.png" alt="Example">` in code.',
+      '<b title="actual">Actual raw tag</b>',
+    ].join("\n\n");
+    const { page, requests } = await fixture(t, {
+      path: "/user/42?luogusp-qa=fallback" + (mode === "lite" ? "-lite" : ""),
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.getByText("Actual raw tag", { exact: true }).waitFor();
+    const links = await intro.locator("a[href]").evaluateAll((nodes) =>
+      nodes.map((node) => [node.textContent, node.getAttribute("href"), node.title]));
+    assert.deepEqual(links, [
+      ["<b>Diagram</b>", "./gallery", "Album <b>title</b>"],
+      ["打开图片：<b>Diagram</b>", origin + "/intro-images/nested.png", "Image <b>title</b>"],
+    ]);
+    assert.equal(await intro.locator("code").textContent(), '<img src="../intro-images/example.png" alt="Example">');
+    assert.equal(await intro.locator("b").textContent(), "Actual raw tag");
+    assert.match(await intro.textContent(), /Quoted text[\s\S]*List text/);
+    assert.doesNotMatch(await intro.textContent(), /@@LGB|\[gallery\]:|\[picture\]:/);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await intro.locator("img").count(), 0);
+    assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
   });
 }
 

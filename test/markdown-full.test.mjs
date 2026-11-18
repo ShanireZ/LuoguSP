@@ -186,6 +186,60 @@ test("Lite uses the Markdown URL policy for raw HTML image links", () => {
   dom.window.close();
 });
 
+for (const [container, definition] of [
+  ["quote", '> Before definition\n>\n> [target]: ./gallery "Gallery"\n> [picture]: ./diagram.png "Diagram"\n>\n> After definition'],
+  ["list", '- Before definition\n- [target]: ./gallery "Gallery"\n- [picture]: ./diagram.png "Diagram"\n- After definition'],
+  ["list item", '- Before definition\n  \n  [target]: ./gallery "Gallery"\n  [picture]: ./diagram.png "Diagram"\n  \n  After definition'],
+]) {
+  test(`Lite resolves but hides reference definitions nested in a ${container}`, () => {
+    const { dom, renderer } = createRenderer();
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown([
+      "[![Picture][picture]][target]",
+      definition,
+      "> [target]: ./duplicate",
+      "After container",
+    ].join("\n\n"), { forceFullFailure: true }).html;
+    assert.deepEqual(
+      [...root.querySelectorAll("a[href]")].map((link) => [link.getAttribute("href"), link.title]),
+      [["./gallery", "Gallery"], ["https://www.luogu.com.cn/diagram.png", "Diagram"]],
+    );
+    assert.match(root.textContent, /Before definition/);
+    assert.match(root.textContent, /After definition/);
+    assert.match(root.textContent, /After container/);
+    assert.doesNotMatch(root.textContent, /\.\/(?:gallery|diagram\.png|duplicate)/);
+    dom.window.close();
+  });
+}
+
+for (const forceFullFailure of [false, true]) {
+  test(`tag-shaped Markdown literals stay text in ${forceFullFailure ? "lite" : "full"} mode`, () => {
+    const { dom, renderer } = createRenderer();
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown([
+      '[Text](./text "Inline <b>title</b>")',
+      "[![<b>Picture</b>][picture]][album]",
+      '[album]: ./album "Reference <b>title</b>"\n[picture]: ./diagram.png "Image <b>title</b>"',
+      'Show `<img src="./example.png" alt="Example">` and `<a href="./demo">Demo</a>` in code.',
+      '<b title="ignored">Visible raw tag</b>',
+    ].join("\n\n"), { forceFullFailure }).html;
+    const links = [...root.querySelectorAll("a[href]")];
+    assert.deepEqual(links.map(({ textContent, title }) => [textContent, title]), [
+      ["Text", "Inline <b>title</b>"],
+      ["<b>Picture</b>", "Reference <b>title</b>"],
+      ["打开图片：<b>Picture</b>", "Image <b>title</b>"],
+    ]);
+    assert.deepEqual([...root.querySelectorAll("code")].map((node) => node.textContent), [
+      '<img src="./example.png" alt="Example">',
+      '<a href="./demo">Demo</a>',
+    ]);
+    assert.equal(root.querySelector("b")?.textContent, "Visible raw tag");
+    assert.equal(root.querySelector("img"), null);
+    assert.doesNotMatch(root.innerHTML, /@@LGB/);
+    dom.window.close();
+  });
+}
+
 for (const forceFullFailure of [false, true]) {
   const mode = forceFullFailure ? "lite" : "full";
   for (const length of [10000, 100000]) {
