@@ -25,6 +25,25 @@ test("first explicit viewer confirmation keeps the legacy viewer's cache and pen
   assert.deepEqual(data.peekDifficulty(problem.pid), { key, difficulty: 1, at: 7, order: undefined });
 });
 
+test("native record lists break timestamp ties by request order", () => {
+  const { pid } = problem;
+  const data = createProblemData({ origin, now: () => 1000 });
+  const recordsUrl = url(`/record/list?user=42&pid=${pid}`);
+  const remember = (at, order, scores) => data.rememberPage({
+    viewer: 42,
+    template: "record.list",
+    data: { records: { result: scores.map(score => ({ score, problem, user: { uid: 42 } })) } },
+  }, recordsUrl, at, order);
+  const scores = () => data.records(pid)?.map(({ score }) => score);
+
+  remember(999, 2, [50]);
+  remember(999, 1, [25]);
+  assert.deepEqual(scores(), [50]);
+  remember(1000, 3, []);
+  remember(999, 2, [50]);
+  assert.deepEqual(scores(), []);
+});
+
 function browserProblemData(t, fetchPage) {
   const { document, location } = globalThis;
   globalThis.document = { URL: origin };

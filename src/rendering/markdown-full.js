@@ -1,3 +1,4 @@
+import { Renderer } from "marked";
 import { IntroTokenizer, tokenizeDisplayMath } from "./intro-tokenizer.js";
 import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { renderMarkdownLite } from "./markdown-lite.js";
@@ -32,6 +33,26 @@ function tokenizeInlineMath(source) {
     : /^\$((?:\\[^\n]|[^\\\n$])+?)\$(?!\$)/.exec(source);
   if (match)
     return { type: "math", raw: match[0], text: match[1], displayMode };
+}
+
+class IntroRenderer extends Renderer {
+  list({ items, ordered, start }) {
+    let body = "";
+    let nextIndex = 0;
+    for (const [index, item] of items.entries()) {
+      const content = this.parser.parse(item.tokens);
+      // Reference definitions (including duplicates) can leave an item with
+      // no output. A genuinely empty source item still occupies its position.
+      if (!content && item.text.trim()) continue;
+      const value = ordered && index !== nextIndex ? ` value="${start + index}"` : "";
+      body += `<li${value}>${content}</li>\n`;
+      nextIndex = index + 1;
+    }
+    if (!body) return "";
+    const tag = ordered ? "ol" : "ul";
+    const startAttribute = ordered && start !== 1 ? ` start="${start}"` : "";
+    return `<${tag}${startAttribute}>\n${body}</${tag}>\n`;
+  }
 }
 
 function escapeHtml(source) {
@@ -179,6 +200,7 @@ export function createMarkdownFullRenderer(dependencies) {
           gfm: true,
           breaks: true,
           tokenizer: new IntroTokenizer(),
+          renderer: new IntroRenderer(),
           extensions: {
             block: [tokenizeDisplayMath],
             inline: [tokenizeInlineMath],

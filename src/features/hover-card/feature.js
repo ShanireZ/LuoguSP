@@ -165,10 +165,10 @@ export function createHoverCardFeature(config) {
           ?.scrollIntoView({ block: "nearest", behavior: "instant" });
         return;
       }
-      const action = card.querySelector(".luogusp-hc-actions :focus");
-      if (!action) return;
+      const control = card.querySelector(".luogusp-hc-actions :focus, .luogusp-hc-tagbtn:focus");
+      if (!control) return;
       const top = card.getBoundingClientRect().top + card.clientTop;
-      const rect = action.getBoundingClientRect();
+      const rect = control.getBoundingClientRect();
       const above = top - rect.top;
       const below = rect.bottom - (top + card.clientHeight);
       // The scrollport metrics round to CSS pixels. Keep the offset within that tolerance.

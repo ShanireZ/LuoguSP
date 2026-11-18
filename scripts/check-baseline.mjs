@@ -126,10 +126,13 @@ const nodeValueFlags = new Set(
 );
 // Node lists this no-value switch alongside the options accepting a config path.
 nodeValueFlags.delete("--experimental-default-config-file");
+const builtinTestReporters = new Set(["spec", "dot", "tap", "junit", "lcov"]);
 
 const nodeOptions = (args) => {
   const conditions = new Set(["node"]);
   const preloads = [];
+  const testReporters = [];
+  let testGlobalSetup;
   let addons = true;
   let requireModule = true;
   let testMode = false;
@@ -151,10 +154,12 @@ const nodeOptions = (args) => {
     const flag = name.startsWith("--") ? name.replaceAll("_", "-") : name;
     if (nodeValueFlags.has(flag)) {
       const value = equals === -1 ? args[++index] : arg.slice(equals + 1);
+      if (flag === "--test-global-setup") testGlobalSetup = value;
       if (!value) continue;
       if (flag === "--conditions" || flag === "-C") conditions.add(value);
       if (flag === "--import") preloads.push(["import", value]);
       if (flag === "--require" || flag === "-r") preloads.push(["require", value]);
+      if (flag === "--test-reporter" && !builtinTestReporters.has(value)) testReporters.push(value);
     }
     // Node takes the polarity from the flag name even when it has an equals suffix.
     if (flag === "--test" || flag === "--no-test") testMode = flag === "--test";
@@ -168,6 +173,8 @@ const nodeOptions = (args) => {
   return {
     entry: args[entryIndex],
     testEntries: testMode ? args.slice(entryIndex) : null,
+    testGlobalSetup,
+    testReporters,
     preloads,
     conditions: [...conditions].sort(),
   };
@@ -190,6 +197,35 @@ const existingFile = async (path) => {
     if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
     return null;
   }
+};
+
+const nodeTestReporterFiles = (reporters, conditions) => {
+  if (!reporters.size) return [];
+  const flags = conditions
+    .filter((condition) => !["node", "node-addons", "module-sync"].includes(condition))
+    .map((condition) => `--conditions=${condition}`);
+  if (!conditions.includes("node-addons")) flags.push("--no-addons");
+  if (!conditions.includes("module-sync")) flags.push("--no-require-module");
+
+  // Node imports custom reporters from cwd. Resolve with the same ESM conditions
+  // in a clean Node process so no declared module or preload is executed.
+  const resolveReporters = `
+    const urls = [];
+    for (const specifier of process.argv.slice(1)) {
+      try {
+        const url = import.meta.resolve(specifier);
+        if (url.startsWith("file:")) urls.push(url);
+      } catch (error) {
+        if (!["ERR_MODULE_NOT_FOUND", "ERR_UNSUPPORTED_DIR_IMPORT", "ERR_INVALID_MODULE_SPECIFIER",
+          "ERR_PACKAGE_IMPORT_NOT_DEFINED", "ERR_PACKAGE_PATH_NOT_EXPORTED"].includes(error.code)) throw error;
+      }
+    }
+    process.stdout.write(JSON.stringify(urls));
+  `;
+  const urls = JSON.parse(execFileSync(process.execPath, [
+    ...flags, "--input-type=module", "--eval", resolveReporters, "--", ...reporters,
+  ], { cwd: root, encoding: "utf8", env: {}, timeout: 10_000 }));
+  return urls.map((url) => fileURLToPath(url));
 };
 
 const identifier = String.raw`[A-Za-z_$][\w$]*`;
@@ -270,18 +306,25 @@ const packageModuleGraphs = async (scripts) => {
     for (const words of commandSegments(command)) {
       const [tool, ...args] = invocation(words);
       const isNode = executableName(tool) === "node";
-      const { entry, testEntries, preloads, conditions } = nodeOptions(isNode ? args : []);
+      const { entry, testEntries, testGlobalSetup, testReporters, preloads, conditions } =
+        nodeOptions(isNode ? args : []);
       const directCli = isEsbuild(tool) || (entry &&
         /(?:^|[/\\])node_modules[/\\](?:\.bin[/\\]|esbuild[/\\]bin[/\\])esbuild(?:\.(?:bat|cmd|exe|ps1))?$/iu.test(entry));
       assert.ok(!directCli, `package.json 的 ${name} 使用了无法核验的 esbuild 命令。请从 baseline-targets.mjs 导入 buildBrowser。`);
 
       const key = JSON.stringify(conditions);
-      if (!graphs.has(key)) graphs.set(key, { conditions, entries: new Set(), aliases: new Set() });
+      if (!graphs.has(key)) graphs.set(key, { conditions, entries: new Set(), aliases: new Set(), reporters: new Set() });
       const graph = graphs.get(key);
       const add = (path) => {
         if (path && withinRoot(path) && isModule(path)) graph.entries.add(path);
       };
       if (entry && !testEntries) add(nodeEntry(entry));
+      // Global setup is an exact filesystem path, even when it lacks a ./ prefix.
+      if (testGlobalSetup) {
+        const path = resolve(root, testGlobalSetup);
+        if (withinRoot(path)) add(await existingFile(path));
+      }
+      for (const reporter of testReporters) graph.reporters.add(reporter);
       for (const [mode, specifier] of preloads) {
         if (specifier.startsWith("#")) {
           const literal = JSON.stringify(specifier);
@@ -305,7 +348,11 @@ const packageModuleGraphs = async (scripts) => {
   return [...graphs.values()];
 };
 
-const importedModuleFiles = async ({ entries, aliases, conditions }) => {
+const importedModuleFiles = async ({ entries, aliases, reporters, conditions }) => {
+  const reporterFiles = nodeTestReporterFiles(reporters, conditions).filter((path) => withinRoot(path) && isModule(path));
+  for (const path of await Promise.all(reporterFiles.map(existingFile))) {
+    if (path) entries.add(path);
+  }
   if (entries.size === 0 && aliases.size === 0) return [];
   const inputs = new Set();
   let pending = [...entries];

@@ -173,6 +173,7 @@ export function createProblemData({
     }
     if (page.viewer !== undefined && page.viewer !== viewer()) return;
     const context = scope(url, page.viewer ?? viewer());
+    const stamp = { at, order };
     if (page.template === "record.list" && context.viewer > 0 &&
         Number(url.searchParams.get("user")) === context.viewer) {
       const pid = url.searchParams.get("pid");
@@ -180,18 +181,18 @@ export function createProblemData({
       if (pid && PID_PATTERN.test(pid) && Array.isArray(rows) &&
           (!url.searchParams.has("page") || url.searchParams.get("page") === "1") &&
           !["status", "language", "orderBy"].some((key) => url.searchParams.has(key))) {
-        const records = rows
-          .filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === context.viewer)
-          .map(({ id, submitTime, score, status, time, memory }) => ({
-            id, submitTime, score, status, time, memory,
-          }));
         const key = keyOf(pid, context);
-        if ((recordLists.get(key)?.at ?? -Infinity) <= at)
-          remember(recordLists, key, { at, records }, 30);
+        if (!isLater(recordLists.get(key), stamp)) {
+          const records = rows
+            .filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === context.viewer)
+            .map(({ id, submitTime, score, status, time, memory }) => ({
+              id, submitTime, score, status, time, memory,
+            }));
+          remember(recordLists, key, { ...stamp, records }, 30);
+        }
       }
     }
     const scoped = isScopedProblemUrl(url);
-    const stamp = { at, order };
     const detail = page.data.problem;
     const hasDetail = detail?.pid && matchesProblem(url, detail.pid) &&
         PID_PATTERN.test(detail.pid);

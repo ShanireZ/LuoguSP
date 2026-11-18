@@ -249,11 +249,12 @@ function runFixtureBuild(fixture, args) {
   assert.match(result.stdout, /fixture\(\)/u);
 }
 
-function writeMarkedFixtureBuilder(fixture, builder) {
+function writeMarkedFixtureBuilder(fixture, builder, moduleExports = "") {
   writeFileSync(builder, [
     'import { writeFileSync } from "node:fs";',
     'writeFileSync("fixture-build-executed", "");',
     sharedBuild,
+    moduleExports,
   ].join("\n"));
   return join(fixture, "fixture-build-executed");
 }
@@ -317,8 +318,71 @@ for (const [form, args] of [
   });
 }
 
+const testModuleExports = [
+  "export function globalSetup() {}",
+  "export default async function* reporter(source) { for await (const event of source) yield ''; }",
+].join("\n");
+
+for (const [name, makeFlags, useTestMode = true] of [
+  ["separate global setup with an extensionless filesystem path", () =>
+    ["--test-global-setup", "browser modules/builder"]],
+  ["inline global setup after an overridden setup", () =>
+    ["--test-global-setup", "./browser modules/unused.mjs", "--test_global_setup=./browser modules/builder"]],
+  ["separate custom reporter in a script using node:test", () =>
+    ["--test-reporter", "./browser modules/builder"], false],
+  ["inline custom reporter with a file URL and suffix", (builder) =>
+    [`--test_reporter=${pathToFileURL(builder).href}?mode=test#fixture`]],
+  ["a conditional custom reporter alongside a built-in reporter", () =>
+    ["--conditions=fixture", "--test-reporter", "tap", "--test-reporter=#fixture-reporter",
+      "--test-reporter-destination", "stdout", "--test-reporter-destination=stderr"]],
+  ["an exported reporter from the local package", () =>
+    ["--test-reporter", "tap/fixture-reporter"]],
+]) {
+  test(`the actual guard checks ${name} without loading the module`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    const directory = join(fixture, "browser modules");
+    mkdirSync(directory);
+    const builder = join(directory, "builder");
+    const args = [...(useTestMode ? ["--test"] : []), ...makeFlags(builder), "./browser modules/entry.mjs"];
+    const command = `node ${args.map((arg) => JSON.stringify(arg)).join(" ")}`;
+    const branches = {
+      fixture: { import: "./browser modules/builder", default: "./browser modules/unused.mjs" },
+      default: "./browser modules/unused.mjs",
+    };
+    declareFixtureBuild(fixture, command, { "#fixture-reporter": branches });
+    const packagePath = join(fixture, "package.json");
+    const manifest = JSON.parse(readFileSync(packagePath, "utf8"));
+    manifest.name = "tap";
+    manifest.exports = { ".": "./browser modules/unused.mjs", "./fixture-reporter": "./browser modules/builder" };
+    writeFileSync(packagePath, JSON.stringify(manifest));
+    writeFileSync(join(directory, "entry.mjs"), 'import test from "node:test";\ntest("entry", () => {});');
+    writeFileSync(join(directory, "unused.mjs"), [
+      'import { writeFileSync } from "node:fs";',
+      'writeFileSync("unused-test-module-executed", "");',
+      sharedBuild,
+      testModuleExports,
+    ].join("\n"));
+
+    const execution = writeMarkedFixtureBuilder(fixture, builder, testModuleExports);
+    runFixtureBuild(fixture, args);
+    assert.ok(existsSync(execution));
+    assert.equal(existsSync(join(fixture, "unused-test-module-executed")), false);
+    rmSync(execution);
+
+    const result = run();
+    assert.equal(existsSync(execution), false);
+    assert.equal(existsSync(join(fixture, "unused-test-module-executed")), false);
+    assert.equal(existsSync(join(fixture, "node_modules")), false);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /2 个构建脚本/u);
+  });
+}
+
 for (const [form, args, builder] of [
   ["an ordinary Node program argument", ["./browser/entry.mjs", "./browser/builder.mjs"], "builder.mjs"],
+  ["test option spellings after the Node program", [
+    "./browser/entry.mjs", "--test-global-setup", "./browser/builder.mjs", "--test-reporter=./browser/builder.mjs",
+  ], "builder.mjs"],
   ["a missing test path with a same-stem file", ["--test", "./browser/builder", "./browser/entry.mjs"], "builder.js"],
 ]) {
   test(`the actual guard skips ${form} during Node entry discovery`, (t) => {

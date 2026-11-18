@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,6 +22,18 @@ const manifestPath = path.join(root, "cdn", channel.manifestPath);
 const manifestBody = fs.readFileSync(manifestPath);
 const manifest = JSON.parse(manifestBody);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+
+for (const version of ["2.14.9", "2.14.10", "2.14.9-canary.1"]) {
+  test(`the startup size budget covers release name ${version}`, () => {
+    const { startupRequires } = JSON.parse(fs.readFileSync(path.join(root, "config/quality-budget.json"), "utf8"));
+    const { compat } = JSON.parse(execFileSync(process.execPath,
+      ["scripts/cdn/build.mjs", "--dry-run", "--version", version],
+      { cwd: root, encoding: "utf8" }));
+    const bytes = compat.earlyGate.bytes + compat.runtime.bytes;
+    assert.ok(bytes <= startupRequires.maxTotalBytes,
+      `${version} startup bundle: ${bytes} B exceeds ${startupRequires.maxTotalBytes} B`);
+  });
+}
 
 test("CDN release manifest pins every compatibility and ESM artifact", () => {
   assert.ok([1, 2].includes(channel.schemaVersion));

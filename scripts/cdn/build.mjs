@@ -88,6 +88,8 @@ const fileRecord = (path, body) =>
     sri: sri(body),
   });
 
+const runtimeBundlePin = ({ apiVersion, path, sha256 }) => ({ apiVersion, path, sha256 });
+
 async function buildCompat(entryPoint, prefix, define = {}) {
   const result = await buildBrowser({
     absWorkingDir: root,
@@ -209,12 +211,12 @@ const compatRuntime = await buildCompat(
   "runtime",
   {
     __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__: JSON.stringify(
-      markdownRendererBundle,
+      runtimeBundlePin(markdownRendererBundle),
     ),
     __LUOGUSP_RESTRICTED_CONTENT_BUNDLE__: JSON.stringify(
-      restrictedContentBundle,
+      runtimeBundlePin(restrictedContentBundle),
     ),
-    __LUOGUSP_HOVER_CARD_BUNDLE__: JSON.stringify(hoverCardBundle),
+    __LUOGUSP_HOVER_CARD_BUNDLE__: JSON.stringify(runtimeBundlePin(hoverCardBundle)),
     __LUOGUSP_CDN_ORIGIN__: JSON.stringify(
       cdnOrigin,
     ),

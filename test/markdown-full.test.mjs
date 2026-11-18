@@ -382,7 +382,7 @@ test("Lite preserves empty list items and hides definition-only items", (t) => {
   assert.doesNotMatch(root.textContent, /\[go\]:|\.\/(?:album|duplicate)/);
 });
 
-test("Lite preserves ordered list ordinals across hidden reference definitions", (t) => {
+for (const forceFullFailure of [false, true]) test(`ordered list ordinals survive hidden reference definitions in ${forceFullFailure ? "lite" : "full"} mode`, (t) => {
   const { dom, renderer } = createRenderer();
   t.after(() => dom.window.close());
   const root = dom.window.document.createElement("div");
@@ -390,7 +390,7 @@ test("Lite preserves ordered list ordinals across hidden reference definitions",
     "[Book][go]",
     '> 7. [head]: ./first\n> 8. Step eight\n> 9. [go]: ./album "Title"\n> 10.\n> 11. Step eleven\n> 12. [end]: ./last',
     "- One\n- [go]: ./duplicate\n-\n- Four",
-  ].join("\n\n"), { forceFullFailure: true }).html;
+  ].join("\n\n"), { forceFullFailure }).html;
   assert.deepEqual([...root.querySelectorAll("ol")].map((list) => list.start), [7]);
   const items = [...root.querySelectorAll("blockquote > ol > li")];
   assert.deepEqual(items.map((item) => item.textContent), ["Step eight", "", "Step eleven"]);
@@ -407,7 +407,9 @@ test("author markup allows value on list items only", (t) => {
   const { dom, renderer } = createRenderer();
   t.after(() => dom.window.close());
   const root = dom.window.document.createElement("div");
-  root.innerHTML = renderer.renderMarkdown('<ol><li value="4"><span value="12">Four</span></li></ol>').html;
+  root.innerHTML = renderer.renderMarkdown('<ol start="3"><li value="4"><span value="12">Four</span></li><li>Five</li></ol>').html;
+  assert.equal(root.querySelector("ol").start, 3);
+  assert.deepEqual([...root.querySelectorAll("ol > li")].map((item) => item.textContent), ["Four", "Five"]);
   assert.deepEqual([...root.querySelectorAll("[value]")].map((node) => [node.localName, node.getAttribute("value")]),
     [["li", "4"]]);
 });
@@ -628,6 +630,54 @@ for (const forceFullFailure of [false, true]) {
       [["./$path$", literal], ["./$raw$", literal]]);
     assert.equal(root.querySelector("pre > code")?.textContent.trimEnd(), literal);
     assert.match(root.textContent, /Incomplete display\.\s*\$\$\s*z\s*$/);
+  });
+
+  for (const [gap, content] of [["", "- x"], ["", "a +\n\nb"], ["\n\n", "x"]]) {
+    test(`display math preserves complete inline literals across paragraph breaks in ${mode}: ${JSON.stringify(content)}`, (t) => {
+      const { dom, renderer } = createRenderer();
+      t.after(() => dom.window.close());
+      const root = dom.window.document.createElement("div");
+      const literal = `inside\n${gap}$$\n${content}\n$$\nafter`;
+      const result = renderer.renderMarkdown([
+        `Code: \`${literal}\`.\nSame paragraph.`,
+        `> Quoted \`${literal.replaceAll("\n", "\n> ")}\`.`,
+        `[Markdown link](./path "${literal}")`,
+        `Raw <a href="./raw" title="${literal}">raw link</a\n\n> stays outside.`,
+        `~~~text\n${literal}\n~~~`,
+        'Ordinary prose <a href="./control">control</a\n> stays outside.\n$$\n- y\n$$',
+        "Incomplete.\n$$\nz",
+      ].join("\n\n"), { forceFullFailure });
+      assert.equal(result.mode, mode);
+      root.innerHTML = result.html;
+      assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map((node) => node.textContent), ["−y"]);
+      const code = root.querySelector("p > code");
+      assert.equal(code?.textContent, literal.replaceAll("\n", " "));
+      assert.match(code?.parentElement.textContent, /Same paragraph\.$/);
+      assert.equal(root.querySelector("blockquote p > code")?.textContent, literal.replaceAll("\n", " "));
+      assert.equal(root.querySelector("pre > code")?.textContent.trimEnd(), literal);
+      assert.deepEqual([...root.querySelectorAll("a")].map((link) => [link.getAttribute("href"), link.title, link.textContent]),
+        [["./path", literal, "Markdown link"], ["./raw", literal, "raw link"], ["./control", "", "control"]]);
+      assert.match(root.textContent, /stays outside\./);
+      assert.match(root.textContent, /Incomplete\.\s*\$\$\s*z\s*$/);
+    });
+  }
+
+  test(`complete link titles cross a blank after closing math delimiters in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const title = "Part one\n$$\n- x\n$$\n\nPart two";
+    root.innerHTML = renderer.renderMarkdown([
+      `Before <a href="./notes" title="${title}">Notes</a>.`,
+      `Before [Markdown notes](./markdown "${title}").`,
+      'Before <a href="./unfinished" title="Unfinished\n$$\n- y\n$$\n\nOrdinary paragraph.',
+      'Before `Unmatched\n$$\n- z\n$$\n\n~~~text\nfenced ` text\n~~~',
+    ].join("\n\n"), { forceFullFailure }).html;
+    assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map((node) => node.textContent), ["−y", "−z"]);
+    assert.deepEqual([...root.querySelectorAll("a[href]")].map((link) => [link.getAttribute("href"), link.title]),
+      [["./notes", title], ["./markdown", title]]);
+    assert.equal(root.querySelector("pre > code")?.textContent.trimEnd(), "fenced ` text");
+    assert.match(root.textContent, /Ordinary paragraph\./);
   });
 
   test("math past the size and count limits stays as text in " + mode + " rendering", () => {

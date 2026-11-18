@@ -636,14 +636,14 @@ test("Lite profile introduction preserves empty numbered items and hides definit
   assert.doesNotMatch(await intro.textContent(), /\[go\]:|\.\/album/);
 });
 
-test("Lite profile introduction preserves numbered positions across hidden definitions", async (t) => {
+for (const query of ["", "?luogusp-qa=fallback-lite"]) test(`profile introduction preserves numbered positions across hidden definitions in ${query ? "lite" : "full"} mode`, async (t) => {
   const introduction = [
     "[Book][go]",
     '> 7. [head]: ./first\n> 8. Step eight\n> 9. [go]: ./album "Title"\n> 10.\n> 11. Step eleven\n> 12. [end]: ./last',
     "- One\n- [go]: ./duplicate\n-\n- Four",
   ].join("\n\n");
   const { page } = await fixture(t, {
-    path: "/user/42?luogusp-qa=fallback-lite",
+    path: "/user/42" + query,
     html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
       { user: { ...viewer, introduction } }),
   });
@@ -744,6 +744,36 @@ for (const query of ["", "?luogusp-qa=fallback-lite"]) {
     assert.deepEqual(await intro.locator("a[href]").evaluateAll((links) => links.map((link) =>
       [link.getAttribute("href"), link.title])), [["./$path$", literal], ["./$raw$", literal]]);
     assert.match(await intro.textContent(), /Incomplete display\.\s*\$\$\s*z\s*$/);
+  });
+
+  test(`profile introduction preserves complete inline literals across paragraph breaks in ${query ? "lite" : "full"} mode`, async (t) => {
+    const minus = "inside\n$$\n- x\n$$\nafter";
+    const blank = "inside\n$$\na +\n\nb\n$$\nafter";
+    const markdownTitle = "inside\n$$\na +\n\nb\n$$\n\nafter";
+    const rawTitle = "inside\n$$\n- x\n$$\n\nafter";
+    const introduction = [
+      `Code: \`${minus}\`.`,
+      `[Markdown link](./path "${markdownTitle}")`,
+      `Raw <a href="./raw" title="${rawTitle}">raw link</a\n\n> stays outside.`,
+      `~~~text\n${blank}\n~~~`,
+      'Ordinary <a href="./missing" title="unfinished\n$$\n- y\n$$\n\nFollowing paragraph.',
+      "Incomplete.\n$$\nz",
+    ].join("\n\n");
+    const { page } = await fixture(t, {
+      path: "/user/42" + query,
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.waitFor();
+    assert.deepEqual(await intro.locator(".katex-display .katex-html").allTextContents(), ["−y"]);
+    assert.deepEqual(await intro.locator("p > code").allTextContents(), [minus.replaceAll("\n", " ")]);
+    assert.equal((await intro.locator("pre > code").textContent()).trimEnd(), blank);
+    assert.deepEqual(await intro.locator("a[href]").evaluateAll((links) => links.map((link) =>
+      [link.getAttribute("href"), link.title, link.textContent])),
+    [["./path", markdownTitle, "Markdown link"], ["./raw", rawTitle, "raw link"]]);
+    assert.match(await intro.textContent(), /stays outside\./);
+    assert.match(await intro.textContent(), /Incomplete\.\s*\$\$\s*z\s*$/);
   });
 
   test(`profile introduction contains wide math in ${query ? "lite" : "full"} rendering`, async (t) => {
@@ -2624,6 +2654,54 @@ for (const height of [175, 420]) {
   });
 }
 
+for (const wraps of [true, false]) {
+  test(`problem preview keeps focused Show Tags visible after resizing with a ${wraps ? "wrapping" : "short"} title`, async (t) => {
+    const initial = {
+      ...problem,
+      name: wraps ? "A long problem title that wraps in the preview ".repeat(5).trim() : problem.name,
+      limits: { time: [1000], memory: [65536] },
+    };
+    const { page } = await fixture(t, {
+      viewport: { width: 320, height: 480 },
+      html: fixtureHtml('<div style="height:40px"></div><a id="problem" href="/problem/P1000">Problem</a>' +
+        '<div style="height:100vh"></div>', { recommendations: [initial] }),
+      reply(route, url) {
+        if (url.pathname === "/problem/P1000") return route.fulfill({ json: { user: viewer, data: { problem: initial } } });
+        if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [{ id: 1, name: "Fixture tag" }] } });
+        if (url.pathname === "/record/list") return route.fulfill({ json: {
+          template: "record.list", user: viewer, data: { records: { result: [] } },
+        } });
+      },
+    });
+    const settleLayout = () => page.evaluate(() =>
+      new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate(() => window.scrollTo(0, 70));
+    await settleLayout();
+    await page.locator("#problem").press("Alt+ArrowDown");
+    const tags = card(page).getByRole("button", { name: "显示标签" });
+    await tags.waitFor();
+    await page.keyboard.press("Tab");
+    const button = await tags.elementHandle();
+    assert.ok(await focused(tags));
+    const before = await previewActionGeometry(tags);
+    assert.ok(Math.max(before.above, before.below) <= 1, JSON.stringify(before));
+    const documentScroll = await page.evaluate(() => [scrollX, scrollY]);
+    assert.ok(documentScroll[1] > 0);
+    await page.setViewportSize({ width: 320, height: 175 });
+    await settleLayout();
+    const after = await previewActionGeometry(tags);
+    assert.ok(await button.evaluate(el => el === document.activeElement));
+    assert.deepEqual(await page.evaluate(() => [scrollX, scrollY]), documentScroll);
+    assert.ok(Math.max(after.above, after.below) <= 1, JSON.stringify({ before, after }));
+    if (wraps) {
+      assert.ok(after.scrollTop > before.scrollTop);
+      assert.ok(Math.abs(after.below) <= 1, JSON.stringify(after));
+    } else {
+      assert.equal(after.scrollTop, before.scrollTop);
+    }
+  });
+}
+
 for (const [focusTags, height, lateRecord] of [
   [true, 175, false], [true, 175, true], [true, 480, false], [true, 480, true], [false, 480, false],
 ]) {
@@ -2711,6 +2789,48 @@ for (const [focusTags, height, lateRecord] of [
     }
   });
 }
+
+test("problem preview keeps the later native record query within one millisecond", async (t) => {
+  const firstStarted = responseGate(t);
+  const firstResponse = responseGate(t);
+  const query = `/record/list?user=${viewer.uid}&pid=${problem.pid}`;
+  let nativeLists = 0;
+  const { page, requests } = await fixture(t, {
+    initScript: "Date.now = () => 1000;",
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [problem] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return route.fulfill({ json: { user: viewer, data: { problem } } });
+      if (url.pathname === "/record/list") {
+        const respond = (id, score) => route.fulfill({ json: { template: "record.list", user: viewer,
+          data: { records: { result: [{ id, score, submitTime: 1700000000 + id, user: viewer, problem }] } },
+        } });
+        if (route.request().resourceType() !== "xhr") return respond(79, 75);
+        if (++nativeLists === 1) {
+          firstStarted.release();
+          return firstResponse.promise.then(() => respond(77, 25));
+        }
+        return respond(78, 50);
+      }
+      if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
+    },
+  });
+  const native = (path) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", path);
+    xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+    xhr.send();
+  });
+  const older = page.evaluate(native, query);
+  await firstStarted.promise;
+  await page.evaluate(native, query);
+  firstResponse.release();
+  await older;
+  await page.locator("#problem").press("Alt+ArrowDown");
+  const preview = card(page);
+  await preview.getByText("上次尝试", { exact: true }).waitFor();
+  assert.match(await preview.textContent(), /50 分/);
+  assert.deepEqual(requests.filter(({ path }) => path === "/record/list").map(({ type }) => type), ["xhr", "xhr"]);
+});
 
 test("problem preview loading and late fields stay static with reduced motion", async (t) => {
   const detail = responseGate(t);

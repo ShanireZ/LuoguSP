@@ -57,7 +57,8 @@ and a partial response refreshes only the fields it contains. Shared detail
 responses use the start time of the successful transport attempt. Coloring
 compares observations per problem and scope. Native observations with the same
 timestamp use request order and take precedence over supplemental lookups
-started in that tick. A late native batch can still refresh a problem absent
+started in that tick. Native record lists also use request order to resolve
+timestamp ties. A late native batch can still refresh a problem absent
 from a newer batch. A native response, preview or IDE detail can refresh
 eligible IDs. Each observed change of effective viewer discards harvested
 and queried colors and invalidates pending details from the previous viewer
@@ -71,8 +72,8 @@ A problem card displays
 available fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. If a detail removes a
 focused tag disclosure, focus moves to the problem link. When a data update or
-viewport change clips the focused action, the card scrolls just enough to reveal
-it, while document scroll stays in place. Temporary lookup
+viewport change clips a focused action or the tags control, the card scrolls
+just enough to reveal it, while document scroll stays in place. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
 failures. A successful empty record list uses the normal cache lifetime.
 New or updated data fields can fade in over 125 ms. The initial preview and
@@ -187,13 +188,14 @@ and provide a separate image link. The lightweight renderer uses the shared
 inline link grammar for destinations and titles, including balanced parentheses,
 path-relative destinations, fragments and document reference definitions.
 Definitions in quotes and lists can supply destinations without appearing in
-the output. Lite preserves authored empty, continued and loose list items,
-ordered-list numbering, and nested list and quote structure. Hidden definitions
-leave later ordered-list positions intact. The sanitizer permits explicit item
+the output. Both modes omit definition-only list rows and retain genuine empty
+items and later ordered-list positions. Lite preserves continued and loose items
+and nested list and quote structure. The sanitizer permits explicit item
 values on list items. Full and Lite recognize complete display math blocks after
 prose, including within quotes, and use the same math-rendering callback and
-sanitization. Lite parses inline content within each block and keeps the literal
-text of code spans and fenced code. It reads
+sanitization. Complete inline code and link titles can cross the tentative
+paragraph boundary without becoming formulas. Lite parses inline content within
+each block and keeps the literal text of code spans and fenced code. It reads
 escaped attributes once and applies its HTTP(S) URL policy to Markdown links
 and supported raw HTML anchors. In both modes, line
 breaks in a supported closing anchor tag leave following text outside the
@@ -226,6 +228,8 @@ files and every declared optional bundle against config/quality-budget.json.
 The low-level publisher applies the same budgets to its selected snapshot before
 any origin request or Wrangler command. The budget applies to the selected
 candidate. Retained releases still follow the historical integrity checks.
+The startup runtime embeds each optional bundle's path, SHA-256 and API
+version. The manifest carries the full metadata for release checks.
 If a candidate exceeds a budget, review the measured size and the approved
 limit before retrying. A fresh high-level attempt follows pre-deployment rollback.
 A resumed attempt keeps its checkpoint and any earlier confirmed outcome.

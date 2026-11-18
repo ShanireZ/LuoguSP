@@ -17,10 +17,14 @@ Safari. Build scripts import the shared function. The guard rejects direct
 esbuild commands and direct esbuild imports in `scripts/` and in the local
 module graphs of `package.json` commands. The static inspection covers literal
 Node program file and directory entries, each explicitly named `node --test`
-file, and local preloads. The guard uses the running Node's option definitions
-and recognizes underscores in long option names when locating entries after
-option values. It follows Node's option polarity for bare and equals spellings
-of `addons`, `require-module`, and its legacy alias `experimental-require-module`.
+file, local preloads and modules named by `--test-global-setup` and custom
+`--test-reporter` options. Node resolves the setup value as an exact path from
+the command's working directory. Reporter values use ESM resolution from that
+directory, including package import and export conditions. The guard uses the
+running Node's option definitions and recognizes underscores in long option
+names when locating entries after option values. It follows Node's option
+polarity for bare and equals spellings of `addons`, `require-module`, and its
+legacy alias `experimental-require-module`.
 The graph follows literal local file URLs and literal local paths loaded
 through a `createRequire` bound to the importing file. It recognizes named
 aliases and default or namespace bindings in mixed imports. It resolves

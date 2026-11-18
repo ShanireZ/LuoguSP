@@ -1,6 +1,7 @@
 import { Lexer, Tokenizer } from "marked";
 
 const ANCHOR_END = /^<\/a[ \t\f\n]*>/i;
+const ANCHOR_START = /^<a(?=[\s/>])/i;
 const BEFORE_ANCHOR_END = /^[ \t]*\n[ \t\n]*(?=<\/a[ \t\f\n]*>)/i;
 const RAW_TEXT_TAG = /^<(iframe|noembed|noframes|noscript|plaintext|script|style|textarea|title|xmp)(?=[\s/>])/i;
 
@@ -13,7 +14,7 @@ function isInlineAnchorEnd(tokens, start, needsOpenAnchor) {
         if (ANCHOR_END.test(token.raw)) {
           if (offset === start) return !needsOpenAnchor || open;
           open = false;
-        } else if (/^<a(?=[\s/>])/i.test(token.raw)) open = true;
+        } else if (ANCHOR_START.test(token.raw)) open = true;
       } else if (["strong", "em", "del"].includes(token.type)) {
         const delimiterLength = (token.raw.length - token.text.length) / 2;
         if (visit(token.tokens, offset + delimiterLength)) return true;
@@ -69,7 +70,8 @@ function* literalInlineRanges(tokens, offset = 0) {
   for (const token of tokens) {
     const end = offset + token.raw.length;
     if (token.escaped || ["codespan", "html", "link", "image"].includes(token.type)) {
-      yield [offset, end];
+      const linkMarkup = token.type === "html" ? ANCHOR_START.test(token.raw) : !!token.title;
+      yield [offset, end, linkMarkup];
     } else if (["strong", "em", "del"].includes(token.type)) {
       yield* literalInlineRanges(token.tokens, offset + (token.raw.length - token.text.length) / 2);
     }
@@ -77,22 +79,49 @@ function* literalInlineRanges(tokens, offset = 0) {
   }
 }
 
-function displayMathStart(source, paragraph, options) {
+function displayMathBoundary(source, paragraph, options, paragraphRule) {
+  const hasInlineOpener = /[<`\[]/.test(paragraph);
+  const lexRanges = (input) => literalInlineRanges(Lexer.lexInline(input, {
+    ...options, tokenizer: undefined, extensions: undefined,
+  }));
+  // A blank line can fall just before the opening delimiter as well as inside
+  // the formula. In that case the block lexer can handle an unprotected opener.
+  const acrossBlank = hasInlineOpener && /^\n(?:[ \t]*\n)+ {0,3}\$\$[ \t]*(?=\n|$)/.exec(source.slice(paragraph.length));
+  const candidates = (acrossBlank ? source.slice(0, paragraph.length + acrossBlank[0].length) : paragraph)
+    .matchAll(/(?<=\n) {0,3}\$\$[ \t]*(?=\n|$)/g);
   let ranges;
   let literal;
-  for (const { index } of paragraph.matchAll(/(?<=\n) {0,3}\$\$[ \t]*(?=\n|$)/g)) {
-    if (!tokenizeDisplayMath(source.slice(index))) continue;
+  for (const { index } of candidates) {
+    const formula = tokenizeDisplayMath(source.slice(index));
+    if (!formula) continue;
+    if (!hasInlineOpener) return { start: index };
     if (!ranges) {
-      if (!/[<`\[]/.test(paragraph)) return index;
-      // Inspect the native paragraph once so delimiters inside a complete
-      // inline span or attribute retain their original meaning.
-      ranges = literalInlineRanges(Lexer.lexInline(paragraph, {
-        ...options, tokenizer: undefined, extensions: undefined,
-      }));
+      ranges = lexRanges(paragraph);
       literal = ranges.next().value;
     }
     while (literal && literal[1] <= index) literal = ranges.next().value;
-    if (!literal || index < literal[0]) return index;
+    if (literal && literal[0] <= index) continue;
+
+    // Look through this formula and one adjoining native paragraph. A blank
+    // after the closing delimiter can belong to an explicit link title, but
+    // keep it as a boundary for code. A fence always ends the probe.
+    const formulaEnd = index + formula.raw.length;
+    const afterFormula = source.slice(formulaEnd);
+    const gap = /^[ \t]*\n(?:[ \t]*\n)*/.exec(afterFormula)?.[0].length ?? 0;
+    const tail = !gap || /\]\(|<a(?=[\s/>])/i.test(paragraph) ? afterFormula.slice(gap) : "";
+    const continuation = /^ {0,3}(?:```|~~~)/.test(tail) ? 0 : paragraphRule.exec(tail)?.[0].length ?? 0;
+    const probeEnd = formulaEnd + (continuation ? gap + continuation : 0);
+    if (probeEnd > paragraph.length) {
+      const close = formula.raw.endsWith("\n") ? formulaEnd - 1 : formulaEnd;
+      for (const [start, end, linkMarkup] of lexRanges(source.slice(0, probeEnd))) {
+        if (start > index || start >= paragraph.length) break;
+        if (end > paragraph.length && end >= close && (!gap || end <= formulaEnd || linkMarkup)) {
+          const followingFormula = /\n {0,3}\$\$[ \t]*(?=\n|$)/.test(source.slice(end, probeEnd));
+          return { paragraphEnd: followingFormula ? source.indexOf("\n", end) : probeEnd };
+        }
+      }
+    }
+    if (index < paragraph.length) return { start: index };
   }
 }
 
@@ -109,8 +138,15 @@ export class IntroTokenizer extends Tokenizer {
 
   paragraph(source) {
     const token = this.joinAnchorEnd(source, "paragraph");
-    if (!token) return token;
-    const start = displayMathStart(source, token.text, this.options);
+    if (!token) return;
+    const { start, paragraphEnd } = displayMathBoundary(source, token.text, this.options, this.rules.block.paragraph) ?? {};
+    if (paragraphEnd !== undefined) {
+      // Keep the verified inline span in one paragraph. Restore the original
+      // line endings before inline lexing so titles and code retain their text.
+      token.raw = token.text = this.lexer.inlineQueue.at(-1).src = source.slice(0, paragraphEnd);
+      const joined = token.raw.replaceAll("\n", " ") + source.slice(paragraphEnd);
+      return this.joinAnchorEnd(source, "paragraph", token, joined);
+    }
     if (start !== undefined) {
       // Yield the whole formula to the block extension before its contents can
       // interrupt the paragraph. The preceding newline belongs to the prose.
@@ -124,9 +160,7 @@ export class IntroTokenizer extends Tokenizer {
     return this.joinAnchorEnd(source, "text");
   }
 
-  joinAnchorEnd(source, type) {
-    let input = source;
-    let token = super[type](input);
+  joinAnchorEnd(source, type, token = super[type](source), input = source) {
     while (token) {
       const split = findSplitAnchorEnd(token.text, input);
       if (!split) break;

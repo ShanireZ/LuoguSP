@@ -483,7 +483,7 @@ test("runtime 入口接上加载器、声明导出契约、并给同源 fetch", 
 test("构建脚本把 hover 块写进 manifest 与 files，并注入 define", () => {
   const build = read("scripts/cdn/build.mjs");
   assert.match(build, /entryPoints: \["src\/cdn\/hover-card-bundle\.js"\]/);
-  assert.match(build, /__LUOGUSP_HOVER_CARD_BUNDLE__: JSON\.stringify\(hoverCardBundle\)/);
+  assert.match(build, /__LUOGUSP_HOVER_CARD_BUNDLE__: JSON\.stringify\(runtimeBundlePin\(hoverCardBundle\)\)/);
   assert.match(build, /\[hoverCardFile\.path\]: hoverCardFile/);
   assert.match(build, /hoverCard: hoverCardBundle/);
 });
