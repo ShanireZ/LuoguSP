@@ -1,4 +1,4 @@
-import { IMAGE_UNAVAILABLE, resolveIntroImageUrl } from "./intro-image.js";
+import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { renderMarkdownLite } from "./markdown-lite.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
 
@@ -62,7 +62,7 @@ function replaceImages(content, document) {
   const lastLinkByAnchor = new Map();
   for (const image of content.querySelectorAll("img")) {
     const alt = image.getAttribute("alt")?.trim();
-    const href = resolveIntroImageUrl(image.getAttribute("src"), document.baseURI);
+    const href = resolveIntroHttpUrl(image.getAttribute("src"), document.baseURI);
     if (!href) {
       const fallback = document.createElement("span");
       fallback.textContent = alt || IMAGE_UNAVAILABLE;

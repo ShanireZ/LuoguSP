@@ -48,6 +48,24 @@ test("生效元数据与脚本体，改哪一处行为哈希都要变", () => {
   }
 });
 
+for (const eol of ["\n", "\r\n"]) {
+  test(`an empty description covers one metadata line with ${JSON.stringify(eol)}`, () => {
+    const sample = [
+      "// ==UserScript==", "// @description", "// @version 1.0.0", "// ==/UserScript==",
+      "// @description a body comment", "void 0;",
+    ].join(eol);
+    const digest = behaviourHashOf(sample);
+    assert.equal(behaviourHashOf(sample.replace("// @description", "// @description UI copy")), digest);
+    assert.notEqual(behaviourHashOf(sample.replace("1.0.0", "2.0.0")), digest);
+    assert.notEqual(behaviourHashOf(sample.replace("a body comment", "another body comment")), digest);
+  });
+}
+
+test("a description-like comment outside the metadata stays in the hash", () => {
+  const sample = "// ==UserScript==\n// @version 1.0.0\n// ==/UserScript==\n// @description a body comment\nvoid 0;";
+  assert.notEqual(behaviourHashOf(sample.replace("a body comment", "another body comment")), behaviourHashOf(sample));
+});
+
 // 報告裡必須釘著一個像樣的行為雜湊 —— 但**不在這裡斷言它等於當前產物**。
 //
 // ★★★ 這條邊界是踩出來的：我一開始在這裡斷言「報告的雜湊 == 當前產物的雜湊」，

@@ -16,6 +16,11 @@ async function ownsDirectory(path, identity) {
   }
 }
 
+export async function assertOwnedReleaseDirectory(path, identity) {
+  if (!await ownsDirectory(path, identity))
+    throw new Error(`Cannot resume publication: release directory ownership changed at ${path}`);
+}
+
 async function replaceChannel(path, body) {
   const temporary = `${path}.${randomUUID()}.tmp`;
   let created = false;

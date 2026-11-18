@@ -143,7 +143,7 @@ export function createProblemColorFeature({
         const { data } = problemResources;
         const cached = data.peek(pid, { href })?.data.problem.difficulty;
         if (validDifficulty(cached)) return cached;
-        return (await data.load(pid, { href, signal }))?.data.problem.difficulty;
+        return (await data.load(pid, { href, signal, fields: ["difficulty"] }))?.data.problem.difficulty;
       },
       // 練習頁只收“嘗試過的題目”；“已通過”已按難度分組，既不著色也不入快取。
       // 評測記錄在學術模式補色時直接讀當頁資料，不使用通用題目快取。

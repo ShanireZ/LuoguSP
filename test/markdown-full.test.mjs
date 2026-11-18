@@ -97,6 +97,8 @@ for (const forceFullFailure of [false, true]) {
     const result = renderer.renderMarkdown([
       '![Cover](https://example.test/front(800).png "Cover title")',
       '[![Project screenshot](../screen(2).png "Screenshot title")](/article/fixture "Article title")',
+      '[![Diagram](../diagram(2).png "Diagram title")](./gallery "Gallery title")',
+      '[![Map](../map.png "Map title")](#chapter "Chapter title")',
       '**[Labeled `$code$` and $x$](/problem/P1000)**',
     ].join("\n\n"), { forceFullFailure });
     const root = dom.window.document.createElement("div");
@@ -106,6 +108,10 @@ for (const forceFullFailure of [false, true]) {
       ["https://example.test/front(800).png", "Cover title"],
       ["/article/fixture", "Article title"],
       ["https://www.luogu.com.cn/screen(2).png", "Screenshot title"],
+      ["./gallery", "Gallery title"],
+      ["https://www.luogu.com.cn/diagram(2).png", "Diagram title"],
+      ["#chapter", "Chapter title"],
+      ["https://www.luogu.com.cn/map.png", "Map title"],
       ["/problem/P1000", null],
     ]);
     assert.equal(links[1].textContent, "Project screenshot");

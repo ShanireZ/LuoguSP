@@ -1,20 +1,17 @@
 // Worktree-only browser fixture. Does not modify the immutable CDN release or QA stamp.
 import { createServer } from "node:http";
-import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
-import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
+import { buildBrowser } from "../../baseline-targets.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const { outputFiles } = await build({
+const { outputFiles } = await buildBrowser({
   absWorkingDir: root,
   entryPoints: ["scripts/qa/problem-color-scenarios.js"],
   bundle: true, write: false, format: "iife", platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
 });
-const early = await build({
+const early = await buildBrowser({
   absWorkingDir: root, entryPoints: ["scripts/qa/problem-color-early.js"],
   bundle: true, write: false, format: "iife", platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
 });
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>LuoguSP difficulty browser check</title>
 <style>body{font:16px system-ui;margin:32px;color:#333}li{margin:8px}#stage{padding:24px;border:1px solid #ddd}.row{display:flex;gap:24px;margin:12px}.pid{color:#404040}a{color:#3498db}.lcolor--pink-3{color:#df4160}pre{white-space:pre-wrap}</style>

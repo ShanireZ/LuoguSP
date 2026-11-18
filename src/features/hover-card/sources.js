@@ -162,7 +162,7 @@ export function createHoverCardSources(config) {
     if (payload) publish();
     try {
       const detail = problemData
-        ? await problemData.load(pid, { href, signal })
+        ? await problemData.load(pid, { href, signal, fields: ["name", "difficulty"] })
         : await load(`problem:${viewerUid || 0}:${pid}`, () =>
             readJson(`/problem/${encodeURIComponent(pid)}`, signal), signal);
       if (detail?.data?.problem?.pid === pid && detail !== payload) {

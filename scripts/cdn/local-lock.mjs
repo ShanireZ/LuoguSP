@@ -3,6 +3,8 @@ import { closeSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { lstat, readFile, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 
+export class LocalLockBusyError extends Error {}
+
 export async function withLocalLock(path, action) {
   const owner = { host: hostname(), pid: process.pid, token: randomUUID() };
   const body = `${JSON.stringify(owner)}\n`;
@@ -11,7 +13,7 @@ export async function withLocalLock(path, action) {
     handle = openSync(path, "wx");
   } catch (error) {
     if (error.code === "EEXIST")
-      throw new Error(`EEXIST: local lock ${path} is busy. Inspect its owner and use scripts/cdn/recover-lock.mjs after the transaction has stopped.`, { cause: error });
+      throw new LocalLockBusyError(`EEXIST: local lock ${path} is busy. Inspect its owner and use scripts/cdn/recover-lock.mjs after the transaction has stopped.`, { cause: error });
     throw error;
   }
   try {

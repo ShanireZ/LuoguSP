@@ -1,18 +1,17 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
+import { buildBrowser } from "../../baseline-targets.mjs";
 import { MARKDOWN_RENDERER_API_VERSION } from "../../src/rendering/renderer-dependencies.js";
 import { buildMarkdownRenderer } from "../renderer/build-lib.mjs";
 
 const root = new URL("../../", import.meta.url);
 const buildOptions = {
   absWorkingDir: fileURLToPath(root),
-  platform: "browser", target: ESBUILD_BASELINE_TARGETS,
+  platform: "browser",
   bundle: true, write: false, minify: true, charset: "utf8", legalComments: "none",
 };
-const compile = async (entry, format, options) => (await build({
+const compile = async (entry, format, options) => (await buildBrowser({
   ...buildOptions, entryPoints: [entry], format, ...options,
 })).outputFiles[0].text;
 

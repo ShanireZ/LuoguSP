@@ -4,12 +4,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import {
-  copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile,
+  copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { withLocalLock } from "../scripts/cdn/local-lock.mjs";
 import { snapshotRelease } from "../scripts/cdn/release-integrity.mjs";
 import { rollbackRelease } from "../scripts/cdn/release-transaction.mjs";
 
@@ -33,6 +34,7 @@ async function pauseChild(t, cwd, args, env = process.env) {
   assert.ok(paused, stderr);
   return {
     pid: child.pid,
+    exited,
     async interrupt() {
       assert.equal(child.kill("SIGKILL"), true);
       assert.deepEqual(await exited, [null, "SIGKILL"]);
@@ -53,7 +55,7 @@ async function fixture(t) {
     await mkdir(dirname(destination), { recursive: true });
     await writeFile(destination, body);
   };
-  const files = ["scripts/publish.mjs", "scripts/publish-lib.mjs",
+  const files = ["baseline-targets.mjs", "scripts/publish.mjs", "scripts/publish-lib.mjs",
     ...(await readdir(join(root, "scripts/cdn"))).map((name) => `scripts/cdn/${name}`)];
   for (const file of files) {
     const destination = join(cwd, file);
@@ -62,7 +64,6 @@ async function fixture(t) {
   }
   const stubs = {
     "package.json": '{"type":"module","version":"1.0.0"}',
-    "baseline-targets.mjs": "export const ESBUILD_BASELINE_TARGETS = [];",
     "node_modules/esbuild/package.json": '{"type":"module","exports":"./index.js"}',
     "node_modules/esbuild/index.js": `
       import { resolve } from "node:path";
@@ -169,14 +170,21 @@ async function fixture(t) {
     import cp from "node:child_process";
     import { syncBuiltinESMExports } from "node:module";
     import { pathToFileURL } from "node:url";
-    import { cpSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync, writeSync } from "node:fs";
+    import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync, writeSync } from "node:fs";
     const spawn = cp.spawnSync;
     const mode = process.env.LUOGUSP_TEST_PUBLISH_MODE;
     const channelPath = "cdn/channels/canary.json";
     const success = { status: 0, stdout: "", stderr: "" };
     const failure = { status: 1, stdout: "", stderr: "Injected fixture guard failure\n" };
-    const pause = () => {
+    const pause = (continueFile) => {
       writeSync(1, "FIXTURE PAUSED\n");
+      if (continueFile) {
+        const deadline = Date.now() + 15000;
+        while (!existsSync(continueFile) && Date.now() < deadline)
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        if (!existsSync(continueFile)) throw new Error("Fixture did not release the pause");
+        return;
+      }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15000);
       throw new Error("Fixture interruption did not arrive");
     };
@@ -205,6 +213,7 @@ async function fixture(t) {
       if (entry === "--test") return success;
       if (entry === "scripts/renderer/check.mjs") {
         if (mode === "predeployment-interruption") pause();
+        if (mode === "rollback-contention") pause("rollback.continue");
         if (mode === "channel-race") concurrent("3.0.0");
         if (mode === "replacement-race") {
           renameSync("cdn/releases/2.0.0", "superseded-own-version");
@@ -339,6 +348,75 @@ test("publication records an unreadable path and restores owned files after it",
   assert.deepEqual(report.productionRetained, ["README.md"]);
 });
 
+test("both readiness commands require the exact unhashed manifest bytes", async (t) => {
+  const origin = "https://stage.example";
+  const { cwd, write, build, snapshot } = await fixture(t);
+  const built = build();
+  assert.equal(built.status, 0, built.stderr);
+  const release = await snapshot();
+  const requires = [release.manifest.compat.earlyGate, release.manifest.compat.runtime]
+    .map(({ path, sha256 }) => `// @require      ${origin}/${path}#sha256=${sha256}`);
+  await write(`dist/staged/LuoguSP.${version}.user.js`, [
+    "// ==UserScript==", `// @version      ${version}`, ...requires, "// ==/UserScript==", "(()=>{})();",
+  ].join("\n"));
+  const hook = "mock-readiness.mjs";
+  await write(hook, String.raw`
+    import { readFile } from "node:fs/promises";
+    const schedule = globalThis.setTimeout;
+    globalThis.setTimeout = (callback, _delay, ...args) => schedule(callback, 0, ...args);
+    globalThis.fetch = async (url) => {
+      if (url.origin !== "https://stage.example" || url.search || url.hash)
+        throw new Error("Unexpected readiness URL: " + url.href);
+      const path = url.pathname.slice(1);
+      const failure = path === process.env.LUOGUSP_TEST_READINESS_PATH ? process.env.LUOGUSP_TEST_READINESS_FAILURE : "";
+      const original = failure === "missing" ? "" : await readFile("cdn/" + path);
+      const body = failure === "mismatch" ? Buffer.concat([original, Buffer.from("\n")]) : original;
+      const response = new Response(body, { status: failure === "missing" ? 404 : 200, headers: {
+        "Content-Type": path.endsWith(".json") ? "application/json" : "application/javascript",
+        "Cache-Control": path.startsWith("channels/") ? "no-cache" : "immutable",
+        "Access-Control-Allow-Origin": "*",
+      } });
+      return Object.defineProperty(response, "url", { value: url.href });
+    };
+  `);
+  const manifestCopy = `releases/${version}/manifest.json`;
+  const asset = release.manifest.compat.runtime.path;
+  for (const [command, options, report, channel] of [
+    ["verify", ["--origin", origin], "cdn-deployment", "channels/canary.json"],
+    ["verify-production", ["--version", version, "--manifest-sha256", release.sha256], "cdn-production-readiness"],
+  ]) {
+    for (const [path, failure] of [
+      ["", "ready"], [manifestCopy, "missing"], [manifestCopy, "mismatch"],
+      [release.path, "mismatch"], [asset, "mismatch"], ...(channel ? [[channel, "mismatch"]] : []),
+    ]) {
+      await t.test(`${command} ${failure} ${path}`.trimEnd(), async () => {
+        const result = spawnSync(process.execPath, ["--import", pathToFileURL(join(cwd, hook)).href,
+          `scripts/cdn/${command}.mjs`, ...options], {
+          cwd, encoding: "utf8", windowsHide: true,
+          env: { ...process.env, LUOGUSP_TEST_READINESS_PATH: path, LUOGUSP_TEST_READINESS_FAILURE: failure },
+        });
+        const receipt = JSON.parse(await readFile(join(cwd, `reports/${report}.json`), "utf8"));
+        if (failure === "ready") {
+          assert.equal(result.status, 0, result.stderr);
+          assert.equal(receipt.status, "ready");
+          assert.equal(receipt.files, release.files.size);
+          assert.deepEqual(new Set(receipt.results.map(({ path }) => path)),
+            new Set([...release.files.keys(), ...(channel ? [channel] : [])]));
+          assert.equal(receipt.results.find(({ path }) => path === manifestCopy).sha256, release.sha256);
+        } else {
+          assert.equal(result.status, 1, result.stderr);
+          assert.equal(receipt.status, "blocked");
+          const rejected = receipt.results.find((item) => item.path === path);
+          assert.equal(rejected.ok, false);
+          assert.equal(rejected.lastResult.status, failure === "missing" ? 404 : 200);
+          if (path === manifestCopy && failure === "mismatch")
+            assert.notEqual(rejected.lastResult.sha256, release.sha256);
+        }
+      });
+    }
+  }
+});
+
 for (const failure of ["renderer", "late"]) {
   test(`standalone CDN ${failure} failure leaves no version and permits an exact retry`, async (t) => {
     const { cwd, build, snapshot, channelPath, previousChannel } = await fixture(t);
@@ -447,6 +525,74 @@ test("publish rollback restores its own channel change and allows a fresh retry"
   assert.equal((await snapshot()).manifest.release, version);
   const report = JSON.parse(await readFile(join(cwd, "reports/publish.json")));
   assert.equal(report.status, "ready-for-browser-qa");
+});
+
+test("a pre-provider rollback blocked by the channel lock can resume the verified transaction", async (t) => {
+  const { cwd, write, build, publish, publishArgs, snapshot, channelPath } = await fixture(t);
+  const child = await pauseChild(t, cwd, publishArgs, { ...process.env, LUOGUSP_TEST_PUBLISH_MODE: "rollback-contention" });
+  const channelLock = `${channelPath}.lock`;
+  const prior = await snapshot();
+  const capturedChannel = await readFile(channelPath, "utf8");
+  await withLocalLock(channelLock, async () => {
+    const owner = await readFile(channelLock);
+    await write("rollback.continue", "");
+    assert.deepEqual(await child.exited, [1, null]);
+    assert.deepEqual(await readFile(channelLock), owner);
+  });
+
+  const receiptPath = join(cwd, "reports/publish.json");
+  const checkpoint = await readFile(receiptPath);
+  const report = JSON.parse(checkpoint);
+  assert.equal(report.status, "blocked");
+  assert.equal(report.deploymentStatus, "not-attempted");
+  assert.match(report.rollbackError, /canary\.json\.lock is busy/);
+  assert.equal(report.channel, capturedChannel);
+  assert.equal(report.resumeAllowed, true);
+  assert.equal(JSON.parse(report.channel).manifestSha256, prior.sha256);
+  assert.deepEqual((await snapshot()).files, prior.files);
+  await assert.rejects(readFile(join(cwd, "provider.jsonl")), { code: "ENOENT" });
+
+  const other = build("3.0.0");
+  assert.equal(other.status, 0, other.stderr);
+  const otherChannel = await readFile(channelPath);
+  const otherFiles = (await snapshot("3.0.0")).files;
+  const differentVersion = spawnSync(process.execPath, [...publishArgs.slice(0, -1), "3.0.0"], { cwd, encoding: "utf8" });
+  assert.notEqual(differentVersion.status, 0);
+  assert.match(differentVersion.stderr, /pending release 2\.0\.0/);
+  assert.deepEqual(await readFile(receiptPath), checkpoint);
+
+  const releasePath = join(cwd, "cdn/releases", version);
+  const savedRelease = join(cwd, "owned-version");
+  await rename(releasePath, savedRelease);
+  for (const [name, bytes] of prior.files) await write(join("cdn", name), bytes);
+  assert.deepEqual((await snapshot()).files, prior.files);
+  const replacement = publish("provider-success");
+  assert.notEqual(replacement.status, 0);
+  assert.match(replacement.stderr, /release directory ownership changed/);
+  assert.deepEqual((await snapshot()).files, prior.files);
+  await assert.rejects(readFile(join(cwd, "provider.jsonl")), { code: "ENOENT" });
+  await rename(releasePath, join(cwd, "replacement-version"));
+  await rename(savedRelease, releasePath);
+
+  const runtimePath = prior.manifest.compat.runtime.path;
+  await write(join("cdn", runtimePath), "Changed fixture bundle");
+  const drift = publish("provider-success");
+  assert.notEqual(drift.status, 0);
+  assert.match(drift.stderr, /content drifted from the manifest/);
+  await assert.rejects(readFile(join(cwd, "provider.jsonl")), { code: "ENOENT" });
+  await write(join("cdn", runtimePath), prior.files.get(runtimePath));
+
+  const retry = publish("provider-success");
+  assert.equal(retry.status, 0, retry.stderr);
+  assert.deepEqual((await snapshot()).files, prior.files);
+  assert.deepEqual((await snapshot("3.0.0")).files, otherFiles);
+  assert.deepEqual(await readFile(channelPath), otherChannel);
+  const provider = JSON.parse(await readFile(join(cwd, "provider.jsonl"), "utf8"));
+  assert.deepEqual(provider, { channel: version, releases: ["1.0.0", version] });
+  const finalReport = JSON.parse(await readFile(receiptPath));
+  assert.equal(finalReport.status, "ready-for-browser-qa");
+  assert.equal(finalReport.resumed, true);
+  assert.equal(finalReport.channel, capturedChannel);
 });
 
 test("publish leaves build-failure cleanup to the failed child and can retry", async (t) => {

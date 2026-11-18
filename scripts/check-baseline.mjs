@@ -227,28 +227,17 @@ const buildConsumers = [];
 for (const absolute of await moduleFiles(resolve(root, "scripts"))) {
   const source = withoutCodeComments(await readFile(absolute, "utf8"));
   const references = source.match(/\b(?:from\s*|(?:import|require)\s*(?:\(\s*)?)["'\x60]esbuild(?:\/[^"'\x60\n]+)?["'\x60]/g);
-  if (!references) continue;
   const file = relative(root, absolute).replaceAll("\\", "/");
   assert.ok(
-    references.length === 1 && /^\s*import\s+\{\s*build\s*\}\s+from\s+["']esbuild["'];?\s*$/mu.test(source),
-    `${file} 使用了无法核验的 esbuild 导入。请使用具名 build 导入。`,
+    !references,
+    `${file} 使用了无法核验的 esbuild 导入。请从 baseline-targets.mjs 导入 buildBrowser。`,
   );
   let importPath = relative(dirname(absolute), resolve(root, "baseline-targets.mjs")).replaceAll(
     "\\",
     "/",
   );
   if (!importPath.startsWith(".")) importPath = `./${importPath}`;
-  buildConsumers.push(file);
-  assert.ok(
-    source.includes(`import { ESBUILD_BASELINE_TARGETS } from "${importPath}";`),
-    `${file} 没有消费共享 Baseline 目标`,
-  );
-  const buildCalls = source.match(/\bbuild\s*\(/g)?.length ?? 0;
-  const objectCalls = source.match(/\bbuild\s*\(\s*\{/g)?.length ?? 0;
-  const targetUses = source.match(/target:\s*ESBUILD_BASELINE_TARGETS,/g)?.length ?? 0;
-  assert.ok(buildCalls > 0, `${file} 不再包含可识别的 esbuild 调用`);
-  assert.equal(objectCalls, buildCalls, `${file} 使用了无法核验的 esbuild 调用`);
-  assert.equal(targetUses, buildCalls, `${file} 有 esbuild 调用未声明 target`);
+  if (source.includes(`import { buildBrowser } from "${importPath}";`)) buildConsumers.push(file);
 }
 assert.ok(buildConsumers.length > 0, "未发现任何 esbuild 浏览器构建消费点");
 

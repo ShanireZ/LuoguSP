@@ -1,8 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
+import { buildBrowser } from "../../baseline-targets.mjs";
 import { buildMarkdownRenderer, sha256 } from "./build-lib.mjs";
 import { rendererStackDependencies } from "../../src/rendering/renderer-dependencies.js";
 
@@ -30,14 +29,13 @@ for (const globalName of [
     throw new Error(`Markdown renderer still depends on ${globalName}`);
 }
 
-const runtime = await build({
+const runtime = await buildBrowser({
   absWorkingDir: root,
   entryPoints: ["src/cdn/runtime-entry.js"],
   outfile: "runtime.js",
   bundle: true,
   format: "iife",
   platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
   metafile: true,
   write: false,
 });

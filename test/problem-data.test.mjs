@@ -80,7 +80,7 @@ test("native detail supplies difficulty, hover fields and IDE samples without a 
 });
 
 test("empty and unusable detail replies leave native summaries available and retryable", async () => {
-  const incomplete = { pid: problem.pid, name: " ", tags: ["unknown"], limits: { time: [] }, samples: [] };
+  const incomplete = { pid: problem.pid, name: " ", tags: ["unknown"], limits: { time: [] }, samples: null };
   for (const summary of [undefined, { ...problem, totalAccepted: 0, submitted: false }]) {
     const replies = [{}, incomplete, { pid: problem.pid, name: "Full title" }];
     const data = createProblemData({ origin, now: () => 3, text: async () => JSON.stringify({
@@ -102,6 +102,64 @@ test("empty and unusable detail replies leave native summaries available and ret
   }
 });
 
+test("partial details retry only for missing consumer fields and preserve known data", async () => {
+  const { pid, name, samples } = problem;
+  const replies = [
+    { problem: { pid, difficulty: 0, limits: { time: [1000] } }, bookmarked: false },
+    { problem: { pid, name, limits: { memory: [128000] } } },
+    { problem: { pid, samples } },
+  ];
+  const data = createProblemData({ origin, text: async () => JSON.stringify({ data: replies.shift() }) });
+  const load = (...fields) => data.load(pid, { fields });
+
+  assert.equal((await load("name", "difficulty")).data.problem.name, undefined);
+  assert.equal((await load("difficulty")).data.problem.difficulty, 0);
+  assert.equal(replies.length, 2);
+
+  const titled = await load("name", "difficulty");
+  assert.equal(titled.data.problem.name, name);
+  assert.equal(titled.data.problem.difficulty, 0);
+  assert.equal(titled.data.bookmarked, false);
+  assert.deepEqual(titled.data.problem.limits, { time: [1000], memory: [128000] });
+  await load("name", "difficulty");
+  assert.equal(replies.length, 1);
+
+  const complete = await load("samples");
+  assert.deepEqual(complete.data.problem, { ...titled.data.problem, samples });
+  assert.deepEqual(await load("samples"), complete);
+  assert.equal(replies.length, 0);
+});
+
+test("empty sample lists from detail and native data satisfy IDE lookups", async () => {
+  for (const native of [false, true]) {
+    let reads = 0;
+    const detail = { pid: problem.pid, samples: [] };
+    const data = createProblemData({ origin, text: async () => {
+      reads++;
+      return JSON.stringify({ data: { problem: detail } });
+    } });
+    const href = `/problem/${problem.pid}?contestId=42&lang=en`;
+    if (native) data.rememberPage({ viewer: 0, data: { problem: detail } }, url(href), Date.now());
+
+    assert.deepEqual((await data.load(problem.pid, { href, fields: ["samples"] })).data.problem.samples, []);
+    assert.deepEqual((await data.load(problem.pid, { href, fields: ["samples"] })).data.problem.samples, []);
+    assert.equal(reads, native ? 0 : 1);
+  }
+});
+
+test("a pending detail lookup fills omissions without replacing newer native fields", async () => {
+  const reply = deferred();
+  let time = 1;
+  const data = createProblemData({ origin, now: () => time, text: () => reply.promise });
+  const { pid } = problem;
+  const ide = data.load(pid, { fields: ["samples"] });
+  time++;
+  data.rememberPage({ data: { problem: { pid, difficulty: 2 } } }, url(`/problem/${pid}`), time);
+  reply.resolve(JSON.stringify({ data: { problem } }));
+
+  assert.deepEqual((await ide).data.problem, { ...problem, difficulty: 2 });
+});
+
 test("one detail request serves concurrent consumers and survives one aborted route", async () => {
   const clock = new FakeClock();
   const request = deferred();
@@ -112,9 +170,9 @@ test("one detail request serves concurrent consumers and survives one aborted ro
   });
   const data = createProblemData({ origin, text: scheduler.text, now: clock.adapter().now });
   const route = new AbortController();
-  const color = data.load(problem.pid, { signal: route.signal });
-  const hover = data.load(problem.pid);
-  const ide = data.load(problem.pid, { href: "/problem/P1001#ide" });
+  const color = data.load(problem.pid, { signal: route.signal, fields: ["difficulty"] });
+  const hover = data.load(problem.pid, { fields: ["name", "difficulty"] });
+  const ide = data.load(problem.pid, { href: "/problem/P1001#ide", fields: ["samples"] });
   route.abort();
   request.resolve(textResponse(JSON.stringify({ data: { problem } })));
   assert.equal(await color, null);
@@ -133,7 +191,7 @@ test("legacy problem HTML is read only from an identified data context", async (
   assert.equal(await data.load("P2000"), null);
 });
 
-test("contest and account contexts cannot reuse another context's details", async () => {
+test("contest, language and account contexts cannot reuse another context's details", async () => {
   const calls = [];
   const data = createProblemData({
     origin, text: async (path, { key }) => {
@@ -143,14 +201,18 @@ test("contest and account contexts cannot reuse another context's details", asyn
   });
   const at = Date.now();
   data.rememberPage({ viewer: 42, data: { problem } }, url("/problem/P1001"), at);
-  assert.equal(data.peek(problem.pid, { href: "/problem/P1001?contestId=123" }), null);
-  await data.load(problem.pid, { href: "/problem/P1001?contestId=123" });
+  const english = "/problem/P1001?contestId=123&lang=en";
+  const chinese = "/problem/P1001?contestId=123&lang=zh";
+  const load = (href) => data.load(problem.pid, { href, fields: ["samples"] });
+  assert.equal(data.peek(problem.pid, { href: english }), null);
+  await load(english);
+  assert.equal(data.peek(problem.pid, { href: chinese }), null);
+  await load(chinese);
   data.rememberPage({ viewer: 43, data: {} }, url("/problem/list"), at + 1);
   assert.equal(data.peek(problem.pid), null);
-  await data.load(problem.pid, { href: "/problem/P1001?contestId=123" });
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].path, "/problem/P1001?contestId=123&_contentOnly=1");
-  assert.notEqual(calls[0].key, calls[1].key);
+  await load(english);
+  assert.deepEqual(calls.map(({ path }) => path), [english, chinese, english].map((href) => `${href}&_contentOnly=1`));
+  assert.equal(new Set(calls.map(({ key }) => key)).size, 3);
 });
 
 test("hover card publishes a native preview before the Lentille detail and record responses", async () => {
@@ -190,6 +252,25 @@ test("hover card publishes a native preview before the Lentille detail and recor
   }));
   assert.equal((await card).mine.lastAttempt.id, 1);
   assert.equal(updates.at(-1).mine.lastAttempt.id, 1);
+});
+
+test("hover card shows available difficulty and fetches the missing title on reopening", async () => {
+  const { pid, name, difficulty } = problem;
+  let reads = 0;
+  const data = createProblemData({ origin, text: async () => JSON.stringify({ data: {
+    problem: ++reads === 1 ? { pid, difficulty } : { pid, name },
+  } }) });
+  const sources = createHoverCardSources({ origin, problemData: data,
+    fetchPage: () => assert.fail("unexpected supplemental lookup") });
+
+  const partial = await sources.problem(pid, 0);
+  assert.equal(partial.name, pid);
+  assert.equal(partial.difficulty, difficulty);
+  const recovered = await sources.problem(pid, 0);
+  assert.equal(recovered.name, name);
+  assert.equal(recovered.difficulty, difficulty);
+  assert.deepEqual(await sources.problem(pid, 0), recovered);
+  assert.equal(reads, 2);
 });
 
 function recordPreviewSources(fetchPage, clock) {

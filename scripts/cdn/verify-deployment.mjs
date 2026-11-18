@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { digest } from "./release-integrity.mjs";
+import { digest, releaseManifestPath } from "./release-integrity.mjs";
 import { fetchVerified } from "./verify-lib.mjs";
 
 export async function verifyDeployment({ root, origin, channelBody, manifestBody }) {
@@ -13,6 +13,11 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
   if (manifest.schemaVersion >= 3 && manifest.origin !== origin)
     throw new Error("Release manifest origin differs from configured CDN");
 
+  const files = [
+    [channel.manifestPath, channel.manifestSha256],
+    [releaseManifestPath(manifest.release), channel.manifestSha256],
+    ...Object.entries(manifest.files).map(([path, { sha256 }]) => [path, sha256]),
+  ];
   const assetUrl = (path) =>
     new URL(
       String(path).replace(/^\/+/, ""),
@@ -31,7 +36,7 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
           manifestSha256: channel.manifestSha256,
           optionalBundles: manifest.optionalBundles || {},
           origin,
-          files: Object.keys(manifest.files).length + 1,
+          files: files.length,
           failure,
           results,
         },
@@ -95,16 +100,8 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
     }
   };
 
-  for (const path of [
-    channel.manifestPath,
-    ...Object.keys(manifest.files),
-  ]) {
-    const expected =
-      path === channel.manifestPath
-        ? channel.manifestSha256
-        : manifest.files[path].sha256;
+  for (const [path, expected] of files)
     await verifyPath(path, expected);
-  }
   await verifyPath(
     "channels/canary.json",
     digest(channelBody),
@@ -112,6 +109,6 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
   );
   await writeReport("ready");
   console.log(
-    `Verified ${Object.keys(manifest.files).length + 1} immutable files on ${origin}.`,
+    `Verified ${files.length} immutable files on ${origin}.`,
   );
 }

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +5,7 @@ import {
   resolveBootstrapOrigin,
   resolveConfiguredOrigin,
 } from "./origin-policy.mjs";
+import { digest, releaseManifestPath } from "./release-integrity.mjs";
 import { fetchVerified } from "./verify-lib.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -28,17 +28,16 @@ if (!versionPattern.test(version || ""))
 const stagedRelativePath = qaMode
   ? `dist/qa/LuoguSP-QA.${version}.user.js`
   : `dist/staged/LuoguSP.${version}.user.js`;
+const manifestCopy = releaseManifestPath(version);
 
 const [configText, manifestBody, stagedArtifact] =
   await Promise.all([
     readFile(resolve(root, "config/cdn.json"), "utf8"),
-    readFile(resolve(root, `cdn/releases/${version}/manifest.json`)),
+    readFile(resolve(root, "cdn", manifestCopy)),
     readFile(resolve(root, stagedRelativePath), "utf8"),
   ]);
 const config = JSON.parse(configText);
 const manifest = JSON.parse(manifestBody);
-const digest = (body) =>
-  createHash("sha256").update(body).digest("hex");
 const manifestSha256 = digest(manifestBody);
 if (process.argv.includes("--manifest-sha256") && manifestSha256 !== receiptManifestSha256)
   throw new Error("Local manifest differs from the publication receipt");
@@ -132,14 +131,14 @@ if (
 )
   failures.push("manifest does not pin a complete optional renderer");
 
-const paths = [manifestPath, ...Object.keys(manifest.files)];
+const paths = [
+  [manifestPath, manifestSha256],
+  [manifestCopy, manifestSha256],
+  ...Object.entries(manifest.files).map(([path, { sha256 }]) => [path, sha256]),
+];
 const results = [];
-for (const path of paths) {
+for (const [path, expected] of paths) {
   const url = new URL(path, `${origin}/`);
-  const expected =
-    path === manifestPath
-      ? manifestSha256
-      : manifest.files[path].sha256;
   try {
     const verified = await fetchVerified({
       url,

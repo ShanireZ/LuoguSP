@@ -3,8 +3,7 @@ import { createHash } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { build } from "esbuild";
-import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
+import { buildBrowser } from "../../baseline-targets.mjs";
 import { buildMarkdownRenderer } from "../renderer/build-lib.mjs";
 import {
   MARKDOWN_RENDERER_API_VERSION,
@@ -90,13 +89,12 @@ const fileRecord = (path, body) =>
   });
 
 async function buildCompat(entryPoint, prefix, define = {}) {
-  const result = await build({
+  const result = await buildBrowser({
     absWorkingDir: root,
     entryPoints: [entryPoint],
     bundle: true,
     format: "iife",
     platform: "browser",
-    target: ESBUILD_BASELINE_TARGETS,
     charset: "utf8",
     legalComments: "inline",
     minify: true,
@@ -141,13 +139,12 @@ const markdownRendererBundle = Object.freeze({
 });
 // 受限內容按需塊：啟動包裡最大的一塊（實測 44506 B / 37%），卻只在
 // 「安全訪問中心」攔截頁才用得到。拆出來後啟動包降到約 83 KB。
-const restrictedContentResult = await build({
+const restrictedContentResult = await buildBrowser({
   absWorkingDir: root,
   entryPoints: ["src/cdn/restricted-content-bundle.js"],
   bundle: true,
   format: "esm",
   platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "none",
   minify: true,
@@ -174,13 +171,12 @@ const restrictedContentBundle = Object.freeze({
   sri: restrictedContentFile.sri,
 });
 // hover 預覽卡按需塊：只有指針真的停在題號或使用者名上才拉。
-const hoverCardResult = await build({
+const hoverCardResult = await buildBrowser({
   absWorkingDir: root,
   entryPoints: ["src/cdn/hover-card-bundle.js"],
   bundle: true,
   format: "esm",
   platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "none",
   minify: true,
@@ -235,7 +231,7 @@ const esmEntryPoints = {
   "ide-batch": "src/features/ide-batch/feature.js",
   "restricted-content": "src/features/restricted-content/feature.js",
 };
-const esmResult = await build({
+const esmResult = await buildBrowser({
   absWorkingDir: root,
   entryPoints: esmEntryPoints,
   outdir: "cdn-build",
@@ -245,7 +241,6 @@ const esmResult = await build({
   splitting: true,
   format: "esm",
   platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "inline",
   minify: true,

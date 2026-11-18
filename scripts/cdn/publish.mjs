@@ -10,7 +10,7 @@ import { assertParentLocalLock, withLocalLock } from "./local-lock.mjs";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 import { prepareCdn } from "./prepare-lib.mjs";
 import { DEPLOYMENT_PHASE, PARENT_PUBLISH_LOCK, deploymentEvidence, readPublishReport, writePublishReport } from "./publish-receipt.mjs";
-import { RELEASE_VERSION, digest, readRegularFile, requireRegularDirectory } from "./release-integrity.mjs";
+import { RELEASE_VERSION, digest, readRegularFile, releaseManifestPath, requireRegularDirectory } from "./release-integrity.mjs";
 import { verifyDeployment } from "./verify-deployment.mjs";
 
 const MAX_CONCURRENT_MANIFEST_CHECKS = 4;
@@ -107,7 +107,7 @@ async function matchesManifestBody(response, expected) {
 }
 
 async function isPublishedVersion(release, { files }, { requirePublished }) {
-  const name = `releases/${release}/manifest.json`;
+  const name = releaseManifestPath(release);
   const url = new URL(`/${name}`, origin);
   try {
     const response = await fetch(url, {

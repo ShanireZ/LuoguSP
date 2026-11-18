@@ -5,11 +5,12 @@ import { createHash } from "node:crypto";
 // `pnpm qa:browser` 用 Playwright 產生 `reports/browser-qa.json`。
 // 行為雜湊讓報告可沿用至只修改展示文案的安裝器，因此僅豁免
 // `@description`。其餘 metadata 和指令碼本體的原始內容都納入雜湊。
-const DESCRIPTION_LINE = /^\/\/ @description\s.*$/m;
+const METADATA_HEADER = /^\/\/ ==UserScript==\r?\n(?:[^\r\n]*\r?\n)*?\/\/ ==\/UserScript==(?=\r?\n|$)/;
+const DESCRIPTION_LINE = /^\/\/ @description(?:[ \t][^\r\n]*)?$/m;
 const PLACEHOLDER = "// @description  <not part of the behaviour hash>";
 
 export const behaviourText = (text) =>
-  String(text).replace(DESCRIPTION_LINE, PLACEHOLDER);
+  String(text).replace(METADATA_HEADER, (header) => header.replace(DESCRIPTION_LINE, PLACEHOLDER));
 
 export const behaviourHashOf = (text) =>
   createHash("sha256").update(behaviourText(text), "utf8").digest("hex");

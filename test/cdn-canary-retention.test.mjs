@@ -597,6 +597,7 @@ test("a deployment retains its exact snapshot and verification pins during anoth
     ["wrangler", "--version"],
     ["wrangler", "deploy", "--config", result.commands[2][3]],
     ["verify", `/${selected.manifestPath}`],
+    ["verify", `/releases/${manifest.release}/manifest.json`],
     ...Object.keys(manifest.files).map((file) => ["verify", `/${file}`]),
     ["verify", "/channels/canary.json"],
   ]);
@@ -625,8 +626,8 @@ test("a deployment reports blocked verification when matching bytes come from an
 });
 
 async function stubBuildImports(repo) {
+  await copyFile(path.join(root, "baseline-targets.mjs"), path.join(repo, "baseline-targets.mjs"));
   const buildStubs = {
-    "baseline-targets.mjs": "export const ESBUILD_BASELINE_TARGETS = [];",
     "node_modules/esbuild/package.json": '{"exports":"./index.mjs"}',
     "node_modules/esbuild/index.mjs": "export function build() { throw new Error('Build was reached'); }",
     "scripts/renderer/build-lib.mjs": "export function buildMarkdownRenderer() { throw new Error('Build was reached'); }",

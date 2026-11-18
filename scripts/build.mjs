@@ -1,8 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";
+import { buildBrowser } from "../baseline-targets.mjs";
 import { resolveSupportedOrigins } from "./cdn/origin-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -46,14 +45,13 @@ if (
   throw new Error("First-party CDN @require entries must pin SHA-256");
 const entryPoint = "src/cdn/loader-entry.js";
 
-const result = await build({
+const result = await buildBrowser({
   absWorkingDir: root,
   entryPoints: [entryPoint],
   outfile: "LuoguSP.user.js",
   bundle: true,
   format: "iife",
   platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "none",
   minify: true,

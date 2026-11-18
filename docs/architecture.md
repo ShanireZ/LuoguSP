@@ -23,6 +23,8 @@ status: stable
 Settings consume shared feature descriptors rather than a second registry.
 Keys, storage keys, defaults and cleanup are executable contracts in
 test/release-contract.test.mjs. Reproduce before changing them.
+Backdrop dismissal during a same-route navigation remount returns focus to the
+replacement settings entry when focus still belongs to the dismissed overlay.
 
 Problem ID coloring keeps the page's existing font weight and yields to native
 colors. In Academic Mode, record lists and details use each visible record's
@@ -48,8 +50,9 @@ same-origin request URL, including its query. They compare against the URL
 resolved from the document base with the fragment removed and leave native
 events intact.
 The shared cache holds only fields those features consume and scopes
-details by viewer, contest and language. Empty or unusable detail payloads leave
-the existing summary available and allow a later retry. A problem card displays
+details by viewer, contest and language. A partial detail keeps available
+fields and a caller can retry for fields it still needs. An explicit empty
+sample list is cached as a result. A problem card displays
 available fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
@@ -88,7 +91,8 @@ media type. Successful reads require HTTP 200. Invalid provenance retries on
 reopening while available fields from the other branch remain visible.
 Late signature updates retain the existing disclosure button and expansion
 state. Unbroken text wraps within the preview. Expanded text can scroll within
-the card while the focused disclosure stays in view. The preview remeasures its
+the card. Placement keeps the focused disclosure within the scrollport during
+expansion, collapse and viewport changes. The preview remeasures its
 two-line fit after a width change. The button reports its expanded state.
 When the signature fits within two lines, the
 disclosure collapses and hides. Focus held on that button returns to the
@@ -130,9 +134,10 @@ Starting a batch moves focus from its disabled controls to Stop. If Stop still
 owns focus when it becomes disabled, focus moves to the Samples tab. Completion
 restores the initiating control or another available batch control only while
 the batch still owns focus.
-Replacing the native input/output layout on the same route invalidates an
-active batch and announces the interruption. The replacement controls recover
-focus when LuoguSP lost its focused control during the replacement.
+Replacing the native input/output layout on the same route discards the old
+results. It invalidates an active batch and announces the interruption. The
+replacement controls recover focus when LuoguSP lost its focused control
+during the replacement.
 The batch summary announces updates, and copy controls appear on keyboard focus.
 Output highlighting aligns insertions and deletions within a bounded comparison.
 
@@ -156,7 +161,8 @@ Both fallback modes convert author images with HTTP(S) sources into ordinary
 links that open in a new tab without sending a referrer. Relative sources are
 resolved against the page base. Linked Markdown images preserve the outer link
 and provide a separate image link. The lightweight renderer uses the shared
-inline link grammar for destinations and titles, including balanced parentheses.
+inline link grammar for destinations and titles, including balanced parentheses,
+path-relative destinations and fragments.
 Even same-origin URLs and Luogu's CDN can
 redirect, so the fallback makes no automatic image requests. Unsupported or
 credential-bearing sources are represented as alt text or an unavailable label.
@@ -189,7 +195,9 @@ Other versions enter the deployment snapshot only when their public manifest
 matches. A missing committed release manifest or a conflicting response blocks
 deployment. Unpublished local builds keep their own bytes and channel selection.
 Both CDN verification gates reject redirects and require HTTP 200 from the
-requested URL before reading and verifying its bytes.
+requested URL before reading and verifying its bytes. Readiness requires the
+same SHA-256 for the hashed manifest and the exact `releases/<version>/manifest.json`
+URL used by the next publication's preflight.
 The CDN builder finishes compilation before claiming a version directory.
 Handled write failures clean up that build's directory. A successful build
 returns its directory identity, manifest digest and channel transition to the
@@ -220,7 +228,12 @@ The high-level publisher saves a local checkpoint with the captured channel
 before it invokes the deployment subprocess. A same-version retry verifies the
 existing release and uses the checkpoint's channel and manifest pin. This keeps
 another build's local channel selection intact. An unresolved checkpoint blocks
-the high-level publisher from starting a different release. A retry requires
+the high-level publisher from starting a different release. If a busy channel
+lock interrupts pre-deployment rollback, the blocked checkpoint also saves the
+build's directory identity. Let the channel owner finish, then retry the same
+version with `pnpm release -- --version <version>`. The retry checks that the
+directory still belongs to the recorded build and re-verifies its immutable
+bytes against the current source and captured manifest pin. A retry requires
 version files that still agree on the previous stable release. The deployment
 attempt records `not-attempted` during preflight, `outcome-unknown` before
 invoking Wrangler and `confirmed` after Wrangler returns success. The report

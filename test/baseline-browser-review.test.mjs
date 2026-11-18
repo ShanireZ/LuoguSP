@@ -10,6 +10,8 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { build } from "esbuild";
+import { buildBrowser, ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const CHECKER = join(ROOT, "scripts/check-baseline.mjs");
@@ -26,9 +28,8 @@ function fixtureGuard(t) {
   const checker = join(fixture, "scripts/check-baseline.mjs");
   copyFileSync(CHECKER, checker);
   writeFileSync(join(fixture, "scripts/build.mjs"), [
-    'import { build } from "esbuild";',
-    'import { ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";',
-    'await build({ target: ESBUILD_BASELINE_TARGETS, write: false });',
+    'import { buildBrowser } from "../baseline-targets.mjs";',
+    'await buildBrowser({ write: false });',
   ].join("\n"));
   const run = () => {
     const result = spawnSync(process.execPath, [checker], {
@@ -89,18 +90,33 @@ test("the actual guard rejects untracked esbuild import forms even alongside a v
   }
 });
 
-test("the actual guard counts formatted calls and rejects unchecked build options", (t) => {
+test("the shared build function binds the target for direct and callback builds", async () => {
+  const options = { stdin: { contents: "globalThis.fixture = /[a&&b]/v;" }, write: false };
+  const [expected, untargeted, direct, [callback]] = await Promise.all([
+    build({ ...options, target: ESBUILD_BASELINE_TARGETS }),
+    build(options),
+    buildBrowser({ ...options, target: "esnext" }),
+    Promise.all([options].map(buildBrowser)),
+  ]);
+  const expectedScript = expected.outputFiles[0].text;
+  assert.notEqual(untargeted.outputFiles[0].text, expectedScript);
+  assert.equal(direct.outputFiles[0].text, expectedScript);
+  assert.equal(callback.outputFiles[0].text, expectedScript);
+});
+
+test("the actual guard rejects a direct esbuild callback alongside a targeted call", (t) => {
   const { fixture, run } = fixtureGuard(t);
   const script = join(fixture, "scripts/build.mjs");
-  const original = readFileSync(script, "utf8");
-  writeFileSync(script, original + '\nawait build ( { platform: "browser", write: false });');
-  const omitted = run();
-  assert.equal(omitted.status, 1);
-  assert.match(omitted.stderr, /esbuild 调用未声明 target/u);
-  writeFileSync(script, original + '\nawait build(options);');
-  const unknown = run();
-  assert.equal(unknown.status, 1);
-  assert.match(unknown.stderr, /无法核验的 esbuild 调用/u);
+  writeFileSync(script, [
+    'import { build } from "esbuild";',
+    'import { ESBUILD_BASELINE_TARGETS } from "../baseline-targets.mjs";',
+    'await build({ target: ESBUILD_BASELINE_TARGETS, write: false });',
+    'const browserBuilds = [{ platform: "browser", write: false }];',
+    'await Promise.all(browserBuilds.map(build));',
+  ].join("\n"));
+  const result = run();
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /无法核验的 esbuild/u);
 });
 
 for (const [browser, staleMinimum] of [

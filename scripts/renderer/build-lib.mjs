@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
+import { buildBrowser } from "../../baseline-targets.mjs";
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -12,14 +11,13 @@ export const sri = (body) =>
   `sha256-${createHash("sha256").update(body).digest("base64")}`;
 
 export async function buildMarkdownRenderer({ root = defaultRoot } = {}) {
-  const result = await build({
+  const result = await buildBrowser({
     absWorkingDir: root,
     entryPoints: ["src/rendering/markdown-renderer-entry.js"],
     outfile: "markdown-renderer.js",
     bundle: true,
     format: "esm",
     platform: "browser",
-    target: ESBUILD_BASELINE_TARGETS,
     charset: "utf8",
     legalComments: "inline",
     minify: true,

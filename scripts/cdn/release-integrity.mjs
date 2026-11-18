@@ -9,6 +9,12 @@ const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i;
 export const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 export const digest = (body) => createHash("sha256").update(body).digest("hex");
 
+export function releaseManifestPath(version) {
+  if (typeof version !== "string" || !RELEASE_VERSION.test(version))
+    throw new Error("Invalid release version for manifest.json");
+  return `releases/${version}/manifest.json`;
+}
+
 export function parseCanaryChannel(body, { origin, version, release }) {
   const channel = JSON.parse(body);
   if (

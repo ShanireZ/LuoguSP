@@ -16,12 +16,15 @@ function project(problem, pid) {
     if (Number.isFinite(problem[field])) result[field] = problem[field];
   for (const field of ["submitted", "accepted"])
     if (typeof problem[field] === "boolean") result[field] = problem[field];
-  if (Array.isArray(problem.tags)) result.tags = problem.tags.filter(Number.isInteger);
+  if (Array.isArray(problem.tags)) {
+    const tags = problem.tags.filter(Number.isInteger);
+    if (tags.length || !problem.tags.length) result.tags = tags;
+  }
   if (problem.limits && typeof problem.limits === "object") {
-    result.limits = {};
     for (const key of ["time", "memory"]) {
       const values = problem.limits[key];
-      if (Array.isArray(values) && values.every(Number.isFinite)) result.limits[key] = values.slice();
+      if (Array.isArray(values) && values.length && values.every(Number.isFinite))
+        (result.limits ??= {})[key] = values.slice();
     }
   }
   if (Array.isArray(problem.samples) &&
@@ -96,15 +99,28 @@ export function createProblemData({
     if (!data.problem || typeof data.problem !== "object" || Array.isArray(data.problem)) return;
     const problem = project(data.problem, pid);
     // The lookup supplies the PID even when the server returned no usable detail.
-    const { pid: _pid, tags, limits, samples, ...fields } = problem;
-    if (!Object.keys(fields).length && !tags?.length && !samples?.length &&
-        !limits?.time?.length && !limits?.memory?.length) return;
+    if (Object.keys(problem).length === 1) return;
+    const key = keyOf(pid, context);
     const entry = {
       at,
       problem,
       bookmarked: typeof data.bookmarked === "boolean" ? data.bookmarked : undefined,
     };
-    remember(details, keyOf(pid, context), entry, 120);
+    const previous = read(details, key);
+    if (!previous) {
+      remember(details, key, entry, 120);
+      return;
+    }
+    // A read started earlier can still fill in fields the latest response omitted.
+    const [older, newer] = at < previous.at ? [entry, previous] : [previous, entry];
+    const merged = { ...older.problem, ...newer.problem };
+    if (older.problem.limits && newer.problem.limits)
+      merged.limits = { ...older.problem.limits, ...newer.problem.limits };
+    remember(details, key, {
+      at: newer.at,
+      problem: merged,
+      bookmarked: newer.bookmarked ?? older.bookmarked,
+    }, 120);
   };
   const rememberPage = (page, url, at) => {
     if (page.viewer !== undefined && at >= viewerAt) {
@@ -168,13 +184,14 @@ export function createProblemData({
     const context = contextFor(pid, href);
     return context ? payload(keyOf(pid, context)) : null;
   };
-  const load = async (pid, { href, signal } = {}) => {
+  const load = async (pid, { href, signal, fields = [] } = {}) => {
     if (typeof pid !== "string" || !PID_PATTERN.test(pid) || signal?.aborted) return null;
     refresh();
     const context = contextFor(pid, href);
     if (!context) return null;
     const key = keyOf(pid, context);
-    if (read(details, key)) return payload(key);
+    const detail = read(details, key);
+    if (detail && fields.every((field) => detail.problem[field] !== undefined)) return payload(key);
 
     const path = `/problem/${encodeURIComponent(pid)}`;
     const query = new URLSearchParams(context.params);

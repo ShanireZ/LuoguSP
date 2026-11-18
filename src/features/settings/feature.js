@@ -76,6 +76,8 @@ export function createSettingsFeature({ storage, configurableFeatures }) {
     updateViewport();
     viewport?.addEventListener("resize", updateViewport);
     viewport?.addEventListener("scroll", updateViewport);
+    // Keep dismissal from blurring the focused control before the overlay is removed.
+    overlay.querySelector(".luogusp-mask").addEventListener("mousedown", event => event.preventDefault());
     document.body.appendChild(overlay);
     openOverlays.add(close);
     document.addEventListener("keydown", onKey, true);

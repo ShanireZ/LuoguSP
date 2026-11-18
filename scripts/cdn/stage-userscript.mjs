@@ -5,8 +5,7 @@ import {
 } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { ESBUILD_BASELINE_TARGETS } from "../../baseline-targets.mjs";
+import { buildBrowser } from "../../baseline-targets.mjs";
 import { resolveBootstrapOrigin } from "./origin-policy.mjs";
 import { createStagedMetadata } from "./userscript-stage-lib.mjs";
 
@@ -42,13 +41,12 @@ const staged = createStagedMetadata({
   manifest,
 });
 
-const result = await build({
+const result = await buildBrowser({
   absWorkingDir: root,
   entryPoints: ["src/cdn/loader-entry.js"],
   bundle: true,
   format: "iife",
   platform: "browser",
-  target: ESBUILD_BASELINE_TARGETS,
   charset: "utf8",
   legalComments: "none",
   minify: true,

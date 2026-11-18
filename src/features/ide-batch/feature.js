@@ -82,9 +82,9 @@ export function createIdeBatchFeature({ storage, problemData }) {
     if (!pid || !problemData) return null;
     const href = location.href;
     const samples = problemData.peek(pid, { href })?.data.problem.samples;
-    if (samples) return samples;
+    if (samples !== undefined) return samples;
     try {
-      return (await problemData.load(pid, { href, signal }))?.data.problem.samples ?? null;
+      return (await problemData.load(pid, { href, signal, fields: ["samples"] }))?.data.problem.samples ?? null;
     } catch (e) {
       if (!signal || !signal.aborted)
         console.error("LuoguSP ide samples:", e);
@@ -640,8 +640,8 @@ export function createIdeBatchFeature({ storage, problemData }) {
         !ideModeActive()
       )
         return { kind: "hint", message: "页面已切换" };
-      if (!samples || !samples.length)
-        return { kind: "hint", message: "本题无样例" };
+      if (!samples?.length)
+        return { kind: "hint", message: samples ? "本题无样例" : "暂时无法获取样例" };
       if (!source.trim())
         return { kind: "hint", message: "代码为空" };
       if (!compilerSettings)

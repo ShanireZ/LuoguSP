@@ -160,6 +160,7 @@ export function createHoverCardFeature(config) {
       );
       // 載入態記住這一邊；內容一完成實作就交還自由。
       openSide = loading ? placement.below : null;
+      card.querySelector(".luogusp-hc-expand:focus")?.scrollIntoView({ block: "nearest", behavior: "instant" });
     };
 
     const signatureObserver = typeof window.ResizeObserver === "function"
@@ -229,8 +230,8 @@ export function createHoverCardFeature(config) {
           claimNativeUserPreview(true);
         }
         watchSignature();
-        position();
         card.scrollTop = scrollTop;
+        position();
       };
       if (target.kind === "problem") {
         const model = await sources.problem(target.pid, viewer, signal, {

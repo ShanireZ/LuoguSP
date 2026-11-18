@@ -278,7 +278,7 @@ export function updateUserCard(card, content, preserveActions, fadeField, pendin
 }
 
 export function renderUserCard(card, options = {}) {
-  const { origin = "", onFollow, onBlock, followBusy = false, viewerUid = null } = options;
+  const { origin = "", onFollow, onBlock, onResize, followBusy = false, viewerUid = null } = options;
   const box = document.createDocumentFragment();
 
   const header = el("div", "luogusp-hc-userhead");
@@ -347,7 +347,7 @@ export function renderUserCard(card, options = {}) {
     const open = sloganBox.classList.toggle("is-open");
     expand.textContent = open ? "收起" : "展开";
     expand.setAttribute("aria-expanded", String(open));
-    if (typeof options.onResize === "function") options.onResize();
+    onResize?.();
   });
   sloganBox.append(slogan, expand);
   body.appendChild(sloganBox);
@@ -443,7 +443,7 @@ export function renderUserCard(card, options = {}) {
         yes.type = "button";
         const restoreActions = () => {
           ask.replaceWith(actions);
-          options.onResize?.();
+          onResize?.();
           block.focus({ preventScroll: true });
         };
         yes.addEventListener("click", (accept) => {
@@ -462,7 +462,7 @@ export function renderUserCard(card, options = {}) {
         ask.append(yes, no);
         actions.replaceWith(ask);
         // 換了一行內容，高度可能變 —— 就地重定位，免得頂出視口。
-        if (typeof options.onResize === "function") options.onResize();
+        onResize?.();
         no.focus({ preventScroll: true });
       });
       actions.appendChild(block);
@@ -541,13 +541,10 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
   cardEl.style.maxWidth = `${Math.max(0, viewport.width - 24)}px`;
   options.measureSignature?.();
   const width = cardEl.offsetWidth || 320;
-  const left = Math.max(x + gap, Math.min(rect.left, x + viewport.width - width - gap));
+  const left = Math.round(Math.max(x + gap, Math.min(rect.left, x + viewport.width - width - gap)));
 
-  // ★★★ 先把上一次釘的 max-height 摘掉再量。owner 2026-08-14 第七輪報
-  //    「展開之後越界」「下面明明放不下卻還往下彈、右邊出捲軸」——根因就在這：
-  //    上一次定位留下的 `max-height` 把 `offsetHeight` 夾住了，於是內容明明長高了，
-  //    量出來還是那個被夾住的舊高度，判據以為「下面放得下」，永遠不翻上去。
-  //    **量之前必須先鬆開自己上一次施加的約束。**
+  // Measure the full content without the previous limit, then restore the scroll offset.
+  const scrollTop = cardEl.scrollTop;
   cardEl.style.maxHeight = "";
   // ★★★ 2.14.1「卡片跳走」。載入態的卡片裡只有一個 16px 的轉圈，連內邊距才 ≈42px；
   //   內容一到就是 ≈320px。拿轉圈的真高去定邊，**錨點下方餘量 44~320px 時必然**
@@ -561,36 +558,26 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
 
   const below = y + viewport.height - rect.bottom - gap * 2;
   const above = rect.top - y - gap * 2;
-  // ★★ 上下分界線（owner 要的「分界比例」就是這三句，按優先級從上往下讀）：
-  //   1. **下面放得下就放下面** —— 閱讀順序自然，也是原生的習慣；
-  //   2. 下面放不下、**上面放得下就翻上去** —— 這一條是本輪補的。
-  //      舊判據是「下面放不下且 below < above 才翻」，於是「下面差一點點、但仍比上面寬」
-  //      的情形會賴在下面並被 max-height 夾出捲軸，正是 owner 看到的樣子；
-  //   3. 兩邊都放不下 —— 才比誰寬，挑寬的那邊，並把 max-height 釘在那一側。
-  //      這時候出捲軸是沒辦法的事（視口本來就裝不下），但絕不出界。
-  const fitsBelow = natural <= below;
-  const fitsAbove = natural <= above;
   // ★★ `forceBelow` 只在**內容完成實作那一次**由呼叫方釘住，沿用開卡時定的那一邊，
   //   保證「轉圈在哪一邊，內容就在哪一邊」。之後（使用者點展開標籤/展開簽名）
-  //   一律傳 null，仍按上面那三句話重新判 —— owner 第七輪要的翻邊行為一字不動。
-  const useBelow =
-    typeof options.forceBelow === "boolean"
-      ? options.forceBelow
-      : fitsBelow || (!fitsAbove && below >= above);
+  //   一律傳 null。下方放得下就選下方，其餘情況選空間較大的一側。
+  const useBelow = options.forceBelow ?? (natural <= below || below >= above);
+  const space = useBelow ? below : above;
   const fullHeight = Math.max(0, Math.floor(viewport.height - gap * 2));
-  const room = Math.min(fullHeight, Math.max(120, Math.floor(useBelow ? below : above)));
+  const room = Math.min(fullHeight, Math.max(120, Math.floor(space)));
   cardEl.style.maxHeight = `${room}px`;
   const height = Math.min(cardEl.offsetHeight || natural, room);
   const anchoredTop = useBelow ? rect.bottom + gap : rect.top - height - gap;
-  const top = Math.max(y + gap, Math.min(anchoredTop, y + viewport.height - height - gap));
-  cardEl.style.left = `${Math.round(left)}px`;
-  cardEl.style.top = `${Math.round(top)}px`;
+  const top = Math.round(Math.max(y + gap, Math.min(anchoredTop, y + viewport.height - height - gap)));
+  cardEl.style.left = `${left}px`;
+  cardEl.style.top = `${top}px`;
+  cardEl.scrollTop = scrollTop;
   return {
-    left: Math.round(left),
-    top: Math.round(top),
+    left,
+    top,
     maxHeight: room,
     below: useBelow,
     // 給測試與排查用：這次到底是「放得下」還是「兩邊都放不下只能挑大的」。
-    fits: useBelow ? fitsBelow : fitsAbove,
+    fits: natural <= space,
   };
 }

@@ -1,5 +1,5 @@
 import { Lexer } from "marked";
-import { IMAGE_UNAVAILABLE, resolveIntroImageUrl } from "./intro-image.js";
+import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
 
 export function renderMarkdownLite(md, options = {}) {
@@ -39,7 +39,7 @@ export function renderMarkdownLite(md, options = {}) {
   const titleAttribute = (title) => title ? ` title="${esc(title)}"` : "";
   // The renderer inserts this intermediate markup only into an inert template.
   const imageMarkup = (source, alt, title) => {
-    const href = resolveIntroImageUrl(source, document.baseURI);
+    const href = resolveIntroHttpUrl(source, document.baseURI);
     return href
       ? `<img src="${esc(href)}" alt="${esc(alt)}"${title}>`
       : `<span>${esc(alt.trim() || IMAGE_UNAVAILABLE)}</span>`;
@@ -66,11 +66,10 @@ export function renderMarkdownLite(md, options = {}) {
     if (token.type === "codespan") return stashCode(token.text);
     if (token.type === "image") return stash(imageMarkup(token.href, token.text, titleAttribute(token.title)));
     if (token.type === "link" && token.raw.startsWith("[")) {
-      const safeUrl = url(token.href);
-      if (!safeUrl) return stash(esc(token.raw));
+      if (!resolveIntroHttpUrl(token.href, document.baseURI)) return stash(esc(token.raw));
       const label = rewriteInlineTokens(token.tokens);
       const text = restore(inline(esc(mathInFragments(label))));
-      return stash(`<a href="${esc(safeUrl)}"${titleAttribute(token.title)} target="_blank" rel="noopener noreferrer">${text}</a>`);
+      return stash(`<a href="${esc(token.href)}"${titleAttribute(token.title)} target="_blank" rel="noopener noreferrer">${text}</a>`);
     }
     if (["strong", "em", "del"].includes(token.type)) {
       // Preserve the delimiters for Lite's formatting pass.

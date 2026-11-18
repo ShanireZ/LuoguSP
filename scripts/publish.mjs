@@ -20,8 +20,8 @@ import {
   userscriptVersion,
   verifyStagedActivation,
 } from "./publish-lib.mjs";
-import { rollbackRelease } from "./cdn/release-transaction.mjs";
-import { withLocalLock } from "./cdn/local-lock.mjs";
+import { assertOwnedReleaseDirectory, rollbackRelease } from "./cdn/release-transaction.mjs";
+import { LocalLockBusyError, withLocalLock } from "./cdn/local-lock.mjs";
 import { DEPLOYMENT_PHASE, PARENT_PUBLISH_LOCK, deploymentEvidence, readPublishReport, writePublishReport } from "./cdn/publish-receipt.mjs";
 import { digest, parseCanaryChannel, readRegularFile } from "./cdn/release-integrity.mjs";
 
@@ -204,6 +204,8 @@ let productionModified = false;
 let rendererReport = null;
 let buildTransaction = null;
 let capturedChannel = resumeMode ? previousReport.channel ?? null : null;
+let rollbackDirectoryIdentity = resumeMode && deploymentStatus === "not-attempted"
+  ? previousReport.rollbackDirectoryIdentity : undefined;
 let resumeAllowed = resumeMode;
 const initialProduction = new Map([
   [metadataPath, initialMetadata], [artifactPath, initialArtifact], [packagePath, initialPackage],
@@ -256,7 +258,10 @@ const restoreProduction = async () => {
   }
   return retained;
 };
-const writeReport = (report) => writePublishReport(reportPath, report);
+const writeReport = (report) => writePublishReport(reportPath, {
+  ...report,
+  ...(deploymentStatus === "not-attempted" ? { rollbackDirectoryIdentity } : {}),
+});
 const writeCheckpoint = () => writeReport({
   startedAt, status: "in-progress", release: version, phase,
   channel: capturedChannel, resumeAllowed, resumed: resumeMode,
@@ -278,6 +283,8 @@ try {
   );
   let channelForVerification = capturedChannel;
   if (resumeMode) {
+    if (rollbackDirectoryIdentity !== undefined)
+      await assertOwnedReleaseDirectory(releaseDirectory, rollbackDirectoryIdentity);
     // Older blocked receipts are recoverable while the original channel is still selected.
     channelForVerification ??= (await readRegularFile(channelPath)).toString("utf8");
     await writeFile(capturedChannelPath, channelForVerification, { flag: "wx" });
@@ -354,6 +361,8 @@ try {
 
   beginPhase(DEPLOYMENT_PHASE);
   await assertProductionUnchanged();
+  if (rollbackDirectoryIdentity !== undefined)
+    await assertOwnedReleaseDirectory(releaseDirectory, rollbackDirectoryIdentity);
   await writeCheckpoint();
   let deploymentError;
   try {
@@ -471,6 +480,8 @@ try {
       });
     } catch (cleanupError) {
       rollbackError = cleanupError.message;
+      if (cleanupError instanceof LocalLockBusyError && resumeAllowed)
+        rollbackDirectoryIdentity = buildTransaction.directoryIdentity;
       console.error(`[publish] release rollback failed: ${rollbackError}`);
     }
   }
@@ -491,7 +502,7 @@ try {
     releaseRollback,
     rollbackError,
     resumed: resumeMode,
-    resumeAllowed: deploymentStatus !== "not-attempted" || resumeMode,
+    resumeAllowed: deploymentStatus !== "not-attempted" || resumeMode || rollbackDirectoryIdentity !== undefined,
     commitPerformed: false,
     pushPerformed: false,
   });

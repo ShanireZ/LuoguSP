@@ -61,6 +61,8 @@ export function createIdeBatchRunner(config) {
     }
   };
   const invalidate = () => {
+    results = null;
+    stale = false;
     if (state === "idle") return false;
     if (activeController) activeController.abort();
     activeController = null;
