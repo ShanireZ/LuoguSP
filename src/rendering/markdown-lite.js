@@ -2,11 +2,12 @@ import { Lexer } from "marked";
 import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
 
-function withoutReferenceDefinitions(blocks) {
+function rewriteBlocks(blocks, { quoteInline, blockCode }, quoted = false) {
   return blocks.map((block) => {
     if (block.type === "def") return "";
+    if (quoted && block.type === "code") return blockCode(block.lang, block.text) + block.raw.match(/\n*$/)[0];
     if (block.type === "blockquote") {
-      const body = withoutReferenceDefinitions(block.tokens);
+      const body = quoteInline(rewriteBlocks(block.tokens, { quoteInline, blockCode }, true));
       if (body === block.text) return block.raw;
       return body.trim()
         ? body.trimEnd().replace(/^/gm, "> ") + block.raw.match(/\n*$/)[0]
@@ -14,15 +15,17 @@ function withoutReferenceDefinitions(blocks) {
     }
     if (block.type !== "list") return block.raw;
     const items = block.items.map((item) => {
-      const body = withoutReferenceDefinitions(item.tokens);
+      const body = rewriteBlocks(item.tokens, { quoteInline, blockCode }, quoted);
       if (body === item.text) return item.raw;
       if (!body.trim()) return "";
       const marker = item.raw.match(/^[ \t]*(?:[-+*]|\d+[.)])[ \t]*/)[0];
       const indent = " ".repeat(marker.length);
       return marker + body.trimEnd().replaceAll("\n", "\n" + indent) + item.raw.match(/\n*$/)[0];
     });
-    return items.every((raw, index) => raw === block.items[index].raw)
-      ? block.raw : items.join("");
+    if (items.every((raw, index) => raw === block.items[index].raw)) return block.raw;
+    const retained = items.join("");
+    // A removed final item can expose its predecessor's line terminator.
+    return retained && retained.replace(/\n*$/, block.raw.match(/\n*$/)[0]);
   }).join("");
 }
 
@@ -119,6 +122,10 @@ export function renderMarkdownLite(md, options = {}) {
     .map((part, index) => index % 2 ? part : mathInText(part))
     .join("");
   const stashCode = (code) => stash(`<code>${esc(code)}</code>`);
+  const stashBlockCode = (rawLanguage, code) => {
+    const className = codeLanguageClass(rawLanguage);
+    return stash(`<pre${className}><code${className}>${esc(code)}</code></pre>`);
+  };
   const rewriteInlineTokens = (tokens) => tokens.map((token) => {
     if (token.type === "codespan") return stashCode(token.text);
     if (token.type === "html") return rewriteHtmlTag(token.raw);
@@ -140,15 +147,23 @@ export function renderMarkdownLite(md, options = {}) {
     return token.raw;
   }).join("");
   const inlineLiterals = (source) => {
-    if (!source.includes("[") && !source.includes("`") && !source.includes("<")) return source;
-    // Collect document reference definitions with the same lexer used for links.
-    // Keep Lite's block rendering, and omit definition lines from its input.
+    const quotedCode = /[`~]/.test(source) && /^[ \t]*>/m.test(source);
+    if (!quotedCode && !/[`[<]/.test(source)) return source;
     try {
       const lexer = new Lexer({ gfm: false });
-      if (source.includes("]:")) {
+      if (quotedCode || source.includes("]:")) {
         const blocks = lexer.blockTokens(source);
-        if (Object.keys(lexer.tokens.links).length)
-          source = withoutReferenceDefinitions(blocks);
+        // Lex quoted code after Marked strips the quote syntax. Keep the same
+        // reference destinations, and feed the rewritten blocks back into Lite.
+        source = rewriteBlocks(blocks, {
+          blockCode: stashBlockCode,
+          quoteInline(body) {
+            if (!body.includes("`")) return body;
+            const quoteLexer = new Lexer({ gfm: false });
+            quoteLexer.tokens.links = lexer.tokens.links;
+            return rewriteInlineTokens(quoteLexer.inlineTokens(body));
+          },
+        });
       }
       return rewriteInlineTokens(lexer.inlineTokens(source));
     } catch {
@@ -176,12 +191,7 @@ export function renderMarkdownLite(md, options = {}) {
   let source = md
     .replace(/\r\n?/g, "\n")
     .replace(/^ {0,3}((`|~)\2{2,})([^\n]*)\n([\s\S]*?)(?:^ {0,3}\1\2*[ \t]*(?=\n|$)|(?![\s\S]))/gm,
-      (_, _fence, _delimiter, rawLanguage, code) => {
-        const className = codeLanguageClass(rawLanguage);
-        return stash(
-          `<pre${className}><code${className}>${esc(code.replace(/\n$/, ""))}</code></pre>`,
-        );
-      });
+      (_, _fence, _delimiter, rawLanguage, code) => stashBlockCode(rawLanguage, code.replace(/\n$/, "")));
   source = mathInFragments(inlineLiterals(source));
   source = esc(source)
     .replace(/^([^\n]+)\n=+[ \t]*$/gm, "# $1")

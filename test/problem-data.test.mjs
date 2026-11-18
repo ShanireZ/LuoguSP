@@ -222,7 +222,9 @@ test("a pending detail lookup fills omissions without replacing newer native fie
   data.rememberPage({ data: { problem: { pid, difficulty: 2 } } }, url(`/problem/${pid}`), time);
   reply.resolve(JSON.stringify({ data: { problem } }));
 
-  assert.deepEqual((await ide).data.problem, { ...problem, difficulty: 2 });
+  const result = await ide;
+  assert.deepEqual(result.data.problem, { ...problem, difficulty: 2 });
+  assert.equal(result.difficultyAt, 2);
 });
 
 test("one detail request serves concurrent consumers and survives one aborted route", async () => {
@@ -278,6 +280,7 @@ for (const retry of [false, true]) {
     const results = await Promise.all([first, samples]);
     assert.deepEqual(starts, retry ? [0, 1000] : [300]);
     assert.deepEqual(results.map(({ data }) => data.problem), [problem, problem]);
+    assert.deepEqual(results.map(({ difficultyAt }) => difficultyAt), Array(2).fill(starts.at(-1)));
   });
 }
 

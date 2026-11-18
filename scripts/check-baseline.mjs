@@ -108,21 +108,32 @@ const packageModuleFiles = async (scripts) => {
 
 const importedModuleFiles = async (entries) => {
   if (entries.length === 0) return [];
+  const inputs = new Set();
   // Use esbuild's input graph to inspect declared entry points without running them.
-  const { metafile } = await buildBrowser({
+  await buildBrowser({
     absWorkingDir: root,
-    entryPoints: entries,
+    // Different source extensions can otherwise map to the same output path.
+    entryPoints: entries.map((path, index) => ({ in: path, out: `entry-${index}` })),
     bundle: true,
     format: "esm",
     platform: "node",
     packages: "external",
     outdir: "node_modules/.cache/baseline-inputs",
     write: false,
-    metafile: true,
+    plugins: [{
+      name: "baseline-inputs",
+      setup(graph) {
+        // File loads expose the physical path separately from any import suffix.
+        graph.onLoad({ filter: /.*/, namespace: "file" }, ({ path }) => {
+          inputs.add(path);
+        });
+      },
+    }],
   });
-  return Object.keys(metafile.inputs)
-    .filter((path) => moduleExtension.test(path) && !isAbsolute(path) && !path.startsWith("../"))
-    .map((path) => resolve(root, path));
+  return [...inputs].filter((path) => {
+    const location = relative(root, path).replaceAll("\\", "/");
+    return !isAbsolute(location) && !location.startsWith("../") && moduleExtension.test(path);
+  });
 };
 
 const versionParts = (value) =>

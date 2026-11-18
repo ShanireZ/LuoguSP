@@ -212,7 +212,74 @@ for (const [container, definition] of [
   });
 }
 
+test("Lite retains ordered and unordered items before a hidden reference definition at EOF", () => {
+  const { dom, renderer } = createRenderer();
+  const root = dom.window.document.createElement("div");
+  for (const [tag, items] of [["ul", ["- ", "- "]], ["ol", ["1. ", "2. "]]]) {
+    for (const tail of ["", "\n\nAfter list."]) {
+      root.innerHTML = renderer.renderMarkdown(
+        `[Book][go]\n\n${items[0]}First step\n${items[1]}[go]: ./album "Title"${tail}`,
+        { forceFullFailure: true },
+      ).html;
+      assert.deepEqual([...root.querySelectorAll(`${tag} > li`)].map((item) => item.textContent), ["First step"]);
+      const link = root.querySelector("a");
+      assert.equal(link.getAttribute("href"), "./album");
+      assert.equal(link.title, "Title");
+      assert.doesNotMatch(root.textContent, /\[go\]:|\.\/album/);
+    }
+  }
+  dom.window.close();
+});
+
+test("Lite preserves fenced and inline code inside quotes", () => {
+  const { dom, renderer } = createRenderer();
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown([
+    '> ~~~html\n> <b>Example</b>\n> <img src="./example.png" alt="Literal">\n> ~~~',
+    '> Show `<b>one\n> two</b>` and [link][quote].\n>\n> [quote]: ./quote "Quote"',
+    '> **Bold text**',
+  ].join("\n\n"), { forceFullFailure: true }).html;
+  assert.equal(root.querySelector("blockquote pre code.language-html")?.textContent,
+    '<b>Example</b>\n<img src="./example.png" alt="Literal">');
+  assert.equal(root.querySelector("blockquote code:not(.language-html)")?.textContent, "<b>one two</b>");
+  assert.equal(root.querySelector("blockquote strong").textContent, "Bold text");
+  assert.equal(root.querySelector("blockquote a[title='Quote']").getAttribute("href"), "./quote");
+  assert.equal(root.querySelector("blockquote b, img, a[href*='example.png']"), null);
+  assert.doesNotMatch(root.textContent, /\[quote\]:/);
+  dom.window.close();
+});
+
 for (const forceFullFailure of [false, true]) {
+  test(`a multiline HTML anchor end confines the image label in ${forceFullFailure ? "lite" : "full"} mode`, () => {
+    const { dom, renderer } = createRenderer();
+    const root = dom.window.document.createElement("div");
+    const anchors = ["</a\n>", "</A \t\n >", "</a\n\n>"].map((end) =>
+      '<a href="./gallery"><img src="./cover.png" alt="Map">' + end);
+    if (!forceFullFailure) anchors.push("- " + anchors[0].replace("\n", "\n  "),
+      "> " + anchors[0].replace("\n", "\n> "));
+    for (const anchor of anchors) {
+      root.innerHTML = renderer.renderMarkdown([
+        anchor,
+        "Expected separate paragraph.",
+        'Example: `</a >`. [Link](./text "Literal </a >")',
+        '~~~html\n<a href="./example">Example</a\n>\n~~~',
+      ].join("\n\n"), { forceFullFailure }).html;
+      assert.deepEqual([...root.querySelectorAll("a[href]")].map((link) =>
+        [link.textContent, link.getAttribute("href")]), [
+        ["Map", "./gallery"],
+        ["打开图片：Map", "https://www.luogu.com.cn/cover.png"],
+        ["Link", "./text"],
+      ]);
+      assert.ok([...root.querySelectorAll("p")].some((node) =>
+        node.textContent === "Expected separate paragraph." && !node.querySelector("a")));
+      assert.equal(root.querySelector("img"), null);
+      assert.equal(root.querySelector("a[href='./text']").title, "Literal </a >");
+      assert.deepEqual([...root.querySelectorAll("code")].map((node) => node.textContent.trim()),
+        ["</a >", '<a href="./example">Example</a\n>']);
+    }
+    dom.window.close();
+  });
+
   test(`tag-shaped Markdown literals stay text in ${forceFullFailure ? "lite" : "full"} mode`, () => {
     const { dom, renderer } = createRenderer();
     const root = dom.window.document.createElement("div");

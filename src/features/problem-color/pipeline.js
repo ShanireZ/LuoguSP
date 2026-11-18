@@ -32,7 +32,7 @@ export function createProblemPipeline(config) {
   if (typeof colorForDifficulty !== "function")
     throw new TypeError("Problem Pipeline requires a color adapter");
 
-  // 兩種快取都在接收後 5 分鐘過期；讀取不續期，不輪詢伺服器。
+  // 兩種快取都從資料的觀測時間起算 5 分鐘；讀取不續期，不輪詢伺服器。
   // colors = 最多 1000 條查詢結果，按寫入順序淘汰。
   // ★harvested 與它分開：整批資料是本頁自帶的 payload，不是請求結果，條數由頁面決定。
   //   曾經兩者共用一個 1000 條的 LRU——練習頁一次收 1363 題，後來的直接把先收的擠掉，
@@ -55,8 +55,8 @@ export function createProblemPipeline(config) {
       ? routeAdapter.token()
       : "";
   const rememberColor = (pid, color, at) => {
-    if (!pid || !color) return;
-    if (colors.has(pid)) colors.delete(pid);
+    if (!pid || !color || colors.get(pid)?.at > at) return;
+    colors.delete(pid);
     colors.set(pid, { color, at });
     if (colors.size > cacheLimit) colors.delete(colors.keys().next().value);
   };
@@ -111,12 +111,12 @@ export function createProblemPipeline(config) {
     const { pid } = identity;
     const known = identity.scoped ? null : knownColor(pid);
     if (known) return known.color;
-    const startedAt = clock.now();
     try {
-      const difficulty = await difficultySource.lookup(identity, signal);
-      if (signal.aborted || !validDifficulty(difficulty)) return null;
-      if (identity.scoped) return colorForDifficulty(difficulty);
-      rememberColor(pid, colorForDifficulty(difficulty), startedAt);
+      const result = await difficultySource.lookup(identity, signal);
+      if (signal.aborted || !validDifficulty(result?.difficulty) || !Number.isFinite(result.at)) return null;
+      const color = colorForDifficulty(result.difficulty);
+      if (identity.scoped) return color;
+      rememberColor(pid, color, result.at);
       return knownColor(pid)?.color || null;
     } catch (error) {
       if (!signal.aborted) logError(pid, error);

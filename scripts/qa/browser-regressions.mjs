@@ -378,6 +378,31 @@ for (const mode of ["full", "lite"]) {
 }
 
 for (const mode of ["full", "lite"]) {
+  test(`profile introduction confines a multiline HTML image anchor in ${mode}`, async (t) => {
+    const introduction = [
+      '<a href="./gallery"><img src="../intro-images/cover.png" alt="Map"></a\n>',
+      "Expected separate paragraph.",
+    ].join("\n\n");
+    const { page, requests } = await fixture(t, {
+      path: "/user/42?luogusp-qa=fallback" + (mode === "lite" ? "-lite" : ""),
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.getByText("Expected separate paragraph.", { exact: true }).waitFor();
+    const links = await intro.locator("a[href]").evaluateAll((nodes) =>
+      nodes.map((node) => [node.textContent, node.getAttribute("href"), node.tabIndex]));
+    assert.deepEqual(links, [
+      ["Map", "./gallery", 0],
+      ["打开图片：Map", origin + "/intro-images/cover.png", 0],
+    ]);
+    assert.equal(await intro.getByText("Expected separate paragraph.", { exact: true })
+      .evaluate((node) => node.closest("a[href]") === null && node.tabIndex === -1), true);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await intro.locator("img").count(), 0);
+    assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
+  });
+
   test(`profile introduction keeps nested definitions and tag-shaped literals out of HTML processing in ${mode}`, async (t) => {
     const introduction = [
       "[![<b>Diagram</b>][picture]][gallery]",
@@ -408,6 +433,41 @@ for (const mode of ["full", "lite"]) {
     assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
   });
 }
+
+test("Lite profile introduction hides an EOF definition and keeps the remaining list item", async (t) => {
+  const { page } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction: '[Book][go]\n\n- First step\n- [go]: ./album "Title"' } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  const link = intro.getByRole("link", { name: "Book", exact: true });
+  await link.waitFor();
+  assert.equal(await link.getAttribute("href"), "./album");
+  assert.equal(await link.getAttribute("title"), "Title");
+  assert.deepEqual(await intro.getByRole("listitem").allTextContents(), ["First step"]);
+  assert.doesNotMatch(await intro.textContent(), /\[go\]:|\.\/album/);
+});
+
+test("Lite profile introduction preserves quoted fences and multiline inline code", async (t) => {
+  const introduction = [
+    '> ~~~html\n> <b>Example</b>\n> <img src="../intro-images/quoted-example.png" alt="Literal">\n> ~~~',
+    '> Show `<b>one\n> two</b>`.',
+  ].join("\n\n");
+  const { page, requests } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  await intro.getByText("Show", { exact: false }).waitFor();
+  assert.deepEqual(await intro.locator("blockquote pre code.language-xml.hljs").allTextContents(),
+    ['<b>Example</b>\n<img src="../intro-images/quoted-example.png" alt="Literal">']);
+  assert.deepEqual(await intro.locator("blockquote code:not(.language-xml)").allTextContents(), ["<b>one two</b>"]);
+  assert.equal(await intro.locator("blockquote b, img, a[href*='quoted-example.png']").count(), 0);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.deepEqual(requests.filter(({ path }) => path.includes("/intro-images/")), []);
+});
 
 test("profile introduction preserves a Bash fence before display math", async (t) => {
   const introduction = '## Code and math\n\n```bash\necho "$$"\n```\n\n$$\nx^2\n$$';
@@ -1631,15 +1691,15 @@ test("restricted route change aborts the discussion scaffold fallback", async (t
   assert.equal(await page.locator("#luogusp-rst-loader, .luogusp-rst-plaincard, #lentille-context").count(), 0);
 });
 
+const saverCreatePath = "/workflow/create/template/article-save-pipeline";
+const saverActionDelay = 100;
 const stalledSaver = restrictedStreams + `
   let restrictedQuery = 0;
   globalThis.fetch = (input, init) => {
     const url = new URL(input, location.origin);
     if (url.origin !== "https://api.luogu.me") return restrictedFetch(input, init);
-    if (url.pathname.startsWith("/workflow/create/")) {
-      reportRestricted("accepted", url.pathname);
-      return Promise.resolve(Response.json({ code: 202 }));
-    }
+    if (url.pathname === ${JSON.stringify(saverCreatePath)})
+      return Promise.resolve(restrictedStream(init.signal, url.pathname, ${saverActionDelay}, '{"code":202}'));
     const query = restrictedQuery++;
     if (query === 0) return Promise.resolve(Response.json({ code: 404 }));
     const delay = [14000, 8000, 14000][query - 1] ?? 14000;
@@ -1647,19 +1707,28 @@ const stalledSaver = restrictedStreams + `
   };
 `;
 
+async function waitForSaverAcceptance(page) {
+  await page.clock.runFor(50);
+  await waitForRestrictedHeaders(page, saverCreatePath);
+  const accepted = page.locator("#luogusp-rst-loader").getByText("该内容尚未被保存站收录", { exact: false });
+  assert.equal(await accepted.count(), 0);
+  const elapsedSinceHeaders = await page.evaluate(() => Date.now() - restrictedTrace[0][2]);
+  // Stop the clock at body delivery until the workflow confirms acceptance in the UI.
+  await page.clock.runFor(saverActionDelay - elapsedSinceHeaders);
+  await accepted.waitFor();
+  return page.evaluate(() => Date.now());
+}
+
 test("restricted Saver post-acceptance deadline aborts an in-flight query at 45 seconds", async (t) => {
   const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
     useClock: true, initScript: stalledSaver,
   });
-  await page.clock.runFor(50);
-  const accepted = page.getByText("该内容尚未被保存站收录", { exact: false });
-  await accepted.waitFor();
+  const start = await waitForSaverAcceptance(page);
   await page.clock.runFor(45000);
   await page.getByText("保存站在限定时间内未能完成收录。").waitFor({ timeout: 1000 });
   const trace = await page.evaluate(() => restrictedTrace);
-  const start = trace[0][2];
   assert.deepEqual(trace.map(([event, path, time]) => [event, path, time - start]), [
-    ["accepted", "/workflow/create/template/article-save-pipeline", 0],
+    ["headers", saverCreatePath, -saverActionDelay],
     ["headers", "1", 3000], ["headers", "2", 23000],
     ["headers", "3", 43000], ["abort", "3", 45000],
   ]);
@@ -1669,8 +1738,7 @@ test("restricted route change aborts the active Saver query without showing stal
   const { page } = await restrictedFixture(t, "article", "123", archiveArticle, {
     useClock: true, initScript: stalledSaver,
   });
-  await page.clock.runFor(50);
-  await page.getByText("该内容尚未被保存站收录", { exact: false }).waitFor();
+  await waitForSaverAcceptance(page);
   await page.clock.runFor(3000);
   await waitForRestrictedHeaders(page, "1");
   await page.evaluate(() => history.pushState({}, "", "/"));
@@ -4160,6 +4228,66 @@ test("IDE batch rejects a compiler ID drift in the POST when the control remains
   await page.getByRole("button", { name: "上次运行结果未确认，请刷新页面后重试", exact: true }).waitFor();
   assert.equal(submitted.length, 2);
 });
+
+for (const queued of [true, false]) {
+  test(`problem coloring agrees with the preview after a ${queued ? "queued" : "running"} detail`, async (t) => {
+    const detail = responseGate(t);
+    const title = "Resolved problem detail";
+    const { page, requests } = await fixture(t, {
+      useClock: true,
+      html: fixtureHtml((queued ? '<a href="/problem/P9999">P9999</a>' : "") +
+        '<a id="problem-link" href="/problem/P1000"><span class="pid">P1000</span> Problem</a>'),
+      initScript: `
+        const problemFetch = window.fetch;
+        window.problemFetchStarts = {};
+        window.fetch = (input, init) => {
+          const path = new URL(input, location.href).pathname;
+          if (path.startsWith("/problem/")) problemFetchStarts[path] = Date.now();
+          return problemFetch(input, init);
+        };`,
+      reply(route, url) {
+        if (url.pathname === "/problem/P9999") return route.fulfill({
+          json: { user: viewer, data: { problem: { pid: "P9999", difficulty: 1 } } },
+        });
+        if (url.pathname === "/training/100") return route.fulfill({
+          json: { user: viewer, data: { training: { problems: [{ pid: problem.pid, difficulty: 2 }] } } },
+        });
+        if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({
+          json: { user: viewer, data: { problem: { pid: problem.pid, difficulty: 4, name: title } } },
+        }));
+        if (url.pathname === "/record/list") return route.fulfill({
+          json: { template: "record.list", user: viewer, data: { records: { result: [] } } },
+        });
+      },
+    });
+    const trigger = page.locator("#problem-link");
+    const pid = trigger.locator(".pid");
+    const inlineColor = locator => locator.evaluate(node => node.style.color);
+    const target = request => new URL(request.url()).pathname === "/problem/P1000";
+    const response = page.waitForResponse(result => target(result.request()));
+    await page.clock.runFor(350);
+    const nativeAt = await page.evaluate(() => new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const at = Date.now();
+      xhr.open("GET", "/training/100");
+      xhr.onloadend = () => xhr.status === 200 ? resolve(at) : reject(new Error(`HTTP ${xhr.status}`));
+      xhr.send();
+    }));
+    assert.equal(await inlineColor(pid), "rgb(243, 156, 17)", "native summary initially paints tier 2");
+    await page.clock.runFor(300);
+    const detailAt = await page.evaluate(() => problemFetchStarts["/problem/P1000"]);
+    assert.ok(queued ? detailAt > nativeAt : detailAt < nativeAt, `native ${nativeAt}, detail ${detailAt}`);
+    detail.release();
+    await (await response).finished();
+    await trigger.press("Alt+ArrowDown");
+    const preview = card(page);
+    await preview.getByText(`P1000 ${title}`, { exact: true }).waitFor();
+    const expected = queued ? "rgb(82, 196, 26)" : "rgb(243, 156, 17)";
+    assert.equal(await inlineColor(preview.locator(".luogusp-hc-title span")), expected);
+    assert.equal(await inlineColor(pid), expected, "page PID should match the shared preview difficulty");
+    assert.equal(requests.filter(request => request.path === "/problem/P1000").length, 1);
+  });
+}
 
 test("academic record colors follow late and recycled status links", async (t) => {
   const records = [

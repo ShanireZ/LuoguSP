@@ -7,7 +7,8 @@ import {
   createProblemPipeline,
 } from "../src/features/problem-color/pipeline.js";
 import { createProblemData } from "../src/features/problem-color/problem-data.js";
-import { deferred, flushMicrotasks, FakeClock } from "./helpers.js";
+import { createGetRequestScheduler } from "../src/core/get-request-scheduler.js";
+import { deferred, flushMicrotasks, FakeClock, textResponse } from "./helpers.js";
 
 function fixture({
   anchors = [],
@@ -57,7 +58,10 @@ function fixture({
     },
     routeAdapter: { token: () => route },
     difficultySource: {
-      lookup: async ({ pid }, signal) => (await problems.load(pid, { signal }))?.data.problem.difficulty,
+      lookup: async ({ pid }, signal) => {
+        const result = await problems.load(pid, { signal });
+        return result && { difficulty: result.data.problem.difficulty, at: result.difficultyAt };
+      },
       harvest,
       subscribe,
     },
@@ -69,6 +73,7 @@ function fixture({
   });
   return {
     pipeline,
+    problems,
     writes,
     clears,
     emit: (next) => observed && observed(next),
@@ -138,6 +143,52 @@ test("new native data repaints the same pid and wins over an older in-flight que
   fx.pipeline.dispose();
   assert.equal(changed, null);
 });
+
+for (const queued of [true, false]) {
+  test(`problem coloring uses the selected difficulty after a ${queued ? "queued" : "running"} detail`, async (t) => {
+    const clock = new FakeClock();
+    const anchor = { pid: "P1", href: "/problem/P1" };
+    const starts = [];
+    const response = deferred();
+    const scheduler = createGetRequestScheduler({
+      clock: clock.adapter(),
+      fetch(path) {
+        if (path === "/previous") return textResponse("");
+        starts.push(clock.nowMs);
+        return response.promise;
+      },
+    });
+    t.after(() => scheduler.dispose());
+    let batches = [];
+    const fx = fixture({
+      anchors: [anchor], clock: clock.adapter(), requestDelayMs: 300,
+      text: scheduler.text, harvest: () => batches,
+    });
+    fx.pipeline.mount();
+    t.after(() => fx.pipeline.dispose());
+    await clock.advance(290);
+    if (queued) await scheduler.text("/previous");
+    await clock.advance(60);
+    assert.deepEqual(starts, queued ? [] : [300]);
+
+    const native = [{ pid: anchor.pid, difficulty: 2 }];
+    batches = [{ source: native, problems: native, at: clock.nowMs }];
+    fx.problems.rememberPage({ data: { training: { problems: native } } },
+      new URL("https://www.luogu.com.cn/training/100"), clock.nowMs);
+    fx.emit([anchor]);
+    assert.equal(anchor.color, "color-2");
+
+    await clock.advance(240);
+    assert.deepEqual(starts, queued ? [590] : [300]);
+    response.resolve(textResponse('{"data":{"problem":{"pid":"P1","difficulty":4}}}'));
+    await new Promise(setImmediate);
+    const expected = queued ? 4 : 2;
+    const selected = fx.problems.peek(anchor.pid);
+    assert.equal(selected.data.problem.difficulty, expected);
+    assert.equal(selected.difficultyAt, queued ? 590 : 350);
+    assert.equal(anchor.color, `color-${expected}`);
+  });
+}
 
 test("disposing before the fallback delay cancels all pending queries", async () => {
   const clock = new FakeClock();

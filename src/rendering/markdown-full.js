@@ -1,3 +1,4 @@
+import { Lexer, Tokenizer } from "marked";
 import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { renderMarkdownLite } from "./markdown-lite.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
@@ -21,6 +22,46 @@ const AUTHOR_MARKUP = {
 const MAX_MATH_FORMULAS = 64;
 const MAX_MATH_LENGTH = 4096;
 const MAX_MATH_SIZE_EM = 64;
+
+function hasHtmlEndTag(tokens, endTag) {
+  return tokens.some((token) => token.type === "html" && token.raw === endTag ||
+    ["strong", "em", "del"].includes(token.type) && hasHtmlEndTag(token.tokens, endTag));
+}
+
+class IntroTokenizer extends Tokenizer {
+  paragraph(source) {
+    return this.joinAnchorEnd(source, "paragraph");
+  }
+
+  text(source) {
+    return this.joinAnchorEnd(source, "text");
+  }
+
+  joinAnchorEnd(source, type) {
+    let input = source;
+    let token = super[type](input);
+    while (token) {
+      const partial = /<\/a[ \t\f]*$/i.exec(token.text);
+      if (!partial) break;
+      const start = partial.index;
+      const endTag = /^<\/a[ \t\f]*\n[ \t\f\n]*>/i.exec(input.slice(start))?.[0];
+      if (!endTag) break;
+      const end = start + endTag.length;
+      const lineEnd = input.indexOf("\n", end);
+      const tokens = Lexer.lexInline(input.slice(0, lineEnd < 0 ? input.length : lineEnd),
+        { ...this.options, tokenizer: undefined });
+      if (!hasHtmlEndTag(tokens, endTag)) break;
+
+      // Marked can treat the end tag's closing line as a quote or a new block.
+      // Keep the source offsets and requeue the paragraph with the verified tag intact.
+      input = input.slice(0, start) + endTag.replaceAll("\n", " ") + input.slice(end);
+      this.lexer.inlineQueue.pop();
+      token = super[type](input);
+    }
+    if (token && input !== source) token.raw = source.slice(0, token.raw.length);
+    return token;
+  }
+}
 
 function tokenizeInlineMath(source) {
   if (this.lexer.state.inRawBlock || !source.startsWith("$")) return;
@@ -182,6 +223,7 @@ export function createMarkdownFullRenderer(dependencies) {
           async: false,
           gfm: true,
           breaks: true,
+          tokenizer: new IntroTokenizer(),
           extensions: {
             block: [tokenizeDisplayMath],
             inline: [tokenizeInlineMath],

@@ -52,9 +52,11 @@ events intact.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. Each observed field expires on its own
 and a partial response refreshes only the fields it contains. Shared detail
-responses use the start time of the successful transport attempt. Newer summary
-fields stay visible when a subsequent detail omits them. A caller can retry
-for fields it still needs. An explicit empty sample list is cached as a result.
+responses use the start time of the successful transport attempt. Problem ID
+coloring compares the selected difficulty's observation time with the local
+native observation. Newer summary fields stay visible when a subsequent detail
+omits them. A caller can retry for fields it still needs. An explicit empty
+sample list is cached as a result.
 A problem card displays
 available fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. Temporary lookup
@@ -169,10 +171,12 @@ and provide a separate image link. The lightweight renderer uses the shared
 inline link grammar for destinations and titles, including balanced parentheses,
 path-relative destinations, fragments and document reference definitions.
 Definitions in quotes and lists can supply destinations without appearing in
-the output. Lite reads escaped attributes once and applies its HTTP(S) URL
-policy to Markdown links and supported raw HTML anchors. Whitespace in a
-supported closing anchor tag ends the link at that tag. Code, titles and image
-alternative text keep literal tag-shaped characters.
+the output. Lite retains surviving list items and preserves the literal text
+of code spans and fenced code within quotes. It reads escaped attributes once
+and applies its HTTP(S) URL policy to Markdown links and supported raw HTML
+anchors. In both modes, line
+breaks in a supported closing anchor tag leave following text outside the
+link. Code, titles and image alternative text keep literal tag-shaped characters.
 Even same-origin URLs and Luogu's CDN can
 redirect, so the fallback makes no automatic image requests. Unsupported or
 credential-bearing sources are represented as alt text or an unavailable label.

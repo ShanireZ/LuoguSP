@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -139,7 +140,7 @@ test("the actual guard checks package-declared build entries outside scripts", (
   assert.match(shared.stdout, /2 个构建脚本/u);
 });
 
-test("the actual guard checks local helpers reached from declared build entries", (t) => {
+function checkDeclaredHelper(t, suffix) {
   const { fixture, run } = fixtureGuard(t);
   const packagePath = join(fixture, "package.json");
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
@@ -155,7 +156,7 @@ test("the actual guard checks local helpers reached from declared build entries"
     'const result = await bundle();',
     'process.stdout.write(result.outputFiles[0].text);',
   ].join("\n"));
-  writeFileSync(join(directory, "bridge.mjs"), 'export { bundle } from "./helper.mjs";');
+  writeFileSync(join(directory, "bridge.mjs"), `export { bundle } from "./helper.mjs${suffix}";`);
 
   const options = '{ stdin: { contents: "globalThis.fixture = /[a&&b]/v;" }, write: false }';
   const runBuild = () => {
@@ -185,6 +186,45 @@ test("the actual guard checks local helpers reached from declared build entries"
   assert.equal(shared.status, 0, shared.stderr);
   assert.match(shared.stdout, /2 个构建脚本/u);
   assert.doesNotMatch(runBuild(), /\/\[a&&b\]\/v/u);
+}
+
+test("the actual guard checks local helpers reached from declared build entries", (t) => {
+  checkDeclaredHelper(t, "");
+});
+
+test("the actual guard checks local helpers imported with a query", (t) => {
+  checkDeclaredHelper(t, "?mode=browser");
+});
+
+test("the actual guard checks both same-stem entries and their local helpers without writing output", (t) => {
+  const { fixture, run } = fixtureGuard(t);
+  const packagePath = join(fixture, "package.json");
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  packageJson.scripts.build = "node ./browser/dual.mjs && node ./browser/dual.cjs";
+  writeFileSync(packagePath, JSON.stringify(packageJson));
+  mkdirSync(join(fixture, "browser"));
+  writeFileSync(join(fixture, "browser/dual.mjs"), 'import "./esm-helper.mjs";');
+  writeFileSync(join(fixture, "browser/dual.cjs"), 'require("./cjs-helper.cjs");');
+  const helpers = [
+    ["browser/esm-helper.mjs", 'import { build } from "esbuild";'],
+    ["browser/cjs-helper.cjs", 'const { build } = require("esbuild");'],
+  ];
+  for (const [file] of helpers) writeFileSync(join(fixture, file), "");
+
+  const shared = run();
+  assert.equal(shared.status, 0, shared.stderr);
+  assert.match(shared.stdout, /1 个构建脚本/u);
+
+  for (const [file, directImport] of helpers) {
+    const helper = join(fixture, file);
+    writeFileSync(helper, directImport);
+    const direct = run();
+    assert.equal(direct.status, 1, direct.stdout);
+    assert.match(direct.stderr, /无法核验的 esbuild 导入/u);
+    assert.ok(direct.stderr.includes(file));
+    writeFileSync(helper, "");
+  }
+  assert.equal(existsSync(join(fixture, "node_modules")), false);
 });
 
 for (const [browser, staleMinimum] of [

@@ -170,15 +170,19 @@ export function createProblemData({
     const summary = readFields(summaries, key, currentTime);
     if (!detail && !summary) return null;
     const values = {};
+    let difficultyAt = detail?.get("difficulty")?.at;
     for (const [field, { value }] of detail ?? []) values[field] = value;
     for (const [field, { value, at }] of summary ?? []) {
-      if (at >= (detail?.get(field)?.at ?? -Infinity)) values[field] = value;
+      if (at >= (detail?.get(field)?.at ?? -Infinity)) {
+        values[field] = value;
+        if (field === "difficulty") difficultyAt = at;
+      }
     }
     const { "limits.time": time, "limits.memory": memory, bookmarked, ...fields } = values;
     const problem = { pid, ...fields };
     if (time) (problem.limits ??= {}).time = time;
     if (memory) (problem.limits ??= {}).memory = memory;
-    return { data: { problem, bookmarked } };
+    return { data: { problem, bookmarked }, difficultyAt };
   };
   const peek = (pid, { href, refreshPage = true } = {}) => {
     if (typeof pid !== "string" || !PID_PATTERN.test(pid)) return null;
