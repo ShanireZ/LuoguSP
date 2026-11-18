@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { digest, readRegularFile, requireRegularDirectory, snapshotRelease } from "./release-integrity.mjs";
+import { withLocalLock } from "./local-lock.mjs";
 
 const directoryIdentity = (stat) => `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`;
 
@@ -12,20 +13,6 @@ async function ownsDirectory(path, identity) {
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
-  }
-}
-
-async function withChannelLock(path, action) {
-  const lockPath = `${path}.lock`;
-  const lock = await open(lockPath, "wx");
-  try {
-    return await action();
-  } finally {
-    try {
-      await lock.close();
-    } finally {
-      await rm(lockPath);
-    }
   }
 }
 
@@ -53,7 +40,7 @@ export async function rollbackRelease({ releasesRoot, version, channelPath, tran
   await requireRegularDirectory(releasesRoot);
   await requireRegularDirectory(dirname(channelPath));
   if (!await ownsDirectory(directory, transaction.directoryIdentity)) return retained;
-  return withChannelLock(channelPath, async () => {
+  return withLocalLock(`${channelPath}.lock`, async () => {
     let snapshot;
     try {
       snapshot = await snapshotRelease(releasesRoot, version);
@@ -100,7 +87,7 @@ export async function writeRelease({ releasesRoot, version, channelPath, channel
       await writeFile(destination, body, { flag: "wx" });
     }
     await snapshotRelease(releasesRoot, version);
-    await withChannelLock(channelPath, async () => {
+    await withLocalLock(`${channelPath}.lock`, async () => {
       transaction.previousChannel = (await readRegularFile(channelPath)).toString("utf8");
       await replaceChannel(channelPath, channelBody);
     });

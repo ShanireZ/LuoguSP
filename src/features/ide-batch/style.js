@@ -5,6 +5,7 @@ export const IDE_BATCH_STYLE = `
   .luogusp-ide-tab[aria-selected="true"]{color:#3498db;border-bottom-color:#3498db;font-weight:500;}
   .luogusp-ide-panel{overflow:auto;flex:1 1 0;min-height:0;padding:8px 12px 12px;font-size:13px;color:#333;}
   .luogusp-ide-tab:focus-visible,.luogusp-ide-panel:focus-visible,.luogusp-ide-rowhead:focus-visible,
+  .luogusp-ide-batch-btn:focus-visible,.luogusp-ide-stop:focus-visible,.luogusp-ide-rerun:focus-visible,
   [aria-labelledby="luogusp-ide-custom-tab"]:focus-visible,.luogusp-ide-panel .copy-button:focus-visible{outline:2px solid #1d5f91;outline-offset:-2px;}
   .luogusp-ide-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
   .luogusp-ide-title{font-weight:500;}

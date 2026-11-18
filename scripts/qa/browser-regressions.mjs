@@ -886,6 +886,38 @@ for (const transport of ["fetch", "xhr"]) {
   });
 }
 
+for (const transport of ["fetch", "xhr"]) {
+  test(`restricted article ${transport} keeps an accepted vote unconfirmed until completion`, async (t) => {
+    const completed = { upvotes: 11, voted: 1 };
+    const { page, start, finish } = await reorderedArticleWrites(t, {
+      "favor-pending": () => ({ status: 202, json: { favored: true, favorCount: 4 } }),
+      pending: () => ({ status: 202, json: completed }),
+      complete: completed,
+    });
+    const initial = await readArticleInteraction(page);
+    const voteNotice = page.locator("#luogusp-rst-write-vote-unconfirmed");
+    const favorNotice = page.locator("#luogusp-rst-write-favor-unconfirmed");
+
+    await start("favor-pending", transport, "/article/123/favor");
+    await finish("favor-pending");
+    await start("pending", transport, "/article/123/vote?vote=1");
+    await finish("pending");
+    assert.deepEqual(await readArticleInteraction(page), initial);
+    assert.equal(await favorNotice.count(), 1);
+    assert.equal(await voteNotice.count(), 1);
+
+    await start("complete", transport, "/article/123/vote?vote=1");
+    await finish("complete");
+    const state = await readArticleInteraction(page);
+    assert.equal(state.voted, 1);
+    assert.equal(state.upvote, 11);
+    assert.ok(state.voteAt > initial.voteAt);
+    assert.equal(state.favorAt, initial.favorAt);
+    assert.equal(await voteNotice.count(), 0);
+    assert.equal(await favorNotice.count(), 1);
+  });
+}
+
 for (const [olderTransport, newerTransport] of [["fetch", "fetch"], ["xhr", "xhr"], ["fetch", "xhr"], ["xhr", "fetch"]]) {
   test(`restricted article keeps the newer vote after an older ${olderTransport} completes behind ${newerTransport}`, async (t) => {
     const { page, start, finish, received, release } = await reorderedArticleWrites(t, {
@@ -1611,6 +1643,50 @@ test("settings traps focus and Enter chooses the focused refresh action", async 
   await confirm.waitFor({ state: "hidden" });
   await page.keyboard.press("Enter");
   assert.equal(requests.filter(r => r.type === "document").length, 2);
+});
+
+test("settings Save, refresh confirmation and hint meet normal text contrast", async (t) => {
+  const { page } = await fixture(t, { html: FIXTURE_HTML, reducedMotion: "reduce" });
+  const modal = page.getByRole("dialog", { name: "LuoguSP 功能设置" });
+  await page.locator(".luogusp-setting-entry").press("Enter");
+  const contrast = (locator) => locator.evaluate(node => {
+    const luminance = (color) => {
+      const channels = color.match(/[\d.]+/g).slice(0, 3).map(value => {
+        const srgb = Number(value) / 255;
+        return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+      });
+      return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2];
+    };
+    const text = luminance(getComputedStyle(node).color);
+    let background = getComputedStyle(node).backgroundColor;
+    for (let parent = node.parentElement; background === "rgba(0, 0, 0, 0)" && parent; parent = parent.parentElement)
+      background = getComputedStyle(parent).backgroundColor;
+    const fill = luminance(background);
+    return (Math.max(text, fill) + .05) / (Math.min(text, fill) + .05);
+  });
+  const buttonStates = async (button) => {
+    const resting = await contrast(button);
+    const enabled = await button.isEnabled();
+    await button.focus();
+    const focus = await contrast(button);
+    await button.hover();
+    const hover = await contrast(button);
+    await page.mouse.down();
+    const active = await contrast(button);
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
+    return { enabled, resting, focus, hover, active };
+  };
+  const save = modal.getByRole("button", { name: "保存", exact: true });
+  const hint = await contrast(modal.getByText("保存后需刷新页面生效。", { exact: true }));
+  const saveStates = await buttonStates(save);
+  await save.press("Enter");
+  const refresh = page.getByRole("alertdialog").getByRole("button", { name: "立即刷新" });
+  const refreshStates = await buttonStates(refresh);
+  assert.ok(saveStates.enabled && refreshStates.enabled);
+  const ratios = [hint, ...[saveStates, refreshStates].flatMap(({ resting, focus, hover, active }) =>
+    [resting, focus, hover, active])];
+  assert.ok(ratios.every(value => value >= 4.5), JSON.stringify({ hint, saveStates, refreshStates }));
 });
 
 test("settings fit small viewports and stay clickable above user previews", async (t) => {
@@ -2430,6 +2506,69 @@ for (const [updated, expanded, focusToggle] of [["long", true, true], ["long", f
   });
 }
 
+for (const sizeChange of ["viewport resizing", "pinch zoom", "card-only resizing"]) {
+  test(`open user signature reconciles disclosure through ${sizeChange}`, async (t) => {
+    const pinch = sizeChange === "pinch zoom";
+    const user = { uid: 123, name: "Size fixture", slogan:
+      "A preview signature that fits at full width and takes extra lines at a narrower width." };
+    const html = fixtureHtml('<a id="size-user" href="/user/123">User</a>')
+      .replace("<head>", '<head><meta name="viewport" content="width=device-width, initial-scale=1">');
+    const { page } = await fixture(t, {
+      html, viewport: { width: 420, height: 700 }, isMobile: pinch, hasTouch: pinch,
+      reply(route, url) {
+        if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user } });
+        if (url.pathname === "/user/123") return route.fulfill({ status: 404, json: {} });
+      },
+    });
+    const session = pinch ? await page.context().newCDPSession(page) : null;
+    async function resize(width) {
+      if (session) {
+        await session.send("Emulation.setPageScaleFactor", { pageScaleFactor: 420 / width });
+      } else if (sizeChange === "card-only resizing") {
+        await card(page).evaluate((node, width) => { node.style.width = `${Math.min(320, width - 24)}px`; }, width);
+      } else {
+        await page.setViewportSize({ width, height: 700 });
+      }
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    }
+    const trigger = page.locator("#size-user");
+    await trigger.press("Alt+ArrowDown");
+    const preview = card(page);
+    const name = preview.getByRole("link", { name: user.name });
+    await name.waitFor();
+    await name.focus();
+    const toggle = preview.locator(".luogusp-hc-expand");
+    const original = await toggle.elementHandle();
+    assert.equal(await toggle.isVisible(), false);
+    await resize(210);
+    const detail = await preview.locator(".luogusp-hc-clamp").evaluate(node => ({
+      width: node.clientWidth, visible: node.clientHeight, full: node.scrollHeight,
+    }));
+    assert.ok(detail.full > detail.visible, JSON.stringify(detail));
+    await toggle.waitFor({ state: "visible" });
+    assert.ok(await focused(name));
+    await toggle.press("Enter");
+    await resize(168);
+    assert.ok(await original.evaluate(node => node === document.querySelector(".luogusp-hc-expand")));
+    assert.ok(await focused(toggle));
+    assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+    await resize(420);
+    await toggle.waitFor({ state: "hidden" });
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.ok(await focused(name));
+    await resize(210);
+    await toggle.waitFor({ state: "visible" });
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    const message = preview.getByRole("link", { name: "私信" });
+    await message.focus();
+    await resize(420);
+    await toggle.waitFor({ state: "hidden" });
+    assert.ok(await focused(message));
+    await page.keyboard.press("Escape");
+    assert.ok(await focused(trigger));
+  });
+}
+
 for (const [branch, fault] of [["info", "redirect"], ["profile", "redirect"], ["info", "wrong-url"], ["profile", "html"]]) {
   test(`user preview rejects ${fault} ${branch} data and recovers on reopening`, async (t) => {
     const redirect = responseGate(t);
@@ -2936,6 +3075,53 @@ async function ideFixture(t, submitReply = (route, index) =>
     },
   });
   return { page, requests, submitted, firstSubmit: submit.promise };
+}
+
+for (const outcome of ["completion", "stop", "focus elsewhere", "return to samples tab", "rerun"]) {
+  test(`IDE keyboard batch retains appropriate focus through ${outcome}`, async (t) => {
+    const submission = responseGate(t);
+    const { page, firstSubmit, submitted } = await ideFixture(t, async (route, index) => {
+      await submission.promise;
+      return route.fulfill({ json: { status: 200, data: { rid: index } } });
+    });
+    const start = page.locator(".luogusp-ide-batch-btn");
+    const stop = page.getByRole("button", { name: "停止", exact: true });
+    const samples = page.getByRole("tab", { name: "样例测试", exact: true });
+    const editor = page.locator(".cm-content");
+    const rerun = page.getByRole("button", { name: "重新测试", exact: true });
+    const completes = outcome === "completion" || outcome === "rerun";
+    const begins = outcome === "rerun" ? rerun : start;
+    if (outcome === "rerun") await samples.press("Enter");
+    await begins.press("Enter");
+    await firstSubmit;
+    const startFocus = await focused(stop);
+    if (startFocus) await assertIdeFocusVisible(stop);
+    let stopFocus;
+    if (!completes) {
+      await stop.press("Space");
+      stopFocus = await focused(samples);
+      if (stopFocus) await assertIdeFocusVisible(samples);
+    }
+    if (outcome === "focus elsewhere" || outcome === "return to samples tab") await editor.focus();
+    if (outcome === "return to samples tab") await samples.focus();
+    if (completes) await page.evaluate(() => { window.autoFinishSamples = true; });
+    submission.release();
+    if (completes) {
+      await page.getByText("2/2 通过", { exact: true }).waitFor();
+    } else {
+      await page.waitForFunction(() => window.ideAcknowledged === 1);
+      await page.evaluate(() => window.finishSample("WA"));
+      await page.getByText("0/2 通过 · 1 WA · 已停止", { exact: true }).waitFor();
+    }
+    const expectedFocus = outcome === "focus elsewhere" ? editor : outcome === "return to samples tab" ? samples : begins;
+    const completionFocus = await focused(expectedFocus);
+    assert.deepEqual({ startFocus, stopFocus, completionFocus },
+      { startFocus: true, stopFocus: completes ? undefined : true, completionFocus: true });
+    if (expectedFocus !== editor) await assertIdeFocusVisible(expectedFocus);
+    assert.ok(await begins.isEnabled());
+    assert.equal(await stop.isVisible(), false);
+    assert.equal(submitted.length, completes ? 2 : 1);
+  });
 }
 
 test("IDE tabs support keyboard selection and expose the active panel", async (t) => {

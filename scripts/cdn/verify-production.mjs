@@ -14,6 +14,7 @@ const argument = (name) => {
   return index === -1 ? null : process.argv[index + 1];
 };
 const version = argument("--version");
+const receiptManifestSha256 = argument("--manifest-sha256");
 const qaMode = process.argv.includes("--qa");
 const versionPattern = qaMode
   ? /^\d+\.\d+\.\d+-canary\.[0-9A-Za-z.-]+$/
@@ -39,6 +40,8 @@ const manifest = JSON.parse(manifestBody);
 const digest = (body) =>
   createHash("sha256").update(body).digest("hex");
 const manifestSha256 = digest(manifestBody);
+if (process.argv.includes("--manifest-sha256") && manifestSha256 !== receiptManifestSha256)
+  throw new Error("Local manifest differs from the publication receipt");
 const manifestPath =
   `releases/${version}/manifest.${manifestSha256.slice(0, 16)}.json`;
 const failures = [];

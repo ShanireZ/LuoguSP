@@ -270,6 +270,7 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
   }));
   await writeFile(wranglerPath, JSON.stringify({
     name: "test-stage",
+    main: "worker.js",
     routes: [{ pattern: new URL(origin).hostname, custom_domain: true }],
     workers_dev: false,
     preview_urls: false,
@@ -278,11 +279,21 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
   await writeFile(recorder, `
     import cp from "node:child_process";
     import { syncBuiltinESMExports } from "node:module";
-    import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-    import { join } from "node:path";
+    import assert from "node:assert/strict";
+    import { appendFileSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+    import { dirname, join, resolve, sep } from "node:path";
     const spawn = cp.spawnSync;
     const record = (entry) => appendFileSync(${JSON.stringify(recording)}, JSON.stringify(entry) + "\\n");
+    let deployed;
     globalThis.fetch = async (url, options) => {
+      if (deployed) {
+        record(["verify", url.pathname]);
+        return new Response(deployed.get(url.pathname.slice(1)), { headers: {
+          "Content-Type": url.pathname.endsWith(".json") ? "application/json" : "application/javascript",
+          "Cache-Control": url.pathname.startsWith("/channels/") ? "no-cache" : "immutable",
+          "Access-Control-Allow-Origin": "*",
+        } });
+      }
       record(["fetch", url.href, {
         credentials: options.credentials,
         redirect: options.redirect,
@@ -326,9 +337,32 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
       record(command);
       if (program === "node" && operation === "scripts/cdn/prepare.mjs")
         return spawn(executable, args, options);
-      if (program === "wrangler" && operation === "--version" && process.env.CDN_TEST_TAMPER)
-        writeFileSync("dist/cdn/channels/canary.json", "{}");
-      // The fixture never runs a real provider command or remote verification.
+      if (program === "wrangler" && operation === "--version" && process.env.CDN_TEST_TAMPER) {
+        const stage = readdirSync(".npm-cache").find((name) => name.startsWith("luogusp-cdn-deploy-"));
+        writeFileSync(stage ? join(".npm-cache", stage, "cdn/channels/canary.json") : "dist/cdn/channels/canary.json", "{}");
+      }
+      if (program === "wrangler" && operation === "deploy") {
+        const configPath = resolve(command[3]);
+        const config = JSON.parse(readFileSync(configPath));
+        assert.equal(resolve(dirname(configPath), config.main), resolve("deploy/cloudflare/worker.js"));
+        const stage = resolve(dirname(configPath), config.assets.directory);
+        const inventory = () => new Map(readdirSync(stage, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile())
+          .map((entry) => {
+            const file = join(entry.parentPath, entry.name);
+            return [file.slice(stage.length + 1).split(sep).join("/"), readFileSync(file)];
+          }));
+        const initial = inventory();
+        if (process.env.CDN_TEST_SECOND_CHANNEL) {
+          writeFileSync("cdn/channels/canary.json", process.env.CDN_TEST_SECOND_CHANNEL);
+          const prep = spawn(process.execPath, ["scripts/cdn/prepare.mjs"], options);
+          assert.equal(prep.status, 0, prep.stderr);
+          assert.equal(JSON.parse(readFileSync("dist/cdn/channels/canary.json")).release,
+            JSON.parse(process.env.CDN_TEST_SECOND_CHANNEL).release);
+          assert.deepEqual(inventory(), initial);
+        }
+        deployed = inventory();
+      }
       return { status: 0, stdout: program === "wrangler" ? "4.107.0\\n" : "" };
     };
     syncBuiltinESMExports();
@@ -344,11 +378,12 @@ async function publishFixture(t, { committed = true, additionalReleases = [] } =
       "commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", "Pinned release fixture");
   };
   recordCommit({ includeCdn: committed });
-  fixture.publish = async (args, { tamper = false, remote = "resume" } = {}) => {
+  fixture.publish = async (args, { tamper = false, remote = "resume", secondChannel = "" } = {}) => {
     const result = spawnSync(
       process.execPath, ["--import", pathToFileURL(recorder).href, "scripts/cdn/publish.mjs", ...args],
       { cwd: repo, encoding: "utf8", env: {
         ...process.env, CDN_TEST_TAMPER: tamper ? "1" : "", CDN_TEST_REMOTE: JSON.stringify(remote),
+        CDN_TEST_SECOND_CHANNEL: secondChannel,
       } },
     );
     assert.ifError(result.error);
@@ -488,21 +523,40 @@ for (const [remote, failure] of [
   });
 }
 
-test("a valid low-level publish passes its exact prepared release to the provider stub", async (t) => {
-  const { publish, manifest, repo } = await publishFixture(t);
-  const result = await publish(["--version", manifest.release, "--skip-build", "--origin", origin]);
+test("a deployment retains its exact snapshot and verification pins during another normal CDN prep", async (t) => {
+  const otherVersion = "1.2.4-canary.1";
+  const { publish, manifest, repo, channels, source } = await publishFixture(t, {
+    additionalReleases: [otherVersion],
+  });
+  const otherManifest = await readFile(path.join(source, "releases", otherVersion, "manifest.json"));
+  const secondChannel = JSON.stringify({
+    schemaVersion: 2, channel: "canary", release: otherVersion, origin,
+    manifestPath: `releases/${otherVersion}/manifest.${digest(otherManifest).slice(0, 16)}.json`,
+    manifestSha256: digest(otherManifest),
+  });
+  const selected = JSON.parse(await readFile(path.join(channels, "canary.json")));
+  const result = await publish(["--version", manifest.release, "--skip-build", "--origin", origin], { secondChannel });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.commands, [
     ["fetch", `${origin}/releases/${manifest.release}/manifest.json`, {
       credentials: "omit", redirect: "error", cache: "no-store", cacheControl: "no-cache", timeout: true,
     }],
     ["wrangler", "--version"],
-    ["wrangler", "deploy", "--config", "deploy/cloudflare/wrangler.jsonc"],
-    ["node", "scripts/cdn/verify.mjs", "--origin", origin],
+    ["wrangler", "deploy", "--config", result.commands[2][3]],
+    ["verify", `/${selected.manifestPath}`],
+    ...Object.keys(manifest.files).map((file) => ["verify", `/${file}`]),
+    ["verify", "/channels/canary.json"],
   ]);
   const report = JSON.parse(await readFile(path.join(repo, "reports", "cdn-publish.json"), "utf8"));
   assert.equal(report.release, manifest.release);
   assert.equal(report.origin, origin);
+  const verified = JSON.parse(await readFile(path.join(repo, "reports", "cdn-deployment.json")));
+  assert.equal(verified.status, "ready");
+  assert.equal(verified.release, manifest.release);
+  assert.equal(verified.manifestSha256, selected.manifestSha256);
+  assert.equal(await readFile(path.join(channels, "canary.json"), "utf8"), secondChannel);
+  assert.notEqual(path.resolve(repo, result.commands[2][3]), path.join(repo, "deploy", "cloudflare", "wrangler.jsonc"));
+  await assert.rejects(lstat(path.resolve(repo, result.commands[2][3])), { code: "ENOENT" });
 });
 
 async function stubBuildImports(repo) {

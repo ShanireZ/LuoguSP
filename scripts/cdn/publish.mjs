@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,8 @@ import { assertCliBaseline } from "./cli-baseline.mjs";
 import { assertCommittedReleases } from "./committed-releases.mjs";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 import { prepareCdn } from "./prepare-lib.mjs";
-import { RELEASE_VERSION, readRegularFile } from "./release-integrity.mjs";
+import { RELEASE_VERSION, digest, readRegularFile, requireRegularDirectory } from "./release-integrity.mjs";
+import { verifyDeployment } from "./verify-deployment.mjs";
 
 const MAX_CONCURRENT_MANIFEST_CHECKS = 4;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -18,11 +19,14 @@ const { values } = parseArgs({
     version: { type: "string" },
     origin: { type: "string" },
     "skip-build": { type: "boolean" },
+    "channel-file": { type: "string" },
   },
 });
-const { version, origin: originOverride, "skip-build": skipBuild } = values;
+const { version, origin: originOverride, "skip-build": skipBuild, "channel-file": channelFile } = values;
 if (!version || !RELEASE_VERSION.test(version))
   throw new Error("Pass --version to publish an immutable CDN release");
+if (channelFile !== undefined && (!channelFile || !skipBuild))
+  throw new Error("Pass --channel-file with --skip-build to deploy a captured channel");
 const config = JSON.parse(await readFile(resolve(root, "config/cdn.json"), "utf8"));
 const origin = resolveConfiguredOrigin({ config, originOverride });
 const wranglerPath = "deploy/cloudflare/wrangler.jsonc";
@@ -68,6 +72,7 @@ const run = (command, args) => {
         result.error?.message || `exit ${result.status}`
       }`,
     );
+  return result.stdout;
 };
 const capture = (command, args) => {
   const { result, output } = invoke(command, args);
@@ -119,60 +124,73 @@ async function requireUnusedOrIdenticalVersion(release, { files }) {
   }
 }
 
-if (!skipBuild)
-  run("node", [
-    "scripts/cdn/build.mjs",
-    "--version",
-    version,
-  ]);
-const prepared = await prepareCdn({
-  root,
-  origin,
-  version,
-  async checkReleases(snapshots, staged) {
-    assertCommittedReleases(root, snapshots);
-    const releases = [...staged];
-    for (let start = 0; start < releases.length; start += MAX_CONCURRENT_MANIFEST_CHECKS) {
-      const batch = releases.slice(start, start + MAX_CONCURRENT_MANIFEST_CHECKS);
-      await Promise.all(batch.map(([release, snapshot]) =>
-        requireUnusedOrIdenticalVersion(release, snapshot)));
-    }
-  },
-});
+let capturedChannel;
+if (channelFile) {
+  capturedChannel = await readRegularFile(resolve(root, channelFile));
+} else if (!skipBuild) {
+  const output = run("node", ["scripts/cdn/build.mjs", "--version", version]);
+  capturedChannel = Buffer.from(JSON.parse(output).transaction.channel);
+}
 await mkdir(npmCache, { recursive: true });
-// 全域 wrangler（工作區約定），發佈前先把它的版本量一次並對下限斷言 ——
-// 理由見 scripts/cdn/cli-baseline.mjs：產物不可變，不能用行為未知的 CLI 去傳。
-const wranglerVersion = assertCliBaseline({
-  name: "wrangler",
-  output: capture("wrangler", ["--version"]),
-  minimum: config.cli.wrangler.minimum,
-});
-process.stdout.write(
-  `wrangler ${wranglerVersion} (global, baseline ${config.cli.wrangler.minimum})\n`,
-);
-if (!(await readRegularFile(resolve(root, wranglerPath))).equals(wranglerConfig))
-  throw new Error("Wrangler configuration changed before deployment");
-await prepared.verifyStaged();
-run("wrangler", ["deploy", "--config", wranglerPath]);
+await requireRegularDirectory(npmCache);
+const snapshot = await mkdtemp(resolve(npmCache, `luogusp-cdn-deploy-${new Date().toISOString().slice(0, 10)}-`));
+try {
+  const prepared = await prepareCdn({
+    root,
+    explicitOutput: resolve(snapshot, "cdn"),
+    origin,
+    version,
+    capturedChannel,
+    async checkReleases(snapshots, staged) {
+      assertCommittedReleases(root, snapshots);
+      const releases = [...staged];
+      for (let start = 0; start < releases.length; start += MAX_CONCURRENT_MANIFEST_CHECKS) {
+        const batch = releases.slice(start, start + MAX_CONCURRENT_MANIFEST_CHECKS);
+        await Promise.all(batch.map(([release, item]) =>
+          requireUnusedOrIdenticalVersion(release, item)));
+      }
+    },
+  });
+  // Use the global Wrangler CLI and enforce the configured minimum before deployment.
+  const wranglerVersion = assertCliBaseline({
+    name: "wrangler",
+    output: capture("wrangler", ["--version"]),
+    minimum: config.cli.wrangler.minimum,
+  });
+  process.stdout.write(
+    `wrangler ${wranglerVersion} (global, baseline ${config.cli.wrangler.minimum})\n`,
+  );
+  if (!(await readRegularFile(resolve(root, wranglerPath))).equals(wranglerConfig))
+    throw new Error("Wrangler configuration changed before deployment");
+  const snapshotConfigPath = resolve(snapshot, "wrangler.jsonc");
+  const snapshotConfig = {
+    ...wrangler,
+    assets: { ...wrangler.assets, directory: "./cdn" },
+  };
+  if (typeof wrangler.main === "string")
+    snapshotConfig.main = relative(snapshot, resolve(root, dirname(wranglerPath), wrangler.main));
+  await writeFile(snapshotConfigPath, `${JSON.stringify(snapshotConfig, null, 2)}\n`, { flag: "wx" });
+  await prepared.verifyStaged();
+  run("wrangler", ["deploy", "--config", relative(root, snapshotConfigPath)]);
 
-const report = {
-  publishedAt: new Date().toISOString(),
-  release: version,
-  manifestPath: prepared.manifestPath,
-  manifestSha256: prepared.manifestSha256,
-  target: "cloudflare-workers",
-  project: config.projects.cloudflare,
-  origin,
-  platformDefaultDomainsUsed: false,
-};
-await writeFile(
-  resolve(root, "reports/cdn-publish.json"),
-  `${JSON.stringify(report, null, 2)}\n`,
-  "utf8",
-);
-run("node", [
-  "scripts/cdn/verify.mjs",
-  "--origin",
-  origin,
-]);
-console.log(`Published ${version} to Cloudflare Workers at ${origin}`);
+  const report = {
+    publishedAt: new Date().toISOString(),
+    release: version,
+    manifestPath: prepared.manifestPath,
+    manifestSha256: prepared.manifestSha256,
+    channelSha256: digest(prepared.channelBody),
+    target: "cloudflare-workers",
+    project: config.projects.cloudflare,
+    origin,
+    platformDefaultDomainsUsed: false,
+  };
+  await writeFile(
+    resolve(root, "reports/cdn-publish.json"),
+    `${JSON.stringify(report, null, 2)}\n`,
+    "utf8",
+  );
+  await verifyDeployment({ root, origin, channelBody: prepared.channelBody, manifestBody: prepared.manifestBody });
+  console.log(`Published ${version} to Cloudflare Workers at ${origin}`);
+} finally {
+  await rm(snapshot, { recursive: true, force: true });
+}

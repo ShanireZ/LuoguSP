@@ -129,6 +129,15 @@ export function createHoverCardFeature(config) {
     const LOADING_MIN_HEIGHT = 320;
     let loading = false;
     let openSide = null;
+    let signature;
+    let signatureWidth;
+    const measureSignature = () => {
+      const width = signature?.getBoundingClientRect().width;
+      if (width && width !== signatureWidth) {
+        signatureWidth = width;
+        finalizeCard(card);
+      }
+    };
 
     const position = () => {
       if (!shown || card.hidden) return;
@@ -146,10 +155,23 @@ export function createHoverCardFeature(config) {
         {
           assumeMinHeight: loading ? LOADING_MIN_HEIGHT : 0,
           forceBelow: openSide,
+          measureSignature,
         },
       );
       // 載入態記住這一邊；內容一完成實作就交還自由。
       openSide = loading ? placement.below : null;
+    };
+
+    const signatureObserver = typeof window.ResizeObserver === "function"
+      ? new window.ResizeObserver(([entry]) => {
+        // Reconcile after this delivery so collapsing the signature can resize the card.
+        if (entry.contentRect.width !== signatureWidth) requestAnimationFrame(position);
+      }) : null;
+    const watchSignature = () => {
+      signatureObserver?.disconnect();
+      signature = card.querySelector(".luogusp-hc-clamp");
+      signatureWidth = 0;
+      if (signature) signatureObserver?.observe(signature);
     };
 
     const draw = async (target) => {
@@ -206,7 +228,7 @@ export function createHoverCardFeature(config) {
           showMedia(card.firstElementChild, model);
           claimNativeUserPreview(true);
         }
-        finalizeCard(card);
+        watchSignature();
         position();
         card.scrollTop = scrollTop;
       };
@@ -269,6 +291,7 @@ export function createHoverCardFeature(config) {
           anchor.focus({ preventScroll: true });
         card.hidden = true;
         card.textContent = "";
+        watchSignature();
       },
     });
 

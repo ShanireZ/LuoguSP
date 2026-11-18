@@ -1,35 +1,48 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename } from "node:path";
 
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const defaultArtifactPath = new URL("../../LuoguSP.user.js", import.meta.url);
 
-// 把「油猴實際會載入的那一串東西」拼成一段可注入的指令碼：
-// 兩個 `@require` 的位元組 + 使用者指令碼本體，前後夾一對時間戳用來量啟動耗時。
-//
-// ★ 順序與油猴一致：`@require` 先執行（它們建起 `__LUOGUSP_CDN_RUNTIME__`），
-//   本體最後跑（它只是檢核執行環境在不在）。順序反了測出來的東西沒有意義。
-// ★ `@require` 的位元組**從 URL 現取**，而不是從工作區拼 —— 那兩條 URL 裡釘著 sha256，
-//   現取才能順帶證明「使用者真正會下載到的那份」能跑。
-export async function buildInjection({ fetchImpl = fetch } = {}) {
-  const artifactPath = join(projectRoot, "LuoguSP.user.js");
+function readPin(line) {
+  const value = line.match(/^\/\/[ \t]*@require[ \t]+(\S+)[ \t]*$/)?.[1];
+  const url = URL.parse(value);
+  const pin = url?.hash.match(/^#sha256=([a-f0-9]{64})$/)?.[1];
+  if (url?.protocol !== "https:" || url.username || url.password || !pin)
+    throw new Error("Expected an HTTPS @require with SHA-256");
+  url.hash = "";
+  return { value, url, pin };
+}
+
+// Match the installer's startup order and verify the downloaded bytes before
+// letting either browser QA entry point assemble executable content.
+export async function buildInjection({ artifactPath = defaultArtifactPath, fetchImpl = fetch } = {}) {
   const artifact = await readFile(artifactPath, "utf8");
-  const requireUrls = [...artifact.matchAll(/^\/\/ @require\s+(\S+)/gm)].map(
-    (match) => match[1],
-  );
+  const metadata = artifact.match(/^\/\/ ==UserScript==\r?\n([\s\S]*?)^\/\/ ==\/UserScript==\r?$/m)?.[1];
+  const entries = metadata?.split(/\r?\n/).filter((line) => /^\/\/[ \t]*@require\b/.test(line));
+  if (entries?.length !== 2) throw new Error("Expected two pinned startup @require entries");
+  const requires = entries.map(readPin);
 
   const dependencies = [];
-  for (const url of requireUrls) {
-    const response = await fetchImpl(url);
-    if (!response.ok) throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
-    dependencies.push(
-      `${await response.text()}\n//# sourceURL=luogusp-qa/${basename(new URL(url).pathname)}`,
-    );
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  for (const { url, pin } of requires) {
+    const response = await fetchImpl(url.href, {
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (response.status !== 200 || response.redirected !== false || response.url !== url.href)
+      throw new Error("Unexpected @require response for " + url.pathname);
+    const body = Buffer.from(await response.arrayBuffer());
+    if (createHash("sha256").update(body).digest("hex") !== pin)
+      throw new Error("@require SHA-256 mismatch for " + url.pathname);
+    dependencies.push(decoder.decode(body) + "\n//# sourceURL=luogusp-qa/" + basename(url.pathname));
   }
 
   return {
     artifact,
-    requireUrls,
+    requireUrls: requires.map(({ value }) => value),
     payload: [
       "globalThis.__LUOGUSP_QA_START = performance.now();",
       ...dependencies,

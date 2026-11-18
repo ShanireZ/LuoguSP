@@ -63,6 +63,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     rowsEl: null,
     summaryEl: null,
     stopBtn: null,
+    rerunBtn: null,
   };
 
   function ideModeActive() {
@@ -323,7 +324,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
   function showIdeStale(active) {
     if (!IDE_VIEW.summaryEl || !document.contains(IDE_VIEW.summaryEl)) return;
     if (active) {
-      if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.disabled = true;
+      disableIdeStop();
       IDE_VIEW.summaryEl.textContent = `${IDE_CONFIGURATION_STALE}，正在停止…`;
     } else IDE_VIEW.summaryEl.textContent += ` · ${IDE_CONFIGURATION_STALE}`;
   }
@@ -441,7 +442,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     };
     IDE_VIEW.stopBtn = mkBtn("停止", "luogusp-ide-stop", controls.stop);
     IDE_VIEW.stopBtn.style.display = "none";
-    mkBtn("重新测试", "luogusp-ide-rerun", controls.start);
+    IDE_VIEW.rerunBtn = mkBtn("重新测试", "luogusp-ide-rerun", controls.start);
     host.insertBefore(tabBar, ioLayout);
     host.appendChild(panel);
     IDE_VIEW.tabBar = tabBar;
@@ -565,7 +566,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
     IDE_VIEW.panel?.remove();
     IDE_VIEW.activeTab = "custom";
     IDE_VIEW.tabBar = IDE_VIEW.panel = IDE_VIEW.ioLayout = null;
-    IDE_VIEW.rowsEl = IDE_VIEW.summaryEl = IDE_VIEW.stopBtn = null;
+    IDE_VIEW.rowsEl = IDE_VIEW.summaryEl = IDE_VIEW.stopBtn = IDE_VIEW.rerunBtn = null;
   }
 
   function unmountIdeBatchUI() {
@@ -578,8 +579,30 @@ export function createIdeBatchFeature({ storage, problemData }) {
 
   let disabledSelfTest = null;
   let stopWatchingCompiler = null;
+  let focusBeforeRun = null;
+  let stoppingFocus = null;
+  function clearStoppingFocus() {
+    stoppingFocus?.removeEventListener("blur", clearStoppingFocus);
+    stoppingFocus = null;
+  }
+
+  function disableIdeStop() {
+    const { stopBtn, tabBar } = IDE_VIEW;
+    if (!stopBtn) return;
+    if (document.activeElement === stopBtn) {
+      const tab = tabBar?.querySelector('[data-tab="samples"]');
+      tab?.focus();
+      if (tab && document.activeElement === tab) {
+        stoppingFocus = tab;
+        tab.addEventListener("blur", clearStoppingFocus, { once: true });
+      }
+    }
+    stopBtn.disabled = true;
+  }
+
   function restoreIdeRunControls() {
     if (IDE_VIEW.button) IDE_VIEW.button.disabled = false;
+    if (IDE_VIEW.rerunBtn) IDE_VIEW.rerunBtn.disabled = false;
     if (disabledSelfTest) disabledSelfTest.disabled = false;
     disabledSelfTest = null;
   }
@@ -663,16 +686,23 @@ export function createIdeBatchFeature({ storage, problemData }) {
       stopWatchingCompiler = watchIdeCompilerSettings(
         codeActions, context.configuration, ideBrowserDriver.controls.markStale,
       );
-      if (IDE_VIEW.button) IDE_VIEW.button.disabled = true;
+      const { button, rerunBtn, stopBtn, rowsEl } = IDE_VIEW;
+      const active = document.activeElement;
+      if (stopBtn) {
+        stopBtn.style.display = "";
+        stopBtn.disabled = false;
+      }
+      switchIdeTab("samples");
+      if (active && ([button, rerunBtn, context.selfTest].includes(active) || rowsEl?.contains(active))) {
+        focusBeforeRun = rowsEl?.contains(active) ? rerunBtn : active;
+        stopBtn?.focus();
+      }
+      if (button) button.disabled = true;
+      if (rerunBtn) rerunBtn.disabled = true;
       if (context.selfTest && !context.selfTest.disabled) {
         context.selfTest.disabled = true;
         disabledSelfTest = context.selfTest;
       }
-      if (IDE_VIEW.stopBtn) {
-        IDE_VIEW.stopBtn.style.display = "";
-        IDE_VIEW.stopBtn.disabled = false;
-      }
-      switchIdeTab("samples");
       renderIdeRows(context.samples);
       if (IDE_VIEW.summaryEl) IDE_VIEW.summaryEl.textContent = "测试中…";
     },
@@ -685,7 +715,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
       expandIdeRow(index);
     },
     setStopping: (sampleRunning) => {
-      if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.disabled = true;
+      disableIdeStop();
       if (IDE_VIEW.summaryEl) IDE_VIEW.summaryEl.textContent = sampleRunning
         ? "当前样例完成后停止…" : "正在停止…";
     },
@@ -709,12 +739,21 @@ export function createIdeBatchFeature({ storage, problemData }) {
       }
     },
     finish: (_context, results, { stale }) => {
+      const active = document.activeElement;
       restoreIdeRunControls();
+      if (active && (active === IDE_VIEW.stopBtn || active === stoppingFocus)) {
+        const target = focusBeforeRun ?? IDE_VIEW.rerunBtn;
+        (target?.getClientRects().length ? target : IDE_VIEW.button)?.focus();
+      }
+      focusBeforeRun = null;
+      clearStoppingFocus();
       if (IDE_VIEW.stopBtn) IDE_VIEW.stopBtn.style.display = "none";
       finishIdeSummary(results, stale);
     },
     cancel: () => {
       cancelIdeSubmitWaiter();
+      focusBeforeRun = null;
+      clearStoppingFocus();
       restoreIdeRunControls();
     },
     markStale: showIdeStale,

@@ -10,10 +10,10 @@ export const SETTINGS_STYLE = `
   #luogusp-settings .luogusp-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
   #luogusp-settings button{padding:5px 14px;border:1px solid #ccc;border-radius:5px;background:#f7f7f7;cursor:pointer;}
   #luogusp-settings button:not(.luogusp-primary):hover{background:#efefef;}
-  #luogusp-settings .luogusp-primary{background:#0e88d3;border-color:#0e88d3;color:#fff;}
-  #luogusp-settings .luogusp-primary:hover{background:#0879bd;border-color:#0879bd;color:#fff;}
-  #luogusp-settings .luogusp-primary:active{background:#066ca9;border-color:#066ca9;color:#fff;}
-  #luogusp-settings .luogusp-hint{margin:10px 0 0;color:#888;font-size:12px;}
+  #luogusp-settings .luogusp-primary{background:#0876b8;border-color:#0876b8;color:#fff;}
+  #luogusp-settings .luogusp-primary:hover{background:#076faf;border-color:#076faf;color:#fff;}
+  #luogusp-settings .luogusp-primary:active{background:#0667a2;border-color:#0667a2;color:#fff;}
+  #luogusp-settings .luogusp-hint{margin:10px 0 0;color:#717171;font-size:12px;}
   #luogusp-settings .luogusp-confirm{margin:0 0 16px;font-size:14px;line-height:1.6;}
   .luogusp-setting-entry{cursor:pointer;}
   @keyframes luogusp-settings-in{from{opacity:.8;}}

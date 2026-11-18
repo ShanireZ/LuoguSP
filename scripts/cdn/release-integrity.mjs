@@ -9,6 +9,23 @@ const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i;
 export const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 export const digest = (body) => createHash("sha256").update(body).digest("hex");
 
+export function parseCanaryChannel(body, { origin, version, release }) {
+  const channel = JSON.parse(body);
+  if (
+    channel?.schemaVersion !== 2 || channel.channel !== "canary" ||
+    typeof channel.release !== "string" || !RELEASE_VERSION.test(channel.release) ||
+    channel.origin !== origin
+  ) throw new Error("Invalid canary channel for the configured CDN origin");
+  if (version && channel.release !== version)
+    throw new Error(`Canary channel release ${channel.release} does not match requested release ${version}`);
+  if (release && (
+    release.manifest.schemaVersion !== 3 || release.manifest.origin !== origin ||
+    channel.release !== release.manifest.release || channel.manifestPath !== release.path ||
+    channel.manifestSha256 !== release.sha256
+  )) throw new Error("Canary channel does not pin the selected release manifest at the configured CDN origin");
+  return channel;
+}
+
 async function requireEntry(path, method, description) {
   let status;
   try {

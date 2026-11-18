@@ -21,6 +21,8 @@ import {
   verifyStagedActivation,
 } from "./publish-lib.mjs";
 import { rollbackRelease } from "./cdn/release-transaction.mjs";
+import { withLocalLock } from "./cdn/local-lock.mjs";
+import { digest, parseCanaryChannel, readRegularFile } from "./cdn/release-integrity.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 async function publish() {
@@ -192,10 +194,12 @@ const run = (args) => {
 };
 const startedAt = new Date().toISOString();
 let phase = "preflight";
-let deploymentStarted = false;
+let deploymentStarted = resumeMode && previousReport.deploymentStarted === true;
 let productionModified = false;
 let rendererReport = null;
 let buildTransaction = null;
+let capturedChannel = resumeMode ? previousReport.channel ?? null : null;
+let resumeAllowed = resumeMode;
 const initialProduction = new Map([
   [metadataPath, initialMetadata], [artifactPath, initialArtifact], [packagePath, initialPackage],
   ...README_EDITIONS.map((name) => [resolve(root, name), initialReadmes[name]]),
@@ -232,32 +236,35 @@ const promoteProduction = async (path, body) => {
   ownedProduction.set(path, body);
 };
 const qualityStagePath = resolve(npmCache, `luogusp-publish-${new Date().toISOString().slice(0, 10)}-${randomUUID()}.json`);
+const capturedChannelPath = `${qualityStagePath}.channel`;
 const restoreProduction = async () => {
   const retained = [];
   for (const [path, initial] of initialProduction) {
     const expected = ownedProduction.get(path) ?? initial;
-    if (await currentProduction(path) !== expected) {
+    try {
+      if (await currentProduction(path) !== expected) retained.push(productionName(path));
+      else if (ownedProduction.has(path)) await replaceProduction(path, expected, initial);
+    } catch (error) {
       retained.push(productionName(path));
-      continue;
-    }
-    if (ownedProduction.has(path)) {
-      try { await replaceProduction(path, expected, initial); }
-      catch (error) {
-        retained.push(productionName(path));
-        console.error(`[publish] production rollback retained ${productionName(path)}: ${error.message}`);
-      }
+      console.error(`[publish] production rollback retained ${productionName(path)}: ${error.message}`);
     }
   }
   return retained;
 };
 const writeReport = async (report) => {
   await mkdir(dirname(reportPath), { recursive: true });
-  await writeFile(
-    reportPath,
-    `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
-  );
+  const temporary = `${reportPath}.${randomUUID()}.tmp`;
+  const handle = await open(temporary, "wx");
+  try {
+    try { await handle.writeFile(`${JSON.stringify(report, null, 2)}\n`); }
+    finally { await handle.close(); }
+    await rename(temporary, reportPath);
+  } finally { await rm(temporary, { force: true }); }
 };
+const writeCheckpoint = () => writeReport({
+  startedAt, status: "in-progress", release: version, phase,
+  channel: capturedChannel, deploymentStarted, resumeAllowed, resumed: resumeMode,
+});
 const beginPhase = (value) => {
   phase = value;
   console.log(`\n[publish] START ${phase}`);
@@ -272,13 +279,27 @@ try {
       ? "verify existing immutable release"
       : "build",
   );
+  let channelForVerification = capturedChannel;
+  if (resumeMode) {
+    // Older blocked receipts are recoverable while the original channel is still selected.
+    channelForVerification ??= (await readRegularFile(channelPath)).toString("utf8");
+    await writeFile(capturedChannelPath, channelForVerification, { flag: "wx" });
+  }
   const buildOutput = run([
     "scripts/cdn/build.mjs",
     "--version",
     version,
-    ...(resumeMode ? ["--verify-existing"] : []),
+    ...(resumeMode ? ["--verify-existing", "--channel-file", capturedChannelPath] : []),
   ]);
-  if (!resumeMode) buildTransaction = JSON.parse(buildOutput).transaction;
+  if (resumeMode) capturedChannel = channelForVerification;
+  else {
+    buildTransaction = JSON.parse(buildOutput).transaction;
+    capturedChannel = buildTransaction.channel;
+    await writeFile(capturedChannelPath, capturedChannel, { flag: "wx" });
+  }
+  const releaseChannel = parseCanaryChannel(capturedChannel, { version, origin: initialConfig.origins.primary });
+  resumeAllowed = true;
+  await writeCheckpoint();
   const builtManifest = JSON.parse(
     await readFile(
       resolve(releaseDirectory, "manifest.json"),
@@ -304,16 +325,15 @@ try {
     root,
     `dist/staged/LuoguSP.${version}.user.js`,
   );
-  const [stagedArtifact, manifestText, configText] =
+  const [stagedArtifact, manifestBody, configText] =
     await Promise.all([
       readFile(stagedPath, "utf8"),
-      readFile(
-        resolve(releaseDirectory, "manifest.json"),
-        "utf8",
-      ),
+      readRegularFile(resolve(releaseDirectory, "manifest.json")),
       readFile(resolve(root, "config/cdn.json"), "utf8"),
     ]);
-  const manifest = JSON.parse(manifestText);
+  if (digest(manifestBody) !== releaseChannel.manifestSha256)
+    throw new Error("Staged manifest differs from the publication receipt");
+  const manifest = JSON.parse(manifestBody);
   const config = JSON.parse(configText);
   const activation = verifyStagedActivation({
     artifact: stagedArtifact,
@@ -338,17 +358,22 @@ try {
   beginPhase("Cloudflare Workers deployment");
   await assertProductionUnchanged();
   deploymentStarted = true;
+  await writeCheckpoint();
   run([
     "scripts/cdn/publish.mjs",
     "--version",
     version,
     "--skip-build",
+    "--channel-file",
+    capturedChannelPath,
   ]);
   beginPhase("production CDN gate");
   run([
     "scripts/cdn/verify-production.mjs",
     "--version",
     version,
+    "--manifest-sha256",
+    releaseChannel.manifestSha256,
   ]);
 
   beginPhase("local production promotion");
@@ -387,6 +412,7 @@ try {
     status: "ready-for-browser-qa",
     release: version,
     resumed: resumeMode,
+    channel: capturedChannel,
     userscript: {
       bytes: promoted.bytes,
       sha256: promoted.sha256,
@@ -442,14 +468,15 @@ try {
     command: error.command || null,
     exitCode: error.exitCode ?? null,
     renderer: rendererReport,
-    deployedOrigins: deploymentStarted || resumeMode
+    channel: capturedChannel,
+    deployedOrigins: deploymentStarted
       ? [initialConfig.origins.primary]
       : [],
     productionRestored: productionModified && productionRetained.length === 0,
     productionRetained,
     releaseRollback,
     rollbackError,
-    deploymentStarted: deploymentStarted || resumeMode,
+    deploymentStarted,
     resumed: resumeMode,
     resumeAllowed: deploymentStarted || resumeMode,
     commitPerformed: false,
@@ -468,6 +495,7 @@ try {
   throw error;
 } finally {
   await rm(qualityStagePath, { force: true });
+  await rm(capturedChannelPath, { force: true });
 }
 }
 
@@ -475,10 +503,5 @@ if (process.argv.includes("--plan")) await publish();
 else {
   const lockPath = resolve(root, "reports/publish.lock");
   await mkdir(dirname(lockPath), { recursive: true });
-  const lock = await open(lockPath, "wx");
-  try { await publish(); }
-  finally {
-    try { await lock.close(); }
-    finally { await rm(lockPath); }
-  }
+  await withLocalLock(lockPath, publish);
 }

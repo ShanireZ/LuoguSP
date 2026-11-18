@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createBrowserProblemResources } from "../src/browser/luogu-problem-resources.js";
 import { createProblemData } from "../src/features/problem-color/problem-data.js";
 import { createGetRequestScheduler } from "../src/core/get-request-scheduler.js";
 import { createHoverCardSources } from "../src/features/hover-card/sources.js";
@@ -8,6 +9,67 @@ import { FakeClock, deferred, flushMicrotasks, textResponse } from "./helpers.js
 const origin = "https://www.luogu.com.cn";
 const url = (path) => new URL(path, origin);
 const problem = { pid: "P1001", name: "A+B", difficulty: 1, samples: [["1 2", "3"]] };
+
+function browserProblemData(t, fetchPage) {
+  const { document, location } = globalThis;
+  globalThis.document = { URL: origin };
+  globalThis.location = { origin };
+  t.after(() => Object.assign(globalThis, { document, location }));
+  t.mock.method(globalThis, "fetch", fetchPage);
+  return createBrowserProblemResources().data;
+}
+
+test("direct problem reads validate the request and response before decoding", async (t) => {
+  const href = "/problem/P1001?contestId=123&lang=en";
+  const expectedUrl = `${origin}${href}&_contentOnly=1`;
+  const good = {
+    ...textResponse(JSON.stringify({ data: { problem } }), 200, { "content-type": "Application/JSON; charset=utf-8" }),
+    url: expectedUrl,
+    redirected: false,
+  };
+  for (const [name, overrides] of [
+    ["missing URL", { url: "" }],
+    ["different query", { url: expectedUrl.replace("lang=en", "lang=zh") }],
+    ["redirect flag", { redirected: true }],
+    ["accepted status", { status: 202 }],
+    ["partial status", { status: 206 }],
+    ["missing media", { headers: new Headers() }],
+    ["plain-text media", { headers: new Headers({ "content-type": "text/plain" }) }],
+  ]) {
+    await t.test(name, async (child) => {
+      const reads = [];
+      let decodes = 0;
+      const data = browserProblemData(child, (requestedUrl, init) => {
+        reads.push({ requestedUrl, init });
+        return { ...good, ...overrides, text: async () => { decodes++; return good.text(); } };
+      });
+      await assert.rejects(data.load(problem.pid, { href }));
+      assert.equal(data.peek(problem.pid, { href }), null);
+      assert.equal(decodes, 0);
+      assert.equal(reads.length, 1);
+      const [{ requestedUrl, init }] = reads;
+      assert.equal(requestedUrl, expectedUrl);
+      assert.equal(init.mode, "same-origin");
+      assert.equal(init.credentials, "same-origin");
+      assert.equal(init.redirect, "error");
+      assert.equal(init.headers["x-lentille-request"], "content-only");
+    });
+  }
+});
+
+test("a direct problem read can retry after rejected metadata and accept native HTML", async (t) => {
+  let reads = 0;
+  const html = `<script id="lentille-context" type="application/json">${JSON.stringify({ data: { problem } })}</script>`;
+  const data = browserProblemData(t, (requestedUrl) => ({
+    ...textResponse(html, 200, { "content-type": ++reads === 1 ? "text/plain" : "text/html; charset=utf-8" }),
+    url: requestedUrl,
+    redirected: false,
+  }));
+  await assert.rejects(data.load(problem.pid));
+  assert.deepEqual((await data.load(problem.pid)).data.problem.samples, problem.samples);
+  assert.equal((await data.load(problem.pid)).data.problem.pid, problem.pid);
+  assert.equal(reads, 2);
+});
 
 test("native detail supplies difficulty, hover fields and IDE samples without a lookup", async () => {
   const data = createProblemData({ origin, text: () => assert.fail("unexpected lookup") });
@@ -80,9 +142,10 @@ test("hover card publishes a native preview before the Lentille detail and recor
   data.rememberPage({ viewer: 42, data: { recommendations: [{ ...problem, samples: undefined }] } },
     url("/problem/P2000"), Date.now());
   const sources = createHoverCardSources({
+    origin,
     problemData: data,
-    fetchPage(path, _signal, init) {
-      supplemental.push({ path, type: init?.headers["x-lentille-request"] });
+    fetchPage(requestedUrl, _signal, init) {
+      supplemental.push({ requestedUrl, type: init?.headers["x-lentille-request"] });
       return record.promise;
     },
   });
@@ -94,14 +157,14 @@ test("hover card publishes a native preview before the Lentille detail and recor
   detail.resolve(JSON.stringify({ user: { uid: 42 }, data: { problem } }));
   await flushMicrotasks();
   assert.deepEqual(detailRequests, ["/problem/P1001?_contentOnly=1"]);
-  assert.deepEqual(supplemental, [{ path: "/record/list?user=42&pid=P1001", type: "content-only" }]);
-  record.resolve({ ok: true, json: async () => ({
+  assert.deepEqual(supplemental, [{ requestedUrl: recordUrl, type: "content-only" }]);
+  record.resolve(jsonReply(recordUrl, {
     template: "record.list", user: { uid: 42 },
     data: { records: { result: [
       { id: 1, user: { uid: 42 }, problem, submitTime: 123 },
       { id: 2, user: { uid: 43 }, problem, submitTime: 456 },
     ] } },
-  }) });
+  }));
   assert.equal((await card).mine.lastAttempt.id, 1);
   assert.equal(updates.at(-1).mine.lastAttempt.id, 1);
 });
@@ -109,13 +172,61 @@ test("hover card publishes a native preview before the Lentille detail and recor
 function recordPreviewSources(fetchPage, clock) {
   const data = createProblemData({ origin, text: () => assert.fail("unexpected detail lookup") });
   data.rememberPage({ viewer: 42, data: { problem } }, url("/problem/P1001"), Date.now());
-  return createHoverCardSources({ problemData: data, fetchPage, clock });
+  return createHoverCardSources({ origin, problemData: data, fetchPage, clock });
 }
 
-const recordReply = (result) => ({
-  ok: true,
-  json: async () => ({ template: "record.list", user: { uid: 42 }, data: { records: { result } } }),
+const recordUrl = `${origin}/record/list?user=42&pid=P1001`;
+const jsonReply = (requestedUrl, payload) => ({
+  ok: true, status: 200, redirected: false, url: requestedUrl,
+  headers: new Headers({ "content-type": "application/json" }),
+  json: async () => payload,
 });
+const recordReply = (result) => jsonReply(recordUrl,
+  { template: "record.list", user: { uid: 42 }, data: { records: { result } } });
+
+for (const [endpoint, overrides] of [
+  ["/problem/P1001", { status: 202 }],
+  ["/_lfe/tags", { headers: new Headers({ "content-type": "text/html" }) }],
+  ["/record/list?user=42&pid=P1001", { url: `${recordUrl}&page=2` }],
+  ["/record/list?user=42&pid=P1001", { redirected: true }],
+]) {
+  test(`hover problem read of ${endpoint} retries after rejected metadata ${Object.keys(overrides)[0]}`, async () => {
+    const requests = [];
+    let attempts = 0;
+    let decodes = 0;
+    const sources = createHoverCardSources({ origin, fetchPage: (requestedUrl, _signal, init) => {
+      const responseUrl = new URL(requestedUrl, origin).href;
+      const routes = {
+        [`${origin}/problem/P1001`]: jsonReply(responseUrl, { data: { problem: { ...problem, tags: [1] } } }),
+        [`${origin}/_lfe/tags`]: jsonReply(responseUrl, { tags: [{ id: 1, name: "Math" }] }),
+        [recordUrl]: recordReply([{ id: 77, user: { uid: 42 }, problem, submitTime: 123 }]),
+      };
+      requests.push({ requestedUrl, init });
+      const reply = routes[responseUrl];
+      if (responseUrl !== `${origin}${endpoint}` || ++attempts > 1) return reply;
+      return { ...reply, ...overrides, json: async () => { decodes++; return reply.json(); } };
+    } });
+    const partial = await sources.problem(problem.pid, 42);
+    if (endpoint.startsWith("/problem/")) assert.equal(partial, null);
+    else {
+      assert.equal(partial.name, problem.name);
+      if (endpoint === "/_lfe/tags") assert.deepEqual(partial.tags, []);
+      else assert.equal(partial.mine.lastAttempt, null);
+    }
+    const recovered = await sources.problem(problem.pid, 42);
+    assert.deepEqual(recovered.tags, ["Math"]);
+    assert.equal(recovered.mine.lastAttempt.id, 77);
+    assert.equal(attempts, 2);
+    assert.equal(decodes, 0);
+    for (const { requestedUrl, init } of requests) {
+      assert.ok(requestedUrl.startsWith(origin));
+      assert.equal(init.mode, "same-origin");
+      assert.equal(init.credentials, "same-origin");
+      assert.equal(init.redirect, "error");
+      assert.equal(init.headers?.["x-lentille-request"], requestedUrl.endsWith("/_lfe/tags") ? undefined : "content-only");
+    }
+  });
+}
 
 test("record previews retry transient failures but cache a successful empty list", async () => {
   const clock = new FakeClock();

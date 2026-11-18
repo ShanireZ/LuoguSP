@@ -53,6 +53,8 @@ function parseBody(text) {
 export function interpretArticleWrite(config = {}) {
   const request = articleWriteRequestUrl(config);
   if (!request || !responseMatches(request, config)) return null;
+  // HTTP 202 cannot confirm either action, even with a provisional JSON body.
+  if (config.status === 202) return null;
   const body = parseBody(config.responseText);
   if (!body) return null;
 
@@ -64,8 +66,6 @@ export function interpretArticleWrite(config = {}) {
     return { kind: "vote", voted: body.voted, upvote };
   }
 
-  // Accepted work has no completed favorite state, including a provisional JSON body.
-  if (config.status === 202) return null;
   const emptyAcknowledgement = Object.keys(body).every((key) => key === "_empty");
   if (emptyAcknowledgement && ![200, 204, 205].includes(config.status)) return null;
   const removals = request.searchParams.getAll("remove");

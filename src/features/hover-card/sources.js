@@ -1,3 +1,4 @@
+import { getMediaType, matchesGetUrl, SAME_ORIGIN_GET } from "../../browser/luogu-get-response.js";
 import { PID_PATTERN } from "../problem-color/identity.js";
 import {
   buildProblemCard,
@@ -89,14 +90,22 @@ export function createHoverCardSources(config) {
     return task;
   };
 
+  const readResponse = async (path, signal, init) => {
+    const url = new URL(path, origin).href;
+    const response = await fetchPage(url, signal, { ...init, ...SAME_ORIGIN_GET });
+    if (signal?.aborted || !matchesGetUrl(response, url)) return null;
+    const { status } = response;
+    return status === 408 || status === 429 || status >= 500 ? null : response;
+  };
+  const isJson = (response) => getMediaType(response) === "application/json";
+
   const readJson = async (path, signal, init = LENTILLE_INIT) => {
     try {
-      const response = await fetchPage(path, signal, init);
+      const response = await readResponse(path, signal, init);
       if (!response) return RETRYABLE_READ;
-      if (response.ok === false) {
-        const { status } = response;
-        return status === 408 || status === 429 || status >= 500 ? RETRYABLE_READ : null;
-      }
+      const { status } = response;
+      if (status >= 400 && status < 500) return null;
+      if (!response.ok || status !== 200 || !isJson(response)) return RETRYABLE_READ;
       return await response.json();
     } catch (error) {
       if (signal?.aborted || error?.name === "AbortError") throw error;
@@ -193,16 +202,8 @@ export function createHoverCardSources(config) {
       }
       if (signal.aborted || viewer() !== account) return TEMPORARY_USER_READ;
       const path = info ? `/api/user/info/${uid}` : `/user/${uid}`;
-      const expectedUrl = new URL(path, origin).href;
-      const response = await fetchPage(path, signal, {
-        ...(info ? {} : LENTILLE_INIT),
-        mode: "same-origin", credentials: "same-origin", redirect: "error",
-      });
-      if (!response || response.status === 408 || response.status === 429 || response.status >= 500)
-        return TEMPORARY_USER_READ;
-      if (response.redirected !== false || response.url !== expectedUrl ||
-        !/^application\/json(?:\s*;|$)/i.test(response.headers?.get("content-type")?.trim()))
-        return TEMPORARY_USER_READ;
+      const response = await readResponse(path, signal, info ? null : LENTILLE_INIT);
+      if (!response || !isJson(response)) return TEMPORARY_USER_READ;
       if (response.ok !== false && response.status !== 200) return TEMPORARY_USER_READ;
       const payload = await Promise.resolve().then(() => response.json()).catch(() => null);
       if (response.ok === false) {

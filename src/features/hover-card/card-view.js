@@ -1,5 +1,5 @@
 import {
-  abbreviateCount,
+  abbreviateCount as fmtCount,
   badgeStyle,
   ccfBadge,
   levelColor,
@@ -12,7 +12,7 @@ import {
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  if (text !== undefined && text !== null) node.textContent = String(text);
+  if (text != null) node.textContent = String(text);
   return node;
 };
 
@@ -41,14 +41,9 @@ const badgeIcon = (badge) => {
 
 const row = (key, valueNode) => {
   const line = el("div", "luogusp-hc-row");
-  line.appendChild(el("span", "luogusp-hc-key", key));
   const value = el("span", "luogusp-hc-val");
-  value.appendChild(
-    typeof valueNode === "string" || typeof valueNode === "number"
-      ? document.createTextNode(String(valueNode))
-      : valueNode,
-  );
-  line.appendChild(value);
+  value.append(valueNode);
+  line.append(el("span", "luogusp-hc-key", key), value);
   return line;
 };
 
@@ -57,14 +52,10 @@ const fmtDate = (seconds) =>
     ? new Date(seconds * 1000).toLocaleDateString("zh-CN")
     : null;
 
-// owner 拍板：小於 1000 全顯示，小於 1000000 用 k，否則用 m。
-const fmtCount = (value) => abbreviateCount(value);
-
 // Each available statistic has a centered label and value.
 const statTile = (name, value) => {
   const tile = el("div", "luogusp-hc-stat");
-  tile.appendChild(el("span", "luogusp-hc-stat-k", name));
-  tile.appendChild(el("span", "luogusp-hc-stat-v", value));
+  tile.append(el("span", "luogusp-hc-stat-k", name), el("span", "luogusp-hc-stat-v", value));
   return tile;
 };
 
@@ -89,8 +80,7 @@ export function renderProblemCard(card, options = {}) {
   const title = el("p", "luogusp-hc-title");
   const pid = el("span", null, card.pid);
   pid.style.color = card.difficultyColor;
-  title.appendChild(pid);
-  title.appendChild(document.createTextNode(` ${card.name}`));
+  title.append(pid, ` ${card.name}`);
   titles.appendChild(title);
   head.appendChild(titles);
   box.appendChild(head);
@@ -137,8 +127,7 @@ export function renderProblemCard(card, options = {}) {
       toggle.setAttribute("aria-expanded", String(!list.hidden));
       onResize?.();
     });
-    tags.appendChild(toggle);
-    tags.appendChild(list);
+    tags.append(toggle, list);
     box.appendChild(tags);
   }
 
@@ -191,7 +180,7 @@ export function renderProblemCard(card, options = {}) {
   actions.appendChild(linkButton("跳转题目", href || `${origin}/problem/${card.pid}`));
   if (mine.bestRecordId !== null)
     actions.appendChild(
-      linkButton("最佳提交", `${origin}/record/${mine.bestRecordId}`, "is-ghost"),
+      linkButton("最佳提交", `${origin}/record/${mine.bestRecordId}`),
     );
   box.appendChild(actions);
   return box;
@@ -336,8 +325,7 @@ export function renderUserCard(card, options = {}) {
     badges.appendChild(badge);
   }
   if (badges.childNodes.length) identity.appendChild(badges);
-  title.appendChild(identity);
-  title.appendChild(el("span", "luogusp-hc-uid", `uid : ${card.uid}`));
+  title.append(identity, el("span", "luogusp-hc-uid", `uid : ${card.uid}`));
   body.appendChild(title);
 
   // slogan。原生在空的時候回落到「這個人很懶，什麼也沒有留下。」，我們照做。
@@ -553,6 +541,7 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
   const x = viewport.x ?? 0;
   const y = viewport.y ?? 0;
   cardEl.style.maxWidth = `${Math.max(0, viewport.width - 24)}px`;
+  options.measureSignature?.();
   const width = cardEl.offsetWidth || 320;
   const left = Math.max(x + gap, Math.min(rect.left, x + viewport.width - width - gap));
 

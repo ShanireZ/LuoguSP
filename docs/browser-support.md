@@ -32,7 +32,7 @@ previews or restricted-content features fail.
 | --- | --- |
 | pnpm baseline:check | Queries, approved minimums, frozen targets and consumers. |
 | pnpm check | Worktree Baseline, reproducible output, quality and Node tests. |
-| pnpm qa:browser | Promoted release dependencies and browser fixture behavior. |
+| pnpm qa:browser | SHA-256 verification of promoted startup dependencies and browser fixture behavior. |
 | pnpm qa:browser:local | Offline Chrome/Edge/Chromium fixtures for worktree settings, hover cards, IDE samples, record modes and route cancellation. Set `LUOGUSP_QA_USERSCRIPT` to exercise a local candidate. |
 | [Staged stable release](#staged-stable-release) | Offline Chrome/Edge/Chromium fixture for the staged installer, both pinned startup scripts, the pinned profile renderer and its fallback behavior. |
 | Manual Luogu checks | Behavior under the observed browser, account and network. |
@@ -42,6 +42,10 @@ Workspace copy-consistency inputs are optional local tooling, separate from this
 public project contract. Report each evidence class, skips and unavailable
 observations separately. A local check does not prove real-user traffic,
 authenticated behavior or all-browser support.
+
+Released-byte browser QA and the manual `pnpm qa:prepare` helper share the
+same startup loader. It verifies both installer pins, refuses redirects and
+checks each final HTTPS response and byte digest before decoding or injection.
 
 ## Staged stable release
 

@@ -6,7 +6,7 @@
 // 屏蔽沿用洛谷的危險色，在原本的操作區確認。
 export const HOVER_CARD_STYLE = `
 .luogusp-hc{position:fixed;z-index:2147482000;width:320px;max-width:calc(100vw - 24px);background:#fff;color:#3f3f3f;border:1px solid #e6e6e6;border-radius:4px;box-shadow:0 4px 16px rgba(26,26,26,.14);font:13px/1.6 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;padding:12px 14px;box-sizing:border-box;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;}
-.luogusp-hc[hidden]{display:none;}
+:is(.luogusp-hc,.luogusp-hc-expand,.luogusp-hc-taglist)[hidden]{display:none;}
 body.luogusp-hc-owns-user-preview .dropdown:has(> .float-card){display:none !important;}
 body.luogusp-hc-owns-user-preview .float-card{display:none !important;}
 .luogusp-hc-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;}
@@ -40,27 +40,22 @@ body.luogusp-hc-owns-user-preview .float-card{display:none !important;}
 .luogusp-hc-clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
 .luogusp-hc-slogan.is-open .luogusp-hc-clamp{-webkit-line-clamp:6;}
 .luogusp-hc-expand{position:absolute;right:0;bottom:0;border:0;padding:0 0 0 10px;background:linear-gradient(90deg,rgba(255,255,255,0) 0,#fff 10px,#fff 100%);color:#3498db;cursor:pointer;font:inherit;font-size:12px;line-height:inherit;}
-.luogusp-hc-expand[hidden]{display:none;}
 .luogusp-hc-sep{border-top:1px solid #f0f0f0;margin:8px 0 6px;}
 .luogusp-hc-tags{margin-top:2px;}
 .luogusp-hc-tagbtn{background:none;border:0;padding:0;color:#3498db;cursor:pointer;font:inherit;}
 .luogusp-hc-taglist{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-.luogusp-hc-taglist[hidden]{display:none;}
 .luogusp-hc-tag{font-size:11px;line-height:1.5;padding:0 6px;border-radius:3px;background:#eef4fb;color:#2b6ca3;}
 .luogusp-hc-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:10px;}
 .luogusp-hc-btn{font-size:12px;line-height:1.5;padding:3px 12px;border-radius:3px;border:1px solid #3498db;background:#3498db;color:#fff;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block;white-space:nowrap;}
 .luogusp-hc-btn:hover{background:rgba(52,152,219,.9);}
-.luogusp-hc-btn.is-off,.luogusp-hc-btn.is-ghost{background:#fff;color:#3498db;}
-.luogusp-hc-btn.is-off:hover,.luogusp-hc-btn.is-ghost:hover{background:rgba(52,152,219,.08);}
+.luogusp-hc-btn:is(.is-off,.is-ghost){background:#fff;color:#3498db;}
+.luogusp-hc-btn:is(.is-off,.is-ghost):hover{background:rgba(52,152,219,.08);}
 .luogusp-hc-btn.is-danger{border-color:#e74c3c;color:#e74c3c;background:#fff;}
 .luogusp-hc-btn.is-danger:hover{background:rgba(231,76,60,.08);}
 .luogusp-hc-btn[disabled]{opacity:.55;cursor:default;}
 .luogusp-hc-confirm{flex-wrap:wrap;}
 .luogusp-hc-confirm-text{flex:1 1 100%;color:#e74c3c;font-size:12px;line-height:1.6;word-break:break-all;}
 .luogusp-hc-relation-status:not(:empty){margin-top:4px;color:#a42626;font-size:12px;}
-.luogusp-hc-link{color:#3498db;text-decoration:none;font-size:12px;}
-.luogusp-hc-ok{color:#52c41a;}
-.luogusp-hc-warn{color:#f39c11;}
 .luogusp-hc-muted{color:#8a8a8a;}
 .luogusp-hc-loading{display:flex;justify-content:center;align-items:center;gap:8px;}
 .luogusp-hc-spin{width:16px;height:16px;border:2px solid rgba(52,152,219,.25);border-top-color:#3498db;border-radius:50%;animation:luogusp-hc-spin .8s linear infinite;margin:2px 0;}

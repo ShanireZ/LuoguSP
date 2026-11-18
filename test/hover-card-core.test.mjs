@@ -575,7 +575,9 @@ function sourceHarness(routes) {
   const sources = createHoverCardSources({
     clock,
     origin: sourceOrigin,
-    fetchPage: (path, signal, init) => {
+    fetchPage: (requestedUrl, signal, init) => {
+      const url = new URL(requestedUrl, sourceOrigin);
+      const path = url.pathname + url.search;
       calls.push({ path, header: init && init.headers && init.headers["x-lentille-request"] });
       const route = routes[path];
       if (route === undefined) return Promise.resolve({ ok: false });
@@ -583,7 +585,7 @@ function sourceHarness(routes) {
         ok: true,
         status: 200,
         redirected: false,
-        url: new URL(path, sourceOrigin).href,
+        url: url.href,
         headers: new Headers({ "content-type": "application/json" }),
         json: () => Promise.resolve(route),
         text: () => Promise.resolve(typeof route === "string" ? route : ""),
@@ -696,7 +698,8 @@ for (const [fault, metadata] of [
       const badPath = branch === "info" ? "/api/user/info/123" : "/user/123";
       let attempts = 0;
       let untrustedDecodes = 0;
-      const sources = createHoverCardSources({ origin: sourceOrigin, fetchPage: async (path, signal, init) => {
+      const sources = createHoverCardSources({ origin: sourceOrigin, fetchPage: async (url, signal, init) => {
+        const { pathname: path } = new URL(url);
         assert.equal(init.mode, "same-origin");
         assert.equal(init.credentials, "same-origin");
         assert.equal(init.redirect, "error");
@@ -725,7 +728,8 @@ test("user preview retries a failed branch on reopen, retains partial fields, an
   const clock = manualClock();
   const requests = [];
   let available = false;
-  const sources = createHoverCardSources({ clock, origin: sourceOrigin, fetchPage: async (path) => {
+  const sources = createHoverCardSources({ clock, origin: sourceOrigin, fetchPage: async (url) => {
+    const { pathname: path } = new URL(url);
     requests.push(path);
     if (path === "/api/user/info/123") return profileResponse(path, { user: { uid: 123, name: "Target" } });
     if (!available) return { ok: false, status: 503 };
@@ -754,7 +758,8 @@ test("user preview shares in-flight reads, detaches a closed consumer, and settl
   const clock = manualClock();
   const requests = [];
   const lateProfile = Promise.withResolvers();
-  const sources = createHoverCardSources({ clock, origin: sourceOrigin, fetchPage: (path, signal) => {
+  const sources = createHoverCardSources({ clock, origin: sourceOrigin, fetchPage: (url, signal) => {
+    const { pathname: path } = new URL(url);
     requests.push({ path, signal });
     return path === "/user/123"
       ? lateProfile.promise : profileResponse(path, { user: { uid: 123, name: "Target" } });

@@ -14,7 +14,7 @@ import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 import { committedReleaseFiles } from "./committed-releases.mjs";
 import { writeRelease } from "./release-transaction.mjs";
 import {
-  RELEASE_VERSION, readRegularFile, requireRegularDirectory, snapshotRelease,
+  RELEASE_VERSION, parseCanaryChannel, readRegularFile, requireRegularDirectory, snapshotRelease,
 } from "./release-integrity.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -36,6 +36,7 @@ const version = argument("--version");
 const overwrite = process.argv.includes("--overwrite");
 const verifyExisting = process.argv.includes("--verify-existing");
 const dryRun = process.argv.includes("--dry-run");
+const channelFile = argument("--channel-file");
 
 if (
   typeof version !== "string" ||
@@ -48,6 +49,8 @@ if (overwrite)
   throw new Error("--overwrite is disabled: CDN release paths are immutable");
 if (dryRun && verifyExisting)
   throw new Error("--dry-run cannot be combined with --verify-existing");
+if (process.argv.includes("--channel-file") && (!verifyExisting || !channelFile || channelFile.startsWith("--")))
+  throw new Error("Pass --channel-file with --verify-existing to check a captured channel");
 
 const releaseDir = resolve(releasesRoot, version);
 if (
@@ -61,7 +64,7 @@ if (!dryRun) {
   await requireRegularDirectory(resolve(root, "cdn"));
   await requireRegularDirectory(releasesRoot);
   await requireRegularDirectory(channelsRoot);
-  await readRegularFile(resolve(channelsRoot, "canary.json"));
+  if (!channelFile) await readRegularFile(resolve(channelsRoot, "canary.json"));
   if (verifyExisting) {
     existingRelease = await snapshotRelease(releasesRoot, version);
   } else {
@@ -315,18 +318,15 @@ if (verifyExisting) {
     throw new Error(
       `Cannot resume CDN release ${version}: current source build differs from the existing immutable release; increase @version`,
     );
-  const channel = JSON.parse(await readRegularFile(resolve(channelsRoot, "canary.json")));
-  if (
-    channel.schemaVersion !== 2 ||
-    channel.channel !== "canary" ||
-    channel.release !== version ||
-    channel.origin !== cdnOrigin ||
-    channel.manifestPath !== existingRelease.path ||
-    channel.manifestSha256 !== existingRelease.sha256
-  )
+  try {
+    const channelBody = await readRegularFile(resolve(root, channelFile ?? "cdn/channels/canary.json"));
+    parseCanaryChannel(channelBody, { version, origin: cdnOrigin, release: existingRelease });
+  } catch (error) {
     throw new Error(
       `Cannot resume CDN release ${version}: local manifest or canary channel integrity failed`,
+      { cause: error },
     );
+  }
   console.log(
     `Verified existing immutable CDN release ${version} against the current source build.`,
   );

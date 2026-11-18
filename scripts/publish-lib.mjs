@@ -35,9 +35,10 @@ export function userscriptVersion(metadata) {
 export function isResumablePublish(report, version) {
   return Boolean(
     report &&
-      report.status === "blocked" &&
       report.release === version &&
-      report.deploymentStarted === true,
+      ((report.status === "blocked" && report.deploymentStarted === true) ||
+       (["blocked", "in-progress"].includes(report.status) &&
+        report.resumeAllowed === true && typeof report.channel === "string")),
   );
 }
 

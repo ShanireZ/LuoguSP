@@ -1,7 +1,7 @@
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
-  RELEASE_VERSION,
+  parseCanaryChannel,
   readExactFiles,
   requireRegularDirectory,
   snapshotRelease,
@@ -54,38 +54,23 @@ async function resolveOutput(root, source, explicitOutput) {
   return output;
 }
 
-export async function prepareCdn({ root, explicitOutput, origin, version, checkReleases }) {
+export async function prepareCdn({ root, explicitOutput, origin, version, capturedChannel, checkReleases }) {
   const source = resolve(root, "cdn");
   await requireRegularDirectory(source);
   const output = await resolveOutput(root, source, explicitOutput);
   const releasesRoot = resolve(source, "releases");
   await requireRegularDirectory(releasesRoot);
-  const channelFiles = await readExactFiles(resolve(source, "channels"), [CHANNEL_FILE]);
-  const channelBody = channelFiles.get(CHANNEL_FILE);
-  const channel = JSON.parse(channelBody);
-  if (
-    channel?.schemaVersion !== 2 ||
-    channel.channel !== "canary" ||
-    typeof channel.release !== "string" ||
-    !RELEASE_VERSION.test(channel.release) ||
-    channel.origin !== origin
-  )
-    throw new Error("Invalid canary channel for the configured CDN origin");
-  if (version && channel.release !== version)
-    throw new Error(`Canary channel release ${channel.release} does not match requested release ${version}`);
+  const channelBody = capturedChannel ??
+    (await readExactFiles(resolve(source, "channels"), [CHANNEL_FILE])).get(CHANNEL_FILE);
+  const channel = parseCanaryChannel(channelBody, { origin, version });
 
   const releases = new Map();
   for (const release of (await readdir(releasesRoot)).sort())
     releases.set(release, await snapshotRelease(releasesRoot, release));
   const selected = releases.get(channel.release);
-  if (
-    !selected ||
-    selected.manifest.schemaVersion !== 3 ||
-    selected.manifest.origin !== origin ||
-    channel.manifestPath !== selected.path ||
-    channel.manifestSha256 !== selected.sha256
-  )
+  if (!selected)
     throw new Error("Canary channel does not pin the selected release manifest at the configured CDN origin");
+  parseCanaryChannel(channelBody, { origin, version, release: selected });
   const files = new Map([
     [`channels/${CHANNEL_FILE}`, channelBody],
     ["index.html", Buffer.from(
@@ -118,6 +103,8 @@ export async function prepareCdn({ root, explicitOutput, origin, version, checkR
   return {
     manifestPath: selected.path,
     manifestSha256: selected.sha256,
+    channelBody,
+    manifestBody: selected.files.get(selected.path),
     async verifyStaged() {
       try {
         if (relative(output, await realpath(output)) !== "")

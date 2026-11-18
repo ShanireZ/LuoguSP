@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { createInterface } from "node:readline";
 import {
   copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile,
 } from "node:fs/promises";
@@ -12,6 +14,31 @@ import { rollbackRelease } from "../scripts/cdn/release-transaction.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const version = "2.0.0";
+
+async function pauseChild(t, cwd, args, env = process.env) {
+  const child = spawn(process.execPath, args, { cwd, env, windowsHide: true });
+  const exited = once(child, "exit");
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const lines = createInterface({ input: child.stdout });
+  let stderr = "";
+  child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+  let paused = false;
+  for await (const line of lines) {
+    if (line === "FIXTURE PAUSED") {
+      paused = true;
+      break;
+    }
+  }
+  assert.ok(paused, stderr);
+  return {
+    pid: child.pid,
+    async interrupt() {
+      assert.equal(child.kill("SIGKILL"), true);
+      assert.deepEqual(await exited, [null, "SIGKILL"]);
+      lines.close();
+    },
+  };
+}
 
 async function fixture(t) {
   const base = await realpath(tmpdir());
@@ -92,12 +119,17 @@ async function fixture(t) {
   await writeFile(hook, String.raw`
     import cp from "node:child_process";
     import { syncBuiltinESMExports } from "node:module";
-    import { cpSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync } from "node:fs";
+    import { cpSync, mkdirSync, readFileSync, renameSync, writeFileSync, appendFileSync, writeSync } from "node:fs";
     const spawn = cp.spawnSync;
     const mode = process.env.LUOGUSP_TEST_PUBLISH_MODE;
     const channelPath = "cdn/channels/canary.json";
     const success = { status: 0, stdout: "", stderr: "" };
     const failure = { status: 1, stdout: "", stderr: "Injected fixture guard failure\n" };
+    const pause = () => {
+      writeSync(1, "FIXTURE PAUSED\n");
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15000);
+      throw new Error("Fixture interruption did not arrive");
+    };
     const concurrent = (version) => {
       const result = spawn(process.execPath, ["scripts/cdn/build.mjs", "--version", version],
         { cwd: process.cwd(), encoding: "utf8", windowsHide: true });
@@ -122,12 +154,14 @@ async function fixture(t) {
       }
       if (entry === "--test") return success;
       if (entry === "scripts/renderer/check.mjs") {
+        if (mode === "predeployment-interruption") pause();
         if (mode === "channel-race") concurrent("3.0.0");
         if (mode === "replacement-race") {
           renameSync("cdn/releases/2.0.0", "superseded-own-version");
           concurrent("2.0.0");
         }
-        return ["success", "deploy-failure", "production-peer-before", "production-peer-after", "promotion-failure"].includes(mode) ? success : failure;
+        return ["success", "deploy-failure", "production-peer-before", "production-peer-after",
+          "production-unreadable", "promotion-failure", "deployment-interruption"].includes(mode) ? success : failure;
       }
       if (entry === "scripts/cdn/stage-userscript.mjs") {
         const manifest = JSON.parse(readFileSync("cdn/releases/2.0.0/manifest.json"));
@@ -139,13 +173,25 @@ async function fixture(t) {
         writeFileSync("dist/staged/LuoguSP.2.0.0.user.js", artifact);
         return success;
       }
-      if (entry === "scripts/cdn/publish.mjs") return mode === "deploy-failure" ? failure : success;
+      if (entry === "scripts/cdn/publish.mjs") {
+        if (mode === "deployment-interruption") pause();
+        if (args.includes("--channel-file")) {
+          const channel = JSON.parse(readFileSync(args[args.indexOf("--channel-file") + 1], "utf8"));
+          if (channel.release !== "2.0.0") throw new Error("Provider received a different channel");
+        }
+        return mode === "deploy-failure" ? failure : success;
+      }
       if (entry === "scripts/quality.mjs") {
         if (mode === "production-peer-after") {
           appendFileSync(process.env.LUOGUSP_TEST_PEER_PATH, "\nPEER EDIT\n");
           return failure;
         }
         if (mode === "promotion-failure") return failure;
+        if (mode === "production-unreadable") {
+          renameSync("README.md", "replaced-peer-readme.md");
+          mkdirSync("README.md");
+          return failure;
+        }
         const outputIndex = args.indexOf("--report-output");
         if (outputIndex !== -1) writeFileSync(args[outputIndex + 1], '{"fixture":true}\n');
       }
@@ -155,13 +201,16 @@ async function fixture(t) {
     };
     syncBuiltinESMExports();
   `);
-  const publish = (mode = "renderer-failure", env = {}) => spawnSync(process.execPath,
-    ["--import", pathToFileURL(hook).href, "scripts/publish.mjs", "--version", version], {
+  const publishArgs = ["--import", pathToFileURL(hook).href, "scripts/publish.mjs", "--version", version];
+  const publish = (mode = "renderer-failure", env = {}) => spawnSync(process.execPath, publishArgs, {
       cwd, encoding: "utf8", windowsHide: true,
       env: { ...process.env, ...env, LUOGUSP_TEST_PUBLISH_MODE: mode },
     });
   const snapshot = (release = version) => snapshotRelease(join(cwd, "cdn/releases"), release);
-  return { cwd, write, build, publish, snapshot, channelPath, previousChannel };
+  const recover = (lock) => spawnSync(process.execPath, ["scripts/cdn/recover-lock.mjs", lock], {
+    cwd, encoding: "utf8", windowsHide: true,
+  });
+  return { cwd, write, build, publish, publishArgs, recover, snapshot, channelPath, previousChannel };
 }
 
 test("publication refuses shared-file drift before any provider call", async (t) => {
@@ -196,6 +245,8 @@ test("a busy publication lock prevents all child commands and survives rejection
   await writeFile(lock, "peer publication");
   assert.notEqual(f.publish("success").status, 0);
   assert.equal(await readFile(lock, "utf8"), "peer publication");
+  assert.match(f.recover("publish").stderr, /Cannot establish the owner/);
+  assert.equal(await readFile(lock, "utf8"), "peer publication");
   await assert.rejects(readFile(join(f.cwd, "commands.jsonl")), { code: "ENOENT" });
   await rm(lock);
   assert.equal(f.publish("success").status, 0);
@@ -211,6 +262,21 @@ test("publication restores owned production bytes after a promotion failure and 
   assert.equal(report.productionRestored, true);
   await assert.rejects(readFile(join(f.cwd, "reports/publish.lock")), { code: "ENOENT" });
   assert.equal(f.publish("success").status, 0);
+});
+
+test("publication records an unreadable path and restores owned files after it", async (t) => {
+  const { cwd, publish } = await fixture(t);
+  const laterPath = join(cwd, "README.zh-CN.md");
+  const initial = await readFile(laterPath);
+  const failed = publish("production-unreadable");
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /production rollback retained README\.md/);
+  assert.deepEqual(await readdir(join(cwd, "README.md")), []);
+  assert.deepEqual(await readFile(laterPath), initial);
+  const report = JSON.parse(await readFile(join(cwd, "reports/publish.json")));
+  assert.equal(report.status, "blocked");
+  assert.equal(report.productionRestored, false);
+  assert.deepEqual(report.productionRetained, ["README.md"]);
 });
 
 for (const failure of ["renderer", "late"]) {
@@ -382,15 +448,82 @@ for (const change of ["asset", "extra-file", "same-release-channel"]) {
 }
 
 test("publish retains immutable output after deployment starts and can resume", async (t) => {
-  const { cwd, publish, snapshot, channelPath } = await fixture(t);
+  const { cwd, build, publish, snapshot, channelPath } = await fixture(t);
   assert.notEqual(publish("deploy-failure").status, 0);
   const manifest = (await snapshot()).sha256;
   const channel = await readFile(channelPath);
   const report = JSON.parse(await readFile(join(cwd, "reports/publish.json")));
   assert.equal(report.resumeAllowed, true);
   assert.equal(report.deploymentStarted, true);
+  const intervening = build("3.0.0");
+  assert.equal(intervening.status, 0, intervening.stderr);
+  const otherChannel = await readFile(channelPath);
+  assert.notDeepEqual(otherChannel, channel);
   const resumed = publish("success");
   assert.equal(resumed.status, 0, resumed.stderr);
   assert.equal((await snapshot()).sha256, manifest);
-  assert.deepEqual(await readFile(channelPath), channel);
+  assert.deepEqual(await readFile(channelPath), otherChannel);
+  assert.equal(JSON.parse(await readFile(join(cwd, "reports/publish.json"))).channel, channel.toString("utf8"));
+});
+
+for (const mode of ["predeployment-interruption", "deployment-interruption"]) {
+  test(`publisher lock recovery preserves its live owner and resumes ${mode}`, async (t) => {
+    const { cwd, publish, publishArgs, recover, snapshot } = await fixture(t);
+    const child = await pauseChild(t, cwd, publishArgs, { ...process.env, LUOGUSP_TEST_PUBLISH_MODE: mode });
+    const lock = join(cwd, "reports/publish.lock");
+    const owner = await readFile(lock);
+    const checkpoint = JSON.parse(await readFile(join(cwd, "reports/publish.json")));
+    assert.equal(checkpoint.status, "in-progress");
+    assert.equal(checkpoint.deploymentStarted, mode === "deployment-interruption");
+    assert.equal(JSON.parse(owner).pid, child.pid);
+    const active = recover("publish");
+    assert.notEqual(active.status, 0);
+    assert.match(active.stderr, /active process/);
+    assert.deepEqual(await readFile(lock), owner);
+    await child.interrupt();
+    assert.notEqual(publish("success").status, 0);
+    const recovered = recover("publish");
+    assert.equal(recovered.status, 0, recovered.stderr);
+    const before = await snapshot();
+    const resumed = publish("success");
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.equal((await snapshot()).sha256, before.sha256);
+  });
+}
+
+test("channel lock recovery preserves its live owner and the interrupted build can be verified", async (t) => {
+  const { cwd, write, build, recover, channelPath } = await fixture(t);
+  const hook = "interrupt-channel.mjs";
+  await write(hook, String.raw`
+    import fs from "node:fs/promises";
+    import { writeSync } from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    import { basename } from "node:path";
+    const rename = fs.rename;
+    fs.rename = async (from, to) => {
+      await rename(from, to);
+      if (basename(to) === "canary.json") {
+        writeSync(1, "FIXTURE PAUSED\n");
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15000);
+        throw new Error("Fixture interruption did not arrive");
+      }
+    };
+    syncBuiltinESMExports();
+  `);
+  const child = await pauseChild(t, cwd, ["--import", pathToFileURL(join(cwd, hook)).href,
+    "scripts/cdn/build.mjs", "--version", version]);
+  const lock = `${channelPath}.lock`;
+  const owner = await readFile(lock);
+  assert.equal(JSON.parse(owner).pid, child.pid);
+  assert.match(recover("channel").stderr, /active process/);
+  assert.deepEqual(await readFile(lock), owner);
+  await child.interrupt();
+  assert.match(build("3.0.0").stderr, /EEXIST/);
+  const recovered = recover("channel");
+  assert.equal(recovered.status, 0, recovered.stderr);
+  const verified = spawnSync(process.execPath, ["scripts/cdn/build.mjs", "--verify-existing", "--version", version],
+    { cwd, encoding: "utf8", windowsHide: true });
+  assert.equal(verified.status, 0, verified.stderr);
+  const retry = build("3.0.0");
+  assert.equal(retry.status, 0, retry.stderr);
 });

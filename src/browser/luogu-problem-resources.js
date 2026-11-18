@@ -1,29 +1,42 @@
 import { createGetRequestScheduler } from "../core/get-request-scheduler.js";
 import { createNativeDifficultySource } from "../features/problem-color/native-difficulty-source.js";
 import { createProblemData, LENTILLE_INIT } from "../features/problem-color/problem-data.js";
+import { getMediaType, matchesGetUrl, SAME_ORIGIN_GET } from "./luogu-get-response.js";
 import { createNativeUserInfo } from "./luogu-user-info.js";
 
 export function createBrowserProblemResources() {
   if (typeof document === "undefined") return null;
+  const origin = location.origin;
   const clock = {
     now: () => Date.now(),
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
   };
   const scheduler = createGetRequestScheduler({
-    fetch: (url, init) => fetch(url, { ...init, ...LENTILLE_INIT }),
+    fetch: async (path, init) => {
+      const expectedUrl = new URL(path, origin).href;
+      const response = await fetch(expectedUrl, { ...init, ...SAME_ORIGIN_GET, ...LENTILLE_INIT });
+      if (!matchesGetUrl(response, expectedUrl)) throw new Error("Unexpected problem response URL");
+      if (response.ok) {
+        if (response.status !== 200) throw new Error(`Unexpected problem response status ${response.status}`);
+        const mediaType = getMediaType(response);
+        if (mediaType !== "application/json" && mediaType !== "text/html")
+          throw new Error("Unexpected problem response media type");
+      }
+      return response;
+    },
     clock,
   });
-  const userInfo = createNativeUserInfo({ origin: location.origin, viewer: () => data.viewerUid() });
+  const userInfo = createNativeUserInfo({ origin, viewer: () => data.viewerUid() });
   const native = createNativeDifficultySource({
     document,
     XMLHttpRequest: globalThis.XMLHttpRequest,
-    origin: location.origin,
+    origin,
     onPage: (page, url, at) => data.rememberPage(page, url, at),
     prepareOtherGet: userInfo.prepare,
   });
   const data = createProblemData({
-    origin: location.origin,
+    origin,
     text: scheduler.text,
     refresh: native.harvest,
     legacyViewer: () => {

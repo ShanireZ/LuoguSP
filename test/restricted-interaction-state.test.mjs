@@ -337,6 +337,44 @@ test("the write observer reads Luogu's confirmed vote payload and cancel intents
     );
 });
 
+test("an accepted vote leaves the last confirmed state and its time intact", () => {
+  const clock = fixedClock();
+  const uid = 52918;
+  const store = createArticleInteractionStore({ storage: memoryStorage(), now: clock.now });
+  const interaction = { uid, lid: LID };
+  const state = { voted: 0, upvote: 10, favored: true, favorCount: 3 };
+  store.save({ ...interaction, ...state });
+  const original = store.read(interaction);
+  const notices = [];
+  const tracker = createArticleInteractionTracker({
+    store, origin: ORIGIN, ...interaction,
+    onUnconfirmed: (kind) => notices.push(kind),
+    onConfirmed: ({ kind }) => notices.push(`confirmed ${kind}`),
+  });
+  tracker.seed(state);
+  const url = officialVoteUrl(0, 1);
+  const reply = {
+    method: "POST", url, responseUrl: ORIGIN + url,
+    contentType: "application/json",
+    responseText: JSON.stringify({ upvotes: 11, voted: 1 }),
+  };
+
+  clock.ms += 1_000;
+  assert.equal(tracker.observeWrite({ ...reply, status: 202 }), null);
+  assert.deepEqual(tracker.snapshot(), state);
+  assert.deepEqual(store.read(interaction), original);
+  assert.deepEqual(notices, ["vote"]);
+
+  clock.ms += 1_000;
+  assert.deepEqual(tracker.observeWrite({ ...reply, status: 200 }), {
+    kind: "vote", voted: 1, upvote: 11,
+  });
+  const saved = store.read(interaction);
+  assert.equal(saved.voteAt, clock.ms);
+  assert.equal(saved.favorAt, original.favorAt);
+  assert.deepEqual(notices, ["vote", "confirmed vote"]);
+});
+
 test("the reply XHR adapter reports official writes without touching them", async () => {
   const observed = [];
   const sent = [];

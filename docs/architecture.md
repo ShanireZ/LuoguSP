@@ -39,6 +39,10 @@ available difficulty data.
 
 Problem coloring, problem hover cards, and IDE samples share a single
 same-origin lookup scheduler and reuse fields from Lentille page responses.
+Direct reads reject redirects and require an exact HTTP 200 response at the
+requested URL. The shared detail lookup accepts JSON and native HTML. Hover
+fallbacks and supplemental reads require JSON. Responses with invalid provenance
+leave the already available preview fields in place.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. A problem card displays available
 fields first and fills in details and the viewer's latest record as they
@@ -54,6 +58,8 @@ Both settings and refresh confirmation track the visual viewport's size and
 offset during zoom and pan. Resizing keeps the focused control visible through
 immediate scrolling. Closing either overlay removes its viewport listeners.
 Without VisualViewport, the existing fixed layout remains available.
+The enabled primary action labels and the settings save/reload hint use at
+least 4.5:1 text contrast.
 A focused eligible link opens its preview with Alt+Down Arrow. Escape closes
 the preview and returns focus to the link when the preview holds focus. Tab at
 either end closes the preview and continues from the link's place in the page.
@@ -73,9 +79,10 @@ redirects. Before decoding, each response must match its requested URL and JSON
 media type. Successful reads require HTTP 200. Invalid provenance retries on
 reopening while available fields from the other branch remain visible.
 Late signature updates retain the existing disclosure button and expansion
-state. The button reports its expanded state. When a shorter signature fits
-within two lines, the disclosure collapses and hides. Focus held on that button
-returns to the user-name link. Focus on another control stays with that control.
+state. The preview remeasures its two-line fit after a width change. The button
+reports its expanded state. When the signature fits within two lines, the
+disclosure collapses and hides. Focus held on that button returns to the
+user-name link. Focus on another control stays with that control.
 The preview replaces the native user card after the optional feature has mounted.
 User previews load avatar and cover media from allowed HTTPS origins without
 credentials or a referrer, and use a local visual fallback if loading fails.
@@ -109,6 +116,10 @@ endings. Leaving the IDE removes its batch controls and restores the native inpu
 layout.
 The IDE test tabs switch with Left and Right Arrow, Home, and End. Sample
 buttons report their expanded state and toggle details with Enter or Space.
+Starting a batch moves focus from its disabled controls to Stop. If Stop still
+owns focus when it becomes disabled, focus moves to the Samples tab. Completion
+restores the initiating control or another available batch control only while
+the batch still owns focus.
 The batch summary announces updates, and copy controls appear on keyboard focus.
 Output highlighting aligns insertions and deletions within a bounded comparison.
 
@@ -153,10 +164,13 @@ Before replacing a staging directory, the CDN preparer resolves its existing
 parent and destination, including Windows junctions. It rejects paths that
 overlap the release source tree. Staging accepts only the verified release and
 channel files. The low-level publisher checks the configured origin, candidate
-version and staged files before deploying. It checks the remote manifest of
-every staged release, including committed ones, before invoking Wrangler. It
-accepts HTTP 404 for an unused manifest URL or an exact byte match for HTTP 200.
-Published version paths are immutable.
+version and staged files before deploying. It gives Wrangler a private asset
+snapshot and retains that snapshot through provider execution and verification.
+Post-deployment verification uses the snapshot's channel and manifest bytes.
+The publisher checks the remote manifest of every staged release, including
+committed ones, before invoking Wrangler. It accepts HTTP 404 for an unused
+manifest URL or an exact byte match for HTTP 200. Published version paths are
+immutable.
 The CDN builder finishes compilation before claiming a version directory.
 Handled write failures clean up that build's directory. A successful build
 returns its directory identity, manifest digest and channel transition to the
@@ -172,9 +186,31 @@ file drift before deployment and again before promotion. Each promotion uses
 atomic replacement after an unchanged-byte check; rollback restores only files
 whose current bytes still match this transaction's promoted bytes. Concurrent
 changes are retained and listed in the local report as a partial restoration.
+If one production path cannot be read during rollback, the publisher records
+it as retained and continues restoring the other owned paths.
 Quality writes to a transaction-specific temporary report before promotion.
-The lock serializes cooperating publishers; other editors must still avoid
-writing during the final filesystem compare-and-replace operation.
+The lock serializes cooperating publishers. Other editors can still change a
+file during the final filesystem compare-and-replace operation.
+
+### Interrupted publication
+
+The high-level publisher saves a local checkpoint with the captured channel
+before it invokes the deployment subprocess. A same-version retry verifies the
+existing release and uses the checkpoint's channel and manifest pin. This keeps
+another build's local channel selection intact. A retry requires version files
+that still agree on the previous stable release. If interruption occurred before
+the first checkpoint or during local promotion, reconcile the release and
+production files against the report and Git before retrying.
+
+Before recovering a lock, confirm that the interrupted command and its child
+processes, including Wrangler, have exited. For a local owner record, run
+`node scripts/cdn/recover-lock.mjs publish` for the publisher or
+`node scripts/cdn/recover-lock.mjs channel` for a channel update. Recovery
+checks the recorded host and PID and preserves locks with an active or
+unverifiable owner. For an empty legacy lock or an interrupted recovery marker,
+verify that all cooperating commands have stopped before removing the exact
+stale entry. The paths are `reports/publish.lock` and
+`cdn/channels/canary.json.lock` with a `.recovery` suffix on the markers.
 
 Generated publishing, origin and deployment receipts remain local and ignored.
 Only the de-identified browser-QA and quality summaries required by the current
