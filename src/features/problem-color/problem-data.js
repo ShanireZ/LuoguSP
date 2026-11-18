@@ -1,6 +1,6 @@
 import { isScopedProblemUrl, PID_PATTERN } from "./identity.js";
 import { collectDifficultyBatches } from "./lentille-harvest.js";
-import { DIFFICULTY_TIERS } from "../../core/luogu-difficulty.js";
+import { validDifficulty } from "./native-difficulty-source.js";
 
 export const LENTILLE_INIT = Object.freeze({
   headers: Object.freeze({ "x-lentille-request": "content-only" }),
@@ -9,9 +9,7 @@ export const LENTILLE_INIT = Object.freeze({
 function project(problem) {
   const result = {};
   if (typeof problem.name === "string" && problem.name.trim()) result.name = problem.name;
-  if (Number.isInteger(problem.difficulty) && problem.difficulty >= 0 &&
-      problem.difficulty < DIFFICULTY_TIERS)
-    result.difficulty = problem.difficulty;
+  if (validDifficulty(problem.difficulty)) result.difficulty = problem.difficulty;
   for (const field of ["totalAccepted", "totalSubmit", "score"])
     if (Number.isFinite(problem[field])) result[field] = problem[field];
   for (const field of ["submitted", "accepted"])
@@ -52,6 +50,14 @@ function parsePage(text) {
   }
 }
 
+// Only native observations have a request sequence. Other ties keep their
+// existing precedence, including a summary over a detail.
+const isLater = (previous, next) => previous && (previous.at > next.at ||
+  (previous.at === next.at && previous.order > next.order));
+
+const problemPath = (pid) => `/problem/${pid}`;
+const matchesProblem = (url, pid) => url.pathname.replace(/\/$/, "") === problemPath(pid);
+
 export function createProblemData({
   origin, text, refresh = () => {}, legacyViewer = () => 0,
   now = () => Date.now(), ttlMs = 5 * 60 * 1000,
@@ -61,6 +67,7 @@ export function createProblemData({
   const recordLists = new Map();
   const difficultyListeners = new Set();
   let observedViewer;
+  let viewerGeneration = 0;
   let viewerAt = -Infinity;
   const isFresh = (at, currentTime) => currentTime - at < ttlMs;
 
@@ -73,14 +80,14 @@ export function createProblemData({
     return { viewer, params };
   };
   const viewer = () => observedViewer ?? legacyViewer();
-  const keyOf = (pid, context) => `${context.viewer}:${context.params ?? ""}:${pid}`;
+  const keyOf = (pid, context) => `${viewerGeneration}:${context.viewer}:${context.params ?? ""}:${pid}`;
   const contextFor = (pid, href) => {
     if (!href) return { viewer: viewer() };
     let url;
     try {
       url = new URL(href, origin);
     } catch { return null; }
-    if (url.origin !== origin || url.pathname.replace(/\/$/, "") !== `/problem/${pid}`)
+    if (url.origin !== origin || !matchesProblem(url, pid))
       return null;
     return scope(url, viewer());
   };
@@ -92,8 +99,7 @@ export function createProblemData({
     const currentTime = now();
     const detail = freshDifficulty(details, key, currentTime);
     const summary = freshDifficulty(summaries, key, currentTime);
-    // As in payload(), a summary wins a tie with a detail.
-    return summary && (!detail || summary.at >= detail.at) ? summary : detail;
+    return summary && !isLater(detail, summary) ? summary : detail;
   };
   const peekDifficulty = (pid, href) => {
     const context = contextFor(pid, href);
@@ -127,16 +133,16 @@ export function createProblemData({
     map.delete(key);
     return null;
   };
-  const rememberFields = (map, key, values, at, limit, pid) => {
+  const rememberFields = (map, key, values, stamp, limit, pid) => {
     const currentTime = now();
-    if (!isFresh(at, currentTime)) return;
+    if (!isFresh(stamp.at, currentTime)) return;
     const before = pid && selectedDifficulty(key);
     const fields = readFields(map, key, currentTime) ?? new Map();
     let changed = false;
     // An older response can fill an omission without renewing other fields.
     for (const [field, value] of Object.entries(values)) {
-      if ((fields.get(field)?.at ?? -Infinity) > at) continue;
-      fields.set(field, { value, at });
+      if (isLater(fields.get(field), stamp)) continue;
+      fields.set(field, { ...stamp, value });
       changed = true;
     }
     if (changed) {
@@ -147,16 +153,17 @@ export function createProblemData({
       }
     }
   };
-  const rememberDetail = (data, pid, context, at, notify) => {
+  const rememberDetail = (data, pid, context, stamp, notify) => {
     if (!data.problem || typeof data.problem !== "object" || Array.isArray(data.problem)) return;
     const values = project(data.problem);
     if (!Object.keys(values).length) return;
     if (typeof data.bookmarked === "boolean") values.bookmarked = data.bookmarked;
-    rememberFields(details, keyOf(pid, context), values, at, 120, notify && pid);
+    rememberFields(details, keyOf(pid, context), values, stamp, 120, notify && pid);
   };
-  const rememberPage = (page, url, at) => {
+  const rememberPage = (page, url, at, order) => {
     if (page.viewer !== undefined && at >= viewerAt) {
       if (observedViewer !== page.viewer) {
+        viewerGeneration++;
         summaries.clear();
         details.clear();
         recordLists.clear();
@@ -184,17 +191,18 @@ export function createProblemData({
       }
     }
     const scoped = isScopedProblemUrl(url);
+    const stamp = { at, order };
     const detail = page.data.problem;
-    const hasDetail = detail?.pid && url.pathname.replace(/\/$/, "") === `/problem/${detail.pid}` &&
+    const hasDetail = detail?.pid && matchesProblem(url, detail.pid) &&
         PID_PATTERN.test(detail.pid);
     for (const batch of collectDifficultyBatches(page.data)) {
       for (const problem of batch.problems()) {
         if (hasDetail && problem === detail) continue;
         if (typeof problem?.pid !== "string" || !PID_PATTERN.test(problem.pid)) continue;
-        rememberFields(summaries, keyOf(problem.pid, context), project(problem), at, 4000, scoped && problem.pid);
+        rememberFields(summaries, keyOf(problem.pid, context), project(problem), stamp, 4000, scoped && problem.pid);
       }
     }
-    if (hasDetail) rememberDetail(page.data, detail.pid, context, at, scoped);
+    if (hasDetail) rememberDetail(page.data, detail.pid, context, stamp, scoped);
     return context.viewer;
   };
   const payload = (pid, key, currentTime = now(), detail = readFields(details, key, currentTime)) => {
@@ -203,10 +211,10 @@ export function createProblemData({
     const values = {};
     let difficultyAt = detail?.get("difficulty")?.at;
     for (const [field, { value }] of detail ?? []) values[field] = value;
-    for (const [field, { value, at }] of summary ?? []) {
-      if (at >= (detail?.get(field)?.at ?? -Infinity)) {
-        values[field] = value;
-        if (field === "difficulty") difficultyAt = at;
+    for (const [field, observation] of summary ?? []) {
+      if (!isLater(detail?.get(field), observation)) {
+        values[field] = observation.value;
+        if (field === "difficulty") difficultyAt = observation.at;
       }
     }
     const { "limits.time": time, "limits.memory": memory, bookmarked, ...fields } = values;
@@ -234,24 +242,25 @@ export function createProblemData({
       : field === "pid" || (field !== "bookmarked" && detail.has(field))))
       return payload(pid, key, at, detail);
 
-    const path = `/problem/${encodeURIComponent(pid)}`;
     const query = new URLSearchParams(context.params);
     query.set("_contentOnly", "1");
+    const generation = viewerGeneration;
+    const cancelled = () => signal?.aborted || generation !== viewerGeneration || viewer() !== context.viewer;
     try {
-      const reply = await text(`${path}?${query}`, {
+      const reply = await text(`${problemPath(pid)}?${query}`, {
         key, signal, onResponse: (startedAt) => { at = startedAt; },
       });
-      if (signal?.aborted || viewer() !== context.viewer) return null;
+      if (cancelled()) return null;
       const page = parsePage(reply);
       if (page?.user === null && context.viewer !== 0) return null;
       if (page?.user?.uid != null && Number(page.user.uid) !== context.viewer) return null;
       const data = page?.data ?? page?.currentData;
       const problem = data?.problem;
       if (problem && (problem.pid === undefined || problem.pid === pid))
-        rememberDetail(data, pid, context, at, true);
+        rememberDetail(data, pid, context, { at }, true);
       return payload(pid, key);
     } catch (error) {
-      if (signal?.aborted || [401, 403, 404].includes(error?.status)) return null;
+      if (cancelled() || [401, 403, 404].includes(error?.status)) return null;
       throw error;
     }
   };

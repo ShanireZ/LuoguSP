@@ -355,6 +355,33 @@ test("contest, language and account contexts cannot reuse another context's deta
   assert.equal(new Set(calls.map(({ key }) => key)).size, 3);
 });
 
+test("returning to a viewer starts a fresh detail without joining their earlier request", async (t) => {
+  const { pid } = problem;
+  const clock = new FakeClock();
+  const earlier = deferred();
+  const calls = [];
+  const reply = (difficulty) => textResponse(JSON.stringify({ user: { uid: 42 }, data: {
+    problem: { ...problem, difficulty },
+  } }));
+  const scheduler = createGetRequestScheduler({
+    clock: clock.adapter(), launchGap: 0,
+    fetch: (path) => calls.push(path) === 1 ? earlier.promise : reply(4),
+  });
+  t.after(() => scheduler.dispose());
+  const data = createProblemData({ origin, text: scheduler.text, now: clock.adapter().now });
+  const observe = (viewer) => data.rememberPage({ viewer, data: {} }, url("/problem/list"), clock.nowMs);
+  observe(42);
+  const previous = data.load(pid, { fields: ["difficulty"] });
+  observe(43);
+  observe(42);
+  const current = data.load(pid, { fields: ["difficulty"] });
+  earlier.resolve(reply(2));
+  assert.equal(await previous, null);
+  assert.equal((await current).data.problem.difficulty, 4);
+  assert.equal(data.peekDifficulty(pid).difficulty, 4);
+  assert.deepEqual(calls, Array(2).fill(`/problem/${pid}?_contentOnly=1`));
+});
+
 test("hover card publishes a native preview before the Lentille detail and record responses", async () => {
   const detail = deferred();
   const record = deferred();

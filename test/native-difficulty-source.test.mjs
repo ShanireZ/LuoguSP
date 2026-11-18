@@ -45,7 +45,7 @@ function fixture({
   const request = (url, method = "GET") => {
     const xhr = new XHR(); xhr.open(method, url); xhr.send(); return xhr;
   };
-  return { source, seen, stop, harvest, request, document: dom.window.document,
+  return { source, data, seen, stop, harvest, request, document: dom.window.document,
     XHR, originalOpen, tick: () => now++ };
 }
 
@@ -156,6 +156,35 @@ test("navigation collects detail/training/practice snapshots and rejects older r
   fx.stop();
   pending.reply({ data: { problem: { pid: "P1003", difficulty: 2 } } });
   assert.equal(fx.seen.length, 2);
+});
+
+test("same-millisecond native details keep newer fields and accept older omissions", () => {
+  const user = { uid: 42 };
+  const href = "/problem/P1001?contestId=123&lang=en";
+  const fx = fixture({ path: href, page: { user, data: { problem: { pid: "P1001", difficulty: 1 } } } });
+  fx.harvest();
+  const changed = [];
+  fx.data.subscribeDifficulty((pid) => changed.push(fx.data.peekDifficulty(pid, href).difficulty));
+  const older = fx.request(href);
+  fx.request(href).reply({ user, data: { problem: { pid: "P1001", difficulty: 4 } } });
+  older.reply({ user, data: { problem: { pid: "P1001", difficulty: 2, samples: [["1", "2"]] } } });
+  assert.deepEqual(changed, [4]);
+  assert.deepEqual(fx.data.peek("P1001", { href }).data.problem,
+    { pid: "P1001", difficulty: 4, samples: [["1", "2"]] });
+  fx.stop();
+});
+
+test("native detail and summary use request order to break same-time ties", () => {
+  const user = { uid: 42 };
+  const href = "/problem/P1001?contestId=123&lang=en";
+  const fx = fixture({ path: href, page: { user, data: { problem: { pid: "P1001", difficulty: 1 } } } });
+  fx.harvest();
+  const older = fx.request("/problem/list?contestId=123&lang=en");
+  fx.request(href).reply({ user, data: { problem: { pid: "P1001", difficulty: 4 } } });
+  older.reply({ user, data: { problems: [{ pid: "P1001", difficulty: 2, totalAccepted: 12 }] } });
+  assert.equal(fx.data.peekDifficulty("P1001", href).difficulty, 4);
+  assert.deepEqual(fx.data.peek("P1001", { href }).data.problem, { pid: "P1001", difficulty: 4, totalAccepted: 12 });
+  fx.stop();
 });
 
 test("native navigation reuses problem recommendations with valid difficulty fields", () => {

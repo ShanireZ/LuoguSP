@@ -542,6 +542,63 @@ test("a displayed user preview releases native ownership when disabled or dispos
   }
 });
 
+for (const [visibility, actionTop, expectedScroll] of [
+  ["fully visible", 80, 20],
+  ["clipped below the scrollport", 105, 35],
+  ["clipped above the scrollport", 3, 13],
+]) {
+  test(`a record update keeps focus inside the card when the action is ${visibility}`, async (t) => {
+    const dom = new JSDOM(
+      '<script id="lentille-context" type="application/json">{"user":{"uid":42}}</script>' +
+      '<a href="/problem/P1000">Problem</a>',
+      { url: origin },
+    );
+    const { document, location } = dom.window;
+    const saved = { document: globalThis.document, window: globalThis.window, location: globalThis.location };
+    Object.assign(globalThis, { document, window: dom.window, location });
+    const record = Promise.withResolvers();
+    const user = { uid: 42 };
+    const problem = { pid: "P1000", name: "Preview" };
+    const feature = createHoverCardFeature({
+      anchors: { resolveHoverTarget, readViewerUid, readCsrfToken },
+      fetchPage: async (url) => ({
+        ok: true, status: 200, redirected: false, url,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => new URL(url).pathname === "/record/list"
+          ? record.promise : { user, data: { problem } },
+      }),
+    });
+    let unmount;
+    try {
+      unmount = feature.mount({ replayFocus: document.querySelector("a") });
+      await settle();
+      const preview = document.getElementById("luogusp-hover-card");
+      const action = preview.querySelector(".luogusp-hc-actions a");
+      Object.defineProperty(preview, "clientHeight", { value: 100 });
+      t.mock.method(preview, "getBoundingClientRect", () => ({ top: 10 }));
+      t.mock.method(action, "getBoundingClientRect", () => {
+        const hasRecord = preview.textContent.includes("上次尝试");
+        const top = (hasRecord ? actionTop : 70) - (preview.scrollTop - 20);
+        return { top, bottom: top + 20 };
+      });
+      action.focus();
+      preview.scrollTop = 20;
+
+      record.resolve({ template: "record.list", user, data: { records: { result: [
+        { user, problem, id: 77, submitTime: 1700000000 },
+      ] } } });
+      await settle();
+      assert.match(preview.textContent, /上次尝试/);
+      assert.equal(document.activeElement, action);
+      assert.equal(preview.scrollTop, expectedScroll);
+    } finally {
+      unmount?.();
+      Object.assign(globalThis, saved);
+      dom.window.close();
+    }
+  });
+}
+
 // ★ 卡片永遠不許出視口：高度由 placeCard 釘 max-height，內容再長也只在卡內滾。
 test("卡片自身可滚，且高度由定位函数钉住", () => {
   const style = read("src/features/hover-card/style.js");

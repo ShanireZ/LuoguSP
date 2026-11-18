@@ -145,7 +145,9 @@ const nodeOptions = (args) => {
       break;
     }
     const equals = arg.indexOf("=");
-    const flag = equals === -1 ? arg : arg.slice(0, equals);
+    const name = equals === -1 ? arg : arg.slice(0, equals);
+    // Node treats underscores as hyphens in long option names only.
+    const flag = name.startsWith("--") ? name.replaceAll("_", "-") : name;
     if (nodeValueFlags.has(flag)) {
       const value = equals === -1 ? args[++index] : arg.slice(equals + 1);
       if (!value) continue;
@@ -153,10 +155,11 @@ const nodeOptions = (args) => {
       if (flag === "--import") preloads.push(["import", value]);
       if (flag === "--require" || flag === "-r") preloads.push(["require", value]);
     }
-    if (arg === "--no-addons") addons = false;
-    if (arg === "--no-require-module" || arg === "--no-experimental-require-module")
+    if (equals !== -1) continue;
+    if (flag === "--no-addons") addons = false;
+    if (flag === "--no-require-module" || flag === "--no-experimental-require-module")
       requireModule = false;
-    if (arg === "--require-module" || arg === "--experimental-require-module") requireModule = true;
+    if (flag === "--require-module" || flag === "--experimental-require-module") requireModule = true;
   }
   if (addons) conditions.add("node-addons");
   if (requireModule) conditions.add("module-sync");
@@ -214,7 +217,8 @@ function localCreateRequirePaths(path, source) {
       if (match) factories.add(RegExp.escape(match[1] ?? "createRequire"));
     }
   };
-  for (const [, bindings, specifier] of code.matchAll(new RegExp(`\\bimport\\s*\\{([^}]+)\\}\\s*from\\s*${stringToken}`, "gu"))) {
+  const namedImport = `\\bimport(?:\\s+${identifier}\\s*,)?\\s*\\{([^}]+)\\}\\s*from\\s*${stringToken}`;
+  for (const [, bindings, specifier] of code.matchAll(new RegExp(namedImport, "gu"))) {
     if (isModuleName(specifier)) namedFactories(bindings, "as");
   }
   for (const [, bindings, specifier] of code.matchAll(new RegExp(`\\bconst\\s*\\{([^}]+)\\}\\s*=\\s*require\\s*\\(\\s*${stringToken}\\s*\\)`, "gu"))) {

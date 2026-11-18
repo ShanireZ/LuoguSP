@@ -139,7 +139,7 @@ export function createHoverCardFeature(config) {
       }
     };
 
-    const position = (revealFocus) => {
+    const position = (revealProblemAction) => {
       const anchor = shown?.anchor;
       if (!anchor || card.hidden) return;
       const placement = placeCard(
@@ -159,8 +159,20 @@ export function createHoverCardFeature(config) {
       );
       // 載入態記住這一邊；內容一完成實作就交還自由。
       openSide = loading ? placement.below : null;
-      card.querySelector(revealFocus === true ? ":focus" : ".luogusp-hc-expand:focus")
-        ?.scrollIntoView({ block: "nearest", behavior: "instant" });
+      if (revealProblemAction !== true) {
+        card.querySelector(".luogusp-hc-expand:focus")
+          ?.scrollIntoView({ block: "nearest", behavior: "instant" });
+        return;
+      }
+      const action = card.querySelector(".luogusp-hc-actions :focus");
+      if (!action) return;
+      const top = card.getBoundingClientRect().top + card.clientTop;
+      const rect = action.getBoundingClientRect();
+      const above = top - rect.top;
+      const below = rect.bottom - (top + card.clientHeight);
+      // The scrollport metrics round to CSS pixels. Keep the offset within that tolerance.
+      if (above > 1) card.scrollTop -= above;
+      else if (below > 1) card.scrollTop += below;
     };
 
     const signatureObserver = typeof window.ResizeObserver === "function"
@@ -198,7 +210,6 @@ export function createHoverCardFeature(config) {
         const fadeField = previous && busy === undefined && allowMotion?.matches ? fadeLateField : undefined;
         const tagsExpanded = !!card.querySelector(".luogusp-hc-taglist:not([hidden])");
         const scrollTop = card.scrollTop;
-        const active = document.activeElement;
         if (!model) {
           card.replaceChildren(
             Object.assign(document.createElement("div"), {
@@ -232,7 +243,7 @@ export function createHoverCardFeature(config) {
         }
         watchSignature();
         card.scrollTop = scrollTop;
-        position(model?.kind === "problem" && active !== document.activeElement);
+        position(model?.kind === "problem");
       };
       if (target.kind === "problem") {
         const model = await sources.problem(target.pid, viewer, signal, {
@@ -388,27 +399,25 @@ export function createHoverCardFeature(config) {
     //    所以薄殼把「指針當時在哪」交過來，這裡自己解析一次並**立刻打開**。
     //    ★ 不用補發合成事件：跨 realm 造事件脆，而且合成事件仍要再等 300ms 停留，
     //      體感還是「第一次懸停不彈」。
-    document.addEventListener("mouseover", onOver, true);
-    document.addEventListener("mouseout", onOut, true);
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", position);
-    visualViewport?.addEventListener("resize", position);
-    visualViewport?.addEventListener("scroll", position);
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("focusin", onFocusIn);
-    card.addEventListener("focusout", onFocusOut);
+    const listeners = [
+      [document, "mouseover", onOver, true],
+      [document, "mouseout", onOut, true],
+      [window, "scroll", onScroll, true],
+      [window, "resize", position],
+      [visualViewport, "resize", position],
+      [visualViewport, "scroll", position],
+      [document, "keydown", onKey],
+      [document, "focusin", onFocusIn],
+      [card, "focusout", onFocusOut],
+    ];
+    for (const [target, type, listener, capture] of listeners)
+      target?.addEventListener(type, listener, capture);
 
     const dispose = () => {
       intent.dismiss();
       dismissUserPreview = null;
-      document.removeEventListener("mouseover", onOver, true);
-      document.removeEventListener("mouseout", onOut, true);
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", position);
-      visualViewport?.removeEventListener("resize", position);
-      visualViewport?.removeEventListener("scroll", position);
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("focusin", onFocusIn);
+      for (const [target, type, listener, capture] of listeners)
+        target?.removeEventListener(type, listener, capture);
       restoreNativeTitles();
       card.remove();
     };

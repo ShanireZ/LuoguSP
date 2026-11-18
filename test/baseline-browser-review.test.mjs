@@ -247,6 +247,52 @@ function runFixtureBuild(fixture, args) {
   assert.match(result.stdout, /fixture\(\)/u);
 }
 
+function checkSharedFixtureBuild(fixture, run, args, builder) {
+  const execution = join(fixture, "fixture-build-executed");
+  writeFileSync(builder, [
+    'import { writeFileSync } from "node:fs";',
+    'writeFileSync("fixture-build-executed", "");',
+    sharedBuild,
+  ].join("\n"));
+  runFixtureBuild(fixture, args);
+  assert.ok(existsSync(execution));
+  rmSync(execution);
+
+  const result = run();
+  assert.equal(existsSync(execution), false);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /2 个构建脚本/u);
+}
+
+for (const flags of [["--disable-warning", "DEP0005"], ["--disable_warning", "DEP0005"], ["--disable_warning=DEP0005"]]) {
+  test(`the actual guard finds an extensionless builder after ${flags.join(" ")}`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    const args = [...flags, "./browser/bundle"];
+    declareFixtureBuild(fixture, `node ${args.join(" ")}`);
+    mkdirSync(join(fixture, "browser"));
+    checkSharedFixtureBuild(fixture, run, args, join(fixture, "browser/bundle"));
+  });
+}
+
+for (const [form, declaration, factory] of [
+  ["named import", 'import { createRequire } from "node:module";', "createRequire"],
+  ["default and named imports", 'import Module, { createRequire } from "node:module";', "createRequire"],
+  ["default and aliased named imports", 'import Module, {\n  createRequire as requireFrom,\n} from "node:module";', "requireFrom"],
+]) {
+  test(`the actual guard finds a local createRequire builder with ${form}`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    const args = ["./browser/entry.mjs"];
+    declareFixtureBuild(fixture, `node ${args.join(" ")}`);
+    mkdirSync(join(fixture, "browser"));
+    writeFileSync(join(fixture, "browser/entry.mjs"), [
+      declaration,
+      `const load = ${factory}(import.meta.url);`,
+      'load("./builder.mjs");',
+    ].join("\n"));
+    checkSharedFixtureBuild(fixture, run, args, join(fixture, "browser/builder.mjs"));
+  });
+}
+
 for (const [name, command, args, builder, directory = "browser builds"] of [
   ["directory entry", 'node --no-warnings "./browser builds"', ["--no-warnings", "./browser builds"], "index.js"],
   ["omitted extension", 'node "./browser builds/bundle"', ["./browser builds/bundle"], "bundle.js"],

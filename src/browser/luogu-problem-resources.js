@@ -27,22 +27,22 @@ export function createBrowserProblemResources() {
     },
     clock,
   });
-  const userInfo = createNativeUserInfo({ origin, viewer: () => data.viewerUid() });
-  const native = createNativeDifficultySource({
-    document,
-    XMLHttpRequest: globalThis.XMLHttpRequest,
-    origin,
-    onPage: (page, url, at) => data.rememberPage(page, url, at),
-    prepareOtherGet: userInfo.prepare,
-  });
   const data = createProblemData({
     origin,
     text: scheduler.text,
-    refresh: native.harvest,
+    refresh: () => native.harvest(),
     legacyViewer: () => {
       const uid = Number(globalThis._feInjection?.currentUser?.uid);
       return Number.isSafeInteger(uid) && uid > 0 ? uid : 0;
     },
+  });
+  const userInfo = createNativeUserInfo({ origin, viewer: data.viewerUid });
+  const native = createNativeDifficultySource({
+    document,
+    XMLHttpRequest: globalThis.XMLHttpRequest,
+    origin,
+    onPage: data.rememberPage,
+    prepareOtherGet: userInfo.prepare,
   });
   let stop;
   const observer = Object.freeze({

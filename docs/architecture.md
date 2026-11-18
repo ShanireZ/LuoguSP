@@ -53,20 +53,24 @@ resolved from the document base with the fragment removed and leave native
 events intact.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. Each observed field expires on its own
-and a partial response refreshes only the fields it contains. Shared detail
+and a partial response refreshes only the fields it contains. Native observations
+with the same timestamp use request order for each field. Shared detail
 responses use the start time of the successful transport attempt. Problem ID
 coloring compares the selected difficulty's observation time with the local
 native observation. A native response, preview or IDE detail can refresh
-eligible IDs for the same problem and scope. A viewer change discards the
-previous viewer's harvested and queried colors. IDs without current data lose
-the old LuoguSP paint and use the existing fallback. Newer summary fields stay
-visible when a subsequent detail omits them. A caller can retry for fields it
-still needs. An explicit empty sample list is cached as a result.
+eligible IDs for the same problem and scope. Each observed viewer change discards
+harvested and queried colors and invalidates pending detail results from the
+previous viewer context. Returning to the same account starts a new context.
+IDs without current data lose the old LuoguSP paint and use the existing fallback.
+Newer summary fields stay visible when a subsequent detail omits them. A caller
+can retry for fields it still needs. An explicit empty sample list is cached as a
+result.
 A problem card displays
 available fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. If a detail removes a
-focused tag disclosure, focus moves to the problem link and scrolls it into
-view within the card. Temporary lookup
+focused tag disclosure, focus moves to the problem link. When a data update clips
+the focused action, the card scrolls just enough to reveal it, while document
+scroll stays in place. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
 failures. A successful empty record list uses the normal cache lifetime.
 New or updated data fields can fade in over 125 ms. The initial preview and
@@ -181,9 +185,11 @@ and provide a separate image link. The lightweight renderer uses the shared
 inline link grammar for destinations and titles, including balanced parentheses,
 path-relative destinations, fragments and document reference definitions.
 Definitions in quotes and lists can supply destinations without appearing in
-the output. Lite preserves continued and loose list items, ordered-list start
-numbers, and nested list and quote structure. It parses inline content within
-each block and keeps the literal text of code spans and fenced code. It reads
+the output. Lite preserves authored empty, continued and loose list items,
+ordered-list numbering, and nested list and quote structure. Full and Lite
+recognize complete display math blocks before separating Markdown paragraphs and
+lists. Lite parses inline content within each block and keeps the literal text
+of code spans and fenced code. It reads
 escaped attributes once and applies its HTTP(S) URL policy to Markdown links
 and supported raw HTML anchors. In both modes, line
 breaks in a supported closing anchor tag leave following text outside the

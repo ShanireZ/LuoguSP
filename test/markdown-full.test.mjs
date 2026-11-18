@@ -362,6 +362,26 @@ test("Lite preserves continued and loose lists with a hidden final definition", 
   assert.doesNotMatch(root.textContent, /\[(?:go|local)\]:|\.\/(?:album|other)/);
 });
 
+test("Lite preserves empty list items and hides definition-only items", (t) => {
+  const { dom, renderer } = createRenderer();
+  t.after(() => dom.window.close());
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown([
+    "[Book][go]",
+    '7. Step one\n8.\n9. Step three\n10. [go]: ./album "Title"\n11. [go]: ./duplicate',
+    "> - First bullet\n> -\n> - Third bullet",
+  ].join("\n\n"), { forceFullFailure: true }).html;
+  assert.equal(root.querySelector("ol")?.start, 7);
+  assert.deepEqual([...root.querySelectorAll("ol > li")].map((item) => item.textContent),
+    ["Step one", "", "Step three"]);
+  assert.deepEqual([...root.querySelectorAll("blockquote > ul > li")].map((item) => item.textContent),
+    ["First bullet", "", "Third bullet"]);
+  const link = root.querySelector("a");
+  assert.equal(link.getAttribute("href"), "./album");
+  assert.equal(link.title, "Title");
+  assert.doesNotMatch(root.textContent, /\[go\]:|\.\/(?:album|duplicate)/);
+});
+
 test("Lite preserves a list with a fence and a nested quote inside a quote", (t) => {
   const { dom, renderer } = createRenderer();
   t.after(() => dom.window.close());
@@ -517,6 +537,34 @@ for (const forceFullFailure of [false, true]) {
     assert.equal(root.querySelector("a")?.getAttribute("title"), "$title$");
     assert.equal(root.querySelectorAll(".katex").length, 3);
     assert.equal(root.querySelectorAll(".katex-display").length, 2);
+  });
+
+  test(`display math keeps blank lines and negative terms together in ${mode} rendering`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const fence = "$$\n- c\n$$";
+    const source = [
+      "$$\na +\n\nb\n$$",
+      "$$\n- x\n$$",
+      "> $$\n> - y\n> $$",
+      "- $$\n  - z\n  $$",
+      "$$\nx^2\n$$",
+      `~~~text\n${fence}\n~~~`,
+      '`$$literal$$` and [Link](./$path$ "$title$").',
+    ].join("\n\n");
+    const result = renderer.renderMarkdown(source, { forceFullFailure });
+    assert.equal(result.mode, mode);
+    root.innerHTML = result.html;
+    assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map((node) => node.textContent),
+      ["a+b", "−x", "−y", "−z", "x2"]);
+    assert.equal(root.querySelectorAll("ul").length, 1);
+    assert.equal(root.querySelector("blockquote .katex-display .katex-html")?.textContent, "−y");
+    assert.equal(root.querySelector("ul > li .katex-display .katex-html")?.textContent, "−z");
+    assert.equal(root.querySelector("pre > code")?.textContent.trimEnd(), fence);
+    assert.equal(root.querySelector("p > code")?.textContent, "$$literal$$");
+    assert.deepEqual([root.querySelector("a")?.getAttribute("href"), root.querySelector("a")?.title],
+      ["./$path$", "$title$"]);
   });
 
   test("math past the size and count limits stays as text in " + mode + " rendering", () => {

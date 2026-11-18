@@ -82,7 +82,7 @@ export function createNativeDifficultySource({
     // its request, and keep unlabeled replies issued before an account switch out.
     if (order < viewerStart || (page.viewer !== undefined && page.viewer !== viewer && order < viewerOrder))
       return false;
-    const next = onPage(page, url, at);
+    const next = onPage(page, url, at, order);
     if (next === undefined) return false;
     if (page.viewer !== undefined && order > viewerOrder) viewerOrder = order;
     if (next !== viewer) {

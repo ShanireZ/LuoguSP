@@ -59,6 +59,12 @@ function htmlBlockEnd(source, end, tagRule) {
   return end;
 }
 
+export function tokenizeDisplayMath(source) {
+  const match = /^ {0,3}\$\$[ \t]*\n((?:(?! {0,3}(?:```|~~~))[^\n]*\n)*?) {0,3}\$\$[ \t]*(?:\n|$)/.exec(source);
+  if (match)
+    return { type: "math", raw: match[0], text: match[1], displayMode: true };
+}
+
 export class IntroTokenizer extends Tokenizer {
   html(source) {
     const token = super.html(source);

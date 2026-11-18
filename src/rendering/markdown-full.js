@@ -1,4 +1,4 @@
-import { IntroTokenizer } from "./intro-tokenizer.js";
+import { IntroTokenizer, tokenizeDisplayMath } from "./intro-tokenizer.js";
 import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { renderMarkdownLite } from "./markdown-lite.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
@@ -31,12 +31,6 @@ function tokenizeInlineMath(source) {
     : /^\$((?:\\[^\n]|[^\\\n$])+?)\$(?!\$)/.exec(source);
   if (match)
     return { type: "math", raw: match[0], text: match[1], displayMode };
-}
-
-function tokenizeDisplayMath(source) {
-  const match = /^ {0,3}\$\$[ \t]*\n((?:(?! {0,3}(?:```|~~~))[^\n]*\n)*?) {0,3}\$\$[ \t]*(?:\n|$)/.exec(source);
-  if (match)
-    return { type: "math", raw: match[0], text: match[1], displayMode: true };
 }
 
 function escapeHtml(source) {
@@ -202,10 +196,7 @@ export function createMarkdownFullRenderer(dependencies) {
         try {
           const lite = renderMarkdownLite(markdown, {
             document,
-            katex: { renderToString(text, { displayMode }) {
-              const delimiter = displayMode ? "$$" : "$";
-              return hold(delimiter + text + delimiter, text, displayMode);
-            } },
+            renderMath: hold,
           });
           return { html: renderSafeHtml(lite, marker, math), mode: "lite", warnings: ["full-render-failed"] };
         } catch (error) {

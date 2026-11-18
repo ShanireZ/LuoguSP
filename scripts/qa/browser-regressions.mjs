@@ -619,6 +619,23 @@ test("Lite profile introduction keeps continued and loose numbered lists", async
   assert.doesNotMatch(await intro.textContent(), /\[(?:go|local)\]:|\.\/(?:album|other)/);
 });
 
+test("Lite profile introduction preserves empty numbered items and hides definitions", async (t) => {
+  const introduction = '[Book][go]\n\n7. Step one\n8.\n9. Step three\n10. [go]: ./album "Title"';
+  const { page } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  const link = intro.getByRole("link", { name: "Book", exact: true });
+  await link.waitFor();
+  assert.equal(await link.getAttribute("href"), "./album");
+  assert.equal(await link.getAttribute("title"), "Title");
+  assert.equal(await intro.locator("ol").evaluate((list) => list.start), 7);
+  assert.deepEqual(await intro.locator("ol > li").allTextContents(), ["Step one", "", "Step three"]);
+  assert.doesNotMatch(await intro.textContent(), /\[go\]:|\.\/album/);
+});
+
 test("Lite profile introduction keeps a list with a fence and a nested quote inside a quote", async (t) => {
   const introduction = "> - Item\n>   ~~~html\n>   <b>Literal</b>\n>   ~~~\n>\n> > Nested quote.";
   const { page } = await fixture(t, {
@@ -648,6 +665,31 @@ test("profile introduction preserves a Bash fence before display math", async (t
   assert.equal((await code.textContent()).trim(), 'echo "$$"');
   assert.equal(await intro.locator("pre code.language-bash.hljs").count(), 1);
   assert.equal(await intro.locator(".katex-display").count(), 1);
+});
+
+test("Lite profile introduction keeps blank lines and negative terms in display math", async (t) => {
+  const fence = "$$\n- c\n$$";
+  const introduction = [
+    "$$\na +\n\nb\n$$",
+    "$$\n- x\n$$",
+    "$$\nx^2\n$$",
+    `~~~text\n${fence}\n~~~`,
+    '`$$literal$$` and [Link](./$path$ "$title$").',
+  ].join("\n\n");
+  const { page } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  const link = intro.getByRole("link", { name: "Link", exact: true });
+  await link.waitFor();
+  assert.deepEqual(await intro.locator(".katex-display .katex-html").allTextContents(), ["a+b", "−x", "x2"]);
+  assert.equal(await intro.locator("ul, ol").count(), 0);
+  assert.equal((await intro.locator("pre > code").textContent()).trimEnd(), fence);
+  assert.equal(await intro.locator("p > code").textContent(), "$$literal$$");
+  assert.equal(await link.getAttribute("href"), "./$path$");
+  assert.equal(await link.getAttribute("title"), "$title$");
 });
 
 for (const query of ["", "?luogusp-qa=fallback-lite"]) {
@@ -2475,10 +2517,28 @@ test("problem preview renders native fields first and patches late records in pl
     label && duration === 125 && properties.join() === "opacity"));
 });
 
-for (const [focusTags, height] of [[true, 175], [true, 480], [false, 480]]) {
+function previewActionGeometry(link) {
+  return link.evaluate(node => {
+    const scrollport = node.closest("#luogusp-hover-card");
+    const top = scrollport.getBoundingClientRect().top + scrollport.clientTop;
+    const bottom = top + scrollport.clientHeight;
+    const rect = node.getBoundingClientRect();
+    return {
+      scrollTop: scrollport.scrollTop,
+      above: top - rect.top,
+      below: rect.bottom - bottom,
+    };
+  });
+}
+
+for (const [focusTags, height, lateRecord] of [
+  [true, 175, false], [true, 175, true], [true, 480, false], [true, 480, true], [false, 480, false],
+]) {
   test(`problem preview ${focusTags ? "restores focus when late detail removes its focused tags" :
-    "retains another focused action when late detail removes tags"} at ${height}px`, async (t) => {
+    "retains another focused action when late detail removes tags"} at ${height}px${lateRecord ? " with a later record" : ""}`, async (t) => {
     const detail = responseGate(t);
+    const record = responseGate(t);
+    const latest = { id: 78, problem: { pid: problem.pid }, user: viewer, submitTime: 1700000000, score: 100 };
     const warmup = { ...problem, pid: "P1001" };
     const initial = {
       ...problem,
@@ -2501,8 +2561,13 @@ for (const [focusTags, height] of [[true, 175], [true, 480], [false, 480]]) {
         }));
         if (url.pathname === "/_lfe/tags")
           return route.fulfill({ json: { tags: [{ id: 1, name: "Fixture tag" }] } });
-        if (url.pathname === "/record/list")
-          return route.fulfill({ json: { template: "record.list", user: viewer, data: { records: { result: [] } } } });
+        if (url.pathname === "/record/list") {
+          const isLateRecord = lateRecord && url.searchParams.get("pid") === problem.pid;
+          const respond = () => route.fulfill({
+            json: { template: "record.list", user: viewer, data: { records: { result: isLateRecord ? [latest] : [] } } },
+          });
+          return isLateRecord ? record.promise.then(respond) : respond();
+        }
       },
     });
     const preview = card(page);
@@ -2529,17 +2594,28 @@ for (const [focusTags, height] of [[true, 175], [true, 480], [false, 480]]) {
     const current = focusTags ? jump : best;
     assert.ok(await focused(current));
     if (focusTags) {
-      const fullyVisible = await current.evaluate(link => {
-        const scrollport = link.closest("#luogusp-hover-card");
-        const top = scrollport.getBoundingClientRect().top + scrollport.clientTop;
-        const rect = link.getBoundingClientRect();
-        return rect.top >= top - 1 && rect.bottom <= top + scrollport.clientHeight + 1;
-      });
-      assert.equal(fullyVisible, true);
+      const geometry = await previewActionGeometry(current);
+      assert.ok(Math.max(geometry.above, geometry.below) <= 1, JSON.stringify(geometry));
     } else {
       assert.equal(await preview.evaluate(node => node.scrollTop), scrollTop);
     }
     assert.deepEqual(await page.evaluate(() => [scrollX, scrollY]), documentScroll);
+
+    if (lateRecord) {
+      const beforeRecord = await previewActionGeometry(current);
+      record.release();
+      await preview.getByText("上次尝试", { exact: true }).waitFor();
+      const afterRecord = await previewActionGeometry(current);
+      assert.ok(Math.max(afterRecord.above, afterRecord.below) <= 1, JSON.stringify({ beforeRecord, afterRecord }));
+      if (height === 175) {
+        assert.ok(afterRecord.scrollTop > beforeRecord.scrollTop, JSON.stringify({ beforeRecord, afterRecord }));
+        assert.ok(Math.abs(afterRecord.below) <= 1, JSON.stringify(afterRecord));
+      } else {
+        assert.equal(afterRecord.scrollTop, beforeRecord.scrollTop);
+      }
+      assert.ok(await focused(current));
+      assert.deepEqual(await page.evaluate(() => [scrollX, scrollY]), documentScroll);
+    }
   });
 }
 
@@ -4748,6 +4824,42 @@ test("scoped native difficulty refreshes matching IDs without another detail loo
   ]);
 });
 
+test("same-millisecond scoped native details do not repaint an older difficulty", async (t) => {
+  const href = "/problem/P1000?contestId=123&lang=en";
+  const older = responseGate(t);
+  const { page, requests } = await fixture(t, {
+    path: href,
+    html: fixtureHtml(`<a href="${href}"><span class="pid">P1000</span></a>`, {
+      problem: { ...problem, difficulty: 1 },
+    }),
+    initScript: "Date.now = () => 1000;",
+    reply(route, url) {
+      if (url.pathname !== "/problem/P1000") return;
+      const reply = (difficulty) => route.fulfill({ json: { user: viewer, data: {
+        problem: { ...problem, difficulty },
+      } } });
+      return url.searchParams.get("source") === "older" ? older.promise.then(() => reply(2)) : reply(4);
+    },
+  });
+  const color = () => page.locator("main .pid").evaluate(node => node.style.color);
+  assert.equal(await color(), "rgb(254, 76, 97)");
+  const native = page.evaluate(async (path) => {
+    const request = (source) => new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", `${path}&source=${source}`);
+      xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+      xhr.send();
+    });
+    await Promise.all([request("older"), request("newer")]);
+  }, href);
+  const green = "rgb(82, 196, 26)";
+  await page.waitForFunction((color) => document.querySelector("main .pid").style.color === color, green);
+  older.release();
+  await native;
+  assert.equal(await color(), green);
+  assert.equal(requests.filter(({ path, type }) => path === "/problem/P1000" && type === "fetch").length, 0);
+});
+
 test("problem coloring resolves missing IDs after an observed viewer switch", async (t) => {
   const detail = responseGate(t);
   const link = '<a href="/problem/P1000"><span class="pid">P1000</span></a>';
@@ -4781,6 +4893,43 @@ test("problem coloring resolves missing IDs after an observed viewer switch", as
   assert.deepEqual(whilePending, ["", ""], "previous viewer colors do not linger during the new lookup");
   await page.waitForFunction(() => [...document.querySelectorAll("main .pid")].every(node => node.style.color === "rgb(82, 196, 26)"));
   assert.deepEqual(requests.filter(({ path }) => path === "/problem/P1000").map(({ query }) => query), ["?_contentOnly=1"]);
+});
+
+test("problem coloring refreshes after returning to a viewer with a pending detail", async (t) => {
+  const earlier = responseGate(t);
+  const link = '<a href="/problem/P1000"><span class="pid">P1000</span></a>';
+  let details = 0;
+  const { page } = await fixture(t, {
+    html: fixtureHtml(link),
+    reply(route, url) {
+      if (url.pathname === "/problem/list") {
+        const uid = Number(url.searchParams.get("fixture-viewer"));
+        return route.fulfill({ json: { user: { uid }, data: { problems: {
+          result: uid === 43 ? [{ ...problem, difficulty: 5 }] : [],
+        } } } });
+      }
+      if (url.pathname === "/problem/P1000") {
+        const reply = (difficulty) => route.fulfill({ json: { user: viewer, data: { problem: { ...problem, difficulty } } } });
+        return ++details === 1 ? earlier.promise.then(() => reply(2)) : reply(4);
+      }
+    },
+  });
+  const changeViewer = (uid) => page.evaluate((uid) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", `/problem/list?fixture-viewer=${uid}`);
+    xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+    xhr.send();
+  }), uid);
+  const style = () => page.locator("main .pid").evaluate(node => node.style.color);
+  assert.equal(await style(), "");
+  await t.waitFor(() => assert.equal(details, 1));
+  await changeViewer(43);
+  assert.notEqual(await style(), "");
+  await changeViewer(42);
+  earlier.release();
+  await page.waitForFunction(() => document.querySelector("main .pid").style.color !== "");
+  assert.equal(await style(), "rgb(82, 196, 26)");
+  assert.equal(details, 2);
 });
 
 test("academic record colors follow late and recycled status links", async (t) => {

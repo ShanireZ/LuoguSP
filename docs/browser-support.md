@@ -17,10 +17,12 @@ Safari. Build scripts import the shared function. The guard rejects direct
 esbuild commands and direct esbuild imports in `scripts/` and in the local
 module graphs of `package.json` commands. The static inspection covers literal
 Node file and directory entries, local preloads, and condition flags on the
-Node command line. The guard uses the running Node's option definitions to find
-the entry after any option values. The graph follows literal local file URLs
-and literal local paths loaded through a createRequire bound to the importing
-file. It resolves applicable import branches without executing the declared
+Node command line. The guard uses the running Node's option definitions and
+recognizes underscores in long option names when locating the entry after any
+option values. The graph follows literal local file URLs and literal local
+paths loaded through a createRequire bound to the importing file. It recognizes
+named createRequire imports and aliases that share a declaration with a default
+import. It resolves applicable import branches without executing the declared
 commands.
 
 The Baseline guard resolves the moving policy query and a dated query for the

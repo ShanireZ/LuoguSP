@@ -1,5 +1,5 @@
 import { Lexer } from "marked";
-import { IntroTokenizer } from "./intro-tokenizer.js";
+import { IntroTokenizer, tokenizeDisplayMath } from "./intro-tokenizer.js";
 import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
 
@@ -18,7 +18,7 @@ export function renderMarkdownLite(md, options = {}) {
       : "";
   };
   const katexRenderer = options.katex || null;
-  const renderTex = (formula, displayMode) => {
+  const renderTex = options.renderMath ?? ((_raw, formula, displayMode) => {
     if (!katexRenderer) return null;
     try {
       return katexRenderer.renderToString(formula, {
@@ -28,7 +28,7 @@ export function renderMarkdownLite(md, options = {}) {
     } catch (error) {
       return null;
     }
-  };
+  });
   const spans = [];
   const spanPrefix = createMarkerPrefix("@@LGB");
   const stash = (html) => `${spanPrefix}${spans.push(html) - 1}@@`;
@@ -87,7 +87,7 @@ export function renderMarkdownLite(md, options = {}) {
   const mathInText = (source) => source
     .replace(/(?<!\\)\$\$((?:\\[\s\S]|[^\\$]|\$(?!\$))+?)\$\$|(?<![\\$])\$((?:\\[^\n]|[^\\\n$])+?)\$(?!\$)/g,
       (match, display, formula) => {
-        const html = renderTex(display?.trim() ?? formula, display !== undefined);
+        const html = renderTex(match, display?.trim() ?? formula, display !== undefined);
         return html ? stash(html) : match;
       })
     .replace(/\\\$/g, "$");
@@ -139,7 +139,11 @@ export function renderMarkdownLite(md, options = {}) {
             .join("")}</tr>`,
       )
       .join("")}</tbody></table>`;
-  const lexer = new Lexer({ gfm: false, tokenizer: new IntroTokenizer() });
+  const lexer = new Lexer({
+    gfm: false,
+    tokenizer: new IntroTokenizer(),
+    extensions: { block: [tokenizeDisplayMath] },
+  });
   const blocks = lexer.lex(md);
   const markupLexer = new Lexer({ gfm: false });
   markupLexer.tokens.links = blocks.links;
@@ -152,17 +156,26 @@ export function renderMarkdownLite(md, options = {}) {
   const renderBlocks = (tokens, tight = false) => tokens.map((block) => {
     if (block.type === "space" || block.type === "def") return "";
     if (block.type === "code") return renderBlockCode(block.lang, block.text);
+    if (block.type === "math") {
+      const raw = block.raw.trimEnd();
+      return renderTex(raw, block.text.trim(), block.displayMode) ??
+        `<p>${esc(raw).replaceAll("\n", "<br>")}</p>`;
+    }
     if (block.type === "hr") return "<hr>";
     if (block.type === "blockquote") {
       const body = renderBlocks(block.tokens);
       return body ? `<blockquote>${body}</blockquote>` : "";
     }
     if (block.type === "list") {
-      const items = block.items.map((item) => renderBlocks(item.tokens, !block.loose)).filter(Boolean);
-      if (!items.length) return "";
+      const items = block.items.map((item) => {
+        const body = renderBlocks(item.tokens, !block.loose);
+        // A duplicate definition can have no tokens, but its source text is nonempty.
+        return body || !item.text.trim() ? `<li>${body}</li>` : "";
+      }).join("");
+      if (!items) return "";
       const tag = block.ordered ? "ol" : "ul";
       const start = block.ordered && block.start !== 1 ? ` start="${block.start}"` : "";
-      return `<${tag}${start}>${items.map((body) => `<li>${body}</li>`).join("")}</${tag}>`;
+      return `<${tag}${start}>${items}</${tag}>`;
     }
 
     const content = esc(mathInFragments(rewriteInlineTokens(block.tokens ?? readMarkup(block.text))));
