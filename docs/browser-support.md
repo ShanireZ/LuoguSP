@@ -16,14 +16,15 @@ The guard requires a frozen target for Chrome, Edge, Firefox, Safari and iOS
 Safari. Build scripts import the shared function. The guard rejects direct
 esbuild commands and direct esbuild imports in `scripts/` and in the local
 module graphs of `package.json` commands. The static inspection covers literal
-Node file and directory entries, local preloads, and condition flags on the
-Node command line. The guard uses the running Node's option definitions and
-recognizes underscores in long option names when locating the entry after any
-option values. The graph follows literal local file URLs and literal local
-paths loaded through a createRequire bound to the importing file. It recognizes
-named createRequire imports and aliases that share a declaration with a default
-import. It resolves applicable import branches without executing the declared
-commands.
+Node program file and directory entries, each explicitly named `node --test`
+file, and local preloads. The guard uses the running Node's option definitions
+and recognizes underscores in long option names when locating entries after
+option values. It follows Node's option polarity for bare and equals spellings
+of `addons`, `require-module`, and its legacy alias `experimental-require-module`.
+The graph follows literal local file URLs and literal local paths loaded
+through a `createRequire` bound to the importing file. It recognizes named
+aliases and default or namespace bindings in mixed imports. It resolves
+applicable import branches without executing the declared commands.
 
 The Baseline guard resolves the moving policy query and a dated query for the
 last day of the snapshot's calendar quarter. Both must fit the approved

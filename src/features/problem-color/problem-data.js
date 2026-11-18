@@ -50,10 +50,10 @@ function parsePage(text) {
   }
 }
 
-// Only native observations have a request sequence. Other ties keep their
-// existing precedence, including a summary over a detail.
-const isLater = (previous, next) => previous && (previous.at > next.at ||
-  (previous.at === next.at && previous.order > next.order));
+// Native observations can share a timestamp. Compare their request order,
+// giving them precedence over supplemental lookups started in the same tick.
+export const isLater = (previous, next) => previous && (previous.at > next.at ||
+  (previous.at === next.at && (previous.order ?? -1) > (next.order ?? -1)));
 
 const problemPath = (pid) => `/problem/${pid}`;
 const matchesProblem = (url, pid) => url.pathname.replace(/\/$/, "") === problemPath(pid);
@@ -106,7 +106,7 @@ export function createProblemData({
     if (!context) return null;
     const key = keyOf(pid, context);
     const observation = selectedDifficulty(key);
-    return { key, difficulty: observation?.value, at: observation?.at };
+    return { key, difficulty: observation?.value, at: observation?.at, order: observation?.order };
   };
   const subscribeDifficulty = (listener) => {
     difficultyListeners.add(listener);
@@ -162,7 +162,7 @@ export function createProblemData({
   };
   const rememberPage = (page, url, at, order) => {
     if (page.viewer !== undefined && at >= viewerAt) {
-      if (observedViewer !== page.viewer) {
+      if (viewer() !== page.viewer) {
         viewerGeneration++;
         summaries.clear();
         details.clear();

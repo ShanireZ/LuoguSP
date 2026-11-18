@@ -139,8 +139,9 @@ export function createHoverCardFeature(config) {
       }
     };
 
-    const position = (revealProblemAction) => {
-      const anchor = shown?.anchor;
+    const position = () => {
+      const target = shown;
+      const anchor = target?.anchor;
       if (!anchor || card.hidden) return;
       const placement = placeCard(
         card,
@@ -159,7 +160,7 @@ export function createHoverCardFeature(config) {
       );
       // 載入態記住這一邊；內容一完成實作就交還自由。
       openSide = loading ? placement.below : null;
-      if (revealProblemAction !== true) {
+      if (target.kind !== "problem") {
         card.querySelector(".luogusp-hc-expand:focus")
           ?.scrollIntoView({ block: "nearest", behavior: "instant" });
         return;
@@ -243,7 +244,7 @@ export function createHoverCardFeature(config) {
         }
         watchSignature();
         card.scrollTop = scrollTop;
-        position(model?.kind === "problem");
+        position();
       };
       if (target.kind === "problem") {
         const model = await sources.problem(target.pid, viewer, signal, {

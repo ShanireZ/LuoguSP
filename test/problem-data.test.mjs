@@ -10,6 +10,21 @@ const origin = "https://www.luogu.com.cn";
 const url = (path) => new URL(path, origin);
 const problem = { pid: "P1001", name: "A+B", difficulty: 1, samples: [["1 2", "3"]] };
 
+test("first explicit viewer confirmation keeps the legacy viewer's cache and pending detail", async () => {
+  const reply = deferred();
+  const data = createProblemData({ origin, text: () => reply.promise, legacyViewer: () => 42, now: () => 7 });
+  const training = url("/training/1");
+  data.rememberPage({ data: { training: { problems: [problem] } } }, training, 7);
+  const pending = data.load("P1002", { fields: ["difficulty"] });
+  const { key } = data.peekDifficulty(problem.pid);
+
+  data.rememberPage({ viewer: 42, data: {} }, url("/problem/P1003?lang=en"), 7);
+  reply.resolve(JSON.stringify({ user: { uid: 42 }, data: { problem: { pid: "P1002", difficulty: 4 } } }));
+
+  assert.equal((await pending)?.data.problem.difficulty, 4);
+  assert.deepEqual(data.peekDifficulty(problem.pid), { key, difficulty: 1, at: 7, order: undefined });
+});
+
 function browserProblemData(t, fetchPage) {
   const { document, location } = globalThis;
   globalThis.document = { URL: origin };

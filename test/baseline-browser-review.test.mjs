@@ -241,19 +241,25 @@ const directBuild = `import { build } from "esbuild";\n${buildCall}`;
 const sharedBuild = `import { buildBrowser } from "../baseline-targets.mjs";\n${buildCall.replace("build(", "buildBrowser(")}`;
 
 function runFixtureBuild(fixture, args) {
-  const result = spawnSync(process.execPath, args, { cwd: fixture, encoding: "utf8", timeout: 20_000 });
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, args, { cwd: fixture, encoding: "utf8", timeout: 20_000, env });
   assert.equal(result.error, undefined);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /fixture\(\)/u);
 }
 
-function checkSharedFixtureBuild(fixture, run, args, builder) {
-  const execution = join(fixture, "fixture-build-executed");
+function writeMarkedFixtureBuilder(fixture, builder) {
   writeFileSync(builder, [
     'import { writeFileSync } from "node:fs";',
     'writeFileSync("fixture-build-executed", "");',
     sharedBuild,
   ].join("\n"));
+  return join(fixture, "fixture-build-executed");
+}
+
+function checkSharedFixtureBuild(fixture, run, args, builder) {
+  const execution = writeMarkedFixtureBuilder(fixture, builder);
   runFixtureBuild(fixture, args);
   assert.ok(existsSync(execution));
   rmSync(execution);
@@ -276,8 +282,13 @@ for (const flags of [["--disable-warning", "DEP0005"], ["--disable_warning", "DE
 
 for (const [form, declaration, factory] of [
   ["named import", 'import { createRequire } from "node:module";', "createRequire"],
+  ["default import", 'import Module from "node:module";', "Module.createRequire"],
+  ["namespace import", 'import * as NodeModule from "node:module";', "NodeModule.createRequire"],
   ["default and named imports", 'import Module, { createRequire } from "node:module";', "createRequire"],
   ["default and aliased named imports", 'import Module, {\n  createRequire as requireFrom,\n} from "node:module";', "requireFrom"],
+  ["the default binding alongside a named import", 'import Module, { createRequire as requireFrom } from "node:module";', "Module.createRequire"],
+  ["the default binding alongside a namespace import", 'import Module, * as NodeModule from "module";', "Module.createRequire"],
+  ["the namespace binding alongside a default import", 'import Module, * as NodeModule from "node:module";', "NodeModule.createRequire"],
 ]) {
   test(`the actual guard finds a local createRequire builder with ${form}`, (t) => {
     const { fixture, run } = fixtureGuard(t);
@@ -290,6 +301,39 @@ for (const [form, declaration, factory] of [
       'load("./builder.mjs");',
     ].join("\n"));
     checkSharedFixtureBuild(fixture, run, args, join(fixture, "browser/builder.mjs"));
+  });
+}
+
+for (const [form, args] of [
+  ["first", ["--test", "./browser/bundle", "./browser/entry.mjs"]],
+  ["second", ["--test", "--test-reporter", "tap", "--", "./browser/entry.mjs", "./browser/bundle"]],
+]) {
+  test(`the actual guard checks an explicitly named extensionless test in the ${form} position`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    declareFixtureBuild(fixture, `node ${args.join(" ")}`);
+    mkdirSync(join(fixture, "browser"));
+    writeFileSync(join(fixture, "browser/entry.mjs"), "");
+    checkSharedFixtureBuild(fixture, run, args, join(fixture, "browser/bundle"));
+  });
+}
+
+for (const [form, args, builder] of [
+  ["an ordinary Node program argument", ["./browser/entry.mjs", "./browser/builder.mjs"], "builder.mjs"],
+  ["a missing test path with a same-stem file", ["--test", "./browser/builder", "./browser/entry.mjs"], "builder.js"],
+]) {
+  test(`the actual guard skips ${form} during Node entry discovery`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    declareFixtureBuild(fixture, `node ${args.join(" ")}`);
+    mkdirSync(join(fixture, "browser"));
+    writeFileSync(join(fixture, "browser/entry.mjs"), 'process.stdout.write("fixture()\\n");');
+    const execution = writeMarkedFixtureBuilder(fixture, join(fixture, "browser", builder));
+    runFixtureBuild(fixture, args);
+    assert.equal(existsSync(execution), false);
+
+    const result = run();
+    assert.equal(existsSync(execution), false);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /1 个构建脚本/u);
   });
 }
 
@@ -421,6 +465,34 @@ for (const [condition, flags, preload = false] of [
     const shared = run();
     assert.equal(shared.status, 0, shared.stderr);
     assert.doesNotMatch(shared.stdout, /fixture\(\)/u);
+  });
+}
+
+for (const [condition, flags] of [
+  ["default", ["--no-addons", "--no-require-module"]],
+  ["default", ["--no-addons=true", "--no-require-module=true"]],
+  ["default", ["--no_addons=false", "--no_require_module=false"]],
+  ["default", ["--no-addons", "--no-experimental-require-module=true"]],
+  ["default", ["--no-addons", "--no_experimental_require_module=false"]],
+  ["node-addons", ["--no-addons", "--addons"]],
+  ["node-addons", ["--no-addons", "--addons=true"]],
+  ["node-addons", ["--no-addons", "--addons=false"]],
+  ["module-sync", ["--no-addons", "--no-require-module", "--require_module=true"]],
+  ["module-sync", ["--no-addons", "--no-require-module", "--require-module=false"]],
+  ["module-sync", ["--no-addons", "--no-require-module", "--experimental-require-module=true"]],
+  ["module-sync", ["--no-addons", "--no-require-module", "--experimental_require_module=false"]],
+]) {
+  test(`the actual guard follows Node's ${condition} condition with ${flags.join(" ")}`, (t) => {
+    const { fixture, run } = fixtureGuard(t);
+    const args = [...flags, "./browser/entry.mjs"];
+    const imports = Object.fromEntries(["node-addons", "module-sync", "default"].map((branch) => [
+      branch, branch === condition ? "./browser/builder.mjs" : "./browser/empty.mjs",
+    ]));
+    declareFixtureBuild(fixture, `node ${args.join(" ")}`, { "#browser-builder": imports });
+    mkdirSync(join(fixture, "browser"));
+    writeFileSync(join(fixture, "browser/entry.mjs"), 'import "#browser-builder";');
+    writeFileSync(join(fixture, "browser/empty.mjs"), "");
+    checkSharedFixtureBuild(fixture, run, args, join(fixture, "browser/builder.mjs"));
   });
 }
 

@@ -41,7 +41,7 @@ function fixture({
   const seen = [];
   const originalOpen = XHR.prototype.open;
   const harvest = () => source.harvest().batches;
-  const stop = source.subscribe(() => seen.push(harvest().at(-1)));
+  const stop = source.subscribe(({ batch }) => seen.push(batch?.problems.length ? batch : harvest().at(-1)));
   const request = (url, method = "GET") => {
     const xhr = new XHR(); xhr.open(method, url); xhr.send(); return xhr;
   };
@@ -140,13 +140,14 @@ test("native user-info only stores eligible JSON for the original URL and viewer
   fx.stop();
 });
 
-test("navigation collects detail/training/practice snapshots and rejects older replies", () => {
+test("navigation collects detail/training/practice snapshots with their request order", () => {
   const fx = fixture();
   const old = fx.request("/problem/P1001");
   // Same-millisecond requests still have a deterministic order.
   fx.request("/training/100").reply({ data: { training: { problems: [{ pid: "P1001", difficulty: 2 }] } } }, { responseType: "json" });
   old.reply({ data: { problem: { pid: "P1001", difficulty: 1 } } });
-  assert.equal(fx.seen.length, 1);
+  assert.deepEqual(fx.seen.map(({ order }) => order), [2, 1]);
+  assert.equal(fx.data.peekDifficulty("P1001").difficulty, 2);
   fx.tick();
   fx.request("/user/1/practice").reply({ data: {
     submitted: [{ pid: "P1001", difficulty: 3 }], passed: [{ pid: "P1002", difficulty: 1 }],
@@ -155,7 +156,7 @@ test("navigation collects detail/training/practice snapshots and rejects older r
   const pending = fx.request("/problem/P1003");
   fx.stop();
   pending.reply({ data: { problem: { pid: "P1003", difficulty: 2 } } });
-  assert.equal(fx.seen.length, 2);
+  assert.equal(fx.seen.length, 3);
 });
 
 test("same-millisecond native details keep newer fields and accept older omissions", () => {
@@ -171,6 +172,21 @@ test("same-millisecond native details keep newer fields and accept older omissio
   assert.deepEqual(changed, [4]);
   assert.deepEqual(fx.data.peek("P1001", { href }).data.problem,
     { pid: "P1001", difficulty: 4, samples: [["1", "2"]] });
+  fx.stop();
+});
+
+test("a late native detail remains available after a list for another PID", () => {
+  const fx = fixture();
+  fx.harvest();
+  const older = fx.request("/problem/P1001");
+  fx.request("/problem/list").reply({ data: { problems: [{ pid: "P1002", difficulty: 2 }] } });
+  older.reply({ data: { problem: { pid: "P1001", difficulty: 4 } } });
+  assert.deepEqual(fx.seen.map(({ problems }) => problems), [
+    [{ pid: "P1002", difficulty: 2 }],
+    [{ pid: "P1001", difficulty: 4 }],
+  ]);
+  assert.equal(fx.data.peekDifficulty("P1001").difficulty, 4);
+  assert.equal(fx.harvest().at(-1).problems[0].pid, "P1002", "retain the newest batch for later mounts");
   fx.stop();
 });
 

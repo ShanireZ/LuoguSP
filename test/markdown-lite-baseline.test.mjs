@@ -24,38 +24,25 @@ function sourceFor(fixture) {
 
 test("MarkdownLite preserves the hidden-intro baseline and blocks active HTML", () => {
   const { document } = new JSDOM("<!doctype html>", { url: "https://www.luogu.com.cn/user/42" }).window;
-  const originalKatex = globalThis.katex;
-  globalThis.katex = {
-    renderToString(formula, { displayMode }) {
-      return `<span class="katex" data-display="${displayMode}">${formula}</span>`;
-    },
-  };
-
-  try {
-    for (const fixture of fixtures.cases) {
-      const html = renderMarkdownLite(sourceFor(fixture), {
-        document,
-        katex: globalThis.katex,
-      });
-      for (const expected of fixture.expectContains || [])
-        assert.ok(
-          html.includes(expected),
-          `${fixture.id} should contain ${JSON.stringify(expected)}`,
-        );
-      for (const forbidden of fixture.expectNotContains || [])
-        assert.equal(
-          html.includes(forbidden),
-          false,
-          `${fixture.id} should not contain ${JSON.stringify(forbidden)}`,
-        );
-      if (fixture.minimumHtmlLength)
-        assert.ok(
-          html.length >= fixture.minimumHtmlLength,
-          `${fixture.id} should not truncate long input`,
-        );
-    }
-  } finally {
-    if (originalKatex === undefined) delete globalThis.katex;
-    else globalThis.katex = originalKatex;
+  const renderMath = (_raw, formula, displayMode) =>
+    `<span class="katex" data-display="${displayMode}">${formula}</span>`;
+  for (const fixture of fixtures.cases) {
+    const html = renderMarkdownLite(sourceFor(fixture), { document, renderMath });
+    for (const expected of fixture.expectContains || [])
+      assert.ok(
+        html.includes(expected),
+        `${fixture.id} should contain ${JSON.stringify(expected)}`,
+      );
+    for (const forbidden of fixture.expectNotContains || [])
+      assert.equal(
+        html.includes(forbidden),
+        false,
+        `${fixture.id} should not contain ${JSON.stringify(forbidden)}`,
+      );
+    if (fixture.minimumHtmlLength)
+      assert.ok(
+        html.length >= fixture.minimumHtmlLength,
+        `${fixture.id} should not truncate long input`,
+      );
   }
 });

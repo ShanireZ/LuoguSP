@@ -15,6 +15,7 @@ const AUTHOR_MARKUP = {
     "align", "checked", "class", "colspan", "disabled", "href", "open",
     "rowspan", "start", "title", "type",
   ],
+  ADD_ATTR: (name, tag) => tag === "li" && name === "value",
   ALLOW_ARIA_ATTR: false,
   ALLOW_DATA_ATTR: false,
 };

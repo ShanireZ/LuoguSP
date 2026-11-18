@@ -15,6 +15,7 @@ test("markdown renderer bundle is self-contained and reproducible", async () => 
   assert.ok(first.length > 100000);
   assert.match(source, /apiVersion/);
   assert.match(source, /renderMarkdown/);
+  assert.equal(source.includes(".katex||null"), false, "No direct KaTeX fallback in the Lite bundle");
   for (const globalName of [
     "window.marked",
     "window.DOMPurify",

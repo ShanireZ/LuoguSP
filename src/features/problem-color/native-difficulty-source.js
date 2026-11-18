@@ -36,14 +36,14 @@ function recordSnapshot(page, url) {
 }
 
 // Only keep public pid/difficulty pairs, never the rest of a page response.
-function snapshot(data, at) {
+function snapshot(data, at, order) {
   const problems = collectDifficultyBatches(data).flatMap((batch) =>
     batch.problems().filter((problem) =>
       typeof problem?.pid === "string" && PID_PATTERN.test(problem.pid) &&
       validDifficulty(problem.difficulty),
     ).map(({ pid, difficulty }) => ({ pid, difficulty })),
   );
-  return { problems, at };
+  return { problems, at, order };
 }
 
 // Luogu's current Lentille router uses Axios/XHR and consumes the response in
@@ -93,17 +93,17 @@ export function createNativeDifficultySource({
     }
     return true;
   };
-  const harvest = () => {
+  const harvest = (received) => {
     const page = readLentillePage(document);
     if (page !== initialPage) {
       initialPage = page;
       initial = initialRecord = null;
       if (page && initialUrl && acceptPage(page, initialUrl, initialAt)) {
-        if (!isScopedProblemUrl(initialUrl)) initial = snapshot(page.data, now());
+        if (!isScopedProblemUrl(initialUrl)) initial = snapshot(page.data, initialAt, 0);
         initialRecord = recordSnapshot(page, initialUrl);
       }
     }
-    return { viewer, batches: [initial, latest].filter(Boolean) };
+    return { viewer, batches: [initial, latest, received].filter(Boolean) };
   };
   const recordDifficulty = (path, id, pid) => {
     const record = recordPages.get(path) || initialRecord;
@@ -159,11 +159,12 @@ export function createNativeDifficultySource({
             const page = asLentillePage(readJsonXhr(xhr, url.href));
             const previousViewer = viewer;
             if (!page || !acceptPage(page, url, request.at, request.order)) return;
-            const batch = isScopedProblemUrl(url) ? null : snapshot(page.data, request.at);
+            const batch = isScopedProblemUrl(url) ? null : snapshot(page.data, request.at, request.order);
             const record = recordSnapshot(page, url);
             let updated = previousViewer !== viewer;
-            if (batch?.problems.length && (!latest || request.order > latest.order)) {
-              latest = { ...batch, order: request.order };
+            if (batch?.problems.length) {
+              // A late batch can still contain a newer value for an individual PID.
+              if (!latest || batch.order > latest.order) latest = batch;
               updated = true;
             }
             if (record) {
@@ -176,7 +177,7 @@ export function createNativeDifficultySource({
                 updated = true;
               }
             }
-            if (updated) accept();
+            if (updated) accept({ batch });
           } catch { /* Unsupported/HTML/error responses leave the fallback intact. */ }
         };
         request.clean = clean;
@@ -205,8 +206,8 @@ export function createNativeDifficultySource({
   let stopObserving;
   const subscribe = (listener) => {
     listeners.add(listener);
-    if (!stopObserving) stopObserving = observe(() => {
-      for (const notify of listeners) notify();
+    if (!stopObserving) stopObserving = observe((event) => {
+      for (const notify of listeners) notify(event);
     });
     return () => {
       listeners.delete(listener);

@@ -65,6 +65,37 @@ export function tokenizeDisplayMath(source) {
     return { type: "math", raw: match[0], text: match[1], displayMode: true };
 }
 
+function* literalInlineRanges(tokens, offset = 0) {
+  for (const token of tokens) {
+    const end = offset + token.raw.length;
+    if (token.escaped || ["codespan", "html", "link", "image"].includes(token.type)) {
+      yield [offset, end];
+    } else if (["strong", "em", "del"].includes(token.type)) {
+      yield* literalInlineRanges(token.tokens, offset + (token.raw.length - token.text.length) / 2);
+    }
+    offset = end;
+  }
+}
+
+function displayMathStart(source, paragraph, options) {
+  let ranges;
+  let literal;
+  for (const { index } of paragraph.matchAll(/(?<=\n) {0,3}\$\$[ \t]*(?=\n|$)/g)) {
+    if (!tokenizeDisplayMath(source.slice(index))) continue;
+    if (!ranges) {
+      if (!/[<`\[]/.test(paragraph)) return index;
+      // Inspect the native paragraph once so delimiters inside a complete
+      // inline span or attribute retain their original meaning.
+      ranges = literalInlineRanges(Lexer.lexInline(paragraph, {
+        ...options, tokenizer: undefined, extensions: undefined,
+      }));
+      literal = ranges.next().value;
+    }
+    while (literal && literal[1] <= index) literal = ranges.next().value;
+    if (!literal || index < literal[0]) return index;
+  }
+}
+
 export class IntroTokenizer extends Tokenizer {
   html(source) {
     const token = super.html(source);
@@ -77,7 +108,16 @@ export class IntroTokenizer extends Tokenizer {
   }
 
   paragraph(source) {
-    return this.joinAnchorEnd(source, "paragraph");
+    const token = this.joinAnchorEnd(source, "paragraph");
+    if (!token) return token;
+    const start = displayMathStart(source, token.text, this.options);
+    if (start !== undefined) {
+      // Yield the whole formula to the block extension before its contents can
+      // interrupt the paragraph. The preceding newline belongs to the prose.
+      token.raw = source.slice(0, start);
+      token.text = this.lexer.inlineQueue.at(-1).src = source.slice(0, start - 1);
+    }
+    return token;
   }
 
   text(source) {

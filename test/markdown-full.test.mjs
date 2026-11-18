@@ -382,6 +382,36 @@ test("Lite preserves empty list items and hides definition-only items", (t) => {
   assert.doesNotMatch(root.textContent, /\[go\]:|\.\/(?:album|duplicate)/);
 });
 
+test("Lite preserves ordered list ordinals across hidden reference definitions", (t) => {
+  const { dom, renderer } = createRenderer();
+  t.after(() => dom.window.close());
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown([
+    "[Book][go]",
+    '> 7. [head]: ./first\n> 8. Step eight\n> 9. [go]: ./album "Title"\n> 10.\n> 11. Step eleven\n> 12. [end]: ./last',
+    "- One\n- [go]: ./duplicate\n-\n- Four",
+  ].join("\n\n"), { forceFullFailure: true }).html;
+  assert.deepEqual([...root.querySelectorAll("ol")].map((list) => list.start), [7]);
+  const items = [...root.querySelectorAll("blockquote > ol > li")];
+  assert.deepEqual(items.map((item) => item.textContent), ["Step eight", "", "Step eleven"]);
+  assert.deepEqual(items.map((item) => item.getAttribute("value")), ["8", "10", null]);
+  assert.deepEqual([...root.querySelectorAll("ul > li")].map((item) => [item.textContent, item.hasAttribute("value")]),
+    [["One", false], ["", false], ["Four", false]]);
+  const link = root.querySelector("a");
+  assert.equal(link.getAttribute("href"), "./album");
+  assert.equal(link.title, "Title");
+  assert.doesNotMatch(root.textContent, /\[(?:head|go|end)\]:|\.\/(?:first|album|last|duplicate)/);
+});
+
+test("author markup allows value on list items only", (t) => {
+  const { dom, renderer } = createRenderer();
+  t.after(() => dom.window.close());
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown('<ol><li value="4"><span value="12">Four</span></li></ol>').html;
+  assert.deepEqual([...root.querySelectorAll("[value]")].map((node) => [node.localName, node.getAttribute("value")]),
+    [["li", "4"]]);
+});
+
 test("Lite preserves a list with a fence and a nested quote inside a quote", (t) => {
   const { dom, renderer } = createRenderer();
   t.after(() => dom.window.close());
@@ -565,6 +595,39 @@ for (const forceFullFailure of [false, true]) {
     assert.equal(root.querySelector("p > code")?.textContent, "$$literal$$");
     assert.deepEqual([root.querySelector("a")?.getAttribute("href"), root.querySelector("a")?.title],
       ["./$path$", "$title$"]);
+  });
+
+  test(`display math follows prose in ${mode} rendering without splitting literal inline content`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const literal = "inside\n$$\na+b\n$$\nafter";
+    const source = [
+      "Prose before a blank formula line.\n$$\na +\n\nb\n$$\nAfter the formula.",
+      "Prose before a negative term.\n$$\n- x\n$$",
+      "> Quoted prose.\n> $$\n> - y\n> $$\n> After the formula.",
+      "> Quoted blank formula line.\n> $$\n> c +\n>\n> d\n> $$",
+      `\`${literal}\` is code.`,
+      `> **\`${literal.replaceAll("\n", "\n> ")}\` is quoted code.**`,
+      `[Markdown link](./$path$ "${literal}")`,
+      `Prose with a <a href="./$raw$" title="${literal}">raw link</a>.`,
+      `~~~text\n${literal}\n~~~`,
+      "Incomplete display.\n$$\nz",
+    ].join("\n\n");
+    const result = renderer.renderMarkdown(source, { forceFullFailure });
+    assert.equal(result.mode, mode);
+    root.innerHTML = result.html;
+    assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map((node) => node.textContent),
+      ["a+b", "−x", "−y", "c+d"]);
+    assert.equal(root.querySelector("p .katex-display, ul, ol"), null);
+    assert.deepEqual([...root.querySelectorAll("blockquote .katex-display .katex-html")].map((node) => node.textContent),
+      ["−y", "c+d"]);
+    assert.deepEqual([...root.querySelectorAll("p code")].map((code) => code.textContent),
+      [literal.replaceAll("\n", " "), literal.replaceAll("\n", " ")]);
+    assert.deepEqual([...root.querySelectorAll("a")].map((link) => [link.getAttribute("href"), link.title]),
+      [["./$path$", literal], ["./$raw$", literal]]);
+    assert.equal(root.querySelector("pre > code")?.textContent.trimEnd(), literal);
+    assert.match(root.textContent, /Incomplete display\.\s*\$\$\s*z\s*$/);
   });
 
   test("math past the size and count limits stays as text in " + mode + " rendering", () => {

@@ -4,7 +4,7 @@ import { IMAGE_UNAVAILABLE, resolveIntroHttpUrl } from "./intro-image.js";
 import { createMarkerPrefix } from "./marker-prefix.js";
 
 export function renderMarkdownLite(md, options = {}) {
-  const { document } = options;
+  const { document, renderMath } = options;
   const esc = (source) =>
     source.replace(
       /[&<>"]/g,
@@ -17,18 +17,6 @@ export function renderMarkdownLite(md, options = {}) {
       ? ` class="language-${esc(language)}"`
       : "";
   };
-  const katexRenderer = options.katex || null;
-  const renderTex = options.renderMath ?? ((_raw, formula, displayMode) => {
-    if (!katexRenderer) return null;
-    try {
-      return katexRenderer.renderToString(formula, {
-        throwOnError: false,
-        displayMode,
-      });
-    } catch (error) {
-      return null;
-    }
-  });
   const spans = [];
   const spanPrefix = createMarkerPrefix("@@LGB");
   const stash = (html) => `${spanPrefix}${spans.push(html) - 1}@@`;
@@ -87,7 +75,7 @@ export function renderMarkdownLite(md, options = {}) {
   const mathInText = (source) => source
     .replace(/(?<!\\)\$\$((?:\\[\s\S]|[^\\$]|\$(?!\$))+?)\$\$|(?<![\\$])\$((?:\\[^\n]|[^\\\n$])+?)\$(?!\$)/g,
       (match, display, formula) => {
-        const html = renderTex(match, display?.trim() ?? formula, display !== undefined);
+        const html = renderMath?.(match, display?.trim() ?? formula, display !== undefined);
         return html ? stash(html) : match;
       })
     .replace(/\\\$/g, "$");
@@ -158,7 +146,7 @@ export function renderMarkdownLite(md, options = {}) {
     if (block.type === "code") return renderBlockCode(block.lang, block.text);
     if (block.type === "math") {
       const raw = block.raw.trimEnd();
-      return renderTex(raw, block.text.trim(), block.displayMode) ??
+      return renderMath?.(raw, block.text.trim(), block.displayMode) ??
         `<p>${esc(raw).replaceAll("\n", "<br>")}</p>`;
     }
     if (block.type === "hr") return "<hr>";
@@ -167,10 +155,14 @@ export function renderMarkdownLite(md, options = {}) {
       return body ? `<blockquote>${body}</blockquote>` : "";
     }
     if (block.type === "list") {
-      const items = block.items.map((item) => {
+      let nextIndex = 0;
+      const items = block.items.map((item, index) => {
         const body = renderBlocks(item.tokens, !block.loose);
         // A duplicate definition can have no tokens, but its source text is nonempty.
-        return body || !item.text.trim() ? `<li>${body}</li>` : "";
+        if (!body && item.text.trim()) return "";
+        const value = block.ordered && index !== nextIndex ? ` value="${block.start + index}"` : "";
+        nextIndex = index + 1;
+        return `<li${value}>${body}</li>`;
       }).join("");
       if (!items) return "";
       const tag = block.ordered ? "ol" : "ul";

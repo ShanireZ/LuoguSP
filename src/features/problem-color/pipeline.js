@@ -1,4 +1,5 @@
 import { validDifficulty } from "./native-difficulty-source.js";
+import { isLater } from "./problem-data.js";
 
 export function createProblemPipeline(config) {
   const {
@@ -64,11 +65,6 @@ export function createProblemPipeline(config) {
     colors.set(key, { color, at });
     if (colors.size > cacheLimit) colors.delete(colors.keys().next().value);
   };
-  const rememberDifficulty = (pid, difficulty, at) => {
-    if (pid && validDifficulty(difficulty) &&
-        (!harvested.has(pid) || harvested.get(pid).at <= at))
-      harvested.set(pid, { color: colorForDifficulty(difficulty), at });
-  };
   const fresh = (cache, pid) => {
     const entry = cache.get(pid);
     if (entry && clock.now() - entry.at >= cacheTtlMs) {
@@ -82,25 +78,28 @@ export function createProblemPipeline(config) {
   const knownColor = ({ pid, scoped }, shared) => {
     const native = scoped ? null : fresh(harvested, pid);
     const fetched = !scoped && requestsReady ? fresh(colors, shared?.key ?? pid) : null;
-    const local = native && (!fetched || native.at >= fetched.at) ? native : fetched;
-    return validDifficulty(shared?.difficulty) && (!local || shared.at > local.at)
+    const local = native && !isLater(fetched, native) ? native : fetched;
+    return validDifficulty(shared?.difficulty) && !isLater(local, shared)
       ? colorForDifficulty(shared.difficulty) : local?.color;
   };
-  const harvest = () => {
-    const { viewer, batches = [] } = difficultySource.harvest?.() ?? {};
+  const harvest = (received) => {
+    const { viewer, batches = [] } = difficultySource.harvest?.(received) ?? {};
     if (viewer !== harvestViewer) {
       harvestViewer = viewer;
       harvested.clear();
       colors.clear();
     }
-    for (const batch of batches) {
-      if (harvestedLists.has(batch.problems)) continue;
-      harvestedLists.add(batch.problems);
-      const at = batch.at ?? clock.now();
+    for (const { problems, at: observedAt, order } of batches) {
+      if (harvestedLists.has(problems)) continue;
+      harvestedLists.add(problems);
+      const at = observedAt ?? clock.now();
       if (clock.now() - at >= cacheTtlMs) continue;
       for (const pid of harvested.keys()) fresh(harvested, pid);
-      for (const { pid, difficulty } of batch.problems)
-        rememberDifficulty(pid, difficulty, at);
+      const stamp = { at, order };
+      for (const { pid, difficulty } of problems) {
+        if (pid && validDifficulty(difficulty) && !isLater(harvested.get(pid), stamp))
+          harvested.set(pid, { ...stamp, color: colorForDifficulty(difficulty) });
+      }
     }
   };
   const getColor = async (identity, signal, key) => {
@@ -177,8 +176,8 @@ export function createProblemPipeline(config) {
         routeQueries.delete(anchor);
     }
   };
-  const acceptAnchors = (anchors, { allowQueries = true } = {}) => {
-    harvest();
+  const acceptAnchors = (anchors, { allowQueries = true, batch } = {}) => {
+    harvest(batch);
     for (const anchor of anchors || []) colorAnchor(anchor, allowQueries);
   };
   const rescan = (options) => {

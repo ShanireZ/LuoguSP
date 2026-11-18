@@ -636,6 +636,30 @@ test("Lite profile introduction preserves empty numbered items and hides definit
   assert.doesNotMatch(await intro.textContent(), /\[go\]:|\.\/album/);
 });
 
+test("Lite profile introduction preserves numbered positions across hidden definitions", async (t) => {
+  const introduction = [
+    "[Book][go]",
+    '> 7. [head]: ./first\n> 8. Step eight\n> 9. [go]: ./album "Title"\n> 10.\n> 11. Step eleven\n> 12. [end]: ./last',
+    "- One\n- [go]: ./duplicate\n-\n- Four",
+  ].join("\n\n");
+  const { page } = await fixture(t, {
+    path: "/user/42?luogusp-qa=fallback-lite",
+    html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+      { user: { ...viewer, introduction } }),
+  });
+  const intro = page.locator(".luogusp-intro-card .lfe-marked");
+  const link = intro.getByRole("link", { name: "Book", exact: true });
+  await link.waitFor();
+  assert.equal(await link.getAttribute("href"), "./album");
+  assert.equal(await link.getAttribute("title"), "Title");
+  assert.deepEqual(await intro.locator("ol").evaluateAll((lists) => lists.map((list) => list.start)), [7]);
+  assert.deepEqual(await intro.locator("blockquote > ol > li").evaluateAll((items) => items.map((item) =>
+    [item.textContent, item.getAttribute("value")])), [["Step eight", "8"], ["", "10"], ["Step eleven", null]]);
+  assert.deepEqual(await intro.locator("ul > li").allTextContents(), ["One", "", "Four"]);
+  assert.equal(await intro.locator("ul > li[value]").count(), 0);
+  assert.doesNotMatch(await intro.textContent(), /\[(?:head|go|end)\]:|\.\/(?:first|album|last|duplicate)/);
+});
+
 test("Lite profile introduction keeps a list with a fence and a nested quote inside a quote", async (t) => {
   const introduction = "> - Item\n>   ~~~html\n>   <b>Literal</b>\n>   ~~~\n>\n> > Nested quote.";
   const { page } = await fixture(t, {
@@ -693,6 +717,35 @@ test("Lite profile introduction keeps blank lines and negative terms in display 
 });
 
 for (const query of ["", "?luogusp-qa=fallback-lite"]) {
+  test(`profile introduction renders display math after prose in ${query ? "lite" : "full"} mode`, async (t) => {
+    const literal = "inside\n$$\na+b\n$$\nafter";
+    const introduction = [
+      "Prose before a blank formula line.\n$$\na +\n\nb\n$$",
+      "Prose before a negative term.\n$$\n- x\n$$",
+      "> Quoted prose.\n> $$\n> - y\n> $$",
+      `\`${literal}\` is code.`,
+      `[Markdown link](./$path$ "${literal}")`,
+      `Prose with a <a href="./$raw$" title="${literal}">raw link</a>.`,
+      `~~~text\n${literal}\n~~~`,
+      "Incomplete display.\n$$\nz",
+    ].join("\n\n");
+    const { page } = await fixture(t, {
+      path: "/user/42" + query,
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.getByRole("link", { name: "Markdown link", exact: true }).waitFor();
+    assert.deepEqual(await intro.locator(".katex-display .katex-html").allTextContents(), ["a+b", "−x", "−y"]);
+    assert.deepEqual(await intro.locator("blockquote .katex-display .katex-html").allTextContents(), ["−y"]);
+    assert.equal(await intro.locator("p .katex-display, ul, ol").count(), 0);
+    assert.equal(await intro.locator("p > code").textContent(), literal.replaceAll("\n", " "));
+    assert.equal((await intro.locator("pre > code").textContent()).trimEnd(), literal);
+    assert.deepEqual(await intro.locator("a[href]").evaluateAll((links) => links.map((link) =>
+      [link.getAttribute("href"), link.title])), [["./$path$", literal], ["./$raw$", literal]]);
+    assert.match(await intro.textContent(), /Incomplete display\.\s*\$\$\s*z\s*$/);
+  });
+
   test(`profile introduction contains wide math in ${query ? "lite" : "full"} rendering`, async (t) => {
     const introduction = String.raw`$$\rule{1000000em}{1000000em}$$
 
@@ -2528,6 +2581,46 @@ function previewActionGeometry(link) {
       above: top - rect.top,
       below: rect.bottom - bottom,
     };
+  });
+}
+
+for (const height of [175, 420]) {
+  test(`problem preview keeps its focused action visible after resizing to ${height}px`, async (t) => {
+    const initial = {
+      ...problem,
+      name: "A problem title long enough to wrap inside the narrow preview",
+      tags: [],
+      submitted: true,
+      accepted: true,
+      bestRecord: { id: 77, status: 12, score: 100 },
+      limits: { time: [1000], memory: [65536] },
+    };
+    const { page } = await fixture(t, {
+      viewport: { width: 320, height: 480 },
+      html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [initial] }),
+      reply(route, url) {
+        if (url.pathname === "/problem/P1000") return route.fulfill({ json: { user: viewer, data: { problem: initial } } });
+        if (url.pathname === "/record/list") return route.fulfill({ json: {
+          template: "record.list", user: viewer, data: { records: { result: [] } },
+        } });
+      },
+    });
+    await page.locator("#problem").press("Alt+ArrowDown");
+    const jump = card(page).getByRole("link", { name: "跳转题目" });
+    await jump.waitFor();
+    await page.keyboard.press("Tab");
+    assert.ok(await focused(jump));
+    const before = await previewActionGeometry(jump);
+    assert.ok(Math.max(before.above, before.below) <= 1, JSON.stringify(before));
+    const documentScroll = await page.evaluate(() => [scrollX, scrollY]);
+    await page.setViewportSize({ width: 320, height });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const after = await previewActionGeometry(jump);
+    assert.ok(Math.max(after.above, after.below) <= 1, JSON.stringify({ before, after }));
+    if (height === 175) assert.ok(after.scrollTop > before.scrollTop);
+    else assert.equal(after.scrollTop, before.scrollTop);
+    assert.ok(await focused(jump));
+    assert.deepEqual(await page.evaluate(() => [scrollX, scrollY]), documentScroll);
   });
 }
 
@@ -4859,6 +4952,82 @@ test("same-millisecond scoped native details do not repaint an older difficulty"
   assert.equal(await color(), green);
   assert.equal(requests.filter(({ path, type }) => path === "/problem/P1000" && type === "fetch").length, 0);
 });
+
+test("first native confirmation of the legacy viewer preserves a pending problem lookup", async (t) => {
+  const detail = responseGate(t);
+  const { page, requests } = await fixture(t, {
+    html: fixtureHtml('<a href="/problem/P1000"><span class="pid">P1000</span></a>', {}, { user: undefined }),
+    initScript: "window._feInjection = { currentUser: { uid: 42 } };",
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return detail.promise.then(() => route.fulfill({
+        json: { user: viewer, data: { problem: { ...problem, difficulty: 4 } } },
+      }));
+      if (url.pathname === "/problem/P1234") return route.fulfill({
+        json: { user: viewer, data: { problem: { pid: "P1234", difficulty: 1 } } },
+      });
+    },
+  });
+  const problemRequest = ({ path, type }) => path === "/problem/P1000" && type === "fetch";
+  await t.waitFor(() => assert.equal(requests.filter(problemRequest).length, 1));
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/problem/P1234?lang=en");
+    xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+    xhr.send();
+  }));
+  detail.release();
+  await page.waitForFunction(() => document.querySelector("main .pid").style.color === "rgb(82, 196, 26)");
+  assert.equal(requests.filter(problemRequest).length, 1);
+});
+
+for (const sameProblem of [false, true]) {
+  test(`same-millisecond native detail paints in request order after a list for ${sameProblem ? "the same" : "another"} problem`, async (t) => {
+    const detail = responseGate(t);
+    const title = "Earlier native detail";
+    const { page, requests } = await fixture(t, {
+      html: fixtureHtml('<a href="/problem/P1000"><span class="pid">P1000</span></a>',
+        { recommendations: [{ ...problem, difficulty: 1 }] }, { user: null }),
+      initScript: "Date.now = () => 1000;",
+      reply(route, url) {
+        if (url.pathname === "/problem/list") return route.fulfill({
+          json: { data: { problems: [{ pid: sameProblem ? problem.pid : "P1234", difficulty: 2 }] } },
+        });
+        if (url.pathname === "/problem/P1000" && !url.search) return detail.promise.then(() => route.fulfill({
+          json: { data: { problem: { pid: problem.pid, name: title, difficulty: 4 } } },
+        }));
+      },
+    });
+    const trigger = page.locator("main a");
+    const inlineColor = (locator) => locator.evaluate(node => node.style.color);
+    const red = "rgb(254, 76, 97)";
+    const orange = "rgb(243, 156, 17)";
+    const green = "rgb(82, 196, 26)";
+    assert.equal(await inlineColor(trigger.locator(".pid")), red);
+    const native = page.evaluate(() => {
+      const request = (path) => new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", path);
+        xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+        xhr.send();
+      });
+      const detail = request("/problem/P1000");
+      const list = request("/problem/list").then(() => { window.fixtureListApplied = true; });
+      return Promise.all([detail, list]);
+    });
+    await page.waitForFunction(() => window.fixtureListApplied);
+    assert.equal(await inlineColor(trigger.locator(".pid")), sameProblem ? orange : red);
+    detail.release();
+    await native;
+    const painted = await inlineColor(trigger.locator(".pid"));
+    await trigger.press("Alt+ArrowDown");
+    const preview = card(page);
+    await preview.getByText(`P1000 ${title}`, { exact: true }).waitFor();
+    const expected = sameProblem ? orange : green;
+    assert.equal(await inlineColor(preview.locator(".luogusp-hc-title span")), expected);
+    assert.equal(painted, expected);
+    assert.deepEqual(requests.filter(({ path, type }) => path.startsWith("/problem/") && type === "fetch"), []);
+  });
+}
 
 test("problem coloring resolves missing IDs after an observed viewer switch", async (t) => {
   const detail = responseGate(t);

@@ -132,16 +132,17 @@ const nodeOptions = (args) => {
   const preloads = [];
   let addons = true;
   let requireModule = true;
-  let entry;
+  let testMode = false;
+  let entryIndex = args.length;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--") {
-      entry = args[index + 1];
+      entryIndex = index + 1;
       break;
     }
     if (arg === "-" || /^(?:-e|-p|--eval|--print)(?:=|$)/u.test(arg)) break;
     if (!arg.startsWith("-")) {
-      entry = arg;
+      entryIndex = index;
       break;
     }
     const equals = arg.indexOf("=");
@@ -155,15 +156,21 @@ const nodeOptions = (args) => {
       if (flag === "--import") preloads.push(["import", value]);
       if (flag === "--require" || flag === "-r") preloads.push(["require", value]);
     }
-    if (equals !== -1) continue;
-    if (flag === "--no-addons") addons = false;
+    // Node takes the polarity from the flag name even when it has an equals suffix.
+    if (flag === "--test" || flag === "--no-test") testMode = flag === "--test";
+    if (flag === "--addons" || flag === "--no-addons") addons = flag === "--addons";
     if (flag === "--no-require-module" || flag === "--no-experimental-require-module")
       requireModule = false;
     if (flag === "--require-module" || flag === "--experimental-require-module") requireModule = true;
   }
   if (addons) conditions.add("node-addons");
   if (requireModule) conditions.add("module-sync");
-  return { entry, preloads, conditions: [...conditions].sort() };
+  return {
+    entry: args[entryIndex],
+    testEntries: testMode ? args.slice(entryIndex) : null,
+    preloads,
+    conditions: [...conditions].sort(),
+  };
 };
 
 const nodeEntry = (path) => {
@@ -211,26 +218,28 @@ function localCreateRequirePaths(path, source) {
   );
   const isModuleName = (index) => ["node:module", "module"].includes(literals[index]);
   const factories = new Set();
+  const propertyFactory = (name) => factories.add(`${RegExp.escape(name)}\\s*\\.\\s*createRequire`);
   const namedFactories = (specifierList, separator) => {
     for (const specifier of specifierList.split(",")) {
       const match = specifier.trim().match(new RegExp(`^createRequire(?:\\s*${separator}\\s*(${identifier}))?$`, "u"));
       if (match) factories.add(RegExp.escape(match[1] ?? "createRequire"));
     }
   };
-  const namedImport = `\\bimport(?:\\s+${identifier}\\s*,)?\\s*\\{([^}]+)\\}\\s*from\\s*${stringToken}`;
-  for (const [, bindings, specifier] of code.matchAll(new RegExp(namedImport, "gu"))) {
-    if (isModuleName(specifier)) namedFactories(bindings, "as");
+  const defaultBinding = `(${identifier})(?:\\s*,|(?=\\s+from\\b))`;
+  const otherBindings = `(?:\\*\\s*as\\s*(${identifier})|\\{([^}]*)\\})`;
+  const moduleImport = `\\bimport\\b\\s*(?:${defaultBinding}\\s*)?${otherBindings}?\\s*from\\s*${stringToken}`;
+  for (const [, primary, namespace, named, specifier] of code.matchAll(new RegExp(moduleImport, "gu"))) {
+    if (!isModuleName(specifier)) continue;
+    if (primary) propertyFactory(primary);
+    if (namespace) propertyFactory(namespace);
+    if (named) namedFactories(named, "as");
   }
   for (const [, bindings, specifier] of code.matchAll(new RegExp(`\\bconst\\s*\\{([^}]+)\\}\\s*=\\s*require\\s*\\(\\s*${stringToken}\\s*\\)`, "gu"))) {
     if (isModuleName(specifier)) namedFactories(bindings, ":");
   }
-  for (const declarations of [
-    `\\bimport\\s*(?:\\*\\s*as\\s*)?(${identifier})\\s+from\\s*${stringToken}`,
-    `\\bconst\\s+(${identifier})\\s*=\\s*require\\s*\\(\\s*${stringToken}\\s*\\)`,
-  ]) {
-    for (const [, name, specifier] of code.matchAll(new RegExp(declarations, "gu"))) {
-      if (isModuleName(specifier)) factories.add(`${RegExp.escape(name)}\\s*\\.\\s*createRequire`);
-    }
+  const moduleRequire = `\\bconst\\s+(${identifier})\\s*=\\s*require\\s*\\(\\s*${stringToken}\\s*\\)`;
+  for (const [, name, specifier] of code.matchAll(new RegExp(moduleRequire, "gu"))) {
+    if (isModuleName(specifier)) propertyFactory(name);
   }
   if (!factories.size) return [];
 
@@ -260,7 +269,8 @@ const packageModuleGraphs = async (scripts) => {
   for (const [name, command] of Object.entries(scripts)) {
     for (const words of commandSegments(command)) {
       const [tool, ...args] = invocation(words);
-      const { entry, preloads, conditions } = nodeOptions(executableName(tool) === "node" ? args : []);
+      const isNode = executableName(tool) === "node";
+      const { entry, testEntries, preloads, conditions } = nodeOptions(isNode ? args : []);
       const directCli = isEsbuild(tool) || (entry &&
         /(?:^|[/\\])node_modules[/\\](?:\.bin[/\\]|esbuild[/\\]bin[/\\])esbuild(?:\.(?:bat|cmd|exe|ps1))?$/iu.test(entry));
       assert.ok(!directCli, `package.json 的 ${name} 使用了无法核验的 esbuild 命令。请从 baseline-targets.mjs 导入 buildBrowser。`);
@@ -271,7 +281,7 @@ const packageModuleGraphs = async (scripts) => {
       const add = (path) => {
         if (path && withinRoot(path) && isModule(path)) graph.entries.add(path);
       };
-      if (entry) add(nodeEntry(entry));
+      if (entry && !testEntries) add(nodeEntry(entry));
       for (const [mode, specifier] of preloads) {
         if (specifier.startsWith("#")) {
           const literal = JSON.stringify(specifier);
@@ -283,9 +293,10 @@ const packageModuleGraphs = async (scripts) => {
             await existingFile(fileURLToPath(new URL(specifier, pathToFileURL(`${root}/`)))));
         }
       }
-      // Keep explicit local file arguments, including additional node --test entries.
-      for (const word of words) {
-        if (word.startsWith("-") || !moduleExtension.test(word)) continue;
+      // Node's test runner matches explicit filenames, including extensionless files.
+      const explicitFiles = isNode ? (testEntries ?? []) :
+        words.filter((word) => !word.startsWith("-") && moduleExtension.test(word));
+      for (const word of explicitFiles) {
         const path = resolve(root, word);
         if (withinRoot(path)) add(await existingFile(path));
       }
