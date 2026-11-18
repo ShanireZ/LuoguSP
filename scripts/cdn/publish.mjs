@@ -9,7 +9,10 @@ import { assertCommittedReleases } from "./committed-releases.mjs";
 import { assertParentLocalLock, withLocalLock } from "./local-lock.mjs";
 import { resolveConfiguredOrigin } from "./origin-policy.mjs";
 import { prepareCdn } from "./prepare-lib.mjs";
-import { DEPLOYMENT_PHASE, PARENT_PUBLISH_LOCK, deploymentEvidence, readPublishReport, writePublishReport } from "./publish-receipt.mjs";
+import {
+  CDN_PUBLISH_REPORT, CDN_PUBLISH_SCHEMA_VERSION, DEPLOYMENT_PHASE, PARENT_PUBLISH_LOCK,
+  deploymentEvidence, readPublishReport, writePublishReport,
+} from "./publish-receipt.mjs";
 import { RELEASE_VERSION, digest, readRegularFile, releaseManifestPath, requireRegularDirectory } from "./release-integrity.mjs";
 import { verifyDeployment } from "./verify-deployment.mjs";
 
@@ -199,23 +202,25 @@ try {
   await recordAttempt("confirmed");
 
   const report = {
+    schemaVersion: CDN_PUBLISH_SCHEMA_VERSION,
     publishedAt: new Date().toISOString(),
+    parentStartedAt: checkpoint?.startedAt,
     release: version,
     manifestPath: prepared.manifestPath,
     manifestSha256: prepared.manifestSha256,
     channelSha256: digest(prepared.channelBody),
+    retainedManifests: prepared.retainedManifests,
     target: "cloudflare-workers",
     project: config.projects.cloudflare,
     origin,
     deploymentStatus: "confirmed",
     platformDefaultDomainsUsed: false,
   };
-  await writeFile(
-    resolve(root, "reports/cdn-publish.json"),
-    `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
-  );
-  await verifyDeployment({ root, origin, channelBody: prepared.channelBody, manifestBody: prepared.manifestBody });
+  await writePublishReport(resolve(root, CDN_PUBLISH_REPORT), report);
+  await verifyDeployment({
+    root, origin, channelBody: prepared.channelBody, manifestBody: prepared.manifestBody,
+    retainedManifests: prepared.retainedManifests,
+  });
   console.log(`Published ${version} to Cloudflare Workers at ${origin}`);
 } finally {
   await rm(snapshot, { recursive: true, force: true });

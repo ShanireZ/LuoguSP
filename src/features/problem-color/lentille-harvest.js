@@ -45,10 +45,6 @@ export function readLentillePage(doc = globalThis.document) {
   return page;
 }
 
-export function readLentilleData(doc) {
-  return readLentillePage(doc)?.data ?? null;
-}
-
 // 題目直接攤在 data 下的幾種鍵：
 //   /user/{uid}/practice → submitted（裸陣列）；passed 已按難度分組展示，刻意忽略
 //   /problem/list        → problems（分頁容器 { perPage, count, result }）

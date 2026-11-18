@@ -50,9 +50,11 @@ same-origin request URL, including its query. They compare against the URL
 resolved from the document base with the fragment removed and leave native
 events intact.
 The shared cache holds only fields those features consume and scopes
-details by viewer, contest and language. A partial detail keeps available
-fields and a caller can retry for fields it still needs. An explicit empty
-sample list is cached as a result. A problem card displays
+details by viewer, contest and language. Each observed field expires on its own
+and a partial response refreshes only the fields it contains. Newer summary
+fields stay visible when a subsequent detail omits them. A caller can retry
+for fields it still needs. An explicit empty sample list is cached as a result.
+A problem card displays
 available fields first and fills in details and the viewer's latest record as they
 arrive, retaining focused controls and scroll position. Temporary lookup
 failures can retry on reopening, with a two-second cooldown after repeated
@@ -91,8 +93,10 @@ media type. Successful reads require HTTP 200. Invalid provenance retries on
 reopening while available fields from the other branch remain visible.
 Late signature updates retain the existing disclosure button and expansion
 state. Unbroken text wraps within the preview. Expanded text can scroll within
-the card. Placement keeps the focused disclosure within the scrollport during
-expansion, collapse and viewport changes. The preview remeasures its
+the card. Placement records the scroll position before width and signature
+measurement, then restores it within the resulting scroll range. It keeps the
+focused disclosure within the scrollport during expansion, collapse and
+viewport changes. The preview remeasures its
 two-line fit after a width change. The button reports its expanded state.
 When the signature fits within two lines, the
 disclosure collapses and hides. Focus held on that button returns to the
@@ -162,7 +166,9 @@ links that open in a new tab without sending a referrer. Relative sources are
 resolved against the page base. Linked Markdown images preserve the outer link
 and provide a separate image link. The lightweight renderer uses the shared
 inline link grammar for destinations and titles, including balanced parentheses,
-path-relative destinations and fragments.
+path-relative destinations, fragments and document reference definitions. It
+reads escaped attributes once and applies its HTTP(S) URL policy to Markdown
+links and supported raw HTML anchors.
 Even same-origin URLs and Luogu's CDN can
 redirect, so the fallback makes no automatic image requests. Unsupported or
 credential-bearing sources are represented as alt text or an unavailable label.
@@ -197,7 +203,14 @@ deployment. Unpublished local builds keep their own bytes and channel selection.
 Both CDN verification gates reject redirects and require HTTP 200 from the
 requested URL before reading and verifying its bytes. Readiness requires the
 same SHA-256 for the hashed manifest and the exact `releases/<version>/manifest.json`
-URL used by the next publication's preflight.
+URL used by the next publication's preflight. The provider receipt saves
+retained manifest pins from the verified deployment snapshot. Both gates
+also verify the fixed manifest URL for every retained release in that
+inventory. The production gate requires the current provider attempt's
+receipt before local promotion. Standalone checks with no matching inventory
+receipt cover the requested release and record the absence of history
+coverage. A failed readback blocks readiness while keeping provider
+confirmation.
 The CDN builder finishes compilation before claiming a version directory.
 Handled write failures clean up that build's directory. A successful build
 returns its directory identity, manifest digest and channel transition to the
@@ -230,8 +243,10 @@ existing release and uses the checkpoint's channel and manifest pin. This keeps
 another build's local channel selection intact. An unresolved checkpoint blocks
 the high-level publisher from starting a different release. If a busy channel
 lock interrupts pre-deployment rollback, the blocked checkpoint also saves the
-build's directory identity. Let the channel owner finish, then retry the same
-version with `pnpm release -- --version <version>`. The retry checks that the
+build's directory identity. The same checkpoint is available when rollback
+verifies the current release but its captured predecessor is no longer valid.
+Let any channel owner finish, then retry the same version with
+`pnpm release -- --version <version>`. The retry checks that the
 directory still belongs to the recorded build and re-verifies its immutable
 bytes against the current source and captured manifest pin. A retry requires
 version files that still agree on the previous stable release. The deployment

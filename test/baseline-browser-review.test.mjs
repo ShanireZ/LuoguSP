@@ -119,6 +119,26 @@ test("the actual guard rejects a direct esbuild callback alongside a targeted ca
   assert.match(result.stderr, /无法核验的 esbuild/u);
 });
 
+test("the actual guard checks package-declared build entries outside scripts", (t) => {
+  const { fixture, run } = fixtureGuard(t);
+  const packagePath = join(fixture, "package.json");
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  const entry = "browser builds/bundle.mjs";
+  packageJson.scripts.build = 'node --no-warnings "./browser builds/bundle.mjs"';
+  writeFileSync(packagePath, JSON.stringify(packageJson));
+  mkdirSync(join(fixture, "browser builds"));
+  const buildPath = join(fixture, entry);
+  writeFileSync(buildPath, 'import { build } from "esbuild";\nawait build({ platform: "browser", write: false });');
+  const direct = run();
+  assert.equal(direct.status, 1, direct.stdout);
+  assert.match(direct.stderr, /无法核验的 esbuild 导入/u);
+  assert.ok(direct.stderr.includes(entry));
+  writeFileSync(buildPath, 'import { buildBrowser } from "../baseline-targets.mjs";\nawait buildBrowser({ write: false });');
+  const shared = run();
+  assert.equal(shared.status, 0, shared.stderr);
+  assert.match(shared.stdout, /2 个构建脚本/u);
+});
+
 for (const [browser, staleMinimum] of [
   ["firefox", "124"],
   ["chrome", "123"],

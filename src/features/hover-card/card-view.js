@@ -538,13 +538,13 @@ export function placeCard(cardEl, rect, viewport, options = {}) {
   const gap = 4;
   const x = viewport.x ?? 0;
   const y = viewport.y ?? 0;
+  // Width and collapsed signature measurements can temporarily clamp the scroll offset.
+  const scrollTop = cardEl.scrollTop;
   cardEl.style.maxWidth = `${Math.max(0, viewport.width - 24)}px`;
   options.measureSignature?.();
   const width = cardEl.offsetWidth || 320;
   const left = Math.round(Math.max(x + gap, Math.min(rect.left, x + viewport.width - width - gap)));
 
-  // Measure the full content without the previous limit, then restore the scroll offset.
-  const scrollTop = cardEl.scrollTop;
   cardEl.style.maxHeight = "";
   // ★★★ 2.14.1「卡片跳走」。載入態的卡片裡只有一個 16px 的轉圈，連內邊距才 ≈42px；
   //   內容一到就是 ≈320px。拿轉圈的真高去定邊，**錨點下方餘量 44~320px 時必然**

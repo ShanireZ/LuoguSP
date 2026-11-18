@@ -121,6 +121,30 @@ for (const forceFullFailure of [false, true]) {
     assert.equal(root.querySelector("strong > a > code")?.textContent, "$code$");
     assert.ok(root.querySelector("strong > a .katex"));
   });
+
+  test(`profile Markdown preserves entity and reference image links in ${forceFullFailure ? "lite" : "full"} mode`, () => {
+    const { dom, renderer } = createRenderer();
+    const source = [
+      '[![Diagram](./diagram.png?a=one&amp;b=two "Diagram &quot;A&quot;")](./gallery?mode=one&amp;page=2 "Gallery &amp; title")',
+      '[![Map][map]][chapter]',
+      '[chapter]: #section "Chapter title"\n[map]: ./map.png "Map title"',
+      '[chapter]: /ignored',
+    ].join("\n\n");
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown(source, { forceFullFailure }).html;
+    assert.deepEqual(
+      [...root.querySelectorAll("a")].map(({ textContent, href, title, rel }) => [textContent, href, title, rel]),
+      [
+        ["Diagram", "https://www.luogu.com.cn/gallery?mode=one&page=2", "Gallery & title", "noopener noreferrer"],
+        ["打开图片：Diagram", "https://www.luogu.com.cn/diagram.png?a=one&b=two", 'Diagram "A"', "noopener noreferrer"],
+        ["Map", "https://www.luogu.com.cn/#section", "Chapter title", "noopener noreferrer"],
+        ["打开图片：Map", "https://www.luogu.com.cn/map.png", "Map title", "noopener noreferrer"],
+      ],
+    );
+    assert.doesNotMatch(root.textContent, /\[(?:chapter|map)\]:/);
+    assert.equal(root.querySelector("img, a a"), null);
+    dom.window.close();
+  });
 }
 
 for (const literal of ["%%LGMATH0&#58;0%%", "%%LGMATH0\\:0%%", "%%LGMATH&#48;:0%%"]) {
@@ -140,6 +164,25 @@ test("normalized author link attributes are not substituted as math", () => {
   assert.equal(root.querySelector("a").getAttribute("href"), "https://example.test/%%LGMATH0:0%%");
   assert.equal(root.querySelector("a").getAttribute("title"), "$literal$");
   assert.equal(root.querySelectorAll(".katex").length, 1);
+  dom.window.close();
+});
+
+test("Lite uses the Markdown URL policy for raw HTML image links", () => {
+  const { dom, renderer } = createRenderer();
+  const root = dom.window.document.createElement("div");
+  root.innerHTML = renderer.renderMarkdown([
+    '<a href="./gallery?theme=light&amp;size=2" title="Index &gt; list"><img src="./cover.png" alt="Cover"></a>',
+    '<a href="https://user:pass@example.test/gallery">Credentialed link</a>',
+  ].join("\n\n"), { forceFullFailure: true }).html;
+  assert.deepEqual(
+    [...root.querySelectorAll("a[href]")].map(({ textContent, href, title, rel }) => [textContent, href, title, rel]),
+    [
+      ["Cover", "https://www.luogu.com.cn/gallery?theme=light&size=2", "Index > list", "noopener noreferrer"],
+      ["打开图片：Cover", "https://www.luogu.com.cn/cover.png", "", "noopener noreferrer"],
+    ],
+  );
+  assert.match(root.textContent, /Credentialed link/);
+  assert.equal(root.querySelector("img, a a"), null);
   dom.window.close();
 });
 

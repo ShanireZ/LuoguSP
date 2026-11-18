@@ -1,11 +1,17 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  CDN_PUBLISH_REPORT,
+  readDeploymentManifestPins,
+  retainedManifestPins,
+} from "./publish-receipt.mjs";
 import { digest, releaseManifestPath } from "./release-integrity.mjs";
 import { fetchVerified } from "./verify-lib.mjs";
 
-export async function verifyDeployment({ root, origin, channelBody, manifestBody }) {
+export async function verifyDeployment({ root, origin, channelBody, manifestBody, retainedManifests }) {
   const channel = JSON.parse(channelBody);
   const manifest = JSON.parse(manifestBody);
+  const channelSha256 = digest(channelBody);
   if (digest(manifestBody) !== channel.manifestSha256)
     throw new Error("Local manifest does not match canary channel SHA-256");
   if (channel.schemaVersion >= 2 && channel.origin !== origin)
@@ -24,6 +30,7 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
       `${origin.replace(/\/+$/, "")}/`,
     );
   const results = [];
+  let history = null;
   const writeReport = async (status, failure = null) => {
     await writeFile(
       resolve(root, "reports/cdn-deployment.json"),
@@ -37,6 +44,7 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
           optionalBundles: manifest.optionalBundles || {},
           origin,
           files: files.length,
+          retainedManifestCount: history?.length ?? null,
           failure,
           results,
         },
@@ -100,15 +108,28 @@ export async function verifyDeployment({ root, origin, channelBody, manifestBody
     }
   };
 
+  try {
+    history = retainedManifests === undefined
+      ? await readDeploymentManifestPins({
+        root, origin, release: manifest.release, manifestPath: channel.manifestPath,
+        manifestSha256: channel.manifestSha256, channelSha256,
+      })
+      : retainedManifestPins(retainedManifests, manifest.release);
+  } catch (error) {
+    await writeReport("blocked", { path: CDN_PUBLISH_REPORT, error: error.message });
+    throw error;
+  }
+  if (history) files.push(...history);
   for (const [path, expected] of files)
     await verifyPath(path, expected);
   await verifyPath(
     "channels/canary.json",
-    digest(channelBody),
+    channelSha256,
     true,
   );
   await writeReport("ready");
+  const scope = history === null ? " for the requested release" : "";
   console.log(
-    `Verified ${files.length} immutable files on ${origin}.`,
+    `Verified ${files.length} immutable files${scope} on ${origin}.`,
   );
 }

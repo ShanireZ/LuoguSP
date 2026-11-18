@@ -11,7 +11,7 @@ import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { withLocalLock } from "../scripts/cdn/local-lock.mjs";
-import { snapshotRelease } from "../scripts/cdn/release-integrity.mjs";
+import { digest, snapshotRelease } from "../scripts/cdn/release-integrity.mjs";
 import { rollbackRelease } from "../scripts/cdn/release-transaction.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -128,12 +128,19 @@ async function fixture(t) {
   await writeFile(providerHook, String.raw`
     import cp from "node:child_process";
     import { syncBuiltinESMExports } from "node:module";
-    import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+    import { appendFileSync, cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
     import { dirname, join, resolve } from "node:path";
     const spawn = cp.spawnSync;
     const mode = process.env.LUOGUSP_TEST_PUBLISH_MODE;
+    const history = process.env.LUOGUSP_TEST_HISTORY_READINESS;
+    if (history) {
+      const schedule = globalThis.setTimeout;
+      globalThis.setTimeout = (callback, _delay, ...args) => schedule(callback, 0, ...args);
+    }
     let deployed;
     globalThis.fetch = async (url, options) => {
+      if (url.origin !== "https://stage.example" || url.search || url.hash)
+        throw new Error("Unexpected provider fixture URL: " + url.href);
       const name = url.pathname.slice(1);
       if (deployed && process.env.LUOGUSP_TEST_PAUSE_VERIFICATION === "1") {
         writeFileSync("verification.ready", "");
@@ -142,14 +149,22 @@ async function fixture(t) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
         if (!existsSync("verification.continue")) throw new Error("Verification fixture was not released");
       }
-      const published = deployed ? join(deployed, name) : name === "releases/1.0.0/manifest.json" ? join("cdn", name) : null;
-      const status = mode === "provider-preflight" ? 503 : published ? 200 : 404;
-      const response = new Response(published ? readFileSync(published) : "", { status, headers: {
+      const providerAssets = deployed ?? (history && existsSync("provider-assets") ? "provider-assets" : null);
+      const historical = name === "releases/1.0.0/manifest.json";
+      const published = providerAssets ? join(providerAssets, name) : historical ? join("cdn", name) : null;
+      const fault = providerAssets && historical ? history : null;
+      const found = published && existsSync(published) && fault !== "missing";
+      const status = mode === "provider-preflight" ? 503 : found ? 200 : 404;
+      let body = found ? readFileSync(published) : "";
+      if (fault === "mismatch") body = Buffer.concat([body, Buffer.from("\n")]);
+      const response = new Response(body, { status, headers: {
         "Content-Type": name.endsWith(".json") ? "application/json" : "application/javascript",
         "Cache-Control": name.startsWith("channels/") ? "no-cache" : "immutable",
         "Access-Control-Allow-Origin": "*",
       } });
-      return Object.defineProperty(response, "url", { value: url.href });
+      return Object.defineProperty(response, "url", {
+        value: fault === "wrong-url" ? url.href.replace("/manifest.json", "/another.json") : url.href,
+      });
     };
     cp.spawnSync = (executable, args, options) => {
       if (executable === "git") return spawn(executable, args, options);
@@ -161,6 +176,7 @@ async function fixture(t) {
       deployed = resolve(dirname(configPath), config.assets.directory);
       const channel = JSON.parse(readFileSync(join(deployed, "channels/canary.json")));
       appendFileSync("provider.jsonl", JSON.stringify({ channel: channel.release, releases: readdirSync(join(deployed, "releases")) }) + "\n");
+      if (history) cpSync(deployed, "provider-assets", { recursive: true });
       return { status: mode === "provider-error" ? 1 : 0 };
     };
     syncBuiltinESMExports();
@@ -263,6 +279,10 @@ async function fixture(t) {
         if (outputIndex !== -1) writeFileSync(args[outputIndex + 1], '{"fixture":true}\n');
       }
       if (entry === "scripts/cdn/verify-production.mjs" && mode === "provider-post-gate") return failure;
+      if (entry === "scripts/cdn/verify-production.mjs" && mode === "provider-history")
+        return spawn(executable, ["--import", pathToFileURL("mock-provider.mjs").href, ...args], {
+          ...options, env: { ...options.env, LUOGUSP_TEST_HISTORY_READINESS: "missing" },
+        });
       if (["scripts/cdn/verify-production.mjs", "scripts/build.mjs", "scripts/quality.mjs"].includes(entry))
         return success;
       throw new Error("Unexpected mock command " + JSON.stringify(args));
@@ -350,10 +370,15 @@ test("publication records an unreadable path and restores owned files after it",
 
 test("both readiness commands require the exact unhashed manifest bytes", async (t) => {
   const origin = "https://stage.example";
-  const { cwd, write, build, snapshot } = await fixture(t);
+  const { cwd, write, build, snapshot, channelPath } = await fixture(t);
   const built = build();
   assert.equal(built.status, 0, built.stderr);
   const release = await snapshot();
+  await write("reports/cdn-publish.json", JSON.stringify({
+    release: version, origin, deploymentStatus: "confirmed",
+    manifestPath: release.path, manifestSha256: release.sha256,
+    channelSha256: digest(await readFile(channelPath)),
+  }));
   const requires = [release.manifest.compat.earlyGate, release.manifest.compat.runtime]
     .map(({ path, sha256 }) => `// @require      ${origin}/${path}#sha256=${sha256}`);
   await write(`dist/staged/LuoguSP.${version}.user.js`, [
@@ -400,6 +425,7 @@ test("both readiness commands require the exact unhashed manifest bytes", async 
           assert.equal(result.status, 0, result.stderr);
           assert.equal(receipt.status, "ready");
           assert.equal(receipt.files, release.files.size);
+          assert.equal(receipt.retainedManifestCount, null);
           assert.deepEqual(new Set(receipt.results.map(({ path }) => path)),
             new Set([...release.files.keys(), ...(channel ? [channel] : [])]));
           assert.equal(receipt.results.find(({ path }) => path === manifestCopy).sha256, release.sha256);
@@ -415,6 +441,109 @@ test("both readiness commands require the exact unhashed manifest bytes", async 
       });
     }
   }
+});
+
+test("readiness verifies fixed manifest aliases from the provider's retained release inventory", async (t) => {
+  const origin = "https://stage.example";
+  const retained = "1.0.0";
+  const retainedAlias = `releases/${retained}/manifest.json`;
+  const { cwd, write, build, snapshot, providerArgs } = await fixture(t);
+  for (const args of [
+    ["add", `cdn/releases/${retained}`],
+    ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+      "commit", "--quiet", "--no-gpg-sign", "-m", "Published release fixture"],
+  ]) {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8", windowsHide: true });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  for (const release of ["3.0.0", version]) {
+    const result = build(release);
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const candidate = await snapshot();
+  const history = await snapshot(retained);
+  await write(`dist/staged/LuoguSP.${version}.user.js`, [
+    "// ==UserScript==", `// @version      ${version}`,
+    ...[candidate.manifest.compat.earlyGate, candidate.manifest.compat.runtime]
+      .map(({ path, sha256 }) => `// @require      ${origin}/${path}#sha256=${sha256}`),
+    "// ==/UserScript==", "(()=>{})();",
+  ].join("\n"));
+  const run = (args, outcome) => spawnSync(process.execPath, args, {
+    cwd, encoding: "utf8", windowsHide: true,
+    env: { ...process.env, LUOGUSP_TEST_HISTORY_READINESS: outcome },
+  });
+  const report = async (name) => JSON.parse(await readFile(join(cwd, `reports/${name}.json`)));
+  const deploy = run([...providerArgs, "--version", version, "--skip-build"], "missing");
+  const provider = await report("cdn-publish");
+  assert.equal(provider.deploymentStatus, "confirmed");
+  assert.deepEqual(provider.retainedManifests, { [retained]: history.sha256 });
+  assert.deepEqual(JSON.parse(await readFile(join(cwd, "provider.jsonl"), "utf8")), {
+    channel: version, releases: [retained, version],
+  });
+
+  await t.test("deployment readback blocks after provider confirmation", async () => {
+    const readiness = await report("cdn-deployment");
+    assert.equal(deploy.status, 1, deploy.stderr);
+    assert.equal(readiness.status, "blocked");
+    assert.equal(readiness.failure.path, retainedAlias);
+    assert.equal(readiness.failure.lastResult.status, 404);
+  });
+
+  for (const [command, options, readiness] of [
+    ["verify", ["--origin", origin], "cdn-deployment"],
+    ["verify-production", ["--version", version, "--manifest-sha256", candidate.sha256], "cdn-production-readiness"],
+  ]) {
+    for (const outcome of ["missing", "mismatch", "wrong-url", "ready"]) {
+      await t.test(`${command} ${outcome} retained alias`, async () => {
+        const result = run([...providerArgs.slice(0, -1), `scripts/cdn/${command}.mjs`, ...options], outcome);
+        const receipt = await report(readiness);
+        const alias = receipt.results.find(({ path }) => path === retainedAlias);
+        assert.equal(receipt.results.some(({ path }) => path.startsWith("releases/3.0.0/")), false);
+        if (outcome === "ready") {
+          assert.equal(result.status, 0, result.stderr);
+          assert.equal(receipt.status, "ready");
+          assert.equal(receipt.files, candidate.files.size + 1);
+          assert.equal(receipt.retainedManifestCount, 1);
+          assert.equal(alias.sha256, history.sha256);
+        } else {
+          assert.equal(result.status, 1, result.stderr);
+          assert.equal(receipt.status, "blocked");
+          assert.equal(alias.ok, false);
+          if (outcome === "missing") assert.equal(alias.lastResult.status, 404);
+          else if (outcome === "mismatch") assert.notEqual(alias.lastResult.sha256, history.sha256);
+          else assert.match(alias.lastResult.error, /exact URL/);
+        }
+      });
+    }
+  }
+
+  await t.test("production gate rejects a receipt for another provider attempt", async () => {
+    const result = run([...providerArgs.slice(0, -1), "scripts/cdn/verify-production.mjs",
+      "--version", version, "--manifest-sha256", candidate.sha256,
+      "--deployment-started-at", "2026-11-18T00:00:00.000Z"], "ready");
+    assert.equal(result.status, 1, result.stderr);
+    const readiness = await report("cdn-production-readiness");
+    assert.equal(readiness.status, "blocked");
+    assert.match(readiness.failures.join("\n"), /does not pin the requested deployment/);
+  });
+});
+
+test("production promotion blocks when retained history is lost after deployment verification", async (t) => {
+  const { cwd, publish } = await fixture(t);
+  const result = publish("provider-history", { LUOGUSP_TEST_HISTORY_READINESS: "ready" });
+  assert.equal(result.status, 1, result.stderr);
+  const report = async (name) => JSON.parse(await readFile(join(cwd, `reports/${name}.json`)));
+  const deployment = await report("cdn-deployment");
+  const production = await report("cdn-production-readiness");
+  const receipt = await report("publish");
+  assert.equal(deployment.status, "ready");
+  assert.equal(production.status, "blocked");
+  assert.match(production.failures.join("\n"), /releases\/1\.0\.0\/manifest\.json/);
+  assert.equal(receipt.phase, "production CDN gate");
+  assert.equal(receipt.deploymentStatus, "confirmed");
+  assert.equal(receipt.deploymentAttempt, "confirmed");
+  assert.equal(receipt.resumeAllowed, true);
+  assert.match(await readFile(join(cwd, "LuoguSP.user.js"), "utf8"), /@version\s+1\.0\.0/);
 });
 
 for (const failure of ["renderer", "late"]) {
@@ -606,22 +735,58 @@ test("publish leaves build-failure cleanup to the failed child and can retry", a
   assert.equal(retry.status, 0, retry.stderr);
 });
 
-test("overlapping rollbacks retain a valid current channel when its predecessor was removed", async (t) => {
-  const { cwd, build, snapshot, channelPath } = await fixture(t);
-  const first = build();
+test("pre-provider rollback can resume a verified release when its previous channel target was removed", async (t) => {
+  const { cwd, write, build, publish, publishArgs, snapshot, channelPath } = await fixture(t);
+  const previous = "1.1.0";
+  const first = build(previous);
   assert.equal(first.status, 0, first.stderr);
-  const second = build("3.0.0");
-  assert.equal(second.status, 0, second.stderr);
+  const child = await pauseChild(t, cwd, publishArgs, {
+    ...process.env, LUOGUSP_TEST_PUBLISH_MODE: "rollback-contention",
+  });
+  const channel = await readFile(channelPath, "utf8");
+  const candidate = await snapshot();
   const releasesRoot = join(cwd, "cdn/releases");
-  const rolledBack = await rollbackRelease({ releasesRoot, version, channelPath,
+  const rolledBack = await rollbackRelease({ releasesRoot, version: previous, channelPath,
     transaction: JSON.parse(first.stdout).transaction });
   assert.equal(rolledBack.removed, true);
-  const retained = await rollbackRelease({ releasesRoot, version: "3.0.0", channelPath,
-    transaction: JSON.parse(second.stdout).transaction });
-  assert.deepEqual(retained, { removed: false, channelRestored: false });
-  const current = JSON.parse(await readFile(channelPath));
-  assert.equal(current.release, "3.0.0");
-  assert.equal((await snapshot(current.release)).sha256, current.manifestSha256);
+  await write("rollback.continue", "");
+  assert.deepEqual(await child.exited, [1, null]);
+
+  const receiptPath = join(cwd, "reports/publish.json");
+  const checkpoint = await readFile(receiptPath);
+  const receipt = JSON.parse(checkpoint);
+  assert.equal(receipt.status, "blocked");
+  assert.equal(receipt.deploymentStatus, "not-attempted");
+  assert.equal(receipt.deploymentAttempt, "not-attempted");
+  assert.equal(receipt.releaseRollback.removed, false);
+  assert.equal(receipt.releaseRollback.channelRestored, false);
+  assert.equal(receipt.rollbackError, null);
+  assert.equal(receipt.channel, channel);
+  assert.equal(JSON.parse(receipt.channel).manifestSha256, candidate.sha256);
+  assert.deepEqual((await snapshot()).files, candidate.files);
+  assert.equal(await readFile(channelPath, "utf8"), channel);
+  await assert.rejects(readFile(join(cwd, "provider.jsonl")), { code: "ENOENT" });
+  assert.equal(receipt.resumeAllowed, true);
+  assert.equal(typeof receipt.rollbackDirectoryIdentity, "string");
+
+  const sibling = "3.0.0";
+  const built = build(sibling);
+  assert.equal(built.status, 0, built.stderr);
+  const siblingChannel = await readFile(channelPath);
+  const siblingFiles = (await snapshot(sibling)).files;
+  const unrelated = spawnSync(process.execPath, [...publishArgs.slice(0, -1), sibling], { cwd, encoding: "utf8" });
+  assert.notEqual(unrelated.status, 0);
+  assert.match(unrelated.stderr, /pending release 2\.0\.0/);
+  assert.deepEqual(await readFile(receiptPath), checkpoint);
+
+  const retried = publish("provider-success");
+  assert.equal(retried.status, 0, retried.stderr);
+  assert.deepEqual(JSON.parse(await readFile(join(cwd, "provider.jsonl"), "utf8")), {
+    channel: version, releases: ["1.0.0", version],
+  });
+  assert.deepEqual((await snapshot()).files, candidate.files);
+  assert.deepEqual(await readFile(channelPath), siblingChannel);
+  assert.deepEqual((await snapshot(sibling)).files, siblingFiles);
 });
 
 for (const change of ["asset", "extra-file", "same-release-channel"]) {

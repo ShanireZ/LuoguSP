@@ -104,6 +104,9 @@ export async function prepareCdn({ root, explicitOutput, origin, version, captur
     manifestSha256: selected.sha256,
     channelBody,
     manifestBody: selected.files.get(selected.path),
+    retainedManifests: Object.fromEntries([...staged]
+      .filter(([release]) => release !== channel.release)
+      .map(([release, { sha256 }]) => [release, sha256])),
     async verifyStaged() {
       try {
         if (relative(output, await realpath(output)) !== "")

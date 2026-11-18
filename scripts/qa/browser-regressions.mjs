@@ -286,8 +286,12 @@ for (const mode of ["full", "lite"]) {
       '[![Project screenshot](../intro-images/project(2).png "Screenshot title")](/article/fixture "Article title")',
       '[![Diagram](../intro-images/diagram(2).png "Diagram title")](./gallery "Gallery title")',
       '[![Map](../intro-images/map.png "Map title")](#chapter "Chapter title")',
+      '[![Query illustration](../intro-images/query.png?theme=normal&amp;size=2 "Query &quot;image&quot;")](./gallery?mode=one&amp;page=2 "Gallery &amp; list")',
+      '[![Reference illustration][cover-image]][cover-page]',
+      '[cover-page]: #references "References"\n[cover-image]: ../intro-images/reference.png "Reference image"',
       '<picture><source srcset="https://images.example.test/intro-images/source.png"><img src="//images.example.test/intro-images/raw.png" srcset="https://images.example.test/intro-images/srcset.png" alt="Raw &amp; safe"></picture>',
       '<a href="https://example.test/gallery"><img src="https://images.example.test/intro-images/badge.png" alt="Badge"></a>',
+      '<a href="./gallery?mode=raw&amp;page=2" title="HTML &gt; gallery"><img src="../intro-images/html.png" title="HTML image" alt="HTML cover"></a>',
       "![Luogu photo](/intro-images/redirect.png)",
       "![Relative photo](../intro-images/relative.png)",
       "![](https://images.example.test/intro-images/untitled.png)",
@@ -327,6 +331,9 @@ for (const mode of ["full", "lite"]) {
     for (const [label, outer, outerTitle, image, imageTitle] of [
       ["Diagram", "./gallery", "Gallery title", "diagram(2).png", "Diagram title"],
       ["Map", "#chapter", "Chapter title", "map.png", "Map title"],
+      ["Query illustration", "./gallery?mode=one&page=2", "Gallery & list", "query.png?theme=normal&size=2", 'Query "image"'],
+      ["Reference illustration", "#references", "References", "reference.png", "Reference image"],
+      ["HTML cover", "./gallery?mode=raw&page=2", "HTML > gallery", "html.png", "HTML image"],
     ]) {
       const link = intro.getByRole("link", { name: label, exact: true });
       assert.equal(await link.getAttribute("href"), outer);
@@ -2216,6 +2223,52 @@ for (const [kind, firstDetail, firstTitle] of [
   });
 }
 
+test("a later partial problem detail leaves newer summary fields visible", async (t) => {
+  let detailReads = 0;
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>'),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") {
+        const detail = route.request().resourceType() === "xhr"
+          ? { pid: problem.pid, difficulty: 4 }
+          : { ...problem, name: "Original title", accepted: false, totalAccepted: 12 };
+        if (route.request().resourceType() === "fetch") detailReads++;
+        return route.fulfill({ json: { user: viewer, data: { problem: detail } } });
+      }
+      if (url.pathname === "/training/100") return route.fulfill({
+        json: { user: viewer, data: { training: { problems: [
+          { ...problem, name: "Updated title", accepted: true, totalAccepted: 13 },
+        ] } } },
+      });
+      if (url.pathname === "/record/list") return route.fulfill({
+        json: { template: "record.list", user: viewer, data: { records: { result: [] } } },
+      });
+    },
+  });
+  const trigger = page.locator("#problem");
+  const preview = card(page);
+  const open = async (title) => {
+    await trigger.press("Alt+ArrowDown");
+    await preview.getByText(`${problem.pid} ${title}`, { exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await preview.waitFor({ state: "hidden" });
+  };
+  const readNative = async (path) => {
+    assert.equal(await page.evaluate((endpoint) => new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", endpoint);
+      xhr.onloadend = () => resolve(xhr.status);
+      xhr.send();
+    }), path), 200);
+  };
+  await open("Original title");
+  await readNative("/training/100");
+  await open("Updated title");
+  await readNative("/problem/P1000?view=latest");
+  await open("Updated title");
+  assert.equal(detailReads, 1);
+});
+
 test("problem preview leaves unsupported native XHR media to the direct lookup", async (t) => {
   const detail = responseGate(t);
   const { page, requests } = await fixture(t, {
@@ -2808,6 +2861,46 @@ test("a shallow user preview keeps the focused signature control fully visible",
   assert.ok(await focused(name));
   await page.keyboard.press("Escape");
   assert.ok(await focused(trigger));
+});
+
+test("signature width remeasurement preserves a deep scroll offset", async (t) => {
+  const user = { uid: 123, name: "Scroll fixture", slogan: "LongUserSignatureForBrowserFixture ".repeat(40) };
+  const { page } = await fixture(t, {
+    html: fixtureHtml('<a id="scroll-user" href="/user/123">User</a>'),
+    viewport: { width: 320, height: 250 },
+    reply(route, url) {
+      if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user } });
+      if (url.pathname === "/user/123") return route.fulfill({ status: 404, json: {} });
+    },
+  });
+  await page.locator("#scroll-user").press("Alt+ArrowDown");
+  const preview = card(page);
+  const toggle = preview.locator(".luogusp-hc-expand");
+  await toggle.press("Enter");
+  const name = preview.getByRole("link", { name: user.name });
+  await name.focus();
+  await preview.evaluate(node => { node.scrollTop = 500; });
+
+  const layout = () => preview.evaluate(node => ({
+    width: node.offsetWidth, scrollTop: node.scrollTop,
+    scrollHeight: node.scrollHeight, clientHeight: node.clientHeight,
+  }));
+  const resize = async (width, height) => {
+    await page.setViewportSize({ width, height });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return layout();
+  };
+
+  assert.equal((await layout()).scrollTop, 500);
+  const shorter = await resize(320, 240);
+  assert.equal(shorter.scrollTop, 500);
+  const narrower = await resize(300, 240);
+  assert.ok(narrower.width < shorter.width);
+  assert.equal(narrower.scrollHeight, shorter.scrollHeight);
+  assert.equal(narrower.clientHeight, shorter.clientHeight);
+  assert.equal(narrower.scrollTop, shorter.scrollTop);
+  assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+  assert.ok(await focused(name));
 });
 
 for (const sizeChange of ["viewport resizing", "pinch zoom", "card-only resizing"]) {

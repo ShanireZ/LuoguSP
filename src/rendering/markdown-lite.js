@@ -10,8 +10,6 @@ export function renderMarkdownLite(md, options = {}) {
       (character) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character],
     );
-  const url = (value) =>
-    /^(https?:)?\/\//i.test(value) || /^\//.test(value) ? value : "";
   const codeLanguageClass = (raw) => {
     const language = (raw || "").trim().split(/\s+/)[0].toLowerCase();
     return /^[a-z0-9_+-]+$/.test(language)
@@ -35,8 +33,20 @@ export function renderMarkdownLite(md, options = {}) {
   const stash = (html) => `${spanPrefix}${spans.push(html) - 1}@@`;
   const spanMarker = new RegExp(`${spanPrefix}(\\d+)@@`, "g");
   const restore = (source) => source.replace(spanMarker, (_, index) => spans[index]);
-  const getAttribute = (tag, pattern) => (tag.match(pattern) || [])[1] || "";
   const titleAttribute = (title) => title ? ` title="${esc(title)}"` : "";
+  const anchorStart = (href, title) =>
+    `<a href="${esc(href)}"${titleAttribute(title)} target="_blank" rel="noopener noreferrer">`;
+  let template;
+  const readInertTag = (markup) => {
+    template ??= document.createElement("template");
+    template.innerHTML = markup;
+    return template.content.firstElementChild;
+  };
+  const decodeAttribute = (value) => {
+    if (!value?.includes("&")) return value;
+    const quoted = value.replaceAll("<", "&lt;").replaceAll('"', "&quot;");
+    return readInertTag(`<span title="${quoted}"></span>`).title;
+  };
   // The renderer inserts this intermediate markup only into an inert template.
   const imageMarkup = (source, alt, title) => {
     const href = resolveIntroHttpUrl(source, document.baseURI);
@@ -64,12 +74,15 @@ export function renderMarkdownLite(md, options = {}) {
   const stashCode = (code) => stash(`<code>${esc(code)}</code>`);
   const rewriteInlineTokens = (tokens) => tokens.map((token) => {
     if (token.type === "codespan") return stashCode(token.text);
-    if (token.type === "image") return stash(imageMarkup(token.href, token.text, titleAttribute(token.title)));
+    if (token.type === "image")
+      return stash(imageMarkup(decodeAttribute(token.href), decodeAttribute(token.text),
+        titleAttribute(decodeAttribute(token.title))));
     if (token.type === "link" && token.raw.startsWith("[")) {
-      if (!resolveIntroHttpUrl(token.href, document.baseURI)) return stash(esc(token.raw));
+      const href = decodeAttribute(token.href);
+      if (!resolveIntroHttpUrl(href, document.baseURI)) return stash(esc(token.raw));
       const label = rewriteInlineTokens(token.tokens);
       const text = restore(inline(esc(mathInFragments(label))));
-      return stash(`<a href="${esc(token.href)}"${titleAttribute(token.title)} target="_blank" rel="noopener noreferrer">${text}</a>`);
+      return stash(`${anchorStart(href, decodeAttribute(token.title))}${text}</a>`);
     }
     if (["strong", "em", "del"].includes(token.type)) {
       // Preserve the delimiters for Lite's formatting pass.
@@ -80,10 +93,16 @@ export function renderMarkdownLite(md, options = {}) {
   }).join("");
   const inlineLiterals = (source) => {
     if (!source.includes("[") && !source.includes("`")) return source;
-    // Reuse inline grammar only. The lightweight block renderer and sanitization
-    // still work separately from the full parser and its extensions.
+    // Collect document reference definitions with the same lexer used for links.
+    // Keep Lite's block rendering, and omit definition lines from its input.
     try {
-      return rewriteInlineTokens(Lexer.lexInline(source, { gfm: false }));
+      const lexer = new Lexer({ gfm: false });
+      if (source.includes("]:")) {
+        const blocks = lexer.blockTokens(source);
+        if (Object.keys(lexer.tokens.links).length)
+          source = blocks.filter(({ type }) => type !== "def").map(({ raw }) => raw).join("");
+      }
+      return rewriteInlineTokens(lexer.inlineTokens(source));
     } catch {
       return source.replace(/`([^`]+)`/g, (_, code) => stashCode(code));
     }
@@ -118,23 +137,19 @@ export function renderMarkdownLite(md, options = {}) {
         );
       })
     .replace(/<img(?=[\s/>])(?:"[^"]*"|'[^']*'|[^"'<>])*>/gi, (tag) => {
-      const template = document.createElement("template");
-      template.innerHTML = tag;
-      const image = template.content.firstElementChild;
+      const image = readInertTag(tag);
       return image ? stash(imageMarkup(
         image.getAttribute("src"),
         image.getAttribute("alt") || "",
         titleAttribute(image.getAttribute("title")),
       )) : "";
     })
-    .replace(/<a\b[^>]*>/gi, (tag) => {
-      const safeUrl = url(getAttribute(tag, /\bhref\s*=\s*["']?([^"'\s>]+)/i));
-      const title = titleAttribute(getAttribute(tag, /\btitle\s*=\s*["']([^"']*)["']/i));
-      return stash(
-        safeUrl
-          ? `<a href="${esc(safeUrl)}"${title} target="_blank" rel="noopener noreferrer">`
-          : "<span>",
-      );
+    .replace(/<a(?=[\s/>])(?:"[^"]*"|'[^']*'|[^"'<>])*>/gi, (tag) => {
+      const anchor = readInertTag(tag);
+      const href = anchor?.getAttribute("href");
+      return stash(resolveIntroHttpUrl(href, document.baseURI)
+        ? anchorStart(href, anchor.getAttribute("title"))
+        : "<span>");
     })
     .replace(/<\/a>/gi, () => stash("</a>"))
     .replace(/<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, (tag, slash, name) =>

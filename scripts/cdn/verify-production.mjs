@@ -5,6 +5,7 @@ import {
   resolveBootstrapOrigin,
   resolveConfiguredOrigin,
 } from "./origin-policy.mjs";
+import { readDeploymentManifestPins } from "./publish-receipt.mjs";
 import { digest, releaseManifestPath } from "./release-integrity.mjs";
 import { fetchVerified } from "./verify-lib.mjs";
 
@@ -15,6 +16,8 @@ const argument = (name) => {
 };
 const version = argument("--version");
 const receiptManifestSha256 = argument("--manifest-sha256");
+const parentStartedAt = process.argv.includes("--deployment-started-at")
+  ? argument("--deployment-started-at") ?? "" : undefined;
 const qaMode = process.argv.includes("--qa");
 const versionPattern = qaMode
   ? /^\d+\.\d+\.\d+-canary\.[0-9A-Za-z.-]+$/
@@ -136,6 +139,15 @@ const paths = [
   [manifestCopy, manifestSha256],
   ...Object.entries(manifest.files).map(([path, { sha256 }]) => [path, sha256]),
 ];
+let history = null;
+try {
+  history = await readDeploymentManifestPins({
+    root, origin, release: version, manifestPath, manifestSha256, parentStartedAt,
+  });
+  if (history) paths.push(...history);
+} catch (error) {
+  failures.push(error.message);
+}
 const results = [];
 for (const [path, expected] of paths) {
   const url = new URL(path, `${origin}/`);
@@ -204,6 +216,7 @@ const report = {
     requires: stagedRequires.length,
   },
   files: paths.length,
+  retainedManifestCount: history?.length ?? null,
   dynamicEsmEnabled: manifest.esm.enabled,
   optionalBundles: manifest.optionalBundles || {},
   failures: uniqueFailures,
@@ -228,7 +241,8 @@ if (uniqueFailures.length) {
     .forEach((failure) => console.error(`- ${failure}`));
   process.exitCode = 1;
 } else {
+  const scope = history === null ? " for the requested release" : "";
   console.log(
-    `Production CDN gate ready: ${paths.length} immutable files verified on ${origin}.`,
+    `Production CDN gate ready: ${paths.length} immutable files verified${scope} on ${origin}.`,
   );
 }

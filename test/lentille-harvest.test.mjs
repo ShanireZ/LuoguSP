@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import {
   collectDifficultyBatches,
-  readLentilleData,
+  readLentillePage,
 } from "../src/features/problem-color/lentille-harvest.js";
 
 function documentWithContext(body) {
@@ -33,7 +33,7 @@ test("lentille harvest reads only attempted problems from the practice payload",
     },
   });
 
-  const batches = collectDifficultyBatches(readLentilleData(doc));
+  const batches = collectDifficultyBatches(readLentillePage(doc).data);
 
   assert.equal(batches.length, 1);
   assert.deepEqual(flatten(batches).map((p) => [p.pid, p.difficulty]), [
@@ -57,7 +57,7 @@ test("lentille harvest reads the paginated problem-list payload", () => {
     },
   });
 
-  const batches = collectDifficultyBatches(readLentilleData(doc));
+  const batches = collectDifficultyBatches(readLentillePage(doc).data);
 
   assert.equal(batches.length, 1);
   assert.deepEqual(flatten(batches).map((p) => [p.pid, p.difficulty]), [
@@ -80,7 +80,7 @@ test("lentille harvest keeps only unambiguous record difficulties", () => {
     },
   });
 
-  const batches = collectDifficultyBatches(readLentilleData(doc));
+  const batches = collectDifficultyBatches(readLentillePage(doc).data);
 
   assert.equal(batches.length, 1);
   assert.deepEqual(flatten(batches), [
@@ -105,12 +105,13 @@ test("detail and training pages expose their native difficulty without another r
 
 test("an updated context element replaces the parsed snapshot", () => {
   const doc = documentWithContext({ data: { problem: { pid: "P1001", difficulty: 1 } } });
-  const first = readLentilleData(doc);
+  const first = readLentillePage(doc);
   doc.getElementById("lentille-context").textContent = JSON.stringify({
     data: { problem: { pid: "P1001", difficulty: 2 } },
   });
-  assert.notEqual(readLentilleData(doc), first);
-  assert.equal(readLentilleData(doc).problem.difficulty, 2);
+  const second = readLentillePage(doc);
+  assert.notEqual(second, first);
+  assert.equal(second.data.problem.difficulty, 2);
 });
 
 test("lentille harvest returns a stable source so the pipeline can dedupe it", () => {
@@ -118,12 +119,15 @@ test("lentille harvest returns a stable source so the pipeline can dedupe it", (
     data: { submitted: [{ pid: "P1001", difficulty: 1 }] },
   });
 
-  const first = collectDifficultyBatches(readLentilleData(doc));
-  const second = collectDifficultyBatches(readLentilleData(doc));
+  const page = readLentillePage(doc);
+  const first = collectDifficultyBatches(page.data);
+  const repeated = readLentillePage(doc);
+  const second = collectDifficultyBatches(repeated.data);
 
   // harvest() runs once per coloured anchor; re-parsing would both cost a
   // 100KB+ JSON.parse each time and hand the pipeline a fresh array whose
   // WeakSet dedupe can never hit.
+  assert.equal(page, repeated);
   assert.equal(first[0].source, second[0].source);
   assert.notEqual(first[0].problems(), first[0].source);
 });
@@ -133,19 +137,19 @@ test("lentille harvest does not read difficulties out of an unrelated payload", 
     data: { articles: [{ lid: "abc", title: "P1001 题解" }], user: { uid: 3 } },
   });
 
-  assert.deepEqual(collectDifficultyBatches(readLentilleData(doc)), []);
+  assert.deepEqual(collectDifficultyBatches(readLentillePage(doc).data), []);
 });
 
 test("lentille harvest tolerates a missing, empty or malformed context", () => {
   const missing = new JSDOM("<!doctype html><html><body></body></html>");
-  assert.equal(readLentilleData(missing.window.document), null);
+  assert.equal(readLentillePage(missing.window.document), null);
   assert.deepEqual(collectDifficultyBatches(null), []);
 
-  assert.equal(readLentilleData(documentWithContext("{not json")), null);
-  assert.equal(readLentilleData(documentWithContext("null")), null);
+  assert.equal(readLentillePage(documentWithContext("{not json")), null);
+  assert.equal(readLentillePage(documentWithContext("null")), null);
   assert.deepEqual(
     collectDifficultyBatches(
-      readLentilleData(documentWithContext({ data: { passed: [] } })),
+      readLentillePage(documentWithContext({ data: { passed: [] } })).data,
     ),
     [],
   );
@@ -160,13 +164,13 @@ test("lentille harvest re-parses when the document itself is replaced", () => {
   });
 
   assert.deepEqual(
-    flatten(collectDifficultyBatches(readLentilleData(first))).map(
+    flatten(collectDifficultyBatches(readLentillePage(first).data)).map(
       (p) => p.pid,
     ),
     ["P1001"],
   );
   assert.deepEqual(
-    flatten(collectDifficultyBatches(readLentilleData(second))).map(
+    flatten(collectDifficultyBatches(readLentillePage(second).data)).map(
       (p) => p.pid,
     ),
     ["P2001"],

@@ -166,10 +166,7 @@ export function createHoverCardSources(config) {
         : await load(`problem:${viewerUid || 0}:${pid}`, () =>
             readJson(`/problem/${encodeURIComponent(pid)}`, signal), signal);
       if (detail?.data?.problem?.pid === pid && detail !== payload) {
-        payload = { data: {
-          ...detail.data,
-          problem: { ...payload?.data.problem, ...detail.data.problem },
-        } };
+        payload = detail;
         publish();
       }
     } catch (error) {

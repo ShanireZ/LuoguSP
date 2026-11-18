@@ -149,7 +149,7 @@ export function createGetRequestScheduler(config) {
     const key = options?.key ?? url;
     let job = inflight.get(key);
     if (!job) {
-      job = { url, key, retries: 0, consumers: 0 };
+      job = { url, key, retries: 0, consumers: 0, at: clock.now() };
       job.promise = new Promise((resolve, reject) => {
         job.resolve = resolve;
         job.reject = reject;
@@ -161,6 +161,8 @@ export function createGetRequestScheduler(config) {
     }
     const result = attachSignal(job, signal);
     drain();
+    // Every consumer of a shared response observes it at the original scheduling time.
+    options?.onScheduled?.(job.at);
     return result;
   };
   const dispose = () => {

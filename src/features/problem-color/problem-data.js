@@ -6,8 +6,8 @@ export const LENTILLE_INIT = Object.freeze({
   headers: Object.freeze({ "x-lentille-request": "content-only" }),
 });
 
-function project(problem, pid) {
-  const result = { pid };
+function project(problem) {
+  const result = {};
   if (typeof problem.name === "string" && problem.name.trim()) result.name = problem.name;
   if (Number.isInteger(problem.difficulty) && problem.difficulty >= 0 &&
       problem.difficulty < DIFFICULTY_TIERS)
@@ -24,7 +24,7 @@ function project(problem, pid) {
     for (const key of ["time", "memory"]) {
       const values = problem.limits[key];
       if (Array.isArray(values) && values.length && values.every(Number.isFinite))
-        (result.limits ??= {})[key] = values.slice();
+        result[`limits.${key}`] = values.slice();
     }
   }
   if (Array.isArray(problem.samples) &&
@@ -61,6 +61,7 @@ export function createProblemData({
   const recordLists = new Map();
   let observedViewer;
   let viewerAt = -Infinity;
+  const isFresh = (at, currentTime) => currentTime - at < ttlMs;
 
   const scope = (url, viewer) => {
     const params = new URLSearchParams();
@@ -83,44 +84,46 @@ export function createProblemData({
     }
     return scope(url, viewer());
   };
-  const read = (map, key) => {
-    const entry = map.get(key);
-    if (entry && now() - entry.at < ttlMs) return entry;
-    map.delete(key);
+  const readRecords = (key) => {
+    const entry = recordLists.get(key);
+    if (entry && isFresh(entry.at, now())) return entry;
+    recordLists.delete(key);
     return null;
   };
   const remember = (map, key, entry, limit) => {
-    if ((map.get(key)?.at ?? -Infinity) > entry.at) return;
     map.delete(key);
     map.set(key, entry);
     if (map.size > limit) map.delete(map.keys().next().value);
   };
+  const readFields = (map, key, currentTime) => {
+    const fields = map.get(key);
+    if (!fields) return null;
+    for (const [field, { at }] of fields) {
+      if (!isFresh(at, currentTime)) fields.delete(field);
+    }
+    if (fields.size) return fields;
+    map.delete(key);
+    return null;
+  };
+  const rememberFields = (map, key, values, at, limit) => {
+    const currentTime = now();
+    if (!isFresh(at, currentTime)) return;
+    const fields = readFields(map, key, currentTime) ?? new Map();
+    let changed = false;
+    // An older response can fill an omission without renewing other fields.
+    for (const [field, value] of Object.entries(values)) {
+      if ((fields.get(field)?.at ?? -Infinity) > at) continue;
+      fields.set(field, { value, at });
+      changed = true;
+    }
+    if (changed) remember(map, key, fields, limit);
+  };
   const rememberDetail = (data, pid, context, at) => {
     if (!data.problem || typeof data.problem !== "object" || Array.isArray(data.problem)) return;
-    const problem = project(data.problem, pid);
-    // The lookup supplies the PID even when the server returned no usable detail.
-    if (Object.keys(problem).length === 1) return;
-    const key = keyOf(pid, context);
-    const entry = {
-      at,
-      problem,
-      bookmarked: typeof data.bookmarked === "boolean" ? data.bookmarked : undefined,
-    };
-    const previous = read(details, key);
-    if (!previous) {
-      remember(details, key, entry, 120);
-      return;
-    }
-    // A read started earlier can still fill in fields the latest response omitted.
-    const [older, newer] = at < previous.at ? [entry, previous] : [previous, entry];
-    const merged = { ...older.problem, ...newer.problem };
-    if (older.problem.limits && newer.problem.limits)
-      merged.limits = { ...older.problem.limits, ...newer.problem.limits };
-    remember(details, key, {
-      at: newer.at,
-      problem: merged,
-      bookmarked: newer.bookmarked ?? older.bookmarked,
-    }, 120);
+    const values = project(data.problem);
+    if (!Object.keys(values).length) return;
+    if (typeof data.bookmarked === "boolean") values.bookmarked = data.bookmarked;
+    rememberFields(details, keyOf(pid, context), values, at, 120);
   };
   const rememberPage = (page, url, at) => {
     if (page.viewer !== undefined && at >= viewerAt) {
@@ -146,7 +149,9 @@ export function createProblemData({
           .map(({ id, submitTime, score, status, time, memory }) => ({
             id, submitTime, score, status, time, memory,
           }));
-        remember(recordLists, keyOf(pid, context), { at, records }, 30);
+        const key = keyOf(pid, context);
+        if ((recordLists.get(key)?.at ?? -Infinity) <= at)
+          remember(recordLists, key, { at, records }, 30);
       }
     }
     const detail = page.data.problem;
@@ -156,33 +161,30 @@ export function createProblemData({
       for (const problem of batch.problems()) {
         if (hasDetail && problem === detail) continue;
         if (typeof problem?.pid !== "string" || !PID_PATTERN.test(problem.pid)) continue;
-        remember(summaries, keyOf(problem.pid, context), {
-          at, problem: project(problem, problem.pid),
-        }, 4000);
+        rememberFields(summaries, keyOf(problem.pid, context), project(problem), at, 4000);
       }
     }
     if (hasDetail) rememberDetail(page.data, detail.pid, context, at);
   };
-  const payload = (key) => {
-    const detail = read(details, key);
-    const summary = read(summaries, key);
+  const payload = (pid, key, currentTime = now(), detail = readFields(details, key, currentTime)) => {
+    const summary = readFields(summaries, key, currentTime);
     if (!detail && !summary) return null;
-    return {
-      data: {
-        problem: detail && summary
-          ? (summary.at >= detail.at
-            ? { ...detail.problem, ...summary.problem }
-            : { ...summary.problem, ...detail.problem })
-          : detail?.problem ?? summary.problem,
-        bookmarked: detail?.bookmarked,
-      },
-    };
+    const values = {};
+    for (const [field, { value }] of detail ?? []) values[field] = value;
+    for (const [field, { value, at }] of summary ?? []) {
+      if (at >= (detail?.get(field)?.at ?? -Infinity)) values[field] = value;
+    }
+    const { "limits.time": time, "limits.memory": memory, bookmarked, ...fields } = values;
+    const problem = { pid, ...fields };
+    if (time) (problem.limits ??= {}).time = time;
+    if (memory) (problem.limits ??= {}).memory = memory;
+    return { data: { problem, bookmarked } };
   };
   const peek = (pid, { href, refreshPage = true } = {}) => {
     if (typeof pid !== "string" || !PID_PATTERN.test(pid)) return null;
     if (refreshPage) refresh();
     const context = contextFor(pid, href);
-    return context ? payload(keyOf(pid, context)) : null;
+    return context ? payload(pid, keyOf(pid, context)) : null;
   };
   const load = async (pid, { href, signal, fields = [] } = {}) => {
     if (typeof pid !== "string" || !PID_PATTERN.test(pid) || signal?.aborted) return null;
@@ -190,15 +192,20 @@ export function createProblemData({
     const context = contextFor(pid, href);
     if (!context) return null;
     const key = keyOf(pid, context);
-    const detail = read(details, key);
-    if (detail && fields.every((field) => detail.problem[field] !== undefined)) return payload(key);
+    let at = now();
+    const detail = readFields(details, key, at);
+    if (detail && fields.every((field) => field === "limits"
+      ? detail.has("limits.time") || detail.has("limits.memory")
+      : field === "pid" || (field !== "bookmarked" && detail.has(field))))
+      return payload(pid, key, at, detail);
 
     const path = `/problem/${encodeURIComponent(pid)}`;
     const query = new URLSearchParams(context.params);
     query.set("_contentOnly", "1");
-    const at = now();
     try {
-      const reply = await text(`${path}?${query}`, { key, signal });
+      const reply = await text(`${path}?${query}`, {
+        key, signal, onScheduled: (scheduledAt) => { at = scheduledAt; },
+      });
       if (signal?.aborted || viewer() !== context.viewer) return null;
       const page = parsePage(reply);
       if (page?.user === null && context.viewer !== 0) return null;
@@ -207,7 +214,7 @@ export function createProblemData({
       const problem = data?.problem;
       if (problem && (problem.pid === undefined || problem.pid === pid))
         rememberDetail(data, pid, context, at);
-      return payload(key);
+      return payload(pid, key);
     } catch (error) {
       if (signal?.aborted || [401, 403, 404].includes(error?.status)) return null;
       throw error;
@@ -219,7 +226,7 @@ export function createProblemData({
   };
   const records = (pid, { href } = {}) => {
     const context = contextFor(pid, href);
-    return context ? read(recordLists, keyOf(pid, context))?.records : undefined;
+    return context ? readRecords(keyOf(pid, context))?.records : undefined;
   };
   return Object.freeze({ peek, load, rememberPage, viewerUid, records });
 }

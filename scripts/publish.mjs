@@ -204,8 +204,7 @@ let productionModified = false;
 let rendererReport = null;
 let buildTransaction = null;
 let capturedChannel = resumeMode ? previousReport.channel ?? null : null;
-let rollbackDirectoryIdentity = resumeMode && deploymentStatus === "not-attempted"
-  ? previousReport.rollbackDirectoryIdentity : undefined;
+let rollbackDirectoryIdentity = resumeMode ? previousReport.rollbackDirectoryIdentity : undefined;
 let resumeAllowed = resumeMode;
 const initialProduction = new Map([
   [metadataPath, initialMetadata], [artifactPath, initialArtifact], [packagePath, initialPackage],
@@ -260,7 +259,7 @@ const restoreProduction = async () => {
 };
 const writeReport = (report) => writePublishReport(reportPath, {
   ...report,
-  ...(deploymentStatus === "not-attempted" ? { rollbackDirectoryIdentity } : {}),
+  rollbackDirectoryIdentity,
 });
 const writeCheckpoint = () => writeReport({
   startedAt, status: "in-progress", release: version, phase,
@@ -399,6 +398,8 @@ try {
     version,
     "--manifest-sha256",
     releaseChannel.manifestSha256,
+    "--deployment-started-at",
+    startedAt,
   ]);
 
   beginPhase("local production promotion");
@@ -478,6 +479,8 @@ try {
       releaseRollback = await rollbackRelease({
         releasesRoot, version, channelPath, transaction: buildTransaction,
       });
+      if (releaseRollback.resumeAllowed)
+        rollbackDirectoryIdentity = buildTransaction.directoryIdentity;
     } catch (cleanupError) {
       rollbackError = cleanupError.message;
       if (cleanupError instanceof LocalLockBusyError && resumeAllowed)

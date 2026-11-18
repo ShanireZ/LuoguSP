@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import browserslist from "browserslist";
 
@@ -72,14 +72,38 @@ const withoutCodeComments = (source) => {
   return output;
 };
 
+const moduleExtension = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 const moduleFiles = async (directory) => {
   const files = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const absolute = resolve(directory, entry.name);
     if (entry.isDirectory()) files.push(...(await moduleFiles(absolute)));
-    else if (entry.isFile() && /\.(?:[cm]?[jt]s|[jt]sx)$/.test(entry.name)) files.push(absolute);
+    else if (entry.isFile() && moduleExtension.test(entry.name)) files.push(absolute);
   }
   return files;
+};
+
+// Include literal local module paths in package commands, even outside scripts/.
+const packageModuleFiles = async (scripts) => {
+  const candidates = new Set();
+  for (const command of Object.values(scripts)) {
+    for (const [, doubleQuoted, singleQuoted, word] of command.matchAll(/"([^"]+)"|'([^']+)'|([^\s"'&|;()<>]+)/g)) {
+      const token = doubleQuoted ?? singleQuoted ?? word;
+      if (token.startsWith("-") || !moduleExtension.test(token)) continue;
+      const absolute = resolve(root, token);
+      const location = relative(root, absolute).replaceAll("\\", "/");
+      if (!isAbsolute(location) && !location.startsWith("../")) candidates.add(absolute);
+    }
+  }
+  const files = await Promise.all([...candidates].map(async (path) => {
+    try {
+      return (await stat(path)).isFile() ? path : null;
+    } catch (error) {
+      if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+      return null;
+    }
+  }));
+  return files.filter(Boolean);
 };
 
 const versionParts = (value) =>
@@ -224,7 +248,13 @@ for (const browser of Object.values(targetBrowserNames))
   assert.ok(coveredBuildBrowsers.has(browser), `缺少必需的 esbuild 目标 ${browser}`);
 
 const buildConsumers = [];
-for (const absolute of await moduleFiles(resolve(root, "scripts"))) {
+const targetModule = resolve(root, "baseline-targets.mjs");
+const [scripts, declaredModules] = await Promise.all([
+  moduleFiles(resolve(root, "scripts")),
+  packageModuleFiles(packageJson.scripts),
+]);
+for (const absolute of new Set([...scripts, ...declaredModules])) {
+  if (absolute === targetModule) continue;
   const source = withoutCodeComments(await readFile(absolute, "utf8"));
   const references = source.match(/\b(?:from\s*|(?:import|require)\s*(?:\(\s*)?)["'\x60]esbuild(?:\/[^"'\x60\n]+)?["'\x60]/g);
   const file = relative(root, absolute).replaceAll("\\", "/");
@@ -232,7 +262,7 @@ for (const absolute of await moduleFiles(resolve(root, "scripts"))) {
     !references,
     `${file} 使用了无法核验的 esbuild 导入。请从 baseline-targets.mjs 导入 buildBrowser。`,
   );
-  let importPath = relative(dirname(absolute), resolve(root, "baseline-targets.mjs")).replaceAll(
+  let importPath = relative(dirname(absolute), targetModule).replaceAll(
     "\\",
     "/",
   );

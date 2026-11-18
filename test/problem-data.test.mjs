@@ -147,6 +147,71 @@ test("empty sample lists from detail and native data satisfy IDE lookups", async
   }
 });
 
+test("a partial detail preserves newer summary fields and the original sample expiry", async () => {
+  const { pid, samples } = problem;
+  let time = 0;
+  const requests = [];
+  const data = createProblemData({ origin, now: () => time, text: async (path) => {
+    requests.push(path);
+    return JSON.stringify({ data: {
+      problem: requests.length === 1 ? { pid, difficulty: 3 } : { pid, samples },
+    } });
+  } });
+  const load = (...fields) => data.load(pid, { fields });
+  const initial = { pid, name: "Original title", accepted: false, totalAccepted: 12, samples: [] };
+  data.rememberPage({ data: { problem: initial } }, url(`/problem/${pid}`), time);
+  time = 60_000;
+  const updated = { pid, name: "Updated title", accepted: true, totalAccepted: 13 };
+  data.rememberPage({ data: { training: { problems: [updated] } } }, url("/training/123"), time);
+  assert.deepEqual(data.peek(pid).data.problem, { ...updated, samples: [] });
+
+  time = 299_000;
+  const combined = { ...updated, difficulty: 3 };
+  assert.deepEqual((await load("name", "difficulty")).data.problem, { ...combined, samples: [] });
+  time = 299_999;
+  assert.deepEqual((await load("samples")).data.problem.samples, []);
+  assert.equal(requests.length, 1);
+
+  time = 300_000;
+  assert.deepEqual(data.peek(pid).data.problem, combined);
+  assert.deepEqual((await load("samples")).data.problem, { ...combined, samples });
+  assert.deepEqual(requests, Array(2).fill(`/problem/${pid}?_contentOnly=1`));
+  time = 360_000;
+  assert.deepEqual(data.peek(pid).data.problem, { pid, difficulty: 3, samples });
+});
+
+test("partial summaries and details retain separate expiry for each limit and bookmark", () => {
+  const { pid } = problem;
+  let time = 0;
+  const data = createProblemData({ origin, now: () => time, ttlMs: 100 });
+  const native = (problem, bookmarked) =>
+    data.rememberPage({ data: { problem, bookmarked } }, url(`/problem/${pid}`), time);
+  const summary = (problem) => data.rememberPage(
+    { data: { training: { problems: [problem] } } }, url("/training/123"), time);
+  const peek = () => data.peek(pid)?.data;
+  native({ pid, limits: { time: [1000], memory: [128000] } }, false);
+  time = 30;
+  summary({ pid, name: "New title", limits: { time: [2000] } });
+  time = 50;
+  native({ pid, limits: { memory: [256000] } });
+  time = 70;
+  summary({ pid, totalAccepted: 0, tags: [] });
+
+  assert.deepEqual(peek(), {
+    problem: { pid, name: "New title", limits: { time: [2000], memory: [256000] }, totalAccepted: 0, tags: [] },
+    bookmarked: false,
+  });
+  time = 100;
+  assert.equal(peek().bookmarked, undefined);
+  assert.deepEqual(peek().problem.limits, { time: [2000], memory: [256000] });
+  time = 130;
+  assert.deepEqual(peek().problem, { pid, limits: { memory: [256000] }, totalAccepted: 0, tags: [] });
+  time = 150;
+  assert.deepEqual(peek().problem, { pid, totalAccepted: 0, tags: [] });
+  time = 170;
+  assert.equal(peek(), undefined);
+});
+
 test("a pending detail lookup fills omissions without replacing newer native fields", async () => {
   const reply = deferred();
   let time = 1;
@@ -180,6 +245,38 @@ test("one detail request serves concurrent consumers and survives one aborted ro
   assert.deepEqual((await ide).data.problem.samples, problem.samples);
   assert.deepEqual(calls, ["/problem/P1001?_contentOnly=1"]);
   scheduler.dispose();
+});
+
+test("a late subscriber uses the original time of the shared detail request", async (t) => {
+  const { pid } = problem;
+  const clock = new FakeClock();
+  const pending = deferred();
+  let reads = 0;
+  const scheduler = createGetRequestScheduler({
+    clock: clock.adapter(),
+    launchGap: 0,
+    fetch: () => ++reads === 1 ? pending.promise :
+      textResponse(JSON.stringify({ data: { problem } })),
+  });
+  t.after(() => scheduler.dispose());
+  const data = createProblemData({ origin, text: scheduler.text, now: clock.adapter().now, ttlMs: 100 });
+  const route = new AbortController();
+  const first = data.load(pid, { signal: route.signal });
+  await clock.advance(10);
+  const native = { pid, name: "New title", difficulty: 2 };
+  data.rememberPage({ data: { problem: native } }, url(`/problem/${pid}`), clock.nowMs);
+  await clock.advance(10);
+  const later = data.load(pid, { fields: ["samples"] });
+  route.abort();
+  pending.resolve(textResponse(JSON.stringify({ data: { problem: { ...problem, samples: [] } } })));
+
+  assert.equal(await first, null);
+  assert.deepEqual((await later).data.problem, { ...native, samples: [] });
+  assert.equal(reads, 1);
+  await clock.advance(80);
+  assert.deepEqual(data.peek(pid).data.problem, native);
+  assert.deepEqual((await data.load(pid, { fields: ["samples"] })).data.problem.samples, problem.samples);
+  assert.equal(reads, 2);
 });
 
 test("legacy problem HTML is read only from an identified data context", async () => {
@@ -271,6 +368,27 @@ test("hover card shows available difficulty and fetches the missing title on reo
   assert.equal(recovered.difficulty, difficulty);
   assert.deepEqual(await sources.problem(pid, 0), recovered);
   assert.equal(reads, 2);
+});
+
+test("a hover refresh removes fields that expired during the detail read", async () => {
+  const { pid, name } = problem;
+  const reply = deferred();
+  let time = 0;
+  const data = createProblemData({ origin, text: () => reply.promise, now: () => time, ttlMs: 100 });
+  data.rememberPage({ data: { problem: { pid, name, totalAccepted: 12 } } }, url(`/problem/${pid}`), time);
+  const sources = createHoverCardSources({ origin, problemData: data,
+    fetchPage: () => assert.fail("unexpected supplemental lookup") });
+  const updates = [];
+  time = 99;
+  const shown = sources.problem(pid, 0, undefined, { onUpdate: (card) => updates.push(card) });
+  assert.equal(updates[0].name, name);
+  assert.equal(updates[0].acceptedCount, 12);
+  time = 100;
+  reply.resolve(JSON.stringify({ data: { problem: { pid, difficulty: 3 } } }));
+  const refreshed = await shown;
+  assert.equal(refreshed.difficulty, 3);
+  assert.equal(refreshed.name, pid);
+  assert.equal(refreshed.acceptedCount, null);
 });
 
 function recordPreviewSources(fetchPage, clock) {

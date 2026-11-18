@@ -60,13 +60,14 @@ export async function rollbackRelease({ releasesRoot, version, channelPath, tran
     if (channelRestored) {
       // A preceding build may itself have rolled back while this one ran.
       // Keep the current complete release if its previous channel is now invalid.
+      const retainedWithCapturedChannel = { ...retained, resumeAllowed: true };
       try {
         const previous = JSON.parse(transaction.previousChannel);
         const target = await snapshotRelease(releasesRoot, previous.release);
         if (target.path !== previous.manifestPath || target.sha256 !== previous.manifestSha256)
-          return retained;
+          return retainedWithCapturedChannel;
       } catch {
-        return retained;
+        return retainedWithCapturedChannel;
       }
       await replaceChannel(channelPath, transaction.previousChannel);
     } else if (JSON.parse(currentChannel).release === version) return retained;
