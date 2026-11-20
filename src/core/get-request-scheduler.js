@@ -79,7 +79,7 @@ export function createGetRequestScheduler(config) {
             const error = new Error(`HTTP ${response.status} ${job.url}`);
             error.status = response.status;
             if (
-              (response.status === 429 || response.status === 503) &&
+              (response.type === "opaqueredirect" || response.status === 429 || response.status === 503) &&
               job.retries < maxRetries
             ) {
               const retryAfter =

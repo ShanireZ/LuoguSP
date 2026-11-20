@@ -702,7 +702,7 @@ for (const [fault, metadata] of [
         const { pathname: path } = new URL(url);
         assert.equal(init.mode, "same-origin");
         assert.equal(init.credentials, "same-origin");
-        assert.equal(init.redirect, "error");
+        assert.equal(init.redirect, "manual");
         assert.equal(init.headers?.["x-lentille-request"], path === "/user/123" ? "content-only" : undefined);
         const response = profileResponse(path, path.includes("/api/")
           ? { user: { uid: 123, name: "Trusted basic" } }

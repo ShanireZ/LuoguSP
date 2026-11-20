@@ -90,7 +90,10 @@ export function createHoverCardSources(config) {
 
   const readResponse = async (path, signal, init) => {
     const url = new URL(path, origin).href;
-    const response = await fetchPage(url, signal, { ...init, ...SAME_ORIGIN_GET });
+    const options = { ...init, ...SAME_ORIGIN_GET };
+    let response = await fetchPage(url, signal, options);
+    if (response?.type === "opaqueredirect" && !signal?.aborted)
+      response = await fetchPage(url, signal, options);
     if (signal?.aborted || !matchesGetUrl(response, url)) return null;
     const { status } = response;
     return status === 408 || status === 429 || status >= 500 ? null : response;

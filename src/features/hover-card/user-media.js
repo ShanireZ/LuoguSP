@@ -61,14 +61,20 @@ async function fetchImage(fetchPage, url, signal) {
   }
 }
 
-// Use decoded image responses only. A direct img or CSS URL could follow redirects.
+// Luogu's image policy permits data: but blocks blob: on some pages.
+const imageDataUrl = (blob) => new Promise((resolve) => {
+  const reader = new FileReader();
+  reader.onloadend = () => resolve(reader.result);
+  reader.readAsDataURL(blob);
+});
+
+// Display only verified image responses. A direct img or CSS URL could follow redirects.
 export function createUserMedia(fetchPage, signal) {
   const slots = new Map();
   const clear = (slot) => {
     slot.controller.abort();
     slot.img.onerror = null;
     slot.img.removeAttribute("src");
-    if (slot.objectUrl) URL.revokeObjectURL(slot.objectUrl);
   };
   signal.addEventListener("abort", () => {
     for (const slot of slots.values()) clear(slot);
@@ -83,25 +89,26 @@ export function createUserMedia(fetchPage, signal) {
       slots.delete(img);
     }
     if (!url) return;
-    const slot = { img, url, controller: new AbortController(), objectUrl: null };
+    const slot = { img, url, controller: new AbortController() };
     slots.set(img, slot);
     const { signal: slotSignal } = slot.controller;
     const show = async (source, next) => {
+      const useFallback = () => {
+        if (slotSignal.aborted) return;
+        img.onerror = null;
+        img.removeAttribute("src");
+        if (next) void show(next);
+      };
       try {
         const blob = await fetchImage(fetchPage, source, slotSignal);
+        if (!blob) return useFallback();
+        const dataUrl = await imageDataUrl(blob);
         if (slotSignal.aborted) return;
-        if (!blob) throw new Error("Unsupported preview image");
-        slot.objectUrl = URL.createObjectURL(blob);
-        img.onerror = () => {
-          URL.revokeObjectURL(slot.objectUrl);
-          slot.objectUrl = null;
-          img.onerror = null;
-          img.removeAttribute("src");
-          if (next) void show(next);
-        };
-        img.src = slot.objectUrl;
+        if (!dataUrl) return useFallback();
+        img.onerror = useFallback;
+        img.src = dataUrl;
       } catch {
-        if (next && !slotSignal.aborted) void show(next);
+        useFallback();
       }
     };
     void show(url, fallback);

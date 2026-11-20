@@ -43,8 +43,9 @@ available difficulty data.
 
 Problem coloring, problem hover cards, and IDE samples share a single
 same-origin lookup scheduler and reuse fields from Lentille page responses.
-Direct reads reject redirects and require an exact HTTP 200 response at the
-requested URL. The shared detail lookup accepts JSON and native HTML. Hover
+Direct reads never follow redirects and require an exact HTTP 200 response at the
+requested URL. An opaque redirect allows one retry of the original GET. The
+shared detail lookup accepts JSON and native HTML. Hover
 fallbacks and supplemental reads require JSON. Responses with invalid provenance
 leave the already available preview fields in place.
 Passive native XHR observations require HTTP 200, JSON media and the original
@@ -137,8 +138,9 @@ When the signature fits within two lines, the
 disclosure collapses and hides. Focus held on that button returns to the
 user-name link. Focus on another control stays with that control.
 The preview replaces the native user card after the optional feature has mounted.
-User previews load avatar and cover media from allowed HTTPS origins without
-credentials or a referrer, and use a local visual fallback if loading fails.
+User previews fetch bounded raster images from allowed HTTPS origins without
+credentials, a referrer or redirects. They display verified bytes as data URLs
+under Luogu's image CSP and use a local visual fallback if loading fails.
 Follow and block
 requests, pending state, and results use the initiating viewer and target
 account. A card from a previously observed viewer cannot start a new action.

@@ -1,7 +1,7 @@
 export const SAME_ORIGIN_GET = Object.freeze({
   mode: "same-origin",
   credentials: "same-origin",
-  redirect: "error",
+  redirect: "manual",
 });
 
 export function matchesGetUrl(response, expectedUrl) {

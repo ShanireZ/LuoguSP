@@ -3746,7 +3746,7 @@ test("user preview relinquishes the native card on close and retries transient p
   assert.equal(await focused(trigger), true);
 });
 
-test("user preview loads verified Luogu images without referrers, credentials, or redirect hops", async (t) => {
+test("user preview loads verified Luogu images under the page image CSP without referrers, credentials, or redirects", async (t) => {
   const cdn = "https://cdn.luogu.com.cn";
   const avatar = `${cdn}/upload/usericon/123.png`;
   const redirect = `${cdn}/upload/image_hosting/redirect.png`;
@@ -3756,7 +3756,8 @@ test("user preview loads verified Luogu images without referrers, credentials, o
   const seen = [];
   const routeHeaders = { "access-control-allow-origin": "*" };
   const { page } = await fixture(t, {
-    html: fixtureHtml('<a id="safe-user" href="/user/123">Safe user</a><a id="offsite-user" href="/user/456">Offsite user</a>'),
+    html: fixtureHtml('<a id="safe-user" href="/user/123">Safe user</a><a id="offsite-user" href="/user/456">Offsite user</a>')
+      .replace("<head>", '<head><meta http-equiv="Content-Security-Policy" content="img-src * data:">'),
     async reply(route, url) {
       if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user: {
         uid: 123, name: "Safe avatar", avatar, background: redirect,
@@ -3786,10 +3787,11 @@ test("user preview loads verified Luogu images without referrers, credentials, o
     document.querySelector(`.luogusp-hc-${name}`)?.naturalWidth === 1));
   assert.deepEqual(seen.map(({ href }) => href).sort(), [avatar, redirect, fallback].sort());
   assert.ok(seen.every(({ referer, cookie }) => referer === null && cookie === null));
-  const avatarBlob = await preview.locator(".luogusp-hc-avatar").getAttribute("src");
-  assert.match(avatarBlob, /^blob:/);
+  const avatarNode = await preview.locator(".luogusp-hc-avatar").elementHandle();
+  assert.match(await avatarNode.getAttribute("src"), /^data:image\/gif;base64,/);
+  assert.match(await preview.locator(".luogusp-hc-cover").getAttribute("src"), /^data:image\/gif;base64,/);
   await page.keyboard.press("Escape");
-  assert.equal(await page.evaluate(url => fetch(url).then(() => true, () => false), avatarBlob), false);
+  assert.equal(await avatarNode.getAttribute("src"), null);
   await page.locator("#offsite-user").focus();
   await page.keyboard.press("Alt+ArrowDown");
   await preview.getByRole("link", { name: "Offsite profile" }).waitFor();
@@ -3797,6 +3799,35 @@ test("user preview loads verified Luogu images without referrers, credentials, o
   assert.equal(await preview.locator(".luogusp-hc-avatar").getAttribute("src"), null);
   assert.deepEqual(unwanted, []);
 });
+
+for (const kind of ["user", "problem"]) {
+  test(`${kind} preview retries its original URL once after a transient 302`, async (t) => {
+    const attempts = new Map();
+    const trigger = kind === "user" ? "/user/123" : "/problem/P1000";
+    const { page, requests } = await fixture(t, {
+      html: fixtureHtml(`<a id="preview-trigger" href="${trigger}">Preview</a>`),
+      reply(route, url) {
+        if (!["/api/user/info/123", "/user/123", "/problem/P1000"].includes(url.pathname))
+          return route.fulfill({ json: {} });
+        const attempt = (attempts.get(url.href) ?? 0) + 1;
+        attempts.set(url.href, attempt);
+        if (attempt === 1) return route.fulfill({ status: 302, headers: { location: "/unexpected-redirect" } });
+        if (kind === "problem") return route.fulfill({ json: { user: viewer, data: { problem } } });
+        const user = { uid: 123, name: "Recovered user" };
+        return route.fulfill({ json: url.pathname.startsWith("/api/") ? { user } :
+          { data: { user, gu: { rating: 980 } } } });
+      },
+    });
+    await page.locator("#preview-trigger").press("Alt+ArrowDown");
+    const preview = card(page);
+    const settled = preview.getByText(/拿不到这条数据。|Recovered user|P1000 Native preview/);
+    await settled.first().waitFor();
+    assert.equal(await preview.getByText("拿不到这条数据。").count(), 0);
+    if (kind === "user") await preview.getByText("980", { exact: true }).waitFor();
+    assert.deepEqual([...attempts.values()], kind === "user" ? [2, 2] : [2]);
+    assert.equal(requests.some(request => request.path === "/unexpected-redirect"), false);
+  });
+}
 
 test("user preview leaves unsupported native XHR media to the direct lookup", async (t) => {
   const { page, requests } = await fixture(t, {
@@ -4152,7 +4183,7 @@ for (const sizeChange of ["viewport resizing", "pinch zoom", "card-only resizing
 }
 
 for (const [branch, fault] of [["info", "redirect"], ["profile", "redirect"], ["info", "wrong-url"], ["profile", "html"]]) {
-  test(`user preview rejects ${fault} ${branch} data and recovers on reopening`, async (t) => {
+  test(`user preview rejects ${fault} ${branch} data and recovers`, async (t) => {
     const redirect = responseGate(t);
     const hits = [];
     const badUser = { uid: 123, name: "Untrusted data", followerCount: 888 };
@@ -4222,11 +4253,13 @@ for (const [branch, fault] of [["info", "redirect"], ["profile", "redirect"], ["
     await preview.getByRole("link", { name: initialName, exact: true }).waitFor();
     redirect.release();
     await page.waitForFunction(path => previewReads.includes(path), badPath);
-    assert.equal(await preview.locator(".luogusp-hc-name").textContent(), initialName);
     assert.equal(await preview.getByText("888", { exact: true }).count(), 0);
     assert.deepEqual(hits, []);
-    await page.keyboard.press("Escape");
-    await trigger.press("Alt+ArrowDown");
+    if (fault !== "redirect") {
+      assert.equal(await preview.locator(".luogusp-hc-name").textContent(), initialName);
+      await page.keyboard.press("Escape");
+      await trigger.press("Alt+ArrowDown");
+    }
     await preview.getByRole("link", { name: "Trusted basic", exact: true }).waitFor();
     await preview.getByText("42", { exact: true }).waitFor();
     assert.equal(await preview.getByText("888", { exact: true }).count(), 0);

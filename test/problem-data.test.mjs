@@ -85,7 +85,7 @@ test("direct problem reads validate the request and response before decoding", a
       assert.equal(requestedUrl, expectedUrl);
       assert.equal(init.mode, "same-origin");
       assert.equal(init.credentials, "same-origin");
-      assert.equal(init.redirect, "error");
+      assert.equal(init.redirect, "manual");
       assert.equal(init.headers["x-lentille-request"], "content-only");
     });
   }
@@ -728,7 +728,7 @@ for (const [endpoint, overrides] of [
       assert.ok(requestedUrl.startsWith(origin));
       assert.equal(init.mode, "same-origin");
       assert.equal(init.credentials, "same-origin");
-      assert.equal(init.redirect, "error");
+      assert.equal(init.redirect, "manual");
       assert.equal(init.headers?.["x-lentille-request"], requestedUrl.endsWith("/_lfe/tags") ? undefined : "content-only");
     }
   });
