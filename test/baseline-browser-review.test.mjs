@@ -240,10 +240,10 @@ const buildCall = 'build({ stdin: { contents: "fixture()" }, write: false }).the
 const directBuild = `import { build } from "esbuild";\n${buildCall}`;
 const sharedBuild = `import { buildBrowser } from "../baseline-targets.mjs";\n${buildCall.replace("build(", "buildBrowser(")}`;
 
-function runFixtureBuild(fixture, args) {
+function runFixtureBuild(fixture, args, executable = process.execPath) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
-  const result = spawnSync(process.execPath, args, { cwd: fixture, encoding: "utf8", timeout: 20_000, env });
+  const result = spawnSync(executable, args, { cwd: fixture, encoding: "utf8", timeout: 20_000, env });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /fixture\(\)/u);
@@ -483,7 +483,10 @@ test("the actual guard rejects direct esbuild CLI commands", (t) => {
   const { fixture, run } = fixtureGuard(t);
   writeFileSync(join(fixture, "input.js"), "fixture()");
   const args = ["./input.js", "--bundle", "--platform=browser"];
-  runFixtureBuild(fixture, [join(ROOT, "node_modules/esbuild/bin/esbuild"), ...args]);
+  const cli = join(ROOT, "node_modules/esbuild/bin/esbuild");
+  // The Unix installer can replace the Node wrapper with a native executable.
+  if (process.platform === "win32") runFixtureBuild(fixture, [cli, ...args]);
+  else runFixtureBuild(fixture, args, cli);
   for (const executable of ["esbuild", "pnpm exec esbuild", '"./node_modules/.bin/esbuild.cmd"']) {
     declareFixtureBuild(fixture, `${executable} ${args.join(" ")}`);
     const result = run();
