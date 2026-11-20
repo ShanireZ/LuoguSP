@@ -474,7 +474,7 @@ test("应用根注册薄壳并接上加载器与同源 fetch", () => {
 test("runtime 入口接上加载器、声明导出契约、并给同源 fetch", () => {
   const entry = read("src/cdn/runtime-entry.js");
   assert.match(entry, /__LUOGUSP_HOVER_CARD_BUNDLE__/);
-  assert.match(entry, /exports: \["createHoverCardFeature"\]/);
+  assert.match(entry, /loadFeature\(__LUOGUSP_HOVER_CARD_BUNDLE__, "createHoverCardFeature"\)/);
   assert.match(entry, /hoverCardLoadBundle:/);
   assert.match(entry, /hoverCardFetchPage:/);
   assert.match(entry, /credentials: "same-origin"/);

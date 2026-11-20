@@ -119,39 +119,18 @@ export function createHoverCardSources(config) {
       return payload === RETRYABLE_READ ? payload : buildTagDictionary(payload);
     }, signal);
 
-  // 上次嘗試：匿名訪客沒有提交記錄，不必發這個請求。
-  const loadAttempt = async (pid, viewerUid, signal, href) => {
-    const uid = Number(viewerUid);
-    if (!Number.isSafeInteger(uid) || uid <= 0) return null;
-    const query = new URLSearchParams({ user: uid, pid });
-    const params = new URLSearchParams(href?.split("?")[1]?.split("#")[0]);
-    for (const field of ["contestId", "lang"]) {
-      const value = params.get(field);
-      if (value) query.set(field, value);
-    }
-    const url = new URL(`/record/list?${query}`, origin);
-    return load(url.href, async () => {
-      const at = now();
-      const payload = await readJson(url, signal);
-      if (payload === null || payload === RETRYABLE_READ) return payload;
-      if (payload?.template !== "record.list" || Number(payload.user?.uid) !== uid)
-        return RETRYABLE_READ;
-      const records = payload.data?.records;
-      if (!Array.isArray(records?.result)) return RETRYABLE_READ;
-      // The cache scopes these rows to the viewer already in effect.
-      if (!signal?.aborted) problemData?.rememberPage({ template: payload.template, data: { records } }, url, at);
-      return pickLastAttempt(records.result.filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid));
-    }, signal);
-  };
-
   const problem = async (pid, viewerUid, signal, { href, onUpdate } = {}) => {
     if (typeof pid !== "string" || !PID_PATTERN.test(pid)) return null;
     let payload = problemData?.peek(pid, { href });
+    const uid = Number(viewerUid || 0);
+    const key = problemData?.recordKey(pid, href, uid);
+    if (problemData && !key) return null;
+    const current = () => !signal?.aborted && problemData?.recordKey(pid, href) === key;
     let dictionary = cached("tags");
     let attempt = null;
     let model = null;
     const publish = () => {
-      if (signal?.aborted || (problemData && problemData.viewerUid() !== (viewerUid || 0))) return;
+      if (!current()) return;
       model = buildProblemCard({ payload, tagDictionary: dictionary, lastAttempt: attempt });
       if (model) onUpdate?.(model);
     };
@@ -168,7 +147,7 @@ export function createHoverCardSources(config) {
     } catch (error) {
       if (!signal?.aborted) logError(error);
     }
-    if (!model || signal?.aborted) return model;
+    if (!model || !current()) return model;
     const supplements = [];
     if (!dictionary && payload.data.problem.tags?.length)
       supplements.push(tags().then((value) => {
@@ -176,20 +155,43 @@ export function createHoverCardSources(config) {
         dictionary = value;
         publish();
       }));
-    if (viewerUid) {
+    let stopRecords;
+    if (Number.isSafeInteger(uid) && uid > 0) {
       const records = () => problemData?.records(pid, { href });
       const updateAttempt = (rows, fallback) => {
         if (!rows && !fallback) return;
         attempt = rows ? pickLastAttempt(rows) : fallback;
         publish();
       };
-      if (problemData && onUpdate)
-        signal?.addEventListener("abort", problemData.subscribeRecords(pid, href, updateAttempt), { once: true });
+      stopRecords = problemData?.subscribeRecords(key, updateAttempt, signal);
       const existing = records();
       if (existing) updateAttempt(existing);
-      else supplements.push(loadAttempt(pid, viewerUid, signal, href).then((value) => updateAttempt(records(), value)));
+      else {
+        const url = new URL(`/record/list?user=${uid}&pid=${pid}`, origin);
+        const params = new URL(href || origin, origin).searchParams;
+        for (const field of ["contestId", "lang"]) {
+          const value = params.get(field);
+          if (value) url.searchParams.set(field, value);
+        }
+        supplements.push(load(key ?? url.href, async () => {
+          if (!current()) return null;
+          const at = now();
+          const payload = await readJson(url, signal);
+          if (payload === null || payload === RETRYABLE_READ) return payload;
+          if (payload?.template !== "record.list" || Number(payload.user?.uid) !== uid)
+            return RETRYABLE_READ;
+          const records = payload.data?.records;
+          if (!Array.isArray(records?.result)) return RETRYABLE_READ;
+          // The cache scopes these rows to the viewer already in effect.
+          if (!current()) return null;
+          problemData?.rememberPage({ template: payload.template, data: { records } }, url, at);
+          return pickLastAttempt(records.result.filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid));
+        }, signal).then((value) => updateAttempt(records(), value)));
+      }
     }
-    await Promise.all(supplements);
+    await Promise.all(supplements).finally(() => {
+      if (!signal) stopRecords?.();
+    });
     return model;
   };
 

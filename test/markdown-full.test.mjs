@@ -758,6 +758,30 @@ for (const forceFullFailure of [false, true]) {
     assert.equal(root.querySelector(":scope > ul > li:last-child")?.textContent.trim(), "Sibling.");
   });
 
+  test(`an ordered marker inside a recovered tight-list literal stays inline in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    const literal = "line\n2. Within literal\n$$\n- x\n$$\nafter";
+    const indent = literal.replaceAll("\n", "\n  ");
+    for (const content of [`\`${indent}\``, `[Notes](./notes "${indent}")`, `<a href="./notes" title="${indent}">Notes</a>`]) {
+      root.innerHTML = renderer.renderMarkdown(
+        `- Example ${content}.\n  2. Actual sublist\n     $$\n     y\n     $$\n  3. Next item\n- Sibling.`,
+        { forceFullFailure },
+      ).html;
+      const inline = root.querySelector("li > code, li > a");
+      assert.ok(inline);
+      if (inline.localName === "code") assert.equal(inline.textContent, literal.replaceAll("\n", " "));
+      else assert.deepEqual([inline.getAttribute("href"), inline.title], ["./notes", literal]);
+      const lists = [...root.querySelectorAll("li > ol, li > ul")];
+      assert.equal(lists.length, 1);
+      assert.equal(lists[0].start, 2);
+      assert.equal(lists[0].children.length, 2);
+      assert.equal(root.querySelector(":scope > ul > li:last-child")?.textContent.trim(), "Sibling.");
+      assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map(math => math.textContent), ["y"]);
+    }
+  });
+
   test(`a split anchor ending before or after a recovered literal keeps its boundaries in ${mode}`, (t) => {
     const { dom, renderer } = createRenderer();
     t.after(() => dom.window.close());

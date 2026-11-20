@@ -849,6 +849,32 @@ for (const query of ["", "?luogusp-qa=fallback-lite"]) {
     assert.equal(await intro.locator('a[href="./raw"]').evaluate(link => link.parentElement.textContent.trim()), "Before Notes Outside.");
   });
 
+  test(`profile introduction keeps ordered-looking lines in literals and real ordered sublists in ${query ? "lite" : "full"} mode`, async (t) => {
+    const literal = "line\n2. Within literal\n$$\n- x\n$$\nafter";
+    const indent = literal.replaceAll("\n", "\n  ");
+    const introduction = [
+      `- Example \`${indent}\`.`,
+      `- Example [Notes](./md "${indent}").`,
+      `- Example <a href="./raw" title="${indent}">Notes</a>.\n  2. Actual sublist\n     $$\n     y\n     $$\n  3. Next item`,
+      "- Sibling.",
+    ].join("\n");
+    const { page } = await fixture(t, {
+      path: "/user/42" + query,
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.waitFor();
+    assert.deepEqual(await intro.locator("li > code").allTextContents(), [literal.replaceAll("\n", " ")]);
+    assert.deepEqual(await intro.locator("a").evaluateAll(links => links.map(link =>
+      [link.getAttribute("href"), link.title])), [["./md", literal], ["./raw", literal]]);
+    assert.equal(await intro.locator("li > ol, li > ul").count(), 1);
+    assert.equal(await intro.locator("li > ol").evaluate(list => list.start), 2);
+    assert.equal(await intro.locator("li > ol > li").count(), 2);
+    assert.deepEqual(await intro.locator(".katex-display .katex-html").allTextContents(), ["y"]);
+    assert.equal((await intro.locator(":scope > ul > li:last-child").textContent()).trim(), "Sibling.");
+  });
+
   test(`profile introduction contains wide math in ${query ? "lite" : "full"} rendering`, async (t) => {
     const introduction = String.raw`$$\rule{1000000em}{1000000em}$$
 
@@ -2913,7 +2939,8 @@ for (const reverseOpen of [false, true]) test(
   assert.deepEqual(requests.filter(({ path }) => path === "/record/list").map(({ type }) => type), ["xhr", "xhr"]);
 });
 
-for (const empty of [false, true]) test(`open problem preview keeps a newer native record over a pending fallback (empty: ${empty})`, async (t) => {
+for (const [empty, evict] of [[false, false], [true, false], [false, true], [true, true]])
+test(`open problem preview keeps a newer native record over a pending fallback (empty: ${empty}, eviction: ${evict})`, async (t) => {
   const fallbackStarted = responseGate(t);
   const fallbackResponse = responseGate(t);
   const path = `/record/list?user=${viewer.uid}&pid=${problem.pid}`;
@@ -2941,7 +2968,7 @@ for (const empty of [false, true]) test(`open problem preview keeps a newer nati
       if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
       if (url.pathname !== "/record/list") return;
       if (route.request().resourceType() === "xhr")
-        return route.fulfill({ json: payload(empty ? [] : [row(50)]) });
+        return route.fulfill({ json: payload(empty || url.searchParams.get("pid") !== problem.pid ? [] : [row(50)]) });
       fallbackStarted.release();
       return fallbackResponse.promise.then(() => route.fulfill({ json: payload([row(25)]) }));
     },
@@ -2956,12 +2983,23 @@ for (const empty of [false, true]) test(`open problem preview keeps a newer nati
   }), path);
   const shown = card(page);
   if (!empty) await shown.getByText(/50 分/).waitFor();
+  if (evict) await page.evaluate(async ({ uid }) => {
+    for (let id = 1100; id < 1130; id++) await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", `/record/list?user=${uid}&pid=P${id}`);
+      xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+      xhr.send();
+    });
+  }, viewer);
   fallbackResponse.release();
   await page.waitForFunction(() => window.recordFallbackDecoded);
   assert.doesNotMatch(await shown.textContent(), /25 分/);
   if (empty) assert.equal(await shown.getByText("上次尝试", { exact: true }).count(), 0);
   else assert.match(await shown.textContent(), /50 分/);
-  assert.deepEqual(requests.filter(request => request.path === "/record/list").map(request => request.type), ["fetch", "xhr"]);
+  const lookups = requests.filter(request => request.path === "/record/list");
+  assert.deepEqual(lookups.filter(request => new URLSearchParams(request.query).get("pid") === problem.pid)
+    .map(request => request.type), ["fetch", "xhr"]);
+  assert.equal(lookups.length, evict ? 32 : 2);
 });
 
 for (const mode of ["rejected reopen", "send in OPENED"]) test(`native record observation survives ${mode}`, async (t) => {
@@ -2998,6 +3036,93 @@ for (const mode of ["rejected reopen", "send in OPENED"]) test(`native record ob
   await preview.getByText("上次尝试", { exact: true }).waitFor();
   assert.match(await preview.textContent(), /50 分/);
   assert.deepEqual(requests.filter(request => request.path === "/record/list").map(request => request.type), ["xhr"]);
+});
+
+test("an open problem preview ignores an earlier record fallback after the viewer returns", async (t) => {
+  const fallbackStarted = responseGate(t);
+  const fallbackResponse = responseGate(t);
+  const { page, requests } = await fixture(t, {
+    initScript: `
+      const nativeFetchForRecords = window.fetch;
+      window.fetch = async (...args) => {
+        const response = await nativeFetchForRecords(...args);
+        if (new URL(response.url).pathname === "/record/list") {
+          const decode = response.json.bind(response);
+          response.json = async () => {
+            const value = await decode();
+            setTimeout(() => { window.recordFallbackDecoded = true; }, 0);
+            return value;
+          };
+        }
+        return response;
+      };`,
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [problem] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return route.fulfill({ json: { user: viewer, data: { problem } } });
+      if (url.pathname === "/problem/list") return route.fulfill({ json: {
+        template: "problem.list", user: { uid: Number(url.searchParams.get("fixtureViewer")) },
+        data: { problems: { result: [problem] } },
+      } });
+      if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
+      if (url.pathname === "/record/list") {
+        fallbackStarted.release();
+        return fallbackResponse.promise.then(() => route.fulfill({ json: { template: "record.list", user: viewer,
+          data: { records: { result: [{ id: 25, problem, user: viewer, submitTime: 1700000000, score: 25 }] } },
+        } }));
+      }
+    },
+  });
+  await page.locator("#problem").press("Alt+ArrowDown");
+  await fallbackStarted.promise;
+  await page.evaluate(async (uid) => {
+    for (const id of [uid + 1, uid]) await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", `/problem/list?fixtureViewer=${id}`);
+      xhr.onloadend = () => xhr.status === 200 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+      xhr.send();
+    });
+  }, viewer.uid);
+  fallbackResponse.release();
+  await page.waitForFunction(() => window.recordFallbackDecoded);
+  assert.equal(await card(page).getByText("上次尝试", { exact: true }).count(), 0);
+  assert.equal(requests.filter(request => request.path === "/record/list").length, 1);
+});
+
+for (const phase of ["load", "loadend"]) test(`native record observation survives reuse in ${phase}`, async (t) => {
+  let nativeRequests = 0;
+  const { page, requests } = await fixture(t, {
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [problem] }),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return route.fulfill({ json: { user: viewer, data: { problem } } });
+      if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
+      if (url.pathname === "/record/list") {
+        const score = route.request().resourceType() === "xhr" ? (++nativeRequests === 1 ? 25 : 60) : 99;
+        return route.fulfill({ json: { template: "record.list", user: viewer,
+          data: { records: { result: [{ id: score, user: viewer, problem, submitTime: 1700000000, score }] } },
+        } });
+      }
+    },
+  });
+  const status = await page.evaluate(({ path, phase }) => new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    const completed = [];
+    xhr.addEventListener("loadend", () => {
+      completed.push(xhr.status);
+      if (completed.length === 2) resolve(completed);
+    });
+    xhr.addEventListener(phase, () => {
+      xhr.open("GET", path);
+      xhr.send();
+    }, { once: true });
+    xhr.open("GET", path);
+    xhr.send();
+  }), { path: `/record/list?user=${viewer.uid}&pid=${problem.pid}`, phase });
+  assert.deepEqual(status, [phase === "load" ? 0 : 200, 200]);
+  await page.locator("#problem").press("Alt+ArrowDown");
+  const preview = card(page);
+  await preview.getByText("上次尝试", { exact: true }).waitFor();
+  assert.match(await preview.textContent(), /60 分/);
+  assert.deepEqual(requests.filter(request => request.path === "/record/list").map(request => request.type), ["xhr", "xhr"]);
 });
 
 test("problem preview loading and late fields stay static with reduced motion", async (t) => {

@@ -185,7 +185,7 @@ test("runtime 入口把加载器接上，并声明块的导出契约", () => {
   const entry = read("src/cdn/runtime-entry.js");
   assert.match(entry, /__LUOGUSP_RESTRICTED_CONTENT_BUNDLE__/);
   assert.match(entry, /restrictedContentLoadBundle:/);
-  assert.match(entry, /exports: \["createRestrictedContentFeature"\]/);
+  assert.match(entry, /loadFeature\(__LUOGUSP_RESTRICTED_CONTENT_BUNDLE__, "createRestrictedContentFeature"\)/);
 });
 
 test("按需块入口导出工厂与 apiVersion", () => {

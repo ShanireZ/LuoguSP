@@ -15,8 +15,13 @@ function fixture({
     { url: `https://www.luogu.com.cn${path}` },
   );
   class XHR extends EventTarget {
+    static DONE = 4;
+    readyState = 0;
     reads = 0;
-    open(method, url) { this.url = new URL(url, dom.window.document.baseURI).href.split("#")[0]; }
+    open(method, url) {
+      this.url = new URL(url, dom.window.document.baseURI).href.split("#")[0];
+      this.readyState = 1;
+    }
     send() {}
     getResponseHeader(name) { return name === "content-type" ? this.mediaType : null; }
     get response() { this.reads++; return this.data; }
@@ -24,6 +29,7 @@ function fixture({
     reply(data, {
       status = 200, responseType = "", mediaType = "application/json", responseUrl = this.url,
     } = {}) {
+      this.readyState = XHR.DONE;
       this.status = status;
       this.responseURL = responseUrl;
       this.responseType = responseType;
@@ -220,6 +226,29 @@ test("a rejected native XHR reopen preserves the record observation", (t) => {
   xhr.send();
   xhr.reply(reply(60));
   assert.deepEqual(scores(), [60]);
+});
+
+test("the trailing loadend does not stop observing a new request sent in load", (t) => {
+  const user = { uid: 42 };
+  const problem = { pid: "P1001" };
+  const path = "/record/list?user=42&pid=P1001";
+  const fx = fixture({ page: { user, data: { problem } } });
+  t.after(fx.stop);
+  fx.harvest();
+  const xhr = new fx.XHR();
+  xhr.addEventListener("load", () => {
+    xhr.open("GET", path);
+    xhr.send();
+  }, { once: true });
+  xhr.open("GET", path);
+  xhr.send();
+  const reply = (score) => ({
+    user, template: "record.list",
+    data: { records: { result: [{ score, user, problem }] } },
+  });
+  xhr.reply(reply(25));
+  xhr.reply(reply(60));
+  assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), [60]);
 });
 
 test("a late native detail remains available after a list for another PID", () => {

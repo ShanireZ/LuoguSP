@@ -154,10 +154,9 @@ export function createNativeDifficultySource({
         }
         // Lentille needs to be read in load, before Luogu renders in loadend.
         let finish = request.prepare?.();
-        const event = finish ? "loadend" : "load";
         const clean = () => {
-          xhr.removeEventListener(event, read);
-          xhr.removeEventListener("loadend", clean);
+          xhr.removeEventListener("load", read);
+          xhr.removeEventListener("loadend", complete);
           pending.delete(clean);
           delete request.clean;
           finish?.(null);
@@ -195,10 +194,20 @@ export function createNativeDifficultySource({
             if (updated) accept({ batch });
           } catch { /* Unsupported/HTML/error responses leave the fallback intact. */ }
         };
+        const complete = () => {
+          // Reusing this XHR in a load handler can leave a previous loadend
+          // queued while the next request is still OPENED.
+          if (xhr.readyState !== XMLHttpRequest.DONE) return;
+          try {
+            if (finish) read();
+          } finally {
+            clean();
+          }
+        };
         request.clean = clean;
         pending.add(clean);
-        xhr.addEventListener(event, read);
-        xhr.addEventListener("loadend", clean, { once: true });
+        if (!finish) xhr.addEventListener("load", read);
+        xhr.addEventListener("loadend", complete);
         try {
           return rawSend.apply(xhr, arguments);
         } catch (error) {

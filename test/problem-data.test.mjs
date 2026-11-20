@@ -557,6 +557,80 @@ for (const [nativeDelay, nativeScores, expected] of [
   assert.equal(requests, 1);
 });
 
+for (const scores of [[50], []]) test(`an open hover preview keeps its native result after record cache eviction (${scores})`, async (t) => {
+  const user = { uid: 42 };
+  const row = (score) => ({ id: score, user, problem, submitTime: score, score });
+  const pending = deferred();
+  const started = deferred();
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const data = createProblemData({ origin, now: () => 10, text: () => assert.fail("unexpected detail lookup") });
+  data.rememberPage({ viewer: 42, data: { problem } }, url("/problem/P1001"), 10);
+  let requests = 0;
+  const sources = createHoverCardSources({ origin, problemData: data, clock: { now: () => 10 },
+    fetchPage(path) {
+      assert.equal(path, recordUrl);
+      requests++;
+      started.resolve();
+      return pending.promise;
+    },
+  });
+  const score = (card) => card.mine.lastAttempt?.score ?? null;
+  const updates = [];
+  const shown = sources.problem(problem.pid, 42, controller.signal, { onUpdate: card => updates.push(score(card)) });
+  await started.promise;
+  data.rememberPage({ viewer: 42, template: "record.list", data: { records: { result: scores.map(row) } } },
+    url(recordUrl), 10, 1);
+  for (let id = 1100; id < 1130; id++) {
+    const pid = `P${id}`;
+    data.rememberPage({ viewer: 42, template: "record.list", data: { records: { result: [] } } },
+      url(`/record/list?user=42&pid=${pid}`), 10, id);
+  }
+  pending.resolve(recordReply([row(25)]));
+  const expected = scores[0] ?? null;
+  assert.equal(score(await shown), expected);
+  assert.equal(updates.at(-1), expected);
+  assert.equal(requests, 1);
+  controller.abort();
+  assert.equal(data.records(problem.pid), undefined, "closing the preview releases its evicted result");
+});
+
+test("returning to a viewer does not join or publish their old pending record fallback", async (t) => {
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const data = createProblemData({ origin, now: () => 10, text: () => assert.fail("unexpected detail lookup") });
+  const viewer = (uid) => data.rememberPage({ viewer: uid, data: { problem } }, url("/problem/P1001"), 10);
+  viewer(42);
+  const planned = [deferred(), deferred()];
+  const started = [deferred(), deferred()];
+  let requests = 0;
+  const sources = createHoverCardSources({ origin, problemData: data, clock: { now: () => 10 },
+    fetchPage(path) {
+      assert.equal(path, recordUrl);
+      const index = requests++;
+      started[index].resolve();
+      return planned[index].promise;
+    },
+  });
+  const scores = [];
+  const score = (card) => card.mine.lastAttempt?.score ?? null;
+  const old = sources.problem(problem.pid, 42, controller.signal, { onUpdate: model => scores.push(score(model)) });
+  await started[0].promise;
+  viewer(43);
+  viewer(42);
+  const recent = sources.problem(problem.pid, 42);
+  await flushMicrotasks();
+  assert.equal(requests, 2, "the fresh preview should start its own request");
+  const reply = (score) => recordReply([{ id: score, user: { uid: 42 }, problem, submitTime: score, score }]);
+  planned[0].resolve(reply(25));
+  await old;
+  assert.equal(data.records(problem.pid), undefined);
+  assert.ok(!scores.includes(25));
+  planned[1].resolve(reply(60));
+  assert.equal(score(await recent), 60);
+  assert.deepEqual(data.records(problem.pid).map(row => row.score), [60]);
+});
+
 for (const [endpoint, overrides] of [
   ["/problem/P1001", { status: 202 }],
   ["/_lfe/tags", { headers: new Headers({ "content-type": "text/html" }) }],

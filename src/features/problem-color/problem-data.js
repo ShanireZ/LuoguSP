@@ -162,6 +162,7 @@ export function createProblemData({
         summaries.clear();
         details.clear();
         recordLists.clear();
+        recordListeners.clear();
       }
       observedViewer = page.viewer;
       viewerAt = at;
@@ -177,14 +178,19 @@ export function createProblemData({
           (!url.searchParams.has("page") || url.searchParams.get("page") === "1") &&
           !["status", "language", "orderBy"].some((key) => url.searchParams.has(key))) {
         const key = keyOf(pid, context);
-        if (!isLater(recordLists.get(key), stamp)) {
+        if (!isLater(readRecord(key), stamp)) {
           const records = rows
             .filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === context.viewer)
             .map(({ id, submitTime, score, status, time, memory }) => ({
               id, submitTime, score, status, time, memory,
             }));
-          remember(recordLists, key, { ...stamp, records }, 30);
-          for (const listener of recordListeners) listener(key, records);
+          const entry = { ...stamp, records };
+          remember(recordLists, key, entry, 30);
+          for (const listener of recordListeners) {
+            if (listener.key !== key) continue;
+            listener.entry = entry;
+            listener.onRecords(records);
+          }
         }
       }
     }
@@ -265,21 +271,25 @@ export function createProblemData({
     refresh();
     return viewer();
   };
-  const recordKey = (pid, href) => {
+  const recordKey = (pid, href, uid) => {
+    refresh();
     const context = contextFor(pid, href);
-    return context && keyOf(pid, context);
+    if (context && (uid === undefined || uid === context.viewer)) return keyOf(pid, context);
   };
-  const records = (pid, options) => {
-    const key = recordKey(pid, options?.href);
+  const readRecord = (key) => {
+    for (const listener of recordListeners)
+      if (listener.key === key && listener.entry) return listener.entry;
     const entry = recordLists.get(key);
-    if (entry && isFresh(entry.at, now())) return entry.records;
+    if (entry && isFresh(entry.at, now())) return entry;
     recordLists.delete(key);
   };
-  const subscribeRecords = (pid, href, onRecords) => {
-    const key = recordKey(pid, href);
-    const listener = (changed, rows) => changed === key && onRecords(rows);
+  const records = (pid, options) => readRecord(recordKey(pid, options?.href))?.records;
+  const subscribeRecords = (key, onRecords, signal) => {
+    const listener = { key, entry: readRecord(key), onRecords };
     recordListeners.add(listener);
-    return () => recordListeners.delete(listener);
+    const stop = () => recordListeners.delete(listener);
+    signal?.addEventListener("abort", stop, { once: true });
+    return stop;
   };
-  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, records, subscribeRecords });
+  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, records, recordKey, subscribeRecords });
 }

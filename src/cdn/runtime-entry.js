@@ -68,9 +68,12 @@ const runtime = Object.freeze({
 const qaMode = getQaHiddenIntroMode(runtime.release, location.href);
 const qaProbe = createQaProbe(runtime.release, qaMode);
 const userscriptFetch = createUserscriptFetch();
+const origin = __LUOGUSP_CDN_ORIGIN__;
+const bundleFromPin = ([apiVersion, asset, sha256]) =>
+  ({ apiVersion, path: `releases/${runtime.release}/${asset}.${sha256.slice(0, 16)}.js`, sha256 });
 const rendererFetch = createQaRendererFetch({
   mode: qaMode,
-  origin: __LUOGUSP_CDN_ORIGIN__,
+  origin,
   fetchImpl: userscriptFetch.fetchImpl,
 });
 const qaProbeElement = document.querySelector(
@@ -93,32 +96,25 @@ Object.defineProperty(globalThis, "__LUOGUSP_CDN_RUNTIME__", {
   value: runtime,
   configurable: true,
 });
-// 受限內容功能塊：只在真的落到「安全訪問中心」攔截頁時才拉（見 features/restricted-content/lazy-feature.js）。
-const restrictedContentLoader = createOptionalBundleLoader({
-  bundle: __LUOGUSP_RESTRICTED_CONTENT_BUNDLE__,
-  origin: __LUOGUSP_CDN_ORIGIN__,
-  expectedApiVersion: 1,
-  exports: ["createRestrictedContentFeature"],
-  fetchImpl: userscriptFetch.fetchImpl,
-});
-const hoverCardLoader = createOptionalBundleLoader({
-  bundle: __LUOGUSP_HOVER_CARD_BUNDLE__,
-  origin: __LUOGUSP_CDN_ORIGIN__,
-  expectedApiVersion: 1,
-  exports: ["createHoverCardFeature"],
-  fetchImpl: userscriptFetch.fetchImpl,
-});
+const loadFeature = (pin, factory) => {
+  const loader = createOptionalBundleLoader({
+    bundle: bundleFromPin(pin),
+    origin,
+    expectedApiVersion: 1,
+    exports: [factory],
+    fetchImpl: userscriptFetch.fetchImpl,
+  });
+  return () => loader.load().then((result) => result.module);
+};
 runLuoguSP(installRestrictedEarlyGate(), {
-  hoverCardLoadBundle: () =>
-    hoverCardLoader.load().then((result) => result.module),
+  hoverCardLoadBundle: loadFeature(__LUOGUSP_HOVER_CARD_BUNDLE__, "createHoverCardFeature"),
   // 卡片資料全部同源，用頁面自己的 fetch（帶 Cookie 與 CSRF）。
   hoverCardFetchPage: (path, signal, init) =>
     fetch(path, { credentials: "same-origin", ...(init || {}), signal }),
-  restrictedContentLoadBundle: () =>
-    restrictedContentLoader.load().then((result) => result.module),
+  restrictedContentLoadBundle: loadFeature(__LUOGUSP_RESTRICTED_CONTENT_BUNDLE__, "createRestrictedContentFeature"),
   hiddenIntroRendererConfig: Object.freeze({
-    bundle: __LUOGUSP_MARKDOWN_RENDERER_BUNDLE__,
-    origin: __LUOGUSP_CDN_ORIGIN__,
+    bundle: bundleFromPin(__LUOGUSP_MARKDOWN_RENDERER_BUNDLE__),
+    origin,
     fetchImpl: rendererFetch,
     renderOptions: createQaRendererOptions(qaMode),
     onEvent: qaProbe?.renderer,

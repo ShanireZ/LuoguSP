@@ -88,7 +88,13 @@ const fileRecord = (path, body) =>
     sri: sri(body),
   });
 
-const runtimeBundlePin = ({ apiVersion, path, sha256 }) => ({ apiVersion, path, sha256 });
+const runtimeBundlePin = ({ apiVersion, path, sha256 }) => {
+  const prefix = `releases/${version}/`;
+  const suffix = `.${sha256.slice(0, 16)}.js`;
+  if (!path.startsWith(prefix) || !path.endsWith(suffix))
+    throw new Error("Optional bundle path does not match its release and digest");
+  return [apiVersion, path.slice(prefix.length, -suffix.length), sha256];
+};
 
 async function buildCompat(entryPoint, prefix, define = {}) {
   const result = await buildBrowser({

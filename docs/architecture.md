@@ -51,6 +51,8 @@ Passive native XHR observations require HTTP 200, JSON media and the original
 same-origin request URL, including its query. They compare against the URL
 resolved from the document base with the fragment removed and leave native
 events intact. A rejected reopening leaves the current request observed.
+When a load handler reuses an XHR, completion of the previous request leaves
+the new observation active until the new request finishes.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. Each observed field expires on its own
 and a partial response refreshes only the fields it contains. Shared detail
@@ -61,7 +63,7 @@ in that tick. Native Lentille GETs, including record lists, take their timestamp
 and sequence at `send()`. A late native batch can still refresh a problem absent
 from a newer batch. A native response, preview or IDE detail can refresh
 eligible IDs. Each observed change of effective viewer discards harvested
-and queried colors and invalidates pending details from the previous viewer
+and queried colors and invalidates pending details and record lookups from the previous viewer
 context. Confirming the existing viewer keeps that context. Returning after a
 change starts a fresh context.
 IDs without current data lose the old LuoguSP paint and use the existing fallback.
@@ -73,6 +75,9 @@ available fields first and fills in details and the viewer's latest record as th
 arrive, retaining focused controls and scroll position. Native observations
 and fallback reads are compared by send time in the open preview. Native
 observations take precedence at equal times, including confirmed empty lists.
+An open preview retains its latest record observation if other lookups evict
+that entry from the bounded shared cache. It releases the retained result on
+close or an observed viewer change.
 If a detail removes a
 focused tag disclosure, focus moves to the problem link. When a data update or
 viewport change clips a focused action or the tags control, the card scrolls
@@ -199,7 +204,8 @@ prose, including within quotes, and use the same math-rendering callback and
 sanitization. Complete inline code and link titles stay literal within tight
 list items and across consecutive tentative formula blocks. The tokenizer
 bounds its lookahead and keeps ordinary prose together up to a real block
-boundary. Recovered literals preserve nested ordered sublists and compose with
+boundary. Apparent ordered markers inside verified literals stay inline.
+Recovered literals preserve real nested ordered sublists and compose with
 split closing anchor tags. A literal delimiter stays inside its inline token
 even when the next delimiter starts a real formula. Lite parses inline content within
 each block and keeps the literal text of code spans and fenced code. It reads
@@ -235,8 +241,9 @@ files and every declared optional bundle against config/quality-budget.json.
 The low-level publisher applies the same budgets to its selected snapshot before
 any origin request or Wrangler command. The budget applies to the selected
 candidate. Retained releases still follow the historical integrity checks.
-The startup runtime embeds each optional bundle's path, SHA-256 and API
-version. The manifest carries the full metadata for release checks.
+The startup runtime embeds each optional bundle's release-relative asset stem,
+SHA-256 and API version. It reconstructs the immutable filename from the release
+and digest. The manifest carries the full paths and metadata for release checks.
 If a candidate exceeds a budget, review the measured size and the approved
 limit before retrying. A fresh high-level attempt follows pre-deployment rollback.
 A resumed attempt keeps its checkpoint and any earlier confirmed outcome.

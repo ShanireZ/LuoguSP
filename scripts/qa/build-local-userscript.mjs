@@ -24,9 +24,9 @@ export async function buildLocalUserscript(version = "0.0.0-canary.local") {
   const assets = Object.create(null);
   function embed(directory, name, text, apiVersion = 1) {
     const sha256 = createHash("sha256").update(text).digest("hex");
-    const path = `releases/${version}/${directory}/${name}.${sha256.slice(0, 16)}.js`;
-    assets[`${origin}/${path}`] = text;
-    return { path, sha256, apiVersion };
+    const asset = `${directory}/${name}`;
+    assets[`${origin}/releases/${version}/${asset}.${sha256.slice(0, 16)}.js`] = text;
+    return [apiVersion, asset, sha256];
   }
   const [hoverSource, restrictedSource, rendererBytes] = await Promise.all([
     compile("src/cdn/hover-card-bundle.js", "esm"),

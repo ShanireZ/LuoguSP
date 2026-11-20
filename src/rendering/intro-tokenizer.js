@@ -165,7 +165,7 @@ function displayMathBoundary(source, masked, paragraph, options, paragraphRule, 
   // Mask only line breaks inside verified inline tokens when asking Marked
   // where the surrounding prose ends. The emitted token retains the original.
   for (let recovered = 0; recovered <= MAX_FORMULA_REGIONS; recovered++) {
-    if (tight) end = tightTextEnd(source, masked, end, lexRanges);
+    const textEnd = tight ? tightTextEnd(source, masked, end, lexRanges) : end;
     const acrossBlank = hasInlineOpener
       ? /^\n(?:[ \t]*\n)+ {0,3}\$\$[ \t]*(?=\n|$)/.exec(masked.slice(end))
       : null;
@@ -183,18 +183,22 @@ function displayMathBoundary(source, masked, paragraph, options, paragraphRule, 
           literal = ranges.next().value;
         }
         while (literal && literal[1] <= index) literal = ranges.next().value;
-        if (literal && literal[0] <= index) {
+        if (literal && literal[0] <= index && index < textEnd) {
           joined ||= tight;
           continue;
         }
         if (recovered < MAX_FORMULA_REGIONS)
           continued = continueLiteral(source, source.slice(0, end), index, formula, lexRanges, paragraphRule);
-        if (continued) break;
+        // A delimiter past an apparent sublist start is relevant only when
+        // it closes a literal that already began in this text block.
+        if (continued && continued[0] < textEnd) break;
+        continued = undefined;
       }
+      if (textEnd < end && index >= textEnd) break;
       if (index < end && (!tight || joined)) return { end: index - 1, beforeFormula: true };
       if (index < end) return;
     }
-    if (!continued) return joined ? { end, masked } : undefined;
+    if (!continued) return joined ? { end: textEnd, masked } : undefined;
     const [start, finish] = continued;
     masked = masked.slice(0, start) + masked.slice(start, finish).replaceAll("\n", " ") + masked.slice(finish);
     end = paragraphRule.exec(masked)?.[1].replace(/\n$/, "").length ?? finish;
