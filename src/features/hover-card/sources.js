@@ -127,8 +127,9 @@ export function createHoverCardSources(config) {
     let dictionary = cached("tags");
     let attempt = null;
     let model = null;
-    const publish = () => {
+    const publish = (nextAttempt = attempt) => {
       if (!current()) return;
+      attempt = nextAttempt;
       model = buildProblemCard({ payload, tagDictionary: dictionary, lastAttempt: attempt });
       if (model) onUpdate?.(model);
     };
@@ -146,23 +147,18 @@ export function createHoverCardSources(config) {
       if (!signal?.aborted) logError(error);
     }
     if (!model || !current()) return model;
-    const supplements = [];
-    if (!dictionary && payload.data.problem.tags?.length)
-      supplements.push(tags().then((value) => {
-        if (!value) return;
-        dictionary = value;
-        publish();
-      }));
+    const tagRead = !dictionary && payload.data.problem.tags?.length && tags().then((value) => {
+      if (!value) return;
+      dictionary = value;
+      publish();
+    });
     let stopRecords;
     if (Number.isSafeInteger(uid) && uid > 0) {
-      const updateAttempt = (rows) => {
-        attempt = pickLastAttempt(rows);
-        publish();
-      };
+      const updateAttempt = (rows) => publish(pickLastAttempt(rows));
       stopRecords = problemData?.subscribeRecords(key, updateAttempt, signal);
       const existing = problemData?.records(pid, { href });
       if (existing) updateAttempt(existing);
-      else {
+      else if (existing === undefined) {
         const url = new URL(`/record/list?user=${uid}&pid=${pid}`, origin);
         const params = new URL(href || origin, origin).searchParams;
         for (const field of ["contestId", "lang"]) {
@@ -173,28 +169,28 @@ export function createHoverCardSources(config) {
           if (!current()) return;
           const at = now();
           const payload = await readJson(url, signal);
-          if (payload === null || payload === RETRYABLE_READ) return payload;
+          if (!current()) return;
+          if (payload === RETRYABLE_READ) return payload;
+          if (payload === null) return problemData ? problemData.failRecord(key) : null;
           const { template } = payload;
           const records = payload.data?.records;
           if (template !== "record.list" || Number(payload.user?.uid) !== uid ||
               !Array.isArray(records?.result)) return RETRYABLE_READ;
           // The cache scopes these rows to the viewer already in effect.
-          if (!current()) return;
           if (problemData) {
             problemData.rememberPage({ template, data: { records } }, url, at);
             return;
           }
           return pickLastAttempt(records.result.filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid));
         }, signal);
-        if (fallback) {
-          attempt = fallback;
-          publish();
-        }
+        if (fallback) publish(fallback);
       }
     }
-    await Promise.all(supplements).finally(() => {
+    try {
+      await tagRead;
+    } finally {
       if (!signal) stopRecords?.();
-    });
+    }
     return model;
   };
 

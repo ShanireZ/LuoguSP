@@ -849,9 +849,9 @@ for (const query of ["", "?luogusp-qa=fallback-lite"]) {
     assert.equal(await intro.locator('a[href="./raw"]').evaluate(link => link.parentElement.textContent.trim()), "Before Notes Outside.");
   });
 
-  for (const [marker, padding] of [[1, ""], [2, ""], [1, "   "], [2, "   "]])
-  test(`profile introduction keeps ordered marker ${marker} in literals in ${query ? "lite" : "full"} mode (formula indent ${padding.length})`, async (t) => {
-    const literal = `line\n${marker}. Within literal\n${padding}$$\n${padding}- x\n${padding}$$\nafter`;
+  for (const [marker, padding, closer = ""] of [[1, ""], [2, ""], [1, "   "], [2, "   "], [1, "   ", "   "], [2, "   ", "   "]])
+  test(`profile introduction keeps ordered marker ${marker} in literals in ${query ? "lite" : "full"} mode (${padding.length}/${closer.length})`, async (t) => {
+    const literal = `line\n${marker}. Within literal\n${padding}$$\n${padding}- x\n${padding}$$\n${closer}after`;
     const indent = literal.replaceAll("\n", "\n  ");
     const introduction = [
       `- Example \`${indent}\`.`,
@@ -876,8 +876,10 @@ for (const query of ["", "?luogusp-qa=fallback-lite"]) {
     assert.equal((await intro.locator(":scope > ul > li:last-child").textContent()).trim(), "Sibling.");
   });
 
-  test(`profile introduction keeps real child math after a stray parent backtick in ${query ? "lite" : "full"} mode`, async (t) => {
-    const introduction = "- Before `unmatched prose.\n  2. Real sublist\n     $$\n     - x\n     $$\n     `nested code`.\n  3. Next nested.\n- Sibling.";
+  for (const dedented of [false, true])
+  test(`profile introduction keeps real child math after a stray parent backtick in ${query ? "lite" : "full"} mode (dedented: ${dedented})`, async (t) => {
+    const continuation = dedented ? "     Child continued\n  More prose " : "     ";
+    const introduction = `- Before \`unmatched prose.\n  2. Real sublist\n     $$\n     - x\n     $$\n${continuation}\`nested code\`.\n  3. Next nested.\n- Sibling.`;
     const { page } = await fixture(t, {
       path: "/user/42" + query,
       html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
@@ -2955,8 +2957,8 @@ for (const reverseOpen of [false, true]) test(
   assert.deepEqual(requests.filter(({ path }) => path === "/record/list").map(({ type }) => type), ["xhr", "xhr"]);
 });
 
-for (const [empty, evict] of [[false, false], [true, false], [false, true], [true, true]])
-test(`open problem preview keeps a newer native record over a pending fallback (empty: ${empty}, eviction: ${evict})`, async (t) => {
+for (const [empty, evict, denied = false] of [[false, false], [true, false], [false, true], [true, true], [false, true, true]])
+test(`open problem preview keeps a newer native record over a pending fallback (${empty}, eviction: ${evict}, 403: ${denied})`, async (t) => {
   const fallbackStarted = responseGate(t);
   const fallbackResponse = responseGate(t);
   let fetchCount = 0;
@@ -2970,6 +2972,7 @@ test(`open problem preview keeps a newer native record over a pending fallback (
       window.fetch = async (...args) => {
         const response = await nativeFetchForRecords(...args);
         if (new URL(response.url).pathname === "/record/list") {
+          if (response.status === 403) setTimeout(() => { window.recordFallbackDecoded = true; }, 0);
           const decode = response.json.bind(response);
           response.json = async () => {
             const value = await decode();
@@ -2988,7 +2991,7 @@ test(`open problem preview keeps a newer native record over a pending fallback (
         return route.fulfill({ json: payload(empty || url.searchParams.get("pid") !== problem.pid ? [] : [row(50)]) });
       if (++fetchCount > 1) return route.fulfill({ json: payload(empty ? [] : [row(50)]) });
       fallbackStarted.release();
-      return fallbackResponse.promise.then(() => route.fulfill({ json: payload([row(25)]) }));
+      return fallbackResponse.promise.then(() => route.fulfill(denied ? { status: 403 } : { json: payload([row(25)]) }));
     },
   });
   await page.locator("#problem").press("Alt+ArrowDown");
@@ -3026,6 +3029,71 @@ test(`open problem preview keeps a newer native record over a pending fallback (
   if (empty) assert.equal(await shown.getByText("上次尝试", { exact: true }).count(), 0);
   else await shown.getByText(/50 分/).waitFor();
   assert.equal(fetchCount, evict ? 2 : 1);
+});
+
+for (const mode of ["legacy switch", "legacy round trip", "eviction and close"])
+test(`a held native record cannot reappear after ${mode}`, async (t) => {
+  const legacy = mode !== "eviction and close";
+  const started = responseGate(t);
+  const release = responseGate(t);
+  const readers = [];
+  const { page } = await fixture(t, {
+    initScript: legacy ? "window._feInjection = { currentUser: { uid: 42 } };" : "",
+    html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [problem] },
+      legacy ? { user: undefined } : {}),
+    reply(route, url) {
+      if (url.pathname === "/problem/P1000") return route.fulfill({ json: { data: { problem } } });
+      if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
+      if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user: { uid: 123 } } });
+      if (url.pathname !== "/record/list") return;
+      const user = { uid: Number(url.searchParams.get("user")) };
+      const respond = (score) => route.fulfill({ json: { template: "record.list", user,
+        data: { records: { result: score ? [{ id: score, score, user, problem, submitTime: 1700000000 }] : [] } },
+      } });
+      if (route.request().resourceType() === "fetch") {
+        readers.push(user.uid);
+        return respond(readers.length === 1 ? 10 : 60);
+      }
+      if (url.searchParams.has("held")) {
+        started.release();
+        return release.promise.then(() => respond(25));
+      }
+      return respond(url.searchParams.get("pid") === problem.pid ? 50 : 0);
+    },
+  });
+  const trigger = page.locator("#problem");
+  const preview = card(page);
+  const path = `/record/list?user=${viewer.uid}&pid=${problem.pid}`;
+  const xhr = (path) => page.evaluate(path => new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("GET", path);
+    request.onloadend = () => request.status === 200 ? resolve() : reject(new Error(`HTTP ${request.status}`));
+    request.send();
+  }), path);
+  await trigger.press("Alt+ArrowDown");
+  await preview.getByText(/10 分/).waitFor();
+  const held = xhr(path + "&held=1");
+  void held.catch(() => {});
+  await started.promise;
+  let uid = viewer.uid;
+  if (legacy) {
+    for (const next of mode === "legacy switch" ? [43] : [43, 42]) {
+      uid = next;
+      await page.evaluate(uid => { window._feInjection.currentUser.uid = uid; }, uid);
+      await xhr("/api/user/info/123");
+      assert.equal(await preview.isVisible(), false);
+    }
+  } else {
+    await xhr(path);
+    await preview.getByText(/50 分/).waitFor();
+    for (let i = 0; i < 30; i++) await xhr(`/record/list?user=${uid}&pid=P${1100 + i}`);
+    await page.keyboard.press("Escape");
+  }
+  release.release();
+  await held;
+  await trigger.press("Alt+ArrowDown");
+  await preview.getByText(/60 分/).waitFor();
+  assert.deepEqual(readers, [viewer.uid, uid]);
 });
 
 test("an observed viewer change dismisses a rendered problem preview and restores focus", async (t) => {
@@ -4455,14 +4523,24 @@ test("a late failed follow restores its initiating viewer without showing a noti
 });
 
 for (const action of ["follow", "block confirmation"]) {
-  test(`user preview rejects stale ${action} after the viewer changes`, async (t) => {
+  test(`user preview dismisses ${action} after the viewer changes`, async (t) => {
     const { page, preview, open, switchViewer } = await userRelationFixture(t);
     await open();
     if (action === "block confirmation")
       await preview.getByRole("button", { name: "屏蔽", exact: true }).click();
-    await switchViewer(43);
     const button = action === "follow" ? "关注" : "确定";
-    await preview.getByRole("button", { name: button, exact: true }).click();
+    const control = preview.getByRole("button", { name: button, exact: true });
+    await control.focus();
+    await switchViewer(viewer.uid);
+    assert.ok(await control.isVisible());
+    await switchViewer(43);
+    assert.equal(await preview.isVisible(), false);
+    assert.ok(await focused(page.locator("#user")));
+    await switchViewer(viewer.uid);
+    assert.equal(await preview.isVisible(), false);
+    await switchViewer(43);
+    await open();
+    assert.ok(await preview.getByText("77", { exact: true }).isVisible());
     assert.equal(await page.evaluate(() => window.relationRequests), 0);
   });
 }

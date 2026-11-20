@@ -55,7 +55,7 @@ export function createNativeDifficultySource({
   origin,
   now = () => Date.now(),
   onPage = (page) => page.viewer ?? 0,
-  prepareOtherGet,
+  prepareOtherGet, trackRecord,
 }) {
   let initialPage;
   let initial = null;
@@ -152,12 +152,15 @@ export function createNativeDifficultySource({
           request.at = now();
           request.order = ++requestOrder;
         }
+        const tracking = request.url && recordRouteId(request.url.pathname) === "list"
+          ? trackRecord?.(request.url) : null;
         // Lentille needs to be read in load, before Luogu renders in loadend.
         let finish = request.prepare?.();
         const clean = () => {
           xhr.removeEventListener("load", read);
           xhr.removeEventListener("loadend", complete);
           pending.delete(clean);
+          tracking?.release();
           delete request.clean;
           finish?.(null);
         };
@@ -170,6 +173,7 @@ export function createNativeDifficultySource({
           }
           const { url } = request;
           try {
+            if (tracking && !tracking.current()) return;
             const page = asLentillePage(readJsonXhr(xhr, url.href));
             const previousViewer = viewer;
             if (!page || !acceptPage(page, url, request.at, request.order)) return;

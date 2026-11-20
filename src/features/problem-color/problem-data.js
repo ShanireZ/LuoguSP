@@ -98,6 +98,25 @@ export function createProblemData({
     return () => viewerListeners.delete(listener);
   };
   const keyOf = (pid, context) => `${viewerGeneration}:${context.viewer}:${context.params ?? ""}:${pid}`;
+  const recordListKey = (url, uid) => {
+    const params = url.searchParams;
+    const pid = params.get("pid");
+    if (uid > 0 && Number(params.get("user")) === uid && pid && PID_PATTERN.test(pid) &&
+        (params.get("page") ?? "1") === "1" &&
+        !["status", "language", "orderBy"].some(key => params.has(key)))
+      return keyOf(pid, scope(url, uid));
+  };
+  const trackRecord = (url) => {
+    const listener = { key: recordListKey(url, viewerUid()) };
+    recordListeners.add(listener);
+    return {
+      current() {
+        viewer();
+        return recordListeners.has(listener);
+      },
+      release: () => recordListeners.delete(listener),
+    };
+  };
   const contextFor = (pid, href) => {
     if (!href) return { viewer: viewer() };
     let url;
@@ -180,15 +199,13 @@ export function createProblemData({
     if (reported !== undefined && reported !== uid) return;
     const context = scope(url, uid);
     const stamp = { at, order };
-    const params = url.searchParams;
-    if (template === "record.list" && uid > 0 && Number(params.get("user")) === uid) {
-      const pid = params.get("pid");
+    if (template === "record.list") {
+      const key = recordListKey(url, uid);
       const rows = data.records?.result;
-      if (pid && PID_PATTERN.test(pid) && Array.isArray(rows) &&
-          (params.get("page") ?? "1") === "1" &&
-          !["status", "language", "orderBy"].some((key) => params.has(key))) {
-        const key = keyOf(pid, context);
-        if (!isLater(readRecord(key), stamp)) {
+      if (key && Array.isArray(rows)) {
+        const previous = readRecord(key, true);
+        if (previous?.records === null || !isLater(previous, stamp)) {
+          const pid = url.searchParams.get("pid");
           const records = rows
             .filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid)
             .map(({ id, submitTime, score, status, time, memory }) => ({
@@ -198,8 +215,8 @@ export function createProblemData({
           remember(recordLists, key, entry, 30);
           for (const listener of recordListeners) {
             if (listener.key !== key) continue;
-            listener.entry = entry;
-            listener.onRecords(records);
+            listener.entry = listener.onRecords ? entry : stamp;
+            listener.onRecords?.(records);
           }
         }
       }
@@ -286,20 +303,27 @@ export function createProblemData({
     const context = contextFor(pid, href);
     if (context && (uid === undefined || uid === context.viewer)) return keyOf(pid, context);
   };
-  const readRecord = (key) => {
-    for (const listener of recordListeners)
-      if (listener.key === key && listener.entry) return listener.entry;
+  const readRecord = (key, includeStamp) => {
+    for (const listener of recordListeners) {
+      const { entry } = listener;
+      if (listener.key === key && entry && (includeStamp || entry.records)) return entry;
+    }
     const entry = recordLists.get(key);
     if (entry && isFresh(entry.at, now())) return entry;
     recordLists.delete(key);
   };
   const records = (pid, options) => readRecord(recordKey(pid, options?.href))?.records;
+  const failRecord = (key) => {
+    if (!readRecord(key)) remember(recordLists, key, { at: now(), records: null }, 30);
+  };
   const subscribeRecords = (key, onRecords, signal) => {
-    const listener = { key, entry: readRecord(key), onRecords };
+    const listener = { key, onRecords };
+    const entry = readRecord(key);
+    if (entry?.records) listener.entry = entry;
     recordListeners.add(listener);
     const stop = () => recordListeners.delete(listener);
     signal?.addEventListener("abort", stop, { once: true });
     return stop;
   };
-  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, subscribeViewer, records, recordKey, subscribeRecords });
+  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, subscribeViewer, records, recordKey, failRecord, subscribeRecords, trackRecord });
 }

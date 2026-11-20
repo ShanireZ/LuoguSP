@@ -758,12 +758,12 @@ for (const forceFullFailure of [false, true]) {
     assert.equal(root.querySelector(":scope > ul > li:last-child")?.textContent.trim(), "Sibling.");
   });
 
-  for (const [marker, padding] of [[1, ""], [2, ""], [1, "   "], [2, "   "]])
-  test(`ordered marker ${marker} inside a recovered tight-list literal stays inline in ${mode} (formula indent ${padding.length})`, (t) => {
+  for (const [marker, padding, closer = ""] of [[1, ""], [2, ""], [1, "   "], [2, "   "], [1, "   ", "   "], [2, "   ", "   "]])
+  test(`ordered marker ${marker} inside a recovered tight-list literal stays inline in ${mode} (${padding.length}/${closer.length})`, (t) => {
     const { dom, renderer } = createRenderer();
     t.after(() => dom.window.close());
     const root = dom.window.document.createElement("div");
-    const literal = `line\n${marker}. Within literal\n${padding}$$\n${padding}- x\n${padding}$$\nafter`;
+    const literal = `line\n${marker}. Within literal\n${padding}$$\n${padding}- x\n${padding}$$\n${closer}after`;
     const indent = literal.replaceAll("\n", "\n  ");
     for (const content of [`\`${indent}\``, `[Notes](./notes "${indent}")`, `<a href="./notes" title="${indent}">Notes</a>`]) {
       root.innerHTML = renderer.renderMarkdown(
@@ -787,9 +787,9 @@ for (const forceFullFailure of [false, true]) {
     const { dom, renderer } = createRenderer();
     t.after(() => dom.window.close());
     const root = dom.window.document.createElement("div");
-    for (const marker of [1, 2]) {
+    for (const [marker, continuation] of [[1, "     "], [2, "     "], [2, "     Child continued\n  More prose "]]) {
       root.innerHTML = renderer.renderMarkdown(
-        `- Before \`unmatched prose.\n  ${marker}. Real sublist\n     $$\n     - x\n     $$\n     \`nested code\`.\n  ${marker + 1}. Next nested.\n- Sibling.`,
+        `- Before \`unmatched prose.\n  ${marker}. Real sublist\n     $$\n     - x\n     $$\n${continuation}\`nested code\`.\n  ${marker + 1}. Next nested.\n- Sibling.`,
         { forceFullFailure },
       ).html;
       const list = root.querySelector("li > ol");

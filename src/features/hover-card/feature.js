@@ -309,7 +309,7 @@ export function createHoverCardFeature(config) {
       },
     });
     const stopViewer = problemData?.subscribeViewer(() => {
-      if (shown?.kind === "problem") intent.dismiss();
+      if (shown) intent.dismiss();
     });
 
     const targetAt = (node) => {

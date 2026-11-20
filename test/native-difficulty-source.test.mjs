@@ -9,6 +9,7 @@ function fixture({
   path = "/problem/P1001",
   page = { data: { problem: { pid: "P1001", difficulty: 1 } } },
   prepareOtherGet,
+  legacyViewer,
 } = {}) {
   const dom = new JSDOM(
     `<script id="lentille-context" type="application/json">${JSON.stringify(page)}</script>`,
@@ -42,9 +43,9 @@ function fixture({
   }
   let now = 1;
   const origin = "https://www.luogu.com.cn";
-  const data = createProblemData({ origin, now: () => now });
+  const data = createProblemData({ origin, now: () => now, legacyViewer });
   const source = createNativeDifficultySource({ document: dom.window.document,
-    XMLHttpRequest: XHR, origin, now: () => now, onPage: data.rememberPage, prepareOtherGet });
+    XMLHttpRequest: XHR, origin, now: () => now, onPage: data.rememberPage, trackRecord: data.trackRecord, prepareOtherGet });
   const seen = [];
   const originalOpen = XHR.prototype.open;
   const harvest = () => source.harvest().batches;
@@ -55,6 +56,54 @@ function fixture({
   return { source, data, seen, stop, harvest, request, document: dom.window.document,
     XHR, originalOpen, tick: () => now++ };
 }
+
+function observedRecord(problem, uid, scores) {
+  const user = { uid };
+  return { user, template: "record.list", data: { records: {
+    result: scores.map(score => ({ id: score, score, user, problem })),
+  } } };
+}
+
+for (const changes of [[], [43], [43, 42]])
+test(`native record replies stay in their legacy viewer generation (${changes})`, (t) => {
+  let uid = 42;
+  const problem = { pid: "P1001" };
+  const fx = fixture({ legacyViewer: () => uid });
+  t.after(fx.stop);
+  fx.harvest();
+  const held = fx.request(`/record/list?user=42&pid=${problem.pid}`);
+  for (const next of changes) {
+    uid = next;
+    assert.equal(fx.data.viewerUid(), uid);
+  }
+  held.reply(observedRecord(problem, 42, [25]));
+  assert.equal(fx.data.viewerUid(), uid);
+  assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), changes.length ? undefined : [25]);
+  fx.request(`/record/list?user=${uid}&pid=${problem.pid}`).reply(observedRecord(problem, uid, [60]));
+  assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), [60]);
+});
+
+for (const [other, newest] of [[29, [50]], [30, [50]], [30, []]])
+test(`a superseded native record stays retired after closing the preview (${other}, ${newest})`, (t) => {
+  const problem = { pid: "P1001" };
+  const fx = fixture({ page: { user: { uid: 42 }, data: {} } });
+  t.after(fx.stop);
+  fx.harvest();
+  const path = `/record/list?user=42&pid=${problem.pid}`;
+  const close = fx.data.subscribeRecords(fx.data.recordKey(problem.pid), () => {});
+  const held = fx.request(path);
+  fx.request(path).reply(observedRecord(problem, 42, newest));
+  for (let i = 0; i < other; i++) {
+    const pid = `P${1100 + i}`;
+    fx.request(`/record/list?user=42&pid=${pid}`).reply(observedRecord({ pid }, 42, []));
+  }
+  assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), newest);
+  close();
+  held.reply(observedRecord(problem, 42, [25]));
+  assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), other === 30 ? undefined : newest);
+  fx.request(path).reply(observedRecord(problem, 42, [60]));
+  assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), [60]);
+});
 
 test("native page data is available during load before Luogu consumes loadend", () => {
   const fx = fixture();

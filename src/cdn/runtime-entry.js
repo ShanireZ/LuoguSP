@@ -10,12 +10,12 @@ import {
 import { createUserscriptFetch } from "./userscript-fetch.js";
 import { createOptionalBundleLoader } from "./optional-bundle-loader.js";
 
-function createQaProbe(release, mode) {
+function createQaProbe(release, mode, rendererTransport) {
   if (!mode) return null;
   const probe = document.createElement("meta");
-  probe.id = "luogusp-qa-hidden-intro";
-  probe.name = "luogusp-qa-hidden-intro";
-  Object.assign(probe.dataset, {
+  probe.id = probe.name = "luogusp-qa-hidden-intro";
+  const { dataset } = probe;
+  Object.assign(dataset, {
     release,
     mode,
     status: "idle",
@@ -29,7 +29,7 @@ function createQaProbe(release, mode) {
     fallbackReason: "",
     rendererFailure: "",
     rendererDetail: "",
-    rendererTransport: "",
+    rendererTransport,
   });
   const attach = () => {
     if (!probe.isConnected)
@@ -40,23 +40,23 @@ function createQaProbe(release, mode) {
     document.addEventListener("DOMContentLoaded", attach, { once: true });
   return Object.freeze({
     mode,
-    diagnostic(details) {
-      probe.dataset.status = details.status;
-      probe.dataset.reason = details.reason || "";
+    diagnostic({ status, reason }) {
+      dataset.status = status;
+      dataset.reason = reason || "";
       if (
-        details.status.startsWith("native-") ||
-        details.status === "already-native"
+        status.startsWith("native-") ||
+        status === "already-native"
       ) {
-        probe.dataset.nativeStatus = details.status;
-        probe.dataset.nativeReason = details.reason || "";
+        dataset.nativeStatus = status;
+        dataset.nativeReason = dataset.reason;
       }
-      if (details.status.startsWith("fallback-")) {
-        probe.dataset.fallbackStatus = details.status;
-        probe.dataset.fallbackReason = details.reason || "";
+      if (status.startsWith("fallback-")) {
+        dataset.fallbackStatus = status;
+        dataset.fallbackReason = dataset.reason;
       }
     },
     renderer(event) {
-      updateQaRendererProbeDataset(probe.dataset, event);
+      updateQaRendererProbeDataset(dataset, event);
     },
   });
 }
@@ -66,8 +66,8 @@ const runtime = Object.freeze({
   apiVersion: 1,
 });
 const qaMode = getQaHiddenIntroMode(runtime.release, location.href);
-const qaProbe = createQaProbe(runtime.release, qaMode);
 const userscriptFetch = createUserscriptFetch();
+const qaProbe = createQaProbe(runtime.release, qaMode, userscriptFetch.transport);
 const origin = __LUOGUSP_CDN_ORIGIN__;
 const bundleFromPin = ([apiVersion, asset, sha256]) =>
   ({ apiVersion, path: `releases/${runtime.release}/${asset}.${sha256.slice(0, 16)}.js`, sha256 });
@@ -76,12 +76,6 @@ const rendererFetch = createQaRendererFetch({
   origin,
   fetchImpl: userscriptFetch.fetchImpl,
 });
-const qaProbeElement = document.querySelector(
-  "#luogusp-qa-hidden-intro",
-);
-if (qaProbeElement)
-  qaProbeElement.dataset.rendererTransport =
-    userscriptFetch.transport;
 const forcedFallbackAdapter =
   isQaForcedFallback(qaMode)
     ? Object.freeze({

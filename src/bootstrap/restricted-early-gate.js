@@ -45,14 +45,13 @@ function createGate() {
             style.id = styleId;
             // 幾何與殼內載入層同源（loader-geometry.js）：兩者先後出現在同一位置，
             // 一旦不一致，切換瞬間轉圈就會跳一下。
-            style.textContent = `
-              html.${className},html.${className} body{overflow:hidden!important;background:${LOADER_BACKDROP}!important;}
-              html.${className} body>*{visibility:hidden!important;}
-              html.${className}::before{content:"";${LOADER_SPINNER_BOX}z-index:2147483646;animation:luogusp-rst-early-spin .8s linear infinite;}
-              html.${className}::after{content:"加载中…";${LOADER_MESSAGE_BOX}z-index:2147483646;color:${LOADER_TEXT_COLOR};font:${LOADER_FONT};}
-              @keyframes luogusp-rst-early-spin{to{transform:rotate(360deg);}}
-              @media (prefers-reduced-motion:reduce){html.${className}::before{animation:none;}}
-            `;
+            style.textContent =
+              `html.${className},html.${className} body{overflow:hidden!important;background:${LOADER_BACKDROP}!important;}` +
+              `html.${className} body>*{visibility:hidden!important;}` +
+              `html.${className}::before{content:"";${LOADER_SPINNER_BOX}z-index:2147483646;animation:luogusp-rst-early-spin .8s linear infinite;}` +
+              `html.${className}::after{content:"加载中…";${LOADER_MESSAGE_BOX}z-index:2147483646;color:${LOADER_TEXT_COLOR};font:${LOADER_FONT};}` +
+              "@keyframes luogusp-rst-early-spin{to{transform:rotate(360deg);}}" +
+              `@media (prefers-reduced-motion:reduce){html.${className}::before{animation:none;}}`;
             (document.head || root).appendChild(style);
           }
           return true;

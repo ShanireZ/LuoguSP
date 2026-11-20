@@ -42,6 +42,7 @@ export function createBrowserProblemResources() {
     XMLHttpRequest: globalThis.XMLHttpRequest,
     origin,
     onPage: data.rememberPage,
+    trackRecord: data.trackRecord,
     prepareOtherGet: userInfo.prepare,
   });
   let stop;

@@ -66,6 +66,7 @@ from a newer batch. A native response, preview or IDE detail can refresh
 eligible IDs. Observed Lentille viewer changes discard harvested colors.
 Both Lentille and legacy viewer changes discard shared problem data and
 invalidate pending details and record lookups from the previous context.
+Passive record requests use the viewer context observed at send time.
 Confirming the existing viewer keeps that context. Returning after a change
 starts a fresh context.
 IDs without current data lose the old LuoguSP paint and use the existing fallback.
@@ -78,10 +79,13 @@ arrive, retaining focused controls and scroll position. Native observations
 and fallback reads are compared by send time in the open preview. Native
 observations take precedence at equal times, including confirmed empty lists.
 An open preview retains its latest record observation if other lookups evict
-that entry from the bounded shared cache. Successful record reads use that
-shared cache, so reopening after eviction can issue a fresh lookup. An
-observed viewer change dismisses the open problem card and releases its
-retained record and pending work.
+that entry from the bounded shared cache. Outstanding native record requests
+retain the latest same-scope ordering stamp until they settle. Successful
+record reads use the shared cache and supersede earlier cached terminal failures for
+their scope, so reopening after eviction can issue a fresh lookup. An
+observed viewer change dismisses open previews, restores owned keyboard
+focus, and releases their pending reads. A relationship action already sent
+settles for its initiating account.
 If a detail removes a
 focused tag disclosure, focus moves to the problem link. When a data update or
 viewport change clips a focused action or the tags control, the card scrolls
@@ -209,8 +213,9 @@ sanitization. Complete inline code and link titles stay literal within tight
 list items and across consecutive tentative formula blocks. The tokenizer
 bounds its lookahead and keeps ordinary prose together up to a real block
 boundary. Apparent ordered markers, including 1., stay inline when verified
-inside a literal. A child list's indented formula remains in that list when
-parent prose contains a stray delimiter. Recovered literals compose with
+inside a literal, including with an indented closing line. A child list's
+indented formula remains in that list when a stray parent backtick would
+pair with the opener of a later complete code span. Recovered literals compose with
 split closing anchor tags. A literal delimiter stays inside its inline token
 even when the next delimiter starts a real formula. Lite parses inline content within
 each block and keeps the literal text of code spans and fenced code. It reads
