@@ -30,40 +30,61 @@ test("quality report can be staged without changing the shared production report
     assert.deepEqual(readFileSync(shared), before);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
-test("real release preflight rejects a stale or missing translated edition", () => {
+function copyReleasePlanFixture(t) {
   const base = tmpdir();
-  const root = mkdtempSync(path.join(base, "luogusp-readme-publication-20261029-"));
-  try {
-    const required = ["scripts/publish.mjs", "scripts/publish-lib.mjs", "scripts/cdn/origin-policy.mjs", "scripts/cdn/local-lock.mjs", "scripts/cdn/publish-receipt.mjs", "scripts/cdn/release-transaction.mjs", "scripts/cdn/release-integrity.mjs", "scripts/cdn/size-budget.mjs", "src/userscript.meta.js", "LuoguSP.user.js", "package.json", "README.md", "README.zh-CN.md", "README.zh-TW.md", "README.ja.md", "reports/quality-report.json", "cdn/channels/canary.json", "config/cdn.json"];
-    for (const file of required) {
-      mkdirSync(path.dirname(path.join(root, file)), {recursive: true});
-      copyFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), path.join(root, file));
-    }
-    mkdirSync(path.join(root, "cdn/releases"), {recursive: true});
-    // The publisher runs this suite after promotion too. Simulate that state.
-    const live = userscriptVersion(readFileSync(path.join(root, "LuoguSP.user.js"), "utf8"));
-    const parts = live.split(".").map(Number);
-    const promoted = `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
-    for (const name of ["src/userscript.meta.js", "LuoguSP.user.js", "package.json", ...publishHelpers.README_EDITIONS]) {
-      const file = path.join(root, name);
-      writeFileSync(file, readFileSync(file, "utf8").replaceAll(live, promoted));
-    }
-    const run = () => spawnSync(process.execPath, ["scripts/publish.mjs", "--plan", "--version", "999.0.0"], {cwd: root, encoding: "utf8", windowsHide: true});
-    assert.equal(run().status, 0);
-    const file = path.join(root, "README.zh-TW.md");
-    writeFileSync(file, readFileSync(file, "utf8").replaceAll(promoted, "0.0.0"));
-    const stale = run();
-    assert.notEqual(stale.status, 0);
-    assert.match(stale.stderr, /README version drift: README.zh-TW.md/);
-    rmSync(path.join(root, "README.ja.md"));
-    const missing = run();
-    assert.notEqual(missing.status, 0);
-    assert.match(missing.stderr, /README.ja.md/);
-  } finally {
+  const prefix = "luogusp-publish-plan-20261120-";
+  const root = mkdtempSync(path.join(base, prefix));
+  t.after(() => {
     assert.equal(path.dirname(root), base);
-    assert.ok(path.basename(root).startsWith("luogusp-readme-publication-20261029-"));
-    rmSync(root, {recursive: true, force: true});
+    assert.ok(path.basename(root).startsWith(prefix));
+    rmSync(root, { recursive: true, force: true });
+  });
+  const required = [
+    "scripts/publish.mjs",
+    "scripts/publish-lib.mjs",
+    "scripts/cdn/origin-policy.mjs",
+    "scripts/cdn/local-lock.mjs",
+    "scripts/cdn/publish-receipt.mjs",
+    "scripts/cdn/release-transaction.mjs",
+    "scripts/cdn/release-integrity.mjs",
+    "scripts/cdn/size-budget.mjs",
+    "src/userscript.meta.js",
+    "LuoguSP.user.js",
+    "package.json",
+    ...publishHelpers.README_EDITIONS,
+    "reports/quality-report.json",
+    "cdn/channels/canary.json",
+    "config/cdn.json",
+  ];
+  for (const file of required) {
+    const destination = path.join(root, file);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    copyFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), destination);
   }
+  return root;
+}
+
+test("real release preflight rejects a stale or missing translated edition", (t) => {
+  const root = copyReleasePlanFixture(t);
+  // The publisher runs this suite after promotion too. Simulate that state.
+  const live = userscriptVersion(readFileSync(path.join(root, "LuoguSP.user.js"), "utf8"));
+  const parts = live.split(".").map(Number);
+  const promoted = `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+  for (const name of ["src/userscript.meta.js", "LuoguSP.user.js", "package.json", ...publishHelpers.README_EDITIONS]) {
+    const file = path.join(root, name);
+    writeFileSync(file, readFileSync(file, "utf8").replaceAll(live, promoted));
+  }
+  const run = () => spawnSync(process.execPath, ["scripts/publish.mjs", "--plan", "--version", "999.0.0"], {cwd: root, encoding: "utf8", windowsHide: true});
+  assert.equal(run().status, 0);
+  const file = path.join(root, "README.zh-TW.md");
+  writeFileSync(file, readFileSync(file, "utf8").replaceAll(promoted, "0.0.0"));
+  const stale = run();
+  assert.notEqual(stale.status, 0);
+  assert.match(stale.stderr, /README version drift: README.zh-TW.md/);
+  rmSync(path.join(root, "README.ja.md"));
+  const missing = run();
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /README.ja.md/);
 });
 test("release versions validate and update every README edition", () => {
   assert.equal(typeof publishHelpers.readmeEditionsWithVersion, "function");
@@ -245,22 +266,18 @@ test("publish promotion accepts only the verified compatibility runtime", () => 
 // 發佈指令碼的頂層，全綠到底。整個儲存庫沒有任何一道門跑過它，所以兩天沒人知道。
 // 這道門就是那道門：`--plan` 會走完全部 preflight（版本一致性、目標版本必須更新、
 // 不覆蓋既有不可變發佈）再列印計畫退出，一個位元組都不寫、一個請求都不發。
-test("发布脚本的 preflight 在 --plan 下跑得通，并认出当前生产版本", () => {
-  const artifact = readFileSync(
-    new URL("../LuoguSP.user.js", import.meta.url),
-    "utf8",
-  );
+test("发布脚本的 preflight 在 --plan 下跑得通，并认出当前生产版本", (t) => {
+  // This suite also runs while the parent publisher has an in-progress receipt.
+  // Use production inputs in a copy with its own release and receipt state.
+  const root = copyReleasePlanFixture(t);
+  const artifact = readFileSync(path.join(root, "LuoguSP.user.js"), "utf8");
   const current = userscriptVersion(artifact);
-  // ★ 用一個永遠不會有發佈目錄的版本號，而不是「當前版本 + 1」。這道門本身也在
-  //   `pnpm release` 的 pre-deployment 測試集裡跑，而那時候「下一個補丁版本」的
-  //   `cdn/releases/` 目錄**剛剛被第 1 步建出來**，`wouldPublish` 就變成了 false ——
-  //   第一次發 2.14.3 時它就是這麼把發佈攔下來的。判據不能相依發佈中途的狀態。
   const next = "999.0.0";
   const result = spawnSync(
     process.execPath,
     ["scripts/publish.mjs", "--plan", "--version", next],
     {
-      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      cwd: root,
       encoding: "utf8",
     },
   );
