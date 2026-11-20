@@ -758,11 +758,12 @@ for (const forceFullFailure of [false, true]) {
     assert.equal(root.querySelector(":scope > ul > li:last-child")?.textContent.trim(), "Sibling.");
   });
 
-  test(`an ordered marker inside a recovered tight-list literal stays inline in ${mode}`, (t) => {
+  for (const [marker, padding] of [[1, ""], [2, ""], [1, "   "], [2, "   "]])
+  test(`ordered marker ${marker} inside a recovered tight-list literal stays inline in ${mode} (formula indent ${padding.length})`, (t) => {
     const { dom, renderer } = createRenderer();
     t.after(() => dom.window.close());
     const root = dom.window.document.createElement("div");
-    const literal = "line\n2. Within literal\n$$\n- x\n$$\nafter";
+    const literal = `line\n${marker}. Within literal\n${padding}$$\n${padding}- x\n${padding}$$\nafter`;
     const indent = literal.replaceAll("\n", "\n  ");
     for (const content of [`\`${indent}\``, `[Notes](./notes "${indent}")`, `<a href="./notes" title="${indent}">Notes</a>`]) {
       root.innerHTML = renderer.renderMarkdown(
@@ -779,6 +780,24 @@ for (const forceFullFailure of [false, true]) {
       assert.equal(lists[0].children.length, 2);
       assert.equal(root.querySelector(":scope > ul > li:last-child")?.textContent.trim(), "Sibling.");
       assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map(math => math.textContent), ["y"]);
+    }
+  });
+
+  test(`a stray parent backtick leaves child list math and code intact in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    for (const marker of [1, 2]) {
+      root.innerHTML = renderer.renderMarkdown(
+        `- Before \`unmatched prose.\n  ${marker}. Real sublist\n     $$\n     - x\n     $$\n     \`nested code\`.\n  ${marker + 1}. Next nested.\n- Sibling.`,
+        { forceFullFailure },
+      ).html;
+      const list = root.querySelector("li > ol");
+      assert.equal(list?.start, marker);
+      assert.equal(list.children.length, 2);
+      assert.deepEqual([...root.querySelectorAll("code")].map(node => node.textContent), ["nested code"]);
+      assert.deepEqual([...list.querySelectorAll(".katex-display .katex-html")].map(node => node.textContent), ["−x"]);
+      assert.equal(root.querySelector(":scope > ul > li:last-child").textContent.trim(), "Sibling.");
     }
   });
 

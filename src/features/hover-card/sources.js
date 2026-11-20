@@ -40,10 +40,8 @@ export function createHoverCardSources(config) {
 
   const remember = (key, value, retryAfter) => {
     // 簡單 FIFO 上限：hover 卡是瀏覽態快取，不值得為它上 LRU。
-    if (!cache.has(key) && cache.size >= maxEntries) {
-      const oldest = cache.keys().next();
-      if (!oldest.done) cache.delete(oldest.value);
-    }
+    if (!cache.has(key) && cache.size >= maxEntries)
+      cache.delete(cache.keys().next().value);
     cache.set(key, { value, at: now(), retryAfter });
     return value;
   };
@@ -56,7 +54,7 @@ export function createHoverCardSources(config) {
       cache.delete(key);
       return undefined;
     }
-    if (entry.retryAfter !== undefined && age >= entry.retryAfter) return undefined;
+    if (age >= (entry.retryAfter ?? Infinity)) return undefined;
     return entry.value;
   };
 
@@ -67,15 +65,15 @@ export function createHoverCardSources(config) {
     const existing = pending.get(key);
     if (existing && !existing.signal?.aborted) return existing.promise;
     const task = Promise.resolve()
-      .then(() => signal?.aborted ? null : run())
-      .then((value) => {
+      .then(async () => {
+        const value = signal?.aborted ? null : await run();
         if (signal?.aborted) return null;
         if (value === RETRYABLE_READ) {
           // Retry on reopening. Repeated failures get a per-key cooldown.
           const repeated = cache.get(key)?.retryAfter !== undefined;
           return remember(key, null, repeated ? RETRY_COOLDOWN_MS : 0);
         }
-        return remember(key, value);
+        if (value !== undefined) return remember(key, value);
       })
       .catch((error) => {
         if (signal?.aborted || error?.name === "AbortError") return null;
@@ -138,7 +136,7 @@ export function createHoverCardSources(config) {
     try {
       const detail = problemData
         ? await problemData.load(pid, { href, signal, fields: ["name", "difficulty"] })
-        : await load(`problem:${viewerUid || 0}:${pid}`, () =>
+        : await load(`problem:${uid}:${pid}`, () =>
             readJson(`/problem/${encodeURIComponent(pid)}`, signal), signal);
       if (detail?.data?.problem?.pid === pid && detail !== payload) {
         payload = detail;
@@ -157,14 +155,12 @@ export function createHoverCardSources(config) {
       }));
     let stopRecords;
     if (Number.isSafeInteger(uid) && uid > 0) {
-      const records = () => problemData?.records(pid, { href });
-      const updateAttempt = (rows, fallback) => {
-        if (!rows && !fallback) return;
-        attempt = rows ? pickLastAttempt(rows) : fallback;
+      const updateAttempt = (rows) => {
+        attempt = pickLastAttempt(rows);
         publish();
       };
       stopRecords = problemData?.subscribeRecords(key, updateAttempt, signal);
-      const existing = records();
+      const existing = problemData?.records(pid, { href });
       if (existing) updateAttempt(existing);
       else {
         const url = new URL(`/record/list?user=${uid}&pid=${pid}`, origin);
@@ -173,20 +169,27 @@ export function createHoverCardSources(config) {
           const value = params.get(field);
           if (value) url.searchParams.set(field, value);
         }
-        supplements.push(load(key ?? url.href, async () => {
-          if (!current()) return null;
+        const fallback = await load(key ?? url.href, async () => {
+          if (!current()) return;
           const at = now();
           const payload = await readJson(url, signal);
           if (payload === null || payload === RETRYABLE_READ) return payload;
-          if (payload?.template !== "record.list" || Number(payload.user?.uid) !== uid)
-            return RETRYABLE_READ;
+          const { template } = payload;
           const records = payload.data?.records;
-          if (!Array.isArray(records?.result)) return RETRYABLE_READ;
+          if (template !== "record.list" || Number(payload.user?.uid) !== uid ||
+              !Array.isArray(records?.result)) return RETRYABLE_READ;
           // The cache scopes these rows to the viewer already in effect.
-          if (!current()) return null;
-          problemData?.rememberPage({ template: payload.template, data: { records } }, url, at);
+          if (!current()) return;
+          if (problemData) {
+            problemData.rememberPage({ template, data: { records } }, url, at);
+            return;
+          }
           return pickLastAttempt(records.result.filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid));
-        }, signal).then((value) => updateAttempt(records(), value)));
+        }, signal);
+        if (fallback) {
+          attempt = fallback;
+          publish();
+        }
       }
     }
     await Promise.all(supplements).finally(() => {

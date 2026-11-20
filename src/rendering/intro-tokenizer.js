@@ -103,6 +103,32 @@ function tightTextEnd(source, masked, end, lexRanges) {
   return end;
 }
 
+function orderedChildFormula(source, [from, to], index) {
+  // Keep a formula and a potential closer that both fall inside the ordered
+  // child in that child. A closer on a dedented line can still end the literal.
+  const indent = source.indexOf("$", index) - index;
+  if (indent < 2) return false;
+  const closingLine = source.lastIndexOf("\n", to - 1) + 1;
+  const closingIndent = /^ */.exec(source.slice(closingLine, closingLine + indent))[0].length;
+  const prefix = source.slice(Math.max(from, index - MAX_LITERAL_LOOKAHEAD), index);
+  for (const [, marker, gap] of prefix.matchAll(/\n( {0,3}\d{1,9}[.)])(?:( +)(?=\S)| *(?=\n))/g)) {
+    if (marker.length + (gap?.length ?? 1) <= Math.min(indent, closingIndent)) return true;
+  }
+  return false;
+}
+
+function tightParagraphEnd(source, end, paragraphRule) {
+  // Marked interrupts a paragraph at 1. but permits other ordered markers.
+  // Inspect that continuation provisionally. Literal verification and the
+  // actual list cutoff still use the unmodified markers.
+  if (!/^\n {0,3}1[.)][ \t]/.test(source.slice(end, end + 8))) return end;
+  const from = end + 1;
+  const tail = source.slice(from, from + MAX_LITERAL_LOOKAHEAD)
+    .replace(/(?<=\n {0,3})1(?=[.)][ \t])/g, "2");
+  const probe = paragraphRule.exec(tail)?.[1].replace(/\n$/, "");
+  return probe ? from + probe.length : end;
+}
+
 function nextFormulaEnd(source, from, paragraph) {
   for (const line of paragraph.matchAll(DISPLAY_MATH_LINE)) {
     const index = from + line.index;
@@ -165,6 +191,7 @@ function displayMathBoundary(source, masked, paragraph, options, paragraphRule, 
   // Mask only line breaks inside verified inline tokens when asking Marked
   // where the surrounding prose ends. The emitted token retains the original.
   for (let recovered = 0; recovered <= MAX_FORMULA_REGIONS; recovered++) {
+    if (tight) end = tightParagraphEnd(masked, end, paragraphRule);
     const textEnd = tight ? tightTextEnd(source, masked, end, lexRanges) : end;
     const acrossBlank = hasInlineOpener
       ? /^\n(?:[ \t]*\n)+ {0,3}\$\$[ \t]*(?=\n|$)/.exec(masked.slice(end))
@@ -183,7 +210,8 @@ function displayMathBoundary(source, masked, paragraph, options, paragraphRule, 
           literal = ranges.next().value;
         }
         while (literal && literal[1] <= index) literal = ranges.next().value;
-        if (literal && literal[0] <= index && index < textEnd) {
+        if (literal && literal[0] <= index && index < textEnd &&
+            (!tight || !orderedChildFormula(source, literal, index))) {
           joined ||= tight;
           continue;
         }
@@ -191,7 +219,8 @@ function displayMathBoundary(source, masked, paragraph, options, paragraphRule, 
           continued = continueLiteral(source, source.slice(0, end), index, formula, lexRanges, paragraphRule);
         // A delimiter past an apparent sublist start is relevant only when
         // it closes a literal that already began in this text block.
-        if (continued && continued[0] < textEnd) break;
+        if (continued && continued[0] < textEnd &&
+            (!tight || !orderedChildFormula(source, continued, index))) break;
         continued = undefined;
       }
       if (textEnd < end && index >= textEnd) break;

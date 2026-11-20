@@ -50,6 +50,7 @@ export function createHoverCardFeature(config) {
     const claimNativeUserPreview = (ownsPreview) =>
       body.classList.toggle(NATIVE_OWNERSHIP_CLASS, ownsPreview);
     const allowMotion = window.matchMedia?.("(prefers-reduced-motion: no-preference)");
+    const origin = location.origin;
     const fadeLateField = (node) => node.animate?.(
       [{ opacity: 0.8 }, { opacity: 1 }],
       { duration: 125, easing: "ease-out" },
@@ -57,7 +58,7 @@ export function createHoverCardFeature(config) {
 
     const sources = createHoverCardSources({
       fetchPage,
-      origin: location.origin,
+      origin,
       problemData,
       nativeUserInfo,
       viewer: currentViewer,
@@ -65,7 +66,7 @@ export function createHoverCardFeature(config) {
       logError: (error) => console.error("LuoguSP hover card:", error),
     });
     const follow = createFollowAction({
-      origin: location.origin,
+      origin,
       csrfToken: () => readCsrfToken(document),
       request: (payload) =>
         fetchPage(payload.url, undefined, {
@@ -188,10 +189,8 @@ export function createHoverCardFeature(config) {
       if (signature) signatureObserver?.observe(signature);
     };
 
-    const draw = async (target) => {
-      const viewer = currentViewer();
-      const controller = openController;
-      const { signal } = controller;
+    const draw = async (target, viewer) => {
+      const { signal } = openController;
       const isCurrent = () => !signal.aborted && shown === target && isEnabled(target.kind);
       const showMedia = target.kind === "user" ? createUserMedia(fetchPage, signal) : null;
       const canAct = () => {
@@ -220,12 +219,12 @@ export function createHoverCardFeature(config) {
           );
         } else if (model.kind === "problem") {
           updateProblemCard(card, renderProblemCard(model, {
-            origin: location.origin, href: target.href, onResize: position, tagsExpanded,
+            origin, href: target.href, onResize: position, tagsExpanded,
           }), fadeField);
         } else {
           pendingAction = updateUserCard(card,
             renderUserCard(model, {
-              origin: location.origin,
+              origin,
               viewerUid: viewer,
               onResize: position,
               onFollow: viewer ? (next) => canAct() && follow.toggle(viewer, next) : null,
@@ -274,6 +273,7 @@ export function createHoverCardFeature(config) {
           intent.dismiss();
           return;
         }
+        const viewer = currentViewer();
         shown = target;
         openController = new AbortController();
         loading = true;
@@ -289,7 +289,7 @@ export function createHoverCardFeature(config) {
         card.hidden = false;
         card.setAttribute("aria-label", target.kind === "problem" ? "题目预览" : "用户预览");
         position();
-        draw(target);
+        draw(target, viewer);
       },
       onClose: () => {
         const anchor = shown?.anchor;
@@ -307,6 +307,9 @@ export function createHoverCardFeature(config) {
         card.textContent = "";
         watchSignature();
       },
+    });
+    const stopViewer = problemData?.subscribeViewer(() => {
+      if (shown?.kind === "problem") intent.dismiss();
     });
 
     const targetAt = (node) => {
@@ -415,6 +418,7 @@ export function createHoverCardFeature(config) {
       target?.addEventListener(type, listener, capture);
 
     const dispose = () => {
+      stopViewer?.();
       intent.dismiss();
       dismissUserPreview = null;
       for (const [target, type, listener, capture] of listeners)

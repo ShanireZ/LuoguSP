@@ -197,9 +197,10 @@ export function createNativeDifficultySource({
         const complete = () => {
           // Reusing this XHR in a load handler can leave a previous loadend
           // queued while the next request is still OPENED.
-          if (xhr.readyState !== XMLHttpRequest.DONE) return;
+          const state = xhr.readyState;
+          if (state !== XMLHttpRequest.DONE && state !== XMLHttpRequest.UNSENT) return;
           try {
-            if (finish) read();
+            if (finish && state === XMLHttpRequest.DONE) read();
           } finally {
             clean();
           }

@@ -52,7 +52,8 @@ same-origin request URL, including its query. They compare against the URL
 resolved from the document base with the fragment removed and leave native
 events intact. A rejected reopening leaves the current request observed.
 When a load handler reuses an XHR, completion of the previous request leaves
-the new observation active until the new request finishes.
+the new observation active until the new request finishes. A terminal reset
+to UNSENT settles prepared reads without using the cleared response.
 The shared cache holds only fields those features consume and scopes
 details by viewer, contest and language. Each observed field expires on its own
 and a partial response refreshes only the fields it contains. Shared detail
@@ -62,10 +63,11 @@ timestamp use send order and take precedence over supplemental lookups started
 in that tick. Native Lentille GETs, including record lists, take their timestamp
 and sequence at `send()`. A late native batch can still refresh a problem absent
 from a newer batch. A native response, preview or IDE detail can refresh
-eligible IDs. Each observed change of effective viewer discards harvested
-and queried colors and invalidates pending details and record lookups from the previous viewer
-context. Confirming the existing viewer keeps that context. Returning after a
-change starts a fresh context.
+eligible IDs. Observed Lentille viewer changes discard harvested colors.
+Both Lentille and legacy viewer changes discard shared problem data and
+invalidate pending details and record lookups from the previous context.
+Confirming the existing viewer keeps that context. Returning after a change
+starts a fresh context.
 IDs without current data lose the old LuoguSP paint and use the existing fallback.
 Newer summary fields stay visible when a subsequent detail omits them. A caller
 can retry for fields it still needs. An explicit empty sample list is cached as a
@@ -76,8 +78,10 @@ arrive, retaining focused controls and scroll position. Native observations
 and fallback reads are compared by send time in the open preview. Native
 observations take precedence at equal times, including confirmed empty lists.
 An open preview retains its latest record observation if other lookups evict
-that entry from the bounded shared cache. It releases the retained result on
-close or an observed viewer change.
+that entry from the bounded shared cache. Successful record reads use that
+shared cache, so reopening after eviction can issue a fresh lookup. An
+observed viewer change dismisses the open problem card and releases its
+retained record and pending work.
 If a detail removes a
 focused tag disclosure, focus moves to the problem link. When a data update or
 viewport change clips a focused action or the tags control, the card scrolls
@@ -204,8 +208,9 @@ prose, including within quotes, and use the same math-rendering callback and
 sanitization. Complete inline code and link titles stay literal within tight
 list items and across consecutive tentative formula blocks. The tokenizer
 bounds its lookahead and keeps ordinary prose together up to a real block
-boundary. Apparent ordered markers inside verified literals stay inline.
-Recovered literals preserve real nested ordered sublists and compose with
+boundary. Apparent ordered markers, including 1., stay inline when verified
+inside a literal. A child list's indented formula remains in that list when
+parent prose contains a stray delimiter. Recovered literals compose with
 split closing anchor tags. A literal delimiter stays inside its inline token
 even when the next delimiter starts a real formula. Lite parses inline content within
 each block and keeps the literal text of code spans and fenced code. It reads

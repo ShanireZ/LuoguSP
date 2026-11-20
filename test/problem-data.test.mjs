@@ -496,8 +496,9 @@ test("a hover refresh removes fields that expired during the detail read", async
 });
 
 function recordPreviewSources(fetchPage, clock) {
-  const data = createProblemData({ origin, text: () => assert.fail("unexpected detail lookup") });
-  data.rememberPage({ viewer: 42, data: { problem } }, url("/problem/P1001"), Date.now());
+  const now = clock?.now ?? Date.now;
+  const data = createProblemData({ origin, now, text: () => assert.fail("unexpected detail lookup") });
+  data.rememberPage({ viewer: 42, data: { problem } }, url("/problem/P1001"), now());
   return createHoverCardSources({ origin, problemData: data, fetchPage, clock });
 }
 
@@ -572,7 +573,7 @@ for (const scores of [[50], []]) test(`an open hover preview keeps its native re
       assert.equal(path, recordUrl);
       requests++;
       started.resolve();
-      return pending.promise;
+      return requests === 1 ? pending.promise : recordReply(scores.map(row));
     },
   });
   const score = (card) => card.mine.lastAttempt?.score ?? null;
@@ -593,13 +594,23 @@ for (const scores of [[50], []]) test(`an open hover preview keeps its native re
   assert.equal(requests, 1);
   controller.abort();
   assert.equal(data.records(problem.pid), undefined, "closing the preview releases its evicted result");
+  assert.equal(score(await sources.problem(problem.pid, 42)), expected);
+  assert.equal(score(await sources.problem(problem.pid, 42)), expected);
+  assert.equal(requests, 2, "reuse the fresh shared result after fetching it once on reopen");
 });
 
-test("returning to a viewer does not join or publish their old pending record fallback", async (t) => {
+for (const legacy of [false, true]) test(`returning to a viewer does not join or publish their old pending record fallback (legacy: ${legacy})`, async (t) => {
   const controller = new AbortController();
   t.after(() => controller.abort());
-  const data = createProblemData({ origin, now: () => 10, text: () => assert.fail("unexpected detail lookup") });
-  const viewer = (uid) => data.rememberPage({ viewer: uid, data: { problem } }, url("/problem/P1001"), 10);
+  let legacyUid = 42;
+  const data = createProblemData({ origin, legacyViewer: () => legacy ? legacyUid : 0,
+    now: () => 10, text: () => assert.fail("unexpected detail lookup") });
+  const viewer = (uid) => {
+    legacyUid = uid;
+    if (legacy) assert.equal(data.viewerUid(), uid);
+    data.rememberPage({ viewer: legacy ? undefined : uid, data: { problem } }, url("/problem/P1001"), 10);
+    assert.equal(data.viewerUid(), uid);
+  };
   viewer(42);
   const planned = [deferred(), deferred()];
   const started = [deferred(), deferred()];

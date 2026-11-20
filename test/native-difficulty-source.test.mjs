@@ -15,6 +15,7 @@ function fixture({
     { url: `https://www.luogu.com.cn${path}` },
   );
   class XHR extends EventTarget {
+    static UNSENT = 0;
     static DONE = 4;
     readyState = 0;
     reads = 0;
@@ -249,6 +250,25 @@ test("the trailing loadend does not stop observing a new request sent in load", 
   xhr.reply(reply(25));
   xhr.reply(reply(60));
   assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), [60]);
+});
+
+test("terminal UNSENT during loadend releases prepared user info immediately", (t) => {
+  const finished = [];
+  const fx = fixture({ prepareOtherGet: () => () => (xhr) => finished.push(xhr?.status ?? null) });
+  t.after(fx.stop);
+  const xhr = new fx.XHR();
+  xhr.addEventListener("loadend", () => {
+    xhr.readyState = fx.XHR.UNSENT;
+    xhr.status = 0;
+  }, { once: true });
+  xhr.open("GET", "/api/user/info/123");
+  xhr.send();
+  xhr.reply({ user: { uid: 123 } });
+  assert.deepEqual(finished, [null]);
+  xhr.open("GET", "/api/user/info/123");
+  xhr.send();
+  xhr.reply({ user: { uid: 123 } });
+  assert.deepEqual(finished, [null, 200]);
 });
 
 test("a late native detail remains available after a list for another PID", () => {

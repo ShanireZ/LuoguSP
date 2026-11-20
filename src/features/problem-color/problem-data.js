@@ -67,7 +67,9 @@ export function createProblemData({
   const recordLists = new Map();
   const difficultyListeners = new Set();
   const recordListeners = new Set();
+  const viewerListeners = new Set();
   let observedViewer;
+  let effectiveViewer;
   let viewerGeneration = 0;
   let viewerAt = -Infinity;
   const isFresh = (at, currentTime) => currentTime - at < ttlMs;
@@ -80,7 +82,21 @@ export function createProblemData({
     }
     return { viewer, params };
   };
-  const viewer = () => observedViewer ?? legacyViewer();
+  const viewer = () => {
+    const uid = observedViewer ?? legacyViewer();
+    const changed = uid !== (effectiveViewer ?? uid);
+    effectiveViewer = uid;
+    if (changed) {
+      viewerGeneration++;
+      for (const entries of [summaries, details, recordLists, recordListeners]) entries.clear();
+      for (const listener of viewerListeners) listener();
+    }
+    return uid;
+  };
+  const subscribeViewer = (listener) => {
+    viewerListeners.add(listener);
+    return () => viewerListeners.delete(listener);
+  };
   const keyOf = (pid, context) => `${viewerGeneration}:${context.viewer}:${context.params ?? ""}:${pid}`;
   const contextFor = (pid, href) => {
     if (!href) return { viewer: viewer() };
@@ -155,32 +171,26 @@ export function createProblemData({
     if (typeof data.bookmarked === "boolean") values.bookmarked = data.bookmarked;
     rememberFields(details, keyOf(pid, context), values, stamp, 120, notify && pid);
   };
-  const rememberPage = (page, url, at, order) => {
-    if (page.viewer !== undefined && at >= viewerAt) {
-      if (viewer() !== page.viewer) {
-        viewerGeneration++;
-        summaries.clear();
-        details.clear();
-        recordLists.clear();
-        recordListeners.clear();
-      }
-      observedViewer = page.viewer;
+  const rememberPage = ({ viewer: reported, template, data }, url, at, order) => {
+    if (reported !== undefined && at >= viewerAt) {
+      observedViewer = reported;
       viewerAt = at;
     }
-    if (page.viewer !== undefined && page.viewer !== viewer()) return;
-    const context = scope(url, page.viewer ?? viewer());
+    const uid = viewer();
+    if (reported !== undefined && reported !== uid) return;
+    const context = scope(url, uid);
     const stamp = { at, order };
-    if (page.template === "record.list" && context.viewer > 0 &&
-        Number(url.searchParams.get("user")) === context.viewer) {
-      const pid = url.searchParams.get("pid");
-      const rows = page.data.records?.result;
+    const params = url.searchParams;
+    if (template === "record.list" && uid > 0 && Number(params.get("user")) === uid) {
+      const pid = params.get("pid");
+      const rows = data.records?.result;
       if (pid && PID_PATTERN.test(pid) && Array.isArray(rows) &&
-          (!url.searchParams.has("page") || url.searchParams.get("page") === "1") &&
-          !["status", "language", "orderBy"].some((key) => url.searchParams.has(key))) {
+          (params.get("page") ?? "1") === "1" &&
+          !["status", "language", "orderBy"].some((key) => params.has(key))) {
         const key = keyOf(pid, context);
         if (!isLater(readRecord(key), stamp)) {
           const records = rows
-            .filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === context.viewer)
+            .filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid)
             .map(({ id, submitTime, score, status, time, memory }) => ({
               id, submitTime, score, status, time, memory,
             }));
@@ -195,18 +205,18 @@ export function createProblemData({
       }
     }
     const scoped = isScopedProblemUrl(url);
-    const detail = page.data.problem;
+    const detail = data.problem;
     const hasDetail = detail?.pid && matchesProblem(url, detail.pid) &&
         PID_PATTERN.test(detail.pid);
-    for (const batch of collectDifficultyBatches(page.data)) {
+    for (const batch of collectDifficultyBatches(data)) {
       for (const problem of batch.problems()) {
         if (hasDetail && problem === detail) continue;
         if (typeof problem?.pid !== "string" || !PID_PATTERN.test(problem.pid)) continue;
         rememberFields(summaries, keyOf(problem.pid, context), project(problem), stamp, 4000, scoped && problem.pid);
       }
     }
-    if (hasDetail) rememberDetail(page.data, detail.pid, context, stamp, scoped);
-    return context.viewer;
+    if (hasDetail) rememberDetail(data, detail.pid, context, stamp, scoped);
+    return uid;
   };
   const payload = (pid, key, currentTime = now(), detail = readFields(details, key, currentTime)) => {
     const summary = readFields(summaries, key, currentTime);
@@ -291,5 +301,5 @@ export function createProblemData({
     signal?.addEventListener("abort", stop, { once: true });
     return stop;
   };
-  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, records, recordKey, subscribeRecords });
+  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, subscribeViewer, records, recordKey, subscribeRecords });
 }
