@@ -1,10 +1,9 @@
+import { browserClock } from "../../browser/clock.js";
+
 export function observeIdeOutput({
   root, readParts, signal, isCurrent,
   MutationObserverImpl = globalThis.MutationObserver,
-  clock = {
-    setTimeout: (fn, ms) => setTimeout(fn, ms),
-    clearTimeout: (id) => clearTimeout(id),
-  },
+  clock = browserClock,
 }) {
   let baselinePill;
   let expectedOutput;

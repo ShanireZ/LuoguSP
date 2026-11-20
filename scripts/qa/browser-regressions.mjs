@@ -876,10 +876,11 @@ for (const query of ["", "?luogusp-qa=fallback-lite"]) {
     assert.equal((await intro.locator(":scope > ul > li:last-child").textContent()).trim(), "Sibling.");
   });
 
-  for (const dedented of [false, true])
-  test(`profile introduction keeps real child math after a stray parent backtick in ${query ? "lite" : "full"} mode (dedented: ${dedented})`, async (t) => {
+  for (const [dedented, wrapped] of [[false, false], [true, false], [false, true], [true, true]])
+  test(`profile introduction keeps real child math after a stray parent backtick in ${query ? "lite" : "full"} mode (dedented: ${dedented}, wrapped: ${wrapped})`, async (t) => {
     const continuation = dedented ? "     Child continued\n  More prose " : "     ";
-    const introduction = `- Before \`unmatched prose.\n  2. Real sublist\n     $$\n     - x\n     $$\n${continuation}\`nested code\`.\n  3. Next nested.\n- Sibling.`;
+    const code = wrapped ? `nested\n${dedented ? "  " : "     "}code` : "nested code";
+    const introduction = `- Before \`unmatched prose.\n  2. Real sublist\n     $$\n     - x\n     $$\n${continuation}\`${code}\`.\n  3. Next nested.\n- Sibling.`;
     const { page } = await fixture(t, {
       path: "/user/42" + query,
       html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
@@ -891,6 +892,21 @@ for (const query of ["", "?luogusp-qa=fallback-lite"]) {
     assert.equal(await intro.locator("li > ol > li").count(), 2);
     assert.deepEqual(await intro.locator("code").allTextContents(), ["nested code"]);
     assert.deepEqual(await intro.locator("li > ol .katex-display .katex-html").allTextContents(), ["−x"]);
+  });
+
+  test(`profile introduction preserves genuine closers before a wrapped second span in ${query ? "lite" : "full"} mode`, async (t) => {
+    const introduction = "- Example `line\n  2. Within literal\n     $$\n     - x\n     $$\n  after`. Also `second\n  code`.\n  2. Actual sublist\n     $$\n     y\n     $$\n  3. Next item\n- Sibling.";
+    const { page } = await fixture(t, {
+      path: "/user/42" + query,
+      html: fixtureHtml('<div class="sidebar-container"><div class="main"></div></div>',
+        { user: { ...viewer, introduction } }),
+    });
+    const intro = page.locator(".luogusp-intro-card .lfe-marked");
+    await intro.waitFor();
+    assert.deepEqual(await intro.locator("code").allTextContents(),
+      ["line 2. Within literal    $$    - x    $$ after", "second code"]);
+    assert.deepEqual(await intro.locator(".katex-display .katex-html").allTextContents(), ["y"]);
+    assert.equal(await intro.locator("li > ol > li").count(), 2);
   });
 
   test(`profile introduction contains wide math in ${query ? "lite" : "full"} rendering`, async (t) => {
@@ -2957,11 +2973,12 @@ for (const reverseOpen of [false, true]) test(
   assert.deepEqual(requests.filter(({ path }) => path === "/record/list").map(({ type }) => type), ["xhr", "xhr"]);
 });
 
-for (const [empty, evict, denied = false] of [[false, false], [true, false], [false, true], [true, true], [false, true, true]])
-test(`open problem preview keeps a newer native record over a pending fallback (${empty}, eviction: ${evict}, 403: ${denied})`, async (t) => {
+for (const [empty, evict, status = 200] of [[false, false], [true, false], [false, true], [true, true], [false, true, 403], [false, true, 503]])
+test(`open problem preview keeps a newer native record over a pending fallback (${empty}, eviction: ${evict}, HTTP ${status})`, async (t) => {
   const fallbackStarted = responseGate(t);
   const fallbackResponse = responseGate(t);
   let fetchCount = 0;
+  const priorFetches = status === 503 ? 2 : 1;
   const path = `/record/list?user=${viewer.uid}&pid=${problem.pid}`;
   const payload = (result) => ({ template: "record.list", user: viewer, data: { records: { result } } });
   const row = (score) => ({ id: score, problem, user: viewer, submitTime: 1700000000 + score, score });
@@ -2972,7 +2989,7 @@ test(`open problem preview keeps a newer native record over a pending fallback (
       window.fetch = async (...args) => {
         const response = await nativeFetchForRecords(...args);
         if (new URL(response.url).pathname === "/record/list") {
-          if (response.status === 403) setTimeout(() => { window.recordFallbackDecoded = true; }, 0);
+          if (!response.ok) setTimeout(() => { window.recordFallbackDecoded = true; }, 0);
           const decode = response.json.bind(response);
           response.json = async () => {
             const value = await decode();
@@ -2989,12 +3006,19 @@ test(`open problem preview keeps a newer native record over a pending fallback (
       if (url.pathname !== "/record/list") return;
       if (route.request().resourceType() === "xhr")
         return route.fulfill({ json: payload(empty || url.searchParams.get("pid") !== problem.pid ? [] : [row(50)]) });
-      if (++fetchCount > 1) return route.fulfill({ json: payload(empty ? [] : [row(50)]) });
+      if (++fetchCount < priorFetches) return route.fulfill({ status });
+      if (fetchCount > priorFetches) return route.fulfill({ json: payload(empty ? [] : [row(50)]) });
       fallbackStarted.release();
-      return fallbackResponse.promise.then(() => route.fulfill(denied ? { status: 403 } : { json: payload([row(25)]) }));
+      return fallbackResponse.promise.then(() => route.fulfill(status === 200 ? { json: payload([row(25)]) } : { status }));
     },
   });
   await page.locator("#problem").press("Alt+ArrowDown");
+  if (priorFetches > 1) {
+    await page.waitForFunction(() => window.recordFallbackDecoded);
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => { window.recordFallbackDecoded = false; });
+    await page.locator("#problem").press("Alt+ArrowDown");
+  }
   await fallbackStarted.promise;
   await page.evaluate((path) => new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -3019,8 +3043,8 @@ test(`open problem preview keeps a newer native record over a pending fallback (
   else assert.match(await shown.textContent(), /50 分/);
   const lookups = requests.filter(request => request.path === "/record/list");
   assert.deepEqual(lookups.filter(request => new URLSearchParams(request.query).get("pid") === problem.pid)
-    .map(request => request.type), ["fetch", "xhr"]);
-  assert.equal(lookups.length, evict ? 32 : 2);
+    .map(request => request.type), [...Array(priorFetches).fill("fetch"), "xhr"]);
+  assert.equal(lookups.length, priorFetches + (evict ? 31 : 1));
   await page.keyboard.press("Escape");
   await page.evaluate(() => { window.recordFallbackDecoded = false; });
   await page.locator("#problem").press("Alt+ArrowDown");
@@ -3028,11 +3052,12 @@ test(`open problem preview keeps a newer native record over a pending fallback (
   assert.doesNotMatch(await shown.textContent(), /25 分/);
   if (empty) assert.equal(await shown.getByText("上次尝试", { exact: true }).count(), 0);
   else await shown.getByText(/50 分/).waitFor();
-  assert.equal(fetchCount, evict ? 2 : 1);
+  assert.equal(fetchCount, priorFetches + Number(evict));
 });
 
-for (const mode of ["legacy switch", "legacy round trip", "eviction and close"])
-test(`a held native record cannot reappear after ${mode}`, async (t) => {
+for (const [mode, detail] of [["legacy switch"], ["legacy round trip"], ["eviction and close"],
+  ["legacy switch", "record"], ["legacy switch", "problem"]])
+test(`a held native ${detail ? `${detail} detail` : "record list"} cannot reappear after ${mode}`, async (t) => {
   const legacy = mode !== "eviction and close";
   const started = responseGate(t);
   const release = responseGate(t);
@@ -3042,6 +3067,13 @@ test(`a held native record cannot reappear after ${mode}`, async (t) => {
     html: fixtureHtml('<a id="problem" href="/problem/P1000">Problem</a>', { recommendations: [problem] },
       legacy ? { user: undefined } : {}),
     reply(route, url) {
+      if (detail && url.searchParams.has("held")) {
+        const json = detail === "record"
+          ? { template: "record.show", user: { ...viewer, learnMode: true }, data: { record: { id: 100, problem } } }
+          : { template: "problem.show", user: viewer, data: { problem } };
+        started.release();
+        return release.promise.then(() => route.fulfill({ json }));
+      }
       if (url.pathname === "/problem/P1000") return route.fulfill({ json: { data: { problem } } });
       if (url.pathname === "/_lfe/tags") return route.fulfill({ json: { tags: [] } });
       if (url.pathname === "/api/user/info/123") return route.fulfill({ json: { user: { uid: 123 } } });
@@ -3072,7 +3104,7 @@ test(`a held native record cannot reappear after ${mode}`, async (t) => {
   }), path);
   await trigger.press("Alt+ArrowDown");
   await preview.getByText(/10 分/).waitFor();
-  const held = xhr(path + "&held=1");
+  const held = xhr(detail ? (detail === "record" ? "/record/100?held=1" : "/problem/P1000?held=1") : path + "&held=1");
   void held.catch(() => {});
   await started.promise;
   let uid = viewer.uid;
@@ -3094,6 +3126,26 @@ test(`a held native record cannot reappear after ${mode}`, async (t) => {
   await trigger.press("Alt+ArrowDown");
   await preview.getByText(/60 分/).waitFor();
   assert.deepEqual(readers, [viewer.uid, uid]);
+});
+
+test("malformed legacy viewer metadata leaves the native record GET usable", async (t) => {
+  const { page, requests } = await fixture(t, {
+    initScript: "window._feInjection = { currentUser: { uid: { valueOf: null, toString: null } } };",
+    html: fixtureHtml("<p>Legacy record fixture</p>", {}, { user: undefined }),
+    reply(route, url) {
+      if (url.pathname === "/record/list") return route.fulfill({ json: { template: "record.list", user: viewer,
+        data: { records: { result: [] } },
+      } });
+    },
+  });
+  const status = await page.evaluate(() => new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/record/list?user=42&pid=P1000");
+    xhr.onloadend = () => resolve(xhr.status);
+    xhr.send();
+  }));
+  assert.equal(status, 200);
+  assert.equal(requests.filter(({ path, type }) => path === "/record/list" && type === "xhr").length, 1);
 });
 
 test("an observed viewer change dismisses a rendered problem preview and restores focus", async (t) => {

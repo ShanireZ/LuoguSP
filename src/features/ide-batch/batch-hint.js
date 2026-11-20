@@ -1,3 +1,5 @@
+import { browserClock } from "../../browser/clock.js";
+
 // 「一鍵測試」按鈕上的一次性提示（「本題無樣例」「頁面已切換」…）。
 //
 // ★★ 從 `feature.js` 搬出來是為了**能測**。原先它內聯在那邊，而那邊整塊要靠
@@ -15,10 +17,7 @@ export function createBatchButtonHint(config) {
     findButton,
     label = IDE_BATCH_LABEL,
     holdMs = 1500,
-    clock = {
-      setTimeout: (fn, ms) => setTimeout(fn, ms),
-      clearTimeout: (id) => clearTimeout(id),
-    },
+    clock = browserClock,
   } = config || {};
   if (typeof findButton !== "function")
     throw new TypeError("Batch button hint requires a button locator");

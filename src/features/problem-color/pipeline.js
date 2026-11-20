@@ -1,3 +1,4 @@
+import { browserClock } from "../../browser/clock.js";
 import { validDifficulty } from "./native-difficulty-source.js";
 import { isLater } from "./problem-data.js";
 
@@ -11,11 +12,7 @@ export function createProblemPipeline(config) {
     cacheLimit = 1000,
     cacheTtlMs = 5 * 60 * 1000,
     requestDelayMs = 300,
-    clock = {
-      now: () => Date.now(),
-      setTimeout: (run, ms) => setTimeout(run, ms),
-      clearTimeout: (id) => clearTimeout(id),
-    },
+    clock = browserClock,
     createAbortController = () => new AbortController(),
     logError = () => {},
   } = config || {};

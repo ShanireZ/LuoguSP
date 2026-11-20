@@ -10,14 +10,18 @@ export function runLuoguSP(restrictedLoadingGate, options = {}) {
   // wait for DOMContentLoaded; the lifecycle then adopts this same instance.
   let disposeEarly = null;
   let stopProblemObserver;
+  const disposeStartup = () => {
+    disposeEarly?.();
+    stopProblemObserver?.();
+    restrictedLoadingGate.release();
+  };
   try {
     stopProblemObserver = problemResources?.observer.mount();
     const enabled = !storage.has(problemColorFeature.storageKey) || problemColorFeature.enabled();
     if (document.readyState === "loading" && enabled)
       disposeEarly = problemColorFeature.mount({ isCurrent: () => true });
   } catch (error) {
-    stopProblemObserver?.();
-    restrictedLoadingGate.release();
+    disposeStartup();
     throw error;
   }
   const bootstrap = () => {
@@ -30,9 +34,7 @@ export function runLuoguSP(restrictedLoadingGate, options = {}) {
         problemColorFeature,
       }).bootstrapBrowser();
     } catch (error) {
-      if (disposeEarly) disposeEarly();
-      stopProblemObserver?.();
-      restrictedLoadingGate.release();
+      disposeStartup();
       throw error;
     }
   };

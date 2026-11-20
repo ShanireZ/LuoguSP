@@ -1,4 +1,5 @@
 import { defineConfigurableFeature } from "../../app/feature-descriptor.js";
+import { browserClock } from "../../browser/clock.js";
 import { watchOwnedFocus } from "../../browser/owned-focus.js";
 import { IDE_BATCH_LABEL, createBatchButtonHint } from "./batch-hint.js";
 import {
@@ -817,10 +818,7 @@ export function createIdeBatchFeature({ storage, problemData }) {
 
   const ideBatchRunner = createIdeBatchRunner({
     ideDriver: ideBrowserDriver,
-    clock: {
-      setTimeout: (fn, ms) => setTimeout(fn, ms),
-      clearTimeout: (id) => clearTimeout(id),
-    },
+    clock: browserClock,
     logError: (error) => console.error("LuoguSP ide batch:", error),
   });
   return defineConfigurableFeature({

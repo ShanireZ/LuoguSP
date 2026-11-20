@@ -55,7 +55,7 @@ export function createNativeDifficultySource({
   origin,
   now = () => Date.now(),
   onPage = (page) => page.viewer ?? 0,
-  prepareOtherGet, trackRecord,
+  prepareOtherGet, trackPage,
 }) {
   let initialPage;
   let initial = null;
@@ -148,14 +148,19 @@ export function createNativeDifficultySource({
       const request = active && requests.get(this);
       if (request && !request.clean) {
         const xhr = this;
-        if (request.url) {
-          request.at = now();
-          request.order = ++requestOrder;
-        }
-        const tracking = request.url && recordRouteId(request.url.pathname) === "list"
-          ? trackRecord?.(request.url) : null;
         // Lentille needs to be read in load, before Luogu renders in loadend.
-        let finish = request.prepare?.();
+        let tracking, finish;
+        try {
+          if (request.url) {
+            request.at = now();
+            request.order = ++requestOrder;
+            tracking = trackPage?.(request.url);
+          }
+          finish = request.prepare?.();
+        } catch {
+          // A failed passive observation cannot prevent the native request.
+          return rawSend.apply(xhr, arguments);
+        }
         const clean = () => {
           xhr.removeEventListener("load", read);
           xhr.removeEventListener("loadend", complete);

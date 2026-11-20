@@ -83,6 +83,7 @@ const DISPLAY_MATH_LINE = /^ {0,3}\$\$[ \t]*(?=\n|$)/gm;
 const INLINE_OPENER = /[<\x60\[]/;
 const TITLE_OPENER = /\]\(|<a(?=[\s/>])/i;
 const FENCE_START = /^ {0,3}(?:\x60{3}|~~~)/;
+const ORDERED_CONTINUATION = /\n {0,3}\d{1,9}[.)](?=[ \t\n]|$)/;
 const MAX_LITERAL_LOOKAHEAD = 32_768;
 const MAX_FORMULA_REGIONS = 8;
 
@@ -103,31 +104,37 @@ function tightTextEnd(source, masked, end, lexRanges) {
   return end;
 }
 
-function opensLaterCode(source, from, to, lexRanges) {
+function opensLaterCode(source, from, to, lexRanges, paragraphRule) {
   if (source[to - 1] !== "\x60") return false;
   const delimiter = /^\x60+/.exec(source.slice(from, to))?.[0];
   if (!delimiter) return false;
-  const tail = source.slice(to, to + MAX_LITERAL_LOOKAHEAD).split("\n", 1)[0];
-  const span = lexRanges(delimiter + tail).next().value;
+  const probe = delimiter + source.slice(to, to + MAX_LITERAL_LOOKAHEAD);
+  const paragraph = paragraphRule.exec(probe)?.[1];
+  if (!paragraph) return false;
+  // Marked paragraphs can include an ordered marker starting above 1.
+  // Keep the local inline probe on this side of any such list boundary.
+  const boundary = paragraph.search(ORDERED_CONTINUATION);
+  const local = boundary < 0 ? paragraph : paragraph.slice(0, boundary);
+  const span = lexRanges(local).next().value;
   if (span?.[0] !== 0) return false;
 
   // Keep an actual closer when treating it as an opener would steal the
-  // start of another complete span that follows it on the line.
+  // start of another complete span that follows it in the same paragraph.
   const nextDelimiter = span[1] - 2 * delimiter.length;
-  for (const [start, end] of lexRanges(tail)) {
+  for (const [start, end] of lexRanges(local.slice(delimiter.length))) {
     if (start <= nextDelimiter && nextDelimiter < end) return false;
     if (start > nextDelimiter) break;
   }
   return true;
 }
 
-function orderedChildFormula(source, [from, to], index, lexRanges) {
+function orderedChildFormula(source, [from, to], index, lexRanges, paragraphRule) {
   const indent = source.indexOf("$", index) - index;
   if (indent < 2) return false;
   const prefix = source.slice(Math.max(from, index - MAX_LITERAL_LOOKAHEAD), index);
   for (const [, marker, gap] of prefix.matchAll(/\n( {0,3}\d{1,9}[.)])(?:( +)(?=\S)| *(?=\n))/g)) {
     if (marker.length + (gap?.length ?? 1) <= indent)
-      return opensLaterCode(source, from, to, lexRanges);
+      return opensLaterCode(source, from, to, lexRanges, paragraphRule);
   }
   return false;
 }
@@ -226,7 +233,7 @@ function displayMathBoundary(source, masked, paragraph, options, paragraphRule, 
         }
         while (literal && literal[1] <= index) literal = ranges.next().value;
         if (literal && literal[0] <= index && index < textEnd &&
-            (!tight || !orderedChildFormula(source, literal, index, lexRanges))) {
+            (!tight || !orderedChildFormula(source, literal, index, lexRanges, paragraphRule))) {
           joined ||= tight;
           continue;
         }
@@ -235,7 +242,7 @@ function displayMathBoundary(source, masked, paragraph, options, paragraphRule, 
         // A delimiter past an apparent sublist start is relevant only when
         // it closes a literal that already began in this text block.
         if (continued && continued[0] < textEnd &&
-            (!tight || !orderedChildFormula(source, continued, index, lexRanges))) break;
+            (!tight || !orderedChildFormula(source, continued, index, lexRanges, paragraphRule))) break;
         continued = undefined;
       }
       if (textEnd < end && index >= textEnd) break;

@@ -50,7 +50,8 @@ leave the already available preview fields in place.
 Passive native XHR observations require HTTP 200, JSON media and the original
 same-origin request URL, including its query. They compare against the URL
 resolved from the document base with the fragment removed and leave native
-events intact. A rejected reopening leaves the current request observed.
+events intact. If viewer metadata or observation setup is unusable, the native
+request proceeds. A rejected reopening leaves the current request observed.
 When a load handler reuses an XHR, completion of the previous request leaves
 the new observation active until the new request finishes. A terminal reset
 to UNSENT settles prepared reads without using the cleared response.
@@ -66,7 +67,8 @@ from a newer batch. A native response, preview or IDE detail can refresh
 eligible IDs. Observed Lentille viewer changes discard harvested colors.
 Both Lentille and legacy viewer changes discard shared problem data and
 invalidate pending details and record lookups from the previous context.
-Passive record requests use the viewer context observed at send time.
+Passive native detail and record requests use the legacy viewer context
+observed at send time. Native Lentille claims retain their send-order checks.
 Confirming the existing viewer keeps that context. Returning after a change
 starts a fresh context.
 IDs without current data lose the old LuoguSP paint and use the existing fallback.
@@ -81,8 +83,8 @@ observations take precedence at equal times, including confirmed empty lists.
 An open preview retains its latest record observation if other lookups evict
 that entry from the bounded shared cache. Outstanding native record requests
 retain the latest same-scope ordering stamp until they settle. Successful
-record reads use the shared cache and supersede earlier cached terminal failures for
-their scope, so reopening after eviction can issue a fresh lookup. An
+record reads use the shared cache and supersede earlier terminal results and
+retry cooldowns for their scope, so reopening after eviction can issue a fresh lookup. An
 observed viewer change dismisses open previews, restores owned keyboard
 focus, and releases their pending reads. A relationship action already sent
 settles for its initiating account.
@@ -215,7 +217,9 @@ bounds its lookahead and keeps ordinary prose together up to a real block
 boundary. Apparent ordered markers, including 1., stay inline when verified
 inside a literal, including with an indented closing line. A child list's
 indented formula remains in that list when a stray parent backtick would
-pair with the opener of a later complete code span. Recovered literals compose with
+pair with the opener of a later complete code span. Disambiguation includes
+ordinary continuation lines within the local paragraph and keeps separate
+blocks outside the probe. Recovered literals compose with
 split closing anchor tags. A literal delimiter stays inside its inline token
 even when the next delimiter starts a real formula. Lite parses inline content within
 each block and keeps the literal text of code spans and fenced code. It reads

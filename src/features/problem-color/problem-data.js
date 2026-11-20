@@ -1,6 +1,6 @@
 import { isScopedProblemUrl, PID_PATTERN } from "./identity.js";
 import { collectDifficultyBatches } from "./lentille-harvest.js";
-import { validDifficulty } from "./native-difficulty-source.js";
+import { recordRouteId, validDifficulty } from "./native-difficulty-source.js";
 
 export const LENTILLE_INIT = Object.freeze({
   headers: Object.freeze({ "x-lentille-request": "content-only" }),
@@ -71,6 +71,7 @@ export function createProblemData({
   let observedViewer;
   let effectiveViewer;
   let viewerGeneration = 0;
+  let legacyGeneration = 0;
   let viewerAt = -Infinity;
   const isFresh = (at, currentTime) => currentTime - at < ttlMs;
 
@@ -88,6 +89,7 @@ export function createProblemData({
     effectiveViewer = uid;
     if (changed) {
       viewerGeneration++;
+      if (observedViewer === undefined) legacyGeneration++;
       for (const entries of [summaries, details, recordLists, recordListeners]) entries.clear();
       for (const listener of viewerListeners) listener();
     }
@@ -106,13 +108,15 @@ export function createProblemData({
         !["status", "language", "orderBy"].some(key => params.has(key)))
       return keyOf(pid, scope(url, uid));
   };
-  const trackRecord = (url) => {
-    const listener = { key: recordListKey(url, viewerUid()) };
-    recordListeners.add(listener);
+  const trackPage = (url) => {
+    const uid = viewerUid();
+    const generation = legacyGeneration;
+    const listener = recordRouteId(url.pathname) === "list" ? { key: recordListKey(url, uid) } : null;
+    if (listener) recordListeners.add(listener);
     return {
       current() {
         viewer();
-        return recordListeners.has(listener);
+        return generation === legacyGeneration && (!listener || recordListeners.has(listener));
       },
       release: () => recordListeners.delete(listener),
     };
@@ -312,9 +316,16 @@ export function createProblemData({
     if (entry && isFresh(entry.at, now())) return entry;
     recordLists.delete(key);
   };
-  const records = (pid, options) => readRecord(recordKey(pid, options?.href))?.records;
-  const failRecord = (key) => {
-    if (!readRecord(key)) remember(recordLists, key, { at: now(), records: null }, 30);
+  const records = (pid, options) => {
+    const entry = readRecord(recordKey(pid, options?.href));
+    if (!(entry?.retryAt <= now())) return entry?.records;
+  };
+  const failRecord = (key, cooldown) => {
+    const previous = readRecord(key);
+    if (!previous || previous.retryAt !== undefined) {
+      const at = now();
+      remember(recordLists, key, { at, records: null, retryAt: cooldown && at + (previous ? cooldown : 0) }, 30);
+    }
   };
   const subscribeRecords = (key, onRecords, signal) => {
     const listener = { key, onRecords };
@@ -325,5 +336,5 @@ export function createProblemData({
     signal?.addEventListener("abort", stop, { once: true });
     return stop;
   };
-  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, subscribeViewer, records, recordKey, failRecord, subscribeRecords, trackRecord });
+  return Object.freeze({ peek, peekDifficulty, subscribeDifficulty, load, rememberPage, viewerUid, subscribeViewer, records, recordKey, failRecord, subscribeRecords, trackPage });
 }

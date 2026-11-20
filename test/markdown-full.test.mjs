@@ -787,9 +787,13 @@ for (const forceFullFailure of [false, true]) {
     const { dom, renderer } = createRenderer();
     t.after(() => dom.window.close());
     const root = dom.window.document.createElement("div");
-    for (const [marker, continuation] of [[1, "     "], [2, "     "], [2, "     Child continued\n  More prose "]]) {
+    for (const [marker, continuation, code = "nested code"] of [
+      [1, "     "], [2, "     "], [2, "     Child continued\n  More prose "],
+      [2, "     More prose ", "nested\n     code"],
+      [2, "     Child continued\n  More prose ", "nested\n  code"],
+    ]) {
       root.innerHTML = renderer.renderMarkdown(
-        `- Before \`unmatched prose.\n  ${marker}. Real sublist\n     $$\n     - x\n     $$\n${continuation}\`nested code\`.\n  ${marker + 1}. Next nested.\n- Sibling.`,
+        `- Before \`unmatched prose.\n  ${marker}. Real sublist\n     $$\n     - x\n     $$\n${continuation}\`${code}\`.\n  ${marker + 1}. Next nested.\n- Sibling.`,
         { forceFullFailure },
       ).html;
       const list = root.querySelector("li > ol");
@@ -799,6 +803,20 @@ for (const forceFullFailure of [false, true]) {
       assert.deepEqual([...list.querySelectorAll(".katex-display .katex-html")].map(node => node.textContent), ["−x"]);
       assert.equal(root.querySelector(":scope > ul > li:last-child").textContent.trim(), "Sibling.");
     }
+  });
+
+  test(`a genuine earlier closer survives a wrapped second code span in ${mode}`, (t) => {
+    const { dom, renderer } = createRenderer();
+    t.after(() => dom.window.close());
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderer.renderMarkdown(
+      "- Example `line\n  2. Within literal\n     $$\n     - x\n     $$\n  after`. Also `second\n  code`.\n  2. Actual sublist\n     $$\n     y\n     $$\n  3. Next item\n- Sibling.",
+      { forceFullFailure },
+    ).html;
+    assert.deepEqual([...root.querySelectorAll("code")].map(node => node.textContent),
+      ["line 2. Within literal    $$    - x    $$ after", "second code"]);
+    assert.deepEqual([...root.querySelectorAll(".katex-display .katex-html")].map(node => node.textContent), ["y"]);
+    assert.equal(root.querySelector("li > ol").children.length, 2);
   });
 
   test(`a split anchor ending before or after a recovered literal keeps its boundaries in ${mode}`, (t) => {

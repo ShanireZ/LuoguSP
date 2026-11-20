@@ -170,15 +170,15 @@ export function createHoverCardSources(config) {
           const at = now();
           const payload = await readJson(url, signal);
           if (!current()) return;
-          if (payload === RETRYABLE_READ) return payload;
-          if (payload === null) return problemData ? problemData.failRecord(key) : null;
-          const { template } = payload;
-          const records = payload.data?.records;
-          if (template !== "record.list" || Number(payload.user?.uid) !== uid ||
-              !Array.isArray(records?.result)) return RETRYABLE_READ;
+          const records = payload?.data?.records;
+          if (payload?.template !== "record.list" || Number(payload.user?.uid) !== uid ||
+              !Array.isArray(records?.result)) {
+            if (problemData) return problemData.failRecord(key, payload === null ? undefined : RETRY_COOLDOWN_MS);
+            return payload === null ? null : RETRYABLE_READ;
+          }
           // The cache scopes these rows to the viewer already in effect.
           if (problemData) {
-            problemData.rememberPage({ template, data: { records } }, url, at);
+            problemData.rememberPage({ template: payload.template, data: { records } }, url, at);
             return;
           }
           return pickLastAttempt(records.result.filter((row) => row?.problem?.pid === pid && Number(row.user?.uid) === uid));

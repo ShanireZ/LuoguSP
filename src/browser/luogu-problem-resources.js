@@ -1,17 +1,13 @@
 import { createGetRequestScheduler } from "../core/get-request-scheduler.js";
 import { createNativeDifficultySource } from "../features/problem-color/native-difficulty-source.js";
 import { createProblemData, LENTILLE_INIT } from "../features/problem-color/problem-data.js";
+import { browserClock } from "./clock.js";
 import { getMediaType, matchesGetUrl, SAME_ORIGIN_GET } from "./luogu-get-response.js";
 import { createNativeUserInfo } from "./luogu-user-info.js";
 
 export function createBrowserProblemResources() {
   if (typeof document === "undefined") return null;
   const origin = location.origin;
-  const clock = {
-    now: () => Date.now(),
-    setTimeout: (fn, ms) => setTimeout(fn, ms),
-    clearTimeout: (id) => clearTimeout(id),
-  };
   const scheduler = createGetRequestScheduler({
     fetch: async (path, init) => {
       const expectedUrl = new URL(path, origin).href;
@@ -25,14 +21,15 @@ export function createBrowserProblemResources() {
       }
       return response;
     },
-    clock,
+    clock: browserClock,
   });
   const data = createProblemData({
     origin,
     text: scheduler.text,
     refresh: () => native.harvest(),
     legacyViewer: () => {
-      const uid = Number(globalThis._feInjection?.currentUser?.uid);
+      const value = globalThis._feInjection?.currentUser?.uid;
+      const uid = typeof value === "string" ? Number(value) : value;
       return Number.isSafeInteger(uid) && uid > 0 ? uid : 0;
     },
   });
@@ -42,7 +39,7 @@ export function createBrowserProblemResources() {
     XMLHttpRequest: globalThis.XMLHttpRequest,
     origin,
     onPage: data.rememberPage,
-    trackRecord: data.trackRecord,
+    trackPage: data.trackPage,
     prepareOtherGet: userInfo.prepare,
   });
   let stop;

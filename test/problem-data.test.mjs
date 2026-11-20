@@ -511,20 +511,26 @@ const jsonReply = (requestedUrl, payload) => ({
 const recordReply = (result) => jsonReply(recordUrl,
   { template: "record.list", user: { uid: 42 }, data: { records: { result } } });
 
-for (const [failFirst, closeFirst] of [[true, false], [false, false], [true, true]])
-test(`a native record supersedes a cached 403 after eviction (failure settled first: ${failFirst}, closed: ${closeFirst})`, async () => {
+for (const status of [403, 503]) for (const [failFirst, closeFirst] of [[true, false], [false, false], [true, true]])
+test(`a native record supersedes a cached ${status} after eviction (failure settled first: ${failFirst}, closed: ${closeFirst})`, async () => {
   const user = { uid: 42 };
   const row = score => ({ id: score, score, user, problem, submitTime: score });
   const data = createProblemData({ origin, now: () => 10, text: () => assert.fail("unexpected detail lookup") });
   data.rememberPage({ viewer: 42, data: { problem } }, url("/problem/P1001"), 10);
-  const denied = { url: recordUrl, ok: false, status: 403, redirected: false };
+  const denied = { url: recordUrl, ok: false, status, redirected: false };
+  const failures = status === 503 ? 2 : 1;
   const response = deferred();
   const controller = new AbortController();
   let requests = 0;
   let score;
   const sources = createHoverCardSources({ origin, problemData: data, clock: { now: () => 10 },
-    fetchPage: () => ++requests === 1 ? response.promise : recordReply([row(60)]),
+    fetchPage: () => {
+      requests++;
+      if (requests < failures) return denied;
+      return requests === failures ? response.promise : recordReply([row(60)]);
+    },
   });
+  if (failures === 2) await sources.problem(problem.pid, 42);
   const open = sources.problem(problem.pid, 42, controller.signal, {
     onUpdate: card => { score = card.mine.lastAttempt?.score; },
   });
@@ -535,8 +541,10 @@ test(`a native record supersedes a cached 403 after eviction (failure settled fi
   }
   if (closeFirst) {
     controller.abort();
+    data.rememberPage({ template: "record.list", data: { records: { result: [row(90)] } } },
+      url(recordUrl + "&contestId=1"), 10, 1);
     assert.equal((await sources.problem(problem.pid, 42)).mine.lastAttempt, null);
-    assert.equal(requests, 1, "reuse the unresolved terminal response while it remains cached");
+    assert.equal(requests, failures, "another contest cannot retire the unresolved failure");
   }
   data.rememberPage({ template: "record.list", data: { records: { result: [row(50)] } } }, url(recordUrl), 10, 1);
   for (let i = 0; i < 30; i++)
@@ -548,7 +556,7 @@ test(`a native record supersedes a cached 403 after eviction (failure settled fi
   controller.abort();
   const reopened = await sources.problem(problem.pid, 42);
   assert.equal(reopened.mine.lastAttempt?.score, 60);
-  assert.equal(requests, 2);
+  assert.equal(requests, failures + 1);
 });
 
 for (const [nativeDelay, nativeScores, expected] of [

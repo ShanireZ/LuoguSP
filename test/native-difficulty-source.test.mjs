@@ -24,7 +24,8 @@ function fixture({
       this.url = new URL(url, dom.window.document.baseURI).href.split("#")[0];
       this.readyState = 1;
     }
-    send() {}
+    sends = 0;
+    send() { this.sends++; }
     getResponseHeader(name) { return name === "content-type" ? this.mediaType : null; }
     get response() { this.reads++; return this.data; }
     get responseText() { this.reads++; return typeof this.data === "string" ? this.data : JSON.stringify(this.data); }
@@ -45,7 +46,7 @@ function fixture({
   const origin = "https://www.luogu.com.cn";
   const data = createProblemData({ origin, now: () => now, legacyViewer });
   const source = createNativeDifficultySource({ document: dom.window.document,
-    XMLHttpRequest: XHR, origin, now: () => now, onPage: data.rememberPage, trackRecord: data.trackRecord, prepareOtherGet });
+    XMLHttpRequest: XHR, origin, now: () => now, onPage: data.rememberPage, trackPage: data.trackPage, prepareOtherGet });
   const seen = [];
   const originalOpen = XHR.prototype.open;
   const harvest = () => source.harvest().batches;
@@ -103,6 +104,46 @@ test(`a superseded native record stays retired after closing the preview (${othe
   assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), other === 30 ? undefined : newest);
   fx.request(path).reply(observedRecord(problem, 42, [60]));
   assert.deepEqual(fx.data.records(problem.pid)?.map(row => row.score), [60]);
+});
+
+for (const [path, template, content] of [
+  ["/record/100", "record.show", { record: { id: 100, problem: { pid: "P1020", difficulty: 2 } } }],
+  ["/problem/P1020", "problem.show", { problem: { pid: "P1020", difficulty: 2 } }],
+]) test(`passive ${template} respects a legacy viewer switch`, (t) => {
+  let uid = 42;
+  const fx = fixture({ legacyViewer: () => uid });
+  t.after(fx.stop);
+  fx.harvest();
+  const held = fx.request(path);
+  uid = 43;
+  assert.equal(fx.data.viewerUid(), uid);
+  held.reply({ template, user: { uid: 42, learnMode: true }, data: content });
+  assert.equal(fx.data.viewerUid(), 43);
+  const tier = () => template === "record.show"
+    ? fx.source.recordDifficulty(path, "100", "P1020") : fx.data.peekDifficulty("P1020").difficulty;
+  assert.equal(tier(), undefined);
+  fx.request(path).reply({ template, user: { uid: 43, learnMode: true }, data: content });
+  assert.equal(tier(), 2);
+});
+
+test("a later native request can announce a fresh explicit viewer", (t) => {
+  const fx = fixture({ page: { user: { uid: 42 }, data: {} } });
+  t.after(fx.stop);
+  const first = fx.request("/problem/list");
+  const next = fx.request("/problem/P1020");
+  first.reply({ user: { uid: 43 }, data: {} });
+  next.reply({ user: { uid: 44 }, data: { problem: { pid: "P1020", difficulty: 2 } } });
+  assert.equal(fx.data.viewerUid(), 44);
+  assert.equal(fx.data.peekDifficulty("P1020").difficulty, 2);
+});
+
+test("an unavailable viewer reader leaves the native send usable", (t) => {
+  const fx = fixture({ legacyViewer: () => { throw new TypeError("unavailable viewer"); } });
+  t.after(fx.stop);
+  const xhr = fx.request("/record/list?user=42&pid=P1001");
+  assert.equal(xhr.sends, 1);
+  xhr.reply(observedRecord({ pid: "P1001" }, 42, [25]));
+  assert.equal(xhr.reads, 0);
 });
 
 test("native page data is available during load before Luogu consumes loadend", () => {
