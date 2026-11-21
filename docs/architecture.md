@@ -162,6 +162,8 @@ native run ID.
 If a submit may still produce a result after cancellation or timeout,
 LuoguSP requires a page reload before starting another batch in that document.
 An explicit server rejection releases that restriction.
+A batch can start when Luogu's Run link has `disabled="false"`. A queued run
+or a disabled run control keeps the batch from starting.
 Each batch captures the source, compiler selection and O2 setting at start.
 Changes to any of them stop later submissions and mark the batch results stale.
 The submit observer matches the native POST body to the captured source, sample

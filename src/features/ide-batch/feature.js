@@ -654,8 +654,9 @@ export function createIdeBatchFeature({ storage, problemData }) {
             (button) => (button.textContent || "").trim() === "自测",
           )
         : null;
+      // Luogu renders the idle Run link with disabled="false".
       if (selfTest?.disabled ||
-          inputToolbar?.querySelector('.run-status, .run[disabled], .run[aria-disabled="true"]'))
+          inputToolbar?.querySelector('.run-status, .run[disabled]:not(a[disabled="false"]), .run[aria-disabled="true"]'))
         return { kind: "hint", message: "洛谷 IDE 正在运行，请稍后重试" };
       return {
         kind: "ready",

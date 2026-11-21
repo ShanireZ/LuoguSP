@@ -4648,7 +4648,7 @@ async function ideFixture(t, submitReply = (route, index) =>
       <div class="io-sample-block">输入 #1 <button>运行</button></div>
       <div class="io-sample-block">输入 #2 <button>运行</button></div>
       <div><div id="native-io" class="panel-layout" role="group" tabindex="-1" style="display:flex">
-        <div>${toolbar("输入")}<textarea class="ide-textarea"></textarea></div>
+        <div>${toolbar("输入", '<a class="title run" disabled="false">运行</a>')}<textarea class="ide-textarea"></textarea></div>
         <div id="output">${toolbar("输出", '<span>AC</span><span class="run-result"></span>')}<textarea class="ide-textarea"></textarea></div>
       </div></div>
       <script>
@@ -4705,6 +4705,21 @@ async function ideFixture(t, submitReply = (route, index) =>
     },
   });
   return { page, requests, submitted, firstSubmit: submit.promise };
+}
+
+for (const [state, control] of [
+  ["submitting", '<a class="run" disabled="true">运行</a>'],
+  ["queued", '<span class="run run-status">队列中...</span>'],
+  ["ARIA-disabled", '<a class="run" disabled="false" aria-disabled="true">运行</a>'],
+  ["disabled button", '<button class="run" disabled="false">运行</button>'],
+]) {
+  test(`IDE blocks a batch while the native run control is ${state}`, async (t) => {
+    const { page, submitted } = await ideFixture(t);
+    await page.locator(".ide-toolbar .run").evaluate((run, html) => { run.outerHTML = html; }, control);
+    await page.getByRole("button", { name: "一键测试", exact: true }).click();
+    await page.getByRole("button", { name: "洛谷 IDE 正在运行，请稍后重试" }).waitFor();
+    assert.equal(submitted.length, 0);
+  });
 }
 
 for (const omitted of [true, false]) {
