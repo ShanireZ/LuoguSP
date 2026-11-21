@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 3,
+  "release": "2.14.11",
+  "loaderApiVersion": 1,
+  "generatedAt": "2026-11-21T01:34:23.062Z",
+  "origin": "https://luogusp.round1.cc",
+  "compat": {
+    "earlyGate": {
+      "path": "releases/2.14.11/compat/early-gate.e37f046e4d37d000.js",
+      "bytes": 3192,
+      "sha256": "e37f046e4d37d0003a62c29b9961cf2c1401a311a9d6c2b21da0af560db52939",
+      "sri": "sha256-438Ebk030AA6YsKbmWHPLBQBoxGp1sKyHaCvVg21KTk="
+    },
+    "runtime": {
+      "path": "releases/2.14.11/compat/runtime.7cad45c92b2981ae.js",
+      "bytes": 116775,
+      "sha256": "7cad45c92b2981ae225cbacaf49c1ed5c3b9c322060746d615c7a0b45f197f68",
+      "sri": "sha256-fK1FySspga4iXLrK9Jwe1cO5wyIGB0bWFcegtF8Zf2g="
+    }
+  },
+  "optionalBundles": {
+    "markdownRenderer": {
+      "apiVersion": 1,
+      "path": "releases/2.14.11/render/markdown-renderer.717e59016afeef33.js",
+      "bytes": 425594,
+      "gzipBytes": 132060,
+      "sha256": "717e59016afeef33d68bdc52c66c7ab94568b785600615939bf9e32ec3ab1e45",
+      "sri": "sha256-cX5ZAWr+7zPWi9xSxmx6uUVot4VgBhWTm/njLsOrHkU=",
+      "dependencies": {
+        "katex": "0.18.2",
+        "marked": "18.0.7",
+        "dompurify": "3.4.17",
+        "highlight.js": "11.11.1"
+      }
+    },
+    "restrictedContent": {
+      "apiVersion": 1,
+      "path": "releases/2.14.11/feature/restricted-content.88029908d69c21e4.js",
+      "bytes": 51135,
+      "gzipBytes": 19119,
+      "sha256": "88029908d69c21e41b1cd1ea82bb96efede043750ba8553ad130d6323f8e0b03",
+      "sri": "sha256-iAKZCNacIeQbHNHqgruW7+3gQ3ULqFU60TDWMj+OCwM="
+    },
+    "hoverCard": {
+      "apiVersion": 1,
+      "path": "releases/2.14.11/feature/hover-card.a7769670ba78e547.js",
+      "bytes": 39983,
+      "gzipBytes": 15528,
+      "sha256": "a7769670ba78e547d0b0d8edc051536cad014b3db3515e954964fc5e4aa62bc9",
+      "sri": "sha256-p3aWcLp45UfQsNjtwFFTbK0BSz2zUV6VSWT8XkqmK8k="
+    }
+  },
+  "esm": {
+    "enabled": false,
+    "status": "canary",
+    "entries": {
+      "canary-loader": "releases/2.14.11/esm/canary-loader-BTLX3PLI.js",
+      "early-gate-api": "releases/2.14.11/esm/early-gate-api-DVTD6MCS.js",
+      "app-core": "releases/2.14.11/esm/app-core-C4FMFT4A.js",
+      "settings": "releases/2.14.11/esm/settings-CD7RIR2F.js",
+      "problem-color": "releases/2.14.11/esm/problem-color-Q6N2HGIG.js",
+      "hidden-intro": "releases/2.14.11/esm/hidden-intro-PTWENLYX.js",
+      "ide-batch": "releases/2.14.11/esm/ide-batch-ZUUGE7B4.js",
+      "restricted-content": "releases/2.14.11/esm/restricted-content-3C3OMTJI.js"
+    }
+  },
+  "files": {
+    "releases/2.14.11/compat/early-gate.e37f046e4d37d000.js": {
+      "path": "releases/2.14.11/compat/early-gate.e37f046e4d37d000.js",
+      "bytes": 3192,
+      "sha256": "e37f046e4d37d0003a62c29b9961cf2c1401a311a9d6c2b21da0af560db52939",
+      "sri": "sha256-438Ebk030AA6YsKbmWHPLBQBoxGp1sKyHaCvVg21KTk="
+    },
+    "releases/2.14.11/compat/runtime.7cad45c92b2981ae.js": {
+      "path": "releases/2.14.11/compat/runtime.7cad45c92b2981ae.js",
+      "bytes": 116775,
+      "sha256": "7cad45c92b2981ae225cbacaf49c1ed5c3b9c322060746d615c7a0b45f197f68",
+      "sri": "sha256-fK1FySspga4iXLrK9Jwe1cO5wyIGB0bWFcegtF8Zf2g="
+    },
+    "releases/2.14.11/render/markdown-renderer.717e59016afeef33.js": {
+      "path": "releases/2.14.11/render/markdown-renderer.717e59016afeef33.js",
+      "bytes": 425594,
+      "sha256": "717e59016afeef33d68bdc52c66c7ab94568b785600615939bf9e32ec3ab1e45",
+      "sri": "sha256-cX5ZAWr+7zPWi9xSxmx6uUVot4VgBhWTm/njLsOrHkU="
+    },
+    "releases/2.14.11/feature/restricted-content.88029908d69c21e4.js": {
+      "path": "releases/2.14.11/feature/restricted-content.88029908d69c21e4.js",
+      "bytes": 51135,
+      "sha256": "88029908d69c21e41b1cd1ea82bb96efede043750ba8553ad130d6323f8e0b03",
+      "sri": "sha256-iAKZCNacIeQbHNHqgruW7+3gQ3ULqFU60TDWMj+OCwM="
+    },
+    "releases/2.14.11/feature/hover-card.a7769670ba78e547.js": {
+      "path": "releases/2.14.11/feature/hover-card.a7769670ba78e547.js",
+      "bytes": 39983,
+      "sha256": "a7769670ba78e547d0b0d8edc051536cad014b3db3515e954964fc5e4aa62bc9",
+      "sri": "sha256-p3aWcLp45UfQsNjtwFFTbK0BSz2zUV6VSWT8XkqmK8k="
+    },
+    "releases/2.14.11/esm/canary-loader-BTLX3PLI.js": {
+      "path": "releases/2.14.11/esm/canary-loader-BTLX3PLI.js",
+      "bytes": 173,
+      "sha256": "b9279332f7a9ae376535bc4a2170496a787ff3e8a9e77171681a614cf7ec43ed",
+      "sri": "sha256-uSeTMveprjdlNbxKIXBJanh/8+ip53FxaBphTPfsQ+0="
+    },
+    "releases/2.14.11/esm/early-gate-api-DVTD6MCS.js": {
+      "path": "releases/2.14.11/esm/early-gate-api-DVTD6MCS.js",
+      "bytes": 2412,
+      "sha256": "021d10932484641f507f133fca897dac5e80bf782ac75ef0ff6d9f3ab617e791",
+      "sri": "sha256-Ah0QkySEZB9QfxM/yol9rF6Av3gqx17w/22fOrYX55E="
+    },
+    "releases/2.14.11/esm/app-core-C4FMFT4A.js": {
+      "path": "releases/2.14.11/esm/app-core-C4FMFT4A.js",
+      "bytes": 3795,
+      "sha256": "935215c4ece10e630b5158f933709d79779540850c3cefca2d52acab81265c84",
+      "sri": "sha256-k1IVxOzhDmMLUVj5M3CdeXeVQIUMPO/KLVKsq4EmXIQ="
+    },
+    "releases/2.14.11/esm/settings-CD7RIR2F.js": {
+      "path": "releases/2.14.11/esm/settings-CD7RIR2F.js",
+      "bytes": 9575,
+      "sha256": "07d40e6aa1ddb8339923e12fbd32456113fa1b41c9bf11c6436e3fee074a726f",
+      "sri": "sha256-B9QOaqHduDOZI+EvvTJFYRP6G0HJvxHGQ24/7gdKcm8="
+    },
+    "releases/2.14.11/esm/problem-color-Q6N2HGIG.js": {
+      "path": "releases/2.14.11/esm/problem-color-Q6N2HGIG.js",
+      "bytes": 26903,
+      "sha256": "6cf11bdffef0ee0a3a8efcecc589d52304cae35db38b4dd0a4ec1a93af4b471d",
+      "sri": "sha256-bPEb3/7w7go6jvzsxYnVIwTK412zi03QpOwak69LRx0="
+    },
+    "releases/2.14.11/esm/hidden-intro-PTWENLYX.js": {
+      "path": "releases/2.14.11/esm/hidden-intro-PTWENLYX.js",
+      "bytes": 24213,
+      "sha256": "ba5e0403efe58e53703cea5cc1ab2d95ce12a291dca5ee15e56f1df5dfee0ac9",
+      "sri": "sha256-ul4EA+/ljlNwPOpcwastlc4SopHcpe4V5W8d9d/uCsk="
+    },
+    "releases/2.14.11/esm/chunks/chunk-WFSUDTKV.js": {
+      "path": "releases/2.14.11/esm/chunks/chunk-WFSUDTKV.js",
+      "bytes": 3920,
+      "sha256": "1fc8be58f33138442d809731eec3ba4d5b1412fba8f8735fed950a8092519e95",
+      "sri": "sha256-H8i+WPMxOEQtgJcx7sO6TVsUEvuo+HNf7ZUKgJJRnpU="
+    },
+    "releases/2.14.11/esm/ide-batch-ZUUGE7B4.js": {
+      "path": "releases/2.14.11/esm/ide-batch-ZUUGE7B4.js",
+      "bytes": 31101,
+      "sha256": "a20ef178075e59142417d76a5cb4d19af0ee839897d74e16139d663d3f10f3f0",
+      "sri": "sha256-og7xeAdeWRQkF9dqXLTRmvDug5iX104WE51mPT8Q8/A="
+    },
+    "releases/2.14.11/esm/chunks/chunk-YDFAO2GN.js": {
+      "path": "releases/2.14.11/esm/chunks/chunk-YDFAO2GN.js",
+      "bytes": 479,
+      "sha256": "cc7835ecf8f36b490ae6c755cb8f001c56a0afdd21067e2a397464604bc8ef08",
+      "sri": "sha256-zHg17Pjza0kK5sdVy48AHFagr90hBn4qOXRkYEvI7wg="
+    },
+    "releases/2.14.11/esm/chunks/chunk-7IFZ2BZT.js": {
+      "path": "releases/2.14.11/esm/chunks/chunk-7IFZ2BZT.js",
+      "bytes": 124,
+      "sha256": "1820a58acb48c3d60468c6ab068a39ae528fcf4c381e1ceb38649286cc6f6ceb",
+      "sri": "sha256-GCClistIw9YEaMarBoo5rlKPz0w4HhzrOGSShsxvbOs="
+    },
+    "releases/2.14.11/esm/chunks/chunk-BWGC46OZ.js": {
+      "path": "releases/2.14.11/esm/chunks/chunk-BWGC46OZ.js",
+      "bytes": 1721,
+      "sha256": "301be7d9fc136032a4aece88b7451615db89dfcc9ae7bd39c9405c28ce901b5c",
+      "sri": "sha256-MBvn2fwTYDKkrs6It0UWFduJ38ya5705yUBcKM6QG1w="
+    },
+    "releases/2.14.11/esm/restricted-content-3C3OMTJI.js": {
+      "path": "releases/2.14.11/esm/restricted-content-3C3OMTJI.js",
+      "bytes": 50062,
+      "sha256": "07cefef18b6738c624ddfff8570f321fdbd092db4f37da6bb4dc49ef245f0dda",
+      "sri": "sha256-B87+8YtnOMYk3f/4Vw8yH9vQkttPN9prtNxJ7yRfDdo="
+    },
+    "releases/2.14.11/esm/chunks/chunk-TEKDR3PM.js": {
+      "path": "releases/2.14.11/esm/chunks/chunk-TEKDR3PM.js",
+      "bytes": 796,
+      "sha256": "7fd59442cdffe4ebfb9aee3f07ad9ebbcf97208b0d2a089c9aa9d3ff3b88d41f",
+      "sri": "sha256-f9WUQs3/5Ov7mu4/B62eu8+XIIsNKgicmqnT/zuI1B8="
+    },
+    "releases/2.14.11/esm/chunks/chunk-UVQVFSRF.js": {
+      "path": "releases/2.14.11/esm/chunks/chunk-UVQVFSRF.js",
+      "bytes": 402,
+      "sha256": "996f8b0eeb87c77a5dcfa70c52f43c66f1b3d944ed3187eea6b5fe54b0012405",
+      "sri": "sha256-mW+LDuuHx3pdz6cMUvQ8ZvGz2UTtMYfuprX+VLABJAU="
+    }
+  }
+}
